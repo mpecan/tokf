@@ -1,0 +1,13 @@
+## feature-branch...origin/feature-branch [ahead 2]
+A  src/new_module.rs
+AM src/half_staged.rs
+D  old_file.rs
+ D src/forgotten.rs
+ M src/config.rs
+M  src/main.rs
+M  src/lib.rs
+MM src/both.rs
+R  old_name.rs -> new_name.rs
+UU src/conflict.rs
+?? untracked.txt
+?? scratch.md

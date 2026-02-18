@@ -184,7 +184,7 @@ pub struct GroupConfig {
 }
 
 /// Output formatting configuration for the final rendered result.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct OutputConfig {
     /// Top-level output format template.
     pub format: Option<String>,

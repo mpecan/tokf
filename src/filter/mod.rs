@@ -1,4 +1,6 @@
 mod extract;
+mod group;
+mod parse;
 mod skip;
 
 use crate::config::types::{FilterConfig, MatchOutputRule, OutputBranch};
@@ -14,9 +16,10 @@ pub struct FilterResult {
 ///
 /// Processing order:
 /// 1. `match_output` — substring check against combined output, first match wins
-/// 2. Select branch by exit code (0 → `on_success`, else → `on_failure`)
-/// 3. Apply the selected branch's rules
-/// 4. Passthrough — if no branch exists, return combined as-is
+/// 2. Top-level `skip`/`keep` pre-filtering
+/// 3. If `parse` exists → parse+output (alternative path to branches)
+/// 4. Select branch by exit code (0 → `on_success`, else → `on_failure`)
+/// 5. Apply the selected branch's rules or passthrough
 pub fn apply(config: &FilterConfig, result: &CommandResult) -> FilterResult {
     // 1. match_output short-circuit
     if let Some(rule) = find_matching_rule(&config.match_output, &result.combined) {
@@ -25,14 +28,25 @@ pub fn apply(config: &FilterConfig, result: &CommandResult) -> FilterResult {
         };
     }
 
-    // 2. Select branch by exit code
+    // 2. Top-level skip/keep pre-filtering
+    let lines: Vec<&str> = result.combined.lines().collect();
+    let lines = skip::apply_skip(&config.skip, &lines);
+    let lines = skip::apply_keep(&config.keep, &lines);
+
+    // 3. If parse exists → parse+output pipeline
+    if let Some(ref parse_config) = config.parse {
+        let parse_result = parse::run_parse(parse_config, &lines);
+        let output_config = config.output.clone().unwrap_or_default();
+        let output = parse::render_output(&output_config, &parse_result);
+        return FilterResult { output };
+    }
+
+    // 4. Select branch by exit code
     let branch = select_branch(config, result.exit_code);
 
-    // 3. Apply branch or passthrough
-    let output = branch.map_or_else(
-        || result.combined.clone(),
-        |b| apply_branch(b, &result.combined),
-    );
+    // 5. Apply branch or passthrough (on pre-filtered lines)
+    let pre_filtered = lines.join("\n");
+    let output = branch.map_or_else(|| pre_filtered.clone(), |b| apply_branch(b, &pre_filtered));
 
     FilterResult { output }
 }
@@ -414,5 +428,96 @@ extract = { pattern = '(\w+) -> (\w+)', output = "pushed {2}" }
 
         let result = make_result("noise line\nmain -> main\nnoise again", 0);
         assert_eq!(apply(&config, &result).output, "pushed main");
+    }
+
+    // --- parse pipeline tests ---
+
+    #[test]
+    fn apply_parse_overrides_on_success() {
+        let config: FilterConfig = toml::from_str(
+            r#"
+command = "test"
+
+[parse]
+branch = { line = 1, pattern = '## (\S+)', output = "{1}" }
+
+[on_success]
+output = "should not appear"
+"#,
+        )
+        .unwrap();
+
+        let result = make_result("## main", 0);
+        assert_eq!(apply(&config, &result).output, "main\n");
+    }
+
+    #[test]
+    fn apply_parse_overrides_on_failure() {
+        let config: FilterConfig = toml::from_str(
+            r#"
+command = "test"
+
+[parse]
+branch = { line = 1, pattern = '## (\S+)', output = "{1}" }
+
+[on_failure]
+output = "should not appear"
+"#,
+        )
+        .unwrap();
+
+        let result = make_result("## develop", 1);
+        assert_eq!(apply(&config, &result).output, "develop\n");
+    }
+
+    #[test]
+    fn apply_match_output_overrides_parse() {
+        let config: FilterConfig = toml::from_str(
+            r#"
+command = "test"
+match_output = [
+  { contains = "fatal", output = "error!" },
+]
+
+[parse]
+branch = { line = 1, pattern = '## (\S+)', output = "{1}" }
+"#,
+        )
+        .unwrap();
+
+        let result = make_result("fatal: something broke", 128);
+        assert_eq!(apply(&config, &result).output, "error!");
+    }
+
+    #[test]
+    fn apply_top_level_skip_affects_parse() {
+        let config: FilterConfig = toml::from_str(
+            r#"
+command = "test"
+skip = ["^#"]
+
+[parse]
+branch = { line = 1, pattern = '^(\S+)', output = "{1}" }
+"#,
+        )
+        .unwrap();
+
+        // After skip removes "# comment", the first line becomes "M  file.rs"
+        let result = make_result("# comment\nM  file.rs", 0);
+        assert_eq!(apply(&config, &result).output, "M\n");
+    }
+
+    #[test]
+    fn apply_top_level_keep_affects_branch_path() {
+        let config: FilterConfig = toml::from_str(
+            r#"
+command = "test"
+keep = ["^keep"]
+"#,
+        )
+        .unwrap();
+
+        let result = make_result("drop me\nkeep this\ndrop too\nkeep that", 0);
+        assert_eq!(apply(&config, &result).output, "keep this\nkeep that");
     }
 }
