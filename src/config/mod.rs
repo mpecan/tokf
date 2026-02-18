@@ -16,7 +16,7 @@ pub fn command_to_filter_name(command_words: &[&str]) -> String {
 /// 1. `.tokf/filters/` (repo-local, resolved from CWD)
 /// 2. `{config_dir}/tokf/filters/` (user-level, platform-native)
 /// 3. `{binary_dir}/filters/` (shipped stdlib, adjacent to the tokf binary)
-fn default_search_dirs() -> Vec<PathBuf> {
+pub fn default_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     // 1. Repo-local override (resolved to absolute so it survives any later CWD change)
@@ -41,7 +41,11 @@ fn default_search_dirs() -> Vec<PathBuf> {
 
 /// Try to load a filter from `path`. Returns `Ok(Some(config))` on success,
 /// `Ok(None)` if the file does not exist, or `Err` for other I/O / parse errors.
-fn try_load_filter(path: &Path) -> anyhow::Result<Option<FilterConfig>> {
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be read or contains invalid TOML.
+pub fn try_load_filter(path: &Path) -> anyhow::Result<Option<FilterConfig>> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -89,7 +93,6 @@ pub fn resolve_filter_in(
 /// # Errors
 ///
 /// Returns an error if a matching filter file is found but cannot be read or parsed.
-#[allow(dead_code)]
 pub fn resolve_filter(command_words: &[&str]) -> anyhow::Result<Option<FilterConfig>> {
     resolve_filter_in(command_words, &default_search_dirs())
 }

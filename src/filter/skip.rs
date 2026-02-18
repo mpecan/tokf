@@ -26,7 +26,6 @@ pub fn apply_skip<'a>(patterns: &[String], lines: &[&'a str]) -> Vec<&'a str> {
 ///
 /// Invalid regex patterns are silently dropped. An empty patterns list
 /// returns all lines unchanged (passthrough).
-#[allow(dead_code)]
 pub fn apply_keep<'a>(patterns: &[String], lines: &[&'a str]) -> Vec<&'a str> {
     if patterns.is_empty() {
         return lines.to_vec();
