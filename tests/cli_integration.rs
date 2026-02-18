@@ -8,6 +8,21 @@ fn manifest_dir() -> &'static str {
     env!("CARGO_MANIFEST_DIR")
 }
 
+/// Recursively copy all files from `src` into `dst`, creating subdirectories as needed.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap();
+        }
+    }
+}
+
 // --- tokf run ---
 
 #[test]
@@ -35,9 +50,6 @@ fn run_timing_shows_duration() {
         .unwrap();
     assert!(output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // Timing may or may not appear depending on whether a filter matched,
-    // but the command should succeed regardless
-    // With no filter match, no timing is shown — that's correct
     assert!(
         stderr.is_empty() || stderr.contains("[tokf]"),
         "unexpected stderr: {stderr}"
@@ -99,7 +111,6 @@ fn run_no_filter_preserves_failing_exit_code() {
 
 #[test]
 fn run_timing_with_matched_filter() {
-    // Use a temp dir with a filter that matches "echo"
     let dir = tempfile::TempDir::new().unwrap();
     let filters_dir = dir.path().join(".tokf/filters");
     std::fs::create_dir_all(&filters_dir).unwrap();
@@ -126,7 +137,7 @@ fn run_timing_with_matched_filter() {
 
 #[test]
 fn check_valid_filter() {
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let output = tokf().args(["check", &filter]).output().unwrap();
     assert!(output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -190,7 +201,7 @@ fn test_nonexistent_filter_exits_with_error() {
 
 #[test]
 fn test_nonexistent_fixture_exits_with_error() {
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let output = tokf()
         .args(["test", &filter, "/nonexistent/fixture.txt"])
         .output()
@@ -206,9 +217,7 @@ fn test_nonexistent_fixture_exits_with_error() {
 
 #[test]
 fn test_exit_code_selects_different_branch() {
-    // git-push.toml: on_success extracts "ok ✓ {branch}", on_failure uses tail = 10
-    // With exit_code=0, success branch extracts the push ref
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/tests/fixtures/git_push_success.txt", manifest_dir());
 
     let success_output = tokf()
@@ -223,7 +232,6 @@ fn test_exit_code_selects_different_branch() {
     let success_stdout = String::from_utf8_lossy(&success_output.stdout);
     let failure_stdout = String::from_utf8_lossy(&failure_output.stdout);
 
-    // Success branch produces compact "ok ✓ main", failure branch uses tail passthrough
     assert_ne!(
         success_stdout.trim(),
         failure_stdout.trim(),
@@ -233,7 +241,7 @@ fn test_exit_code_selects_different_branch() {
 
 #[test]
 fn test_git_push_success_fixture() {
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/tests/fixtures/git_push_success.txt", manifest_dir());
     let output = tokf().args(["test", &filter, &fixture]).output().unwrap();
     assert!(output.status.success());
@@ -246,7 +254,7 @@ fn test_git_push_success_fixture() {
 
 #[test]
 fn test_git_push_up_to_date_fixture() {
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/tests/fixtures/git_push_up_to_date.txt", manifest_dir());
     let output = tokf().args(["test", &filter, &fixture]).output().unwrap();
     assert!(output.status.success());
@@ -256,7 +264,7 @@ fn test_git_push_up_to_date_fixture() {
 
 #[test]
 fn test_git_push_failure_with_exit_code() {
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/tests/fixtures/git_push_failure.txt", manifest_dir());
     let output = tokf()
         .args(["test", &filter, &fixture, "--exit-code", "1"])
@@ -264,13 +272,12 @@ fn test_git_push_failure_with_exit_code() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // on_failure with tail = 10 should produce some output
     assert!(!stdout.is_empty(), "expected failure branch output");
 }
 
 #[test]
 fn test_with_timing() {
-    let filter = format!("{}/filters/git-push.toml", manifest_dir());
+    let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/tests/fixtures/git_push_up_to_date.txt", manifest_dir());
     let output = tokf()
         .args(["test", "--timing", &filter, &fixture])
@@ -294,17 +301,13 @@ fn ls_exits_zero() {
 
 #[test]
 fn ls_stdlib_contains_all_expected_filters() {
-    // Copy stdlib filters into a repo-local .tokf/filters/ so the test is
-    // self-contained (the test binary lives in target/debug/, not the project root).
+    // Copy stdlib filters (nested) into a repo-local .tokf/filters/ so the test
+    // is self-contained (the test binary lives in target/debug/, not the project root).
     let dir = tempfile::TempDir::new().unwrap();
     let filters_dir = dir.path().join(".tokf/filters");
-    std::fs::create_dir_all(&filters_dir).unwrap();
 
     let stdlib = format!("{}/filters", manifest_dir());
-    for entry in std::fs::read_dir(&stdlib).unwrap() {
-        let entry = entry.unwrap();
-        std::fs::copy(entry.path(), filters_dir.join(entry.file_name())).unwrap();
-    }
+    copy_dir_recursive(std::path::Path::new(&stdlib), &filters_dir);
 
     let output = tokf()
         .args(["ls"])
@@ -313,25 +316,26 @@ fn ls_stdlib_contains_all_expected_filters() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    for name in [
-        "cargo-test",
-        "git-add",
-        "git-commit",
-        "git-diff",
-        "git-log",
-        "git-push",
-        "git-status",
+
+    // With nested structure, commands are shown (not filenames)
+    for cmd in [
+        "git push",
+        "git add",
+        "git commit",
+        "git diff",
+        "git log",
+        "git status",
+        "cargo test",
     ] {
         assert!(
-            stdout.contains(name),
-            "expected stdlib filter '{name}' in ls output, got: {stdout}"
+            stdout.contains(cmd),
+            "expected command '{cmd}' in ls output, got: {stdout}"
         );
     }
 }
 
 #[test]
 fn ls_with_repo_local_filters() {
-    // Create a temp dir with .tokf/filters containing a valid filter
     let dir = tempfile::TempDir::new().unwrap();
     let filters_dir = dir.path().join(".tokf/filters");
     std::fs::create_dir_all(&filters_dir).unwrap();
@@ -351,11 +355,11 @@ fn ls_with_repo_local_filters() {
 }
 
 #[test]
-fn ls_invalid_filter_shows_invalid() {
+fn ls_nested_filter_shows_relative_path() {
     let dir = tempfile::TempDir::new().unwrap();
-    let filters_dir = dir.path().join(".tokf/filters");
-    std::fs::create_dir_all(&filters_dir).unwrap();
-    std::fs::write(filters_dir.join("broken.toml"), "not valid [[[").unwrap();
+    let git_dir = dir.path().join(".tokf/filters/git");
+    std::fs::create_dir_all(&git_dir).unwrap();
+    std::fs::write(git_dir.join("push.toml"), "command = \"git push\"").unwrap();
 
     let output = tokf()
         .args(["ls"])
@@ -364,25 +368,20 @@ fn ls_invalid_filter_shows_invalid() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should show the relative path "git/push" and command "git push"
     assert!(
-        stdout.contains("broken") && stdout.contains("(invalid)"),
-        "expected 'broken  (invalid)' in ls output, got: {stdout}"
+        stdout.contains("git/push") && stdout.contains("git push"),
+        "expected 'git/push → git push' in ls output, got: {stdout}"
     );
 }
 
 #[test]
 fn ls_deduplication_first_match_wins() {
     let dir = tempfile::TempDir::new().unwrap();
-
-    // Create two search directories with same filter name
-    // .tokf/filters/ is first priority (repo-local)
     let local_dir = dir.path().join(".tokf/filters");
     std::fs::create_dir_all(&local_dir).unwrap();
     std::fs::write(local_dir.join("my-cmd.toml"), "command = \"my cmd local\"").unwrap();
 
-    // Also create a user-level config dir filter with same name
-    // We can't easily control the user config dir, so instead verify
-    // that only one entry appears in output (dedup by name)
     let output = tokf()
         .args(["ls"])
         .current_dir(dir.path())
@@ -411,5 +410,157 @@ fn ls_verbose_shows_source() {
     assert!(
         stderr.contains("[tokf]") && stderr.contains("source"),
         "expected verbose source info on stderr, got: {stderr}"
+    );
+}
+
+// --- tokf which ---
+
+#[test]
+fn which_git_push_finds_stdlib() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    copy_dir_recursive(
+        std::path::Path::new(&format!("{}/filters", manifest_dir())),
+        &filters_dir,
+    );
+
+    let output = tokf()
+        .args(["which", "git push"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("git/push") && stdout.contains("git push"),
+        "expected 'git/push' and 'git push' in which output, got: {stdout}"
+    );
+}
+
+#[test]
+fn which_git_push_with_trailing_args() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    copy_dir_recursive(
+        std::path::Path::new(&format!("{}/filters", manifest_dir())),
+        &filters_dir,
+    );
+
+    let output = tokf()
+        .args(["which", "git push origin main"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("git/push"),
+        "expected 'git/push' in which output, got: {stdout}"
+    );
+}
+
+#[test]
+fn which_unknown_command_exits_one() {
+    let output = tokf()
+        .args(["which", "unknown-cmd-xyz-99"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no filter found"),
+        "expected 'no filter found' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn which_shows_priority_label() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(filters_dir.join("my-tool.toml"), "command = \"my tool\"").unwrap();
+
+    let output = tokf()
+        .args(["which", "my tool"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // A filter in .tokf/filters is always [local]
+    assert!(
+        stdout.contains("[local]"),
+        "expected [local] priority label in which output, got: {stdout}"
+    );
+}
+
+#[test]
+fn ls_verbose_shows_all_patterns_for_multiple() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("test-runner.toml"),
+        r#"command = ["pnpm test", "npm test"]"#,
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["ls", "--verbose"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("pnpm test") && stderr.contains("npm test"),
+        "expected both patterns in verbose output, got: {stderr}"
+    );
+}
+
+#[test]
+fn ls_skips_invalid_toml_silently() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(filters_dir.join("bad.toml"), "not valid toml [[[").unwrap();
+    std::fs::write(filters_dir.join("good.toml"), "command = \"good cmd\"").unwrap();
+
+    let output = tokf()
+        .args(["ls"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("good cmd"),
+        "expected valid filter to appear, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("bad"),
+        "invalid filter should be silently skipped, got: {stdout}"
+    );
+}
+
+#[test]
+fn which_skips_invalid_toml_silently() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(filters_dir.join("bad.toml"), "not valid toml [[[").unwrap();
+    std::fs::write(filters_dir.join("good.toml"), "command = \"good cmd\"").unwrap();
+
+    let output = tokf()
+        .args(["which", "good cmd"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("good cmd"),
+        "expected valid filter to be found, got: {stdout}"
     );
 }

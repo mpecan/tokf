@@ -12,27 +12,30 @@ use types::{RewriteConfig, RewriteRule};
 /// - `<<` prevents rewriting heredocs
 const BUILTIN_SKIP_PATTERNS: &[&str] = &["^tokf ", "<<"];
 
-/// Build rewrite rules by discovering installed filters.
+/// Build rewrite rules by discovering installed filters (recursive walk).
 ///
-/// For each filter with a `command` field, generates a rule:
-/// `^{command}(\s.*)?$` → `tokf run {0}`
+/// For each filter pattern, generates a rule:
+/// `^{command_pattern}(\s.*)?$` → `tokf run {0}`
+///
+/// Handles `CommandPattern::Multiple` (one rule per pattern string) and
+/// wildcards (`*` → `\S+` in the regex).
 pub(crate) fn build_rules_from_filters(search_dirs: &[PathBuf]) -> Vec<RewriteRule> {
     let mut rules = Vec::new();
-    let mut seen_commands: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for dir in search_dirs {
-        for entry in config::sorted_filter_files(dir) {
-            let Ok(Some(cfg)) = config::try_load_filter(&entry.path()) else {
+    let Ok(filters) = config::discover_all_filters(search_dirs) else {
+        return rules;
+    };
+
+    for filter in filters {
+        for pattern in filter.config.command.patterns() {
+            if !seen_patterns.insert(pattern.clone()) {
                 continue;
-            };
-
-            if !seen_commands.insert(cfg.command.clone()) {
-                continue; // first-match-wins across search dirs
             }
 
-            let escaped = regex::escape(&cfg.command);
+            let regex_str = config::command_pattern_to_regex(pattern);
             rules.push(RewriteRule {
-                match_pattern: format!("^{escaped}(\\s.*)?$"),
+                match_pattern: regex_str,
                 replace: "tokf run {0}".to_string(),
             });
         }
@@ -323,21 +326,38 @@ mod tests {
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
         assert_eq!(rules.len(), 2);
 
-        // Rules are sorted by filename; regex::escape converts spaces to "\ "
-        assert!(rules[0].match_pattern.contains("cargo"));
-        assert!(rules[0].match_pattern.contains("test"));
-        assert_eq!(rules[0].replace, "tokf run {0}");
-        assert!(rules[1].match_pattern.contains("git"));
-        assert!(rules[1].match_pattern.contains("status"));
-        assert_eq!(rules[1].replace, "tokf run {0}");
-
         // Verify the generated patterns actually match
         let re0 = regex::Regex::new(&rules[0].match_pattern).unwrap();
-        assert!(re0.is_match("cargo test"));
-        assert!(re0.is_match("cargo test --lib"));
         let re1 = regex::Regex::new(&rules[1].match_pattern).unwrap();
-        assert!(re1.is_match("git status"));
-        assert!(re1.is_match("git status --short"));
+        let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
+
+        // Both cargo test and git status patterns should be present
+        let has_cargo = patterns
+            .iter()
+            .any(|p| p.contains("cargo") && p.contains("test"));
+        let has_git = patterns
+            .iter()
+            .any(|p| p.contains("git") && p.contains("status"));
+        assert!(has_cargo, "expected cargo test pattern in {:?}", patterns);
+        assert!(has_git, "expected git status pattern in {:?}", patterns);
+
+        // Both should match with trailing args
+        let cargo_rule = rules
+            .iter()
+            .find(|r| r.match_pattern.contains("cargo"))
+            .unwrap();
+        let git_rule = rules
+            .iter()
+            .find(|r| r.match_pattern.contains("status"))
+            .unwrap();
+        let re_cargo = regex::Regex::new(&cargo_rule.match_pattern).unwrap();
+        let re_git = regex::Regex::new(&git_rule.match_pattern).unwrap();
+        assert!(re_cargo.is_match("cargo test"));
+        assert!(re_cargo.is_match("cargo test --lib"));
+        assert!(re_git.is_match("git status"));
+        assert!(re_git.is_match("git status --short"));
+
+        let _ = (re0, re1); // suppress unused warnings
     }
 
     #[test]
@@ -370,6 +390,53 @@ mod tests {
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
         assert_eq!(rules.len(), 1);
         assert!(rules[0].match_pattern.contains("my\\-tool"));
+    }
+
+    #[test]
+    fn build_rules_from_nested_dirs() {
+        let dir = TempDir::new().unwrap();
+        let git_dir = dir.path().join("git");
+        fs::create_dir_all(&git_dir).unwrap();
+        fs::write(git_dir.join("push.toml"), "command = \"git push\"").unwrap();
+        fs::write(git_dir.join("status.toml"), "command = \"git status\"").unwrap();
+
+        let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
+        assert_eq!(rules.len(), 2);
+
+        let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
+        assert!(patterns.iter().any(|p| p.contains("push")));
+        assert!(patterns.iter().any(|p| p.contains("status")));
+    }
+
+    #[test]
+    fn build_rules_multiple_command_patterns() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("test-runner.toml"),
+            r#"command = ["pnpm test", "npm test"]"#,
+        )
+        .unwrap();
+
+        let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
+        // Two patterns → two rules
+        assert_eq!(rules.len(), 2);
+        let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
+        assert!(patterns.iter().any(|p| p.contains("pnpm")));
+        assert!(patterns.iter().any(|p| p.contains("npm")));
+    }
+
+    #[test]
+    fn build_rules_wildcard_pattern() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("npm-run.toml"), r#"command = "npm run *""#).unwrap();
+
+        let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
+        assert_eq!(rules.len(), 1);
+
+        let re = regex::Regex::new(&rules[0].match_pattern).unwrap();
+        assert!(re.is_match("npm run build"));
+        assert!(re.is_match("npm run test"));
+        assert!(!re.is_match("npm install"));
     }
 
     // --- rewrite_with_config ---

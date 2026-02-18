@@ -60,6 +60,11 @@ enum Commands {
         /// The command string to rewrite
         command: String,
     },
+    /// Show which filter would be used for a command
+    Which {
+        /// The command string to look up (e.g. "git push origin main")
+        command: String,
+    },
     /// Claude Code hook management
     Hook {
         #[command(subcommand)]
@@ -79,35 +84,38 @@ enum HookAction {
     },
 }
 
-/// Try progressively shorter prefixes of `command_args` to find a matching filter.
+/// Find the first filter that matches `command_args` using the discovery model.
 /// Returns `(Option<FilterConfig>, words_consumed)`.
 fn find_filter(
     command_args: &[String],
     verbose: bool,
 ) -> anyhow::Result<(Option<FilterConfig>, usize)> {
     let search_dirs = config::default_search_dirs();
+    let resolved = config::discover_all_filters(&search_dirs)?;
     let words: Vec<&str> = command_args.iter().map(String::as_str).collect();
 
-    for len in (1..=words.len()).rev() {
-        let candidate = &words[..len];
-        let filter_name = config::command_to_filter_name(candidate);
-
-        for dir in &search_dirs {
-            let path = dir.join(&filter_name);
+    for filter in &resolved {
+        if let Some(consumed) = filter.matches(&words) {
             if verbose {
-                eprintln!("[tokf] trying {}", path.display());
+                eprintln!(
+                    "[tokf] matched {} (command: \"{}\") in {}",
+                    filter.relative_path.display(),
+                    filter.config.command.first(),
+                    filter
+                        .source_path
+                        .parent()
+                        .map_or("?", |p| p.to_str().unwrap_or("?")),
+                );
             }
-            if let Some(cfg) = config::try_load_filter(&path)? {
-                if verbose {
-                    eprintln!("[tokf] matched {filter_name} in {}", dir.display());
-                }
-                return Ok((Some(cfg), len));
-            }
+            return Ok((Some(filter.config.clone()), consumed));
         }
     }
 
     if verbose {
-        eprintln!("[tokf] no filter found, passing through");
+        eprintln!(
+            "[tokf] no filter found for '{}', passing through",
+            words.join(" ")
+        );
     }
     Ok((None, 0))
 }
@@ -166,7 +174,7 @@ fn cmd_check(filter_path: &Path) -> i32 {
             eprintln!(
                 "[tokf] {} is valid (command: \"{}\")",
                 filter_path.display(),
-                cfg.command
+                cfg.command.first()
             );
             0
         }
@@ -218,38 +226,72 @@ fn cmd_test(
 
 fn cmd_ls(verbose: bool) -> i32 {
     let search_dirs = config::default_search_dirs();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let Ok(filters) = config::discover_all_filters(&search_dirs) else {
+        eprintln!("[tokf] error: failed to discover filters");
+        return 1;
+    };
 
-    for dir in &search_dirs {
-        let toml_files = config::sorted_filter_files(dir);
+    for filter in &filters {
+        // Display: relative path without .toml extension  →  command
+        let display_name = filter
+            .relative_path
+            .with_extension("")
+            .display()
+            .to_string();
+        println!(
+            "{display_name}  \u{2192}  {}",
+            filter.config.command.first()
+        );
 
-        for entry in toml_files {
-            let filename = entry.file_name().to_string_lossy().to_string();
-            let filter_name = filename.trim_end_matches(".toml");
-
-            if !seen.insert(filter_name.to_string()) {
-                if verbose {
-                    eprintln!("[tokf] shadowed: {filename} in {}", dir.display());
-                }
-                continue;
-            }
-
-            match config::try_load_filter(&entry.path()) {
-                Ok(Some(cfg)) => {
-                    println!("{filter_name}  \u{2192}  {}", cfg.command);
-                    if verbose {
-                        eprintln!("[tokf]   source: {}", dir.display());
-                    }
-                }
-                Ok(None) => {}
-                Err(_) => {
-                    println!("{filter_name}  (invalid)");
+        if verbose {
+            eprintln!(
+                "[tokf]   source: {}  [{}]",
+                filter.source_path.display(),
+                filter.priority_label()
+            );
+            let patterns = filter.config.command.patterns();
+            if patterns.len() > 1 {
+                for p in patterns {
+                    eprintln!("[tokf]     pattern: \"{p}\"");
                 }
             }
         }
     }
 
     0
+}
+
+fn cmd_which(command: &str, verbose: bool) -> i32 {
+    let search_dirs = config::default_search_dirs();
+    let Ok(filters) = config::discover_all_filters(&search_dirs) else {
+        eprintln!("[tokf] error: failed to discover filters");
+        return 1;
+    };
+
+    let words: Vec<&str> = command.split_whitespace().collect();
+
+    for filter in &filters {
+        if filter.matches(&words).is_some() {
+            let display_name = filter
+                .relative_path
+                .with_extension("")
+                .display()
+                .to_string();
+            println!(
+                "{}  [{}]  command: \"{}\"",
+                display_name,
+                filter.priority_label(),
+                filter.config.command.first()
+            );
+            if verbose {
+                eprintln!("[tokf] source: {}", filter.source_path.display());
+            }
+            return 0;
+        }
+    }
+
+    eprintln!("[tokf] no filter found for \"{command}\"");
+    1
 }
 
 fn main() {
@@ -276,6 +318,7 @@ fn main() {
         }),
         Commands::Ls => cmd_ls(cli.verbose),
         Commands::Rewrite { command } => cmd_rewrite(command),
+        Commands::Which { command } => cmd_which(command, cli.verbose),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
             HookAction::Install { global } => cmd_hook_install(*global),

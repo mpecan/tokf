@@ -8,18 +8,29 @@ fn manifest_dir() -> &'static str {
     env!("CARGO_MANIFEST_DIR")
 }
 
+/// Recursively copy all files from `src` into `dst`, creating subdirectories as needed.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap();
+        }
+    }
+}
+
 /// Helper: pipe JSON to `tokf hook handle` with stdlib filters available.
 fn hook_handle_with_stdlib(json: &str) -> (String, bool) {
     let dir = tempfile::TempDir::new().unwrap();
     let filters_dir = dir.path().join(".tokf/filters");
-    std::fs::create_dir_all(&filters_dir).unwrap();
 
-    // Copy stdlib filters
+    // Copy stdlib filters recursively (they now live in nested dirs)
     let stdlib = format!("{}/filters", manifest_dir());
-    for entry in std::fs::read_dir(&stdlib).unwrap() {
-        let entry = entry.unwrap();
-        std::fs::copy(entry.path(), filters_dir.join(entry.file_name())).unwrap();
-    }
+    copy_dir_recursive(std::path::Path::new(&stdlib), &filters_dir);
 
     let mut child = tokf()
         .args(["hook", "handle"])
@@ -170,6 +181,79 @@ fn hook_handle_fixture_read() {
     assert!(
         stdout.trim().is_empty(),
         "expected no output for Read tool, got: {stdout}"
+    );
+}
+
+// --- Multiple-pattern filter hook integration ---
+
+/// Helper: pipe JSON to `tokf hook handle` with a single custom filter.
+fn hook_handle_with_filter(json: &str, filter_name: &str, filter_content: &str) -> String {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(filters_dir.join(filter_name), filter_content).unwrap();
+
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    {
+        use std::io::Write;
+        let stdin = child.stdin.as_mut().unwrap();
+        stdin.write_all(json.as_bytes()).unwrap();
+    }
+
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+#[test]
+fn hook_handle_multiple_pattern_first_variant() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"pnpm test"}}"#;
+    let stdout = hook_handle_with_filter(
+        json,
+        "test-runner.toml",
+        r#"command = ["pnpm test", "npm test"]"#,
+    );
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run pnpm test"
+    );
+}
+
+#[test]
+fn hook_handle_multiple_pattern_second_variant() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"npm test"}}"#;
+    let stdout = hook_handle_with_filter(
+        json,
+        "test-runner.toml",
+        r#"command = ["pnpm test", "npm test"]"#,
+    );
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run npm test"
+    );
+}
+
+#[test]
+fn hook_handle_multiple_pattern_non_variant_silent() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"yarn test"}}"#;
+    let stdout = hook_handle_with_filter(
+        json,
+        "test-runner.toml",
+        r#"command = ["pnpm test", "npm test"]"#,
+    );
+    assert!(
+        stdout.trim().is_empty(),
+        "expected no output for non-matching variant, got: {stdout}"
     );
 }
 

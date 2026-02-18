@@ -4,11 +4,49 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
+/// A command pattern — either a single string or a list of alternatives.
+///
+/// ```toml
+/// command = "git push"                    # Single
+/// command = ["pnpm test", "npm test"]     # Multiple: any variant
+/// command = "npm run *"                   # Wildcard: * matches one word
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum CommandPattern {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl CommandPattern {
+    /// All pattern strings for this command.
+    pub fn patterns(&self) -> &[String] {
+        match self {
+            Self::Single(s) => std::slice::from_ref(s),
+            Self::Multiple(v) => v,
+        }
+    }
+
+    /// Canonical (first) pattern string, used for display and dedup.
+    pub fn first(&self) -> &str {
+        match self {
+            Self::Single(s) => s.as_str(),
+            Self::Multiple(v) => v.first().map_or("", String::as_str),
+        }
+    }
+}
+
+impl Default for CommandPattern {
+    fn default() -> Self {
+        Self::Single(String::new())
+    }
+}
+
 /// Top-level filter configuration, deserialized from a `.toml` file.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct FilterConfig {
     /// The command this filter applies to (e.g. "git push").
-    pub command: String,
+    pub command: CommandPattern,
 
     /// Optional override command to actually run instead.
     pub run: Option<String>,
@@ -214,11 +252,43 @@ mod tests {
         toml::from_str(&content).unwrap()
     }
 
+    // --- CommandPattern deserialization ---
+
+    #[test]
+    fn test_command_pattern_single() {
+        let cfg: FilterConfig = toml::from_str(r#"command = "git push""#).unwrap();
+        assert_eq!(cfg.command, CommandPattern::Single("git push".to_string()));
+        assert_eq!(cfg.command.first(), "git push");
+        assert_eq!(cfg.command.patterns(), &["git push".to_string()]);
+    }
+
+    #[test]
+    fn test_command_pattern_multiple() {
+        let cfg: FilterConfig = toml::from_str(r#"command = ["pnpm test", "npm test"]"#).unwrap();
+        assert_eq!(
+            cfg.command,
+            CommandPattern::Multiple(vec!["pnpm test".to_string(), "npm test".to_string()])
+        );
+        assert_eq!(cfg.command.first(), "pnpm test");
+        assert_eq!(
+            cfg.command.patterns(),
+            &["pnpm test".to_string(), "npm test".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_command_pattern_wildcard() {
+        let cfg: FilterConfig = toml::from_str(r#"command = "npm run *""#).unwrap();
+        assert_eq!(cfg.command.first(), "npm run *");
+    }
+
+    // --- Stdlib filter deserialization ---
+
     #[test]
     fn test_deserialize_git_push() {
-        let cfg = load_filter("git-push.toml");
+        let cfg = load_filter("git/push.toml");
 
-        assert_eq!(cfg.command, "git push");
+        assert_eq!(cfg.command.first(), "git push");
         assert_eq!(cfg.match_output.len(), 2);
         assert_eq!(cfg.match_output[0].contains, "Everything up-to-date");
         assert_eq!(cfg.match_output[1].contains, "rejected");
@@ -237,9 +307,9 @@ mod tests {
 
     #[test]
     fn test_deserialize_git_status() {
-        let cfg = load_filter("git-status.toml");
+        let cfg = load_filter("git/status.toml");
 
-        assert_eq!(cfg.command, "git status");
+        assert_eq!(cfg.command.first(), "git status");
         assert_eq!(cfg.run.as_deref(), Some("git status --porcelain -b"));
 
         let parse = cfg.parse.unwrap();
@@ -265,9 +335,9 @@ mod tests {
 
     #[test]
     fn test_deserialize_cargo_test() {
-        let cfg = load_filter("cargo-test.toml");
+        let cfg = load_filter("cargo/test.toml");
 
-        assert_eq!(cfg.command, "cargo test");
+        assert_eq!(cfg.command.first(), "cargo test");
         assert!(!cfg.skip.is_empty());
         assert!(cfg.skip.iter().any(|s| s.contains("Compiling")));
 
@@ -293,9 +363,9 @@ mod tests {
 
     #[test]
     fn test_deserialize_git_add() {
-        let cfg = load_filter("git-add.toml");
+        let cfg = load_filter("git/add.toml");
 
-        assert_eq!(cfg.command, "git add");
+        assert_eq!(cfg.command.first(), "git add");
         assert_eq!(cfg.match_output.len(), 1);
         assert_eq!(cfg.match_output[0].contains, "fatal:");
 
@@ -308,9 +378,9 @@ mod tests {
 
     #[test]
     fn test_deserialize_git_commit() {
-        let cfg = load_filter("git-commit.toml");
+        let cfg = load_filter("git/commit.toml");
 
-        assert_eq!(cfg.command, "git commit");
+        assert_eq!(cfg.command.first(), "git commit");
 
         let success = cfg.on_success.unwrap();
         let extract = success.extract.unwrap();
@@ -323,9 +393,9 @@ mod tests {
 
     #[test]
     fn test_deserialize_git_log() {
-        let cfg = load_filter("git-log.toml");
+        let cfg = load_filter("git/log.toml");
 
-        assert_eq!(cfg.command, "git log");
+        assert_eq!(cfg.command.first(), "git log");
 
         let run = cfg.run.unwrap();
         assert!(run.contains("{args}"));
@@ -337,9 +407,9 @@ mod tests {
 
     #[test]
     fn test_deserialize_git_diff() {
-        let cfg = load_filter("git-diff.toml");
+        let cfg = load_filter("git/diff.toml");
 
-        assert_eq!(cfg.command, "git diff");
+        assert_eq!(cfg.command.first(), "git diff");
 
         let run = cfg.run.unwrap();
         assert!(run.contains("--stat"));
@@ -361,7 +431,7 @@ mod tests {
     fn test_minimal_config_only_command() {
         let cfg: FilterConfig = toml::from_str(r#"command = "echo""#).unwrap();
 
-        assert_eq!(cfg.command, "echo");
+        assert_eq!(cfg.command.first(), "echo");
         assert_eq!(cfg.run, None);
         assert!(cfg.skip.is_empty());
         assert!(cfg.keep.is_empty());

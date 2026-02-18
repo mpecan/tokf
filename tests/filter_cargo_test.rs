@@ -5,7 +5,7 @@ use tokf::filter;
 use tokf::runner::CommandResult;
 
 fn load_config() -> FilterConfig {
-    let path = format!("{}/filters/cargo-test.toml", env!("CARGO_MANIFEST_DIR"));
+    let path = format!("{}/filters/cargo/test.toml", env!("CARGO_MANIFEST_DIR"));
     let content = std::fs::read_to_string(&path).unwrap();
     toml::from_str(&content).unwrap()
 }

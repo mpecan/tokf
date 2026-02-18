@@ -8,19 +8,30 @@ fn manifest_dir() -> &'static str {
     env!("CARGO_MANIFEST_DIR")
 }
 
+/// Recursively copy all files from `src` into `dst`, creating subdirectories as needed.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap();
+        }
+    }
+}
+
 /// Helper: set up a temp dir with stdlib filters copied in, and run `tokf rewrite`
 /// from that directory so the filters are discoverable.
 fn rewrite_with_stdlib(command: &str) -> String {
     let dir = tempfile::TempDir::new().unwrap();
     let filters_dir = dir.path().join(".tokf/filters");
-    std::fs::create_dir_all(&filters_dir).unwrap();
 
-    // Copy stdlib filters
+    // Copy stdlib filters recursively (they now live in nested dirs)
     let stdlib = format!("{}/filters", manifest_dir());
-    for entry in std::fs::read_dir(&stdlib).unwrap() {
-        let entry = entry.unwrap();
-        std::fs::copy(entry.path(), filters_dir.join(entry.file_name())).unwrap();
-    }
+    copy_dir_recursive(std::path::Path::new(&stdlib), &filters_dir);
 
     let output = tokf()
         .args(["rewrite", command])
@@ -186,6 +197,161 @@ patterns = ["^git status"]
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "git status");
+}
+
+// --- CommandPattern::Multiple (both patterns rewrite) ---
+
+#[test]
+fn rewrite_multiple_patterns_first_variant() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("test-runner.toml"),
+        r#"command = ["pnpm test", "npm test"]"#,
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["rewrite", "pnpm test"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "tokf run pnpm test"
+    );
+}
+
+#[test]
+fn rewrite_multiple_patterns_second_variant() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("test-runner.toml"),
+        r#"command = ["pnpm test", "npm test"]"#,
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["rewrite", "npm test"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "tokf run npm test"
+    );
+}
+
+#[test]
+fn rewrite_multiple_patterns_non_variant_passthrough() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("test-runner.toml"),
+        r#"command = ["pnpm test", "npm test"]"#,
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["rewrite", "yarn test"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "yarn test");
+}
+
+// --- Wildcard pattern rewrites ---
+
+#[test]
+fn rewrite_wildcard_pattern_matches_any_subcommand() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(filters_dir.join("npm-run.toml"), r#"command = "npm run *""#).unwrap();
+
+    let output = tokf()
+        .args(["rewrite", "npm run build"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "tokf run npm run build"
+    );
+}
+
+#[test]
+fn rewrite_wildcard_pattern_no_match_without_wildcard_arg() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(filters_dir.join("npm-run.toml"), r#"command = "npm run *""#).unwrap();
+
+    // "npm run" without a subcommand should NOT match the wildcard pattern
+    let output = tokf()
+        .args(["rewrite", "npm run"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "npm run");
+}
+
+// --- Golangci-lint disambiguation ---
+
+#[test]
+fn rewrite_golangci_lint_run_matches() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("golangci-lint.toml"),
+        r#"command = "golangci-lint run""#,
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["rewrite", "golangci-lint run"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "tokf run golangci-lint run"
+    );
+}
+
+#[test]
+fn rewrite_golangci_lint_alone_passthrough() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("golangci-lint.toml"),
+        r#"command = "golangci-lint run""#,
+    )
+    .unwrap();
+
+    // Bare "golangci-lint" should NOT match "golangci-lint run"
+    let output = tokf()
+        .args(["rewrite", "golangci-lint"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "golangci-lint"
+    );
 }
 
 // --- Exit code ---
