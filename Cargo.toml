@@ -10,9 +10,11 @@ toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 regex = "1"
 anyhow = "1"
+dirs = "6"
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+tempfile = "3"
 
 [lints.clippy]
 unwrap_used = "deny"
