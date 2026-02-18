@@ -1,0 +1,7 @@
+command = "ls"
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 5

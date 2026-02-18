@@ -3,13 +3,24 @@ pub mod types;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
+use include_dir::{Dir, DirEntry, include_dir};
 
 use types::{CommandPattern, FilterConfig};
+
+static STDLIB: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/filters");
+
+/// Returns the embedded TOML content for a filter, if it exists.
+/// `relative_path` should be like `git/push.toml`.
+pub fn get_embedded_filter(relative_path: &Path) -> Option<&'static str> {
+    STDLIB.get_file(relative_path)?.contents_utf8()
+}
 
 /// Build default search dirs in priority order:
 /// 1. `.tokf/filters/` (repo-local, resolved from CWD)
 /// 2. `{config_dir}/tokf/filters/` (user-level, platform-native)
-/// 3. `{binary_dir}/filters/` (shipped stdlib, adjacent to the tokf binary)
+///
+/// The embedded stdlib is always appended at the end by `discover_all_filters`,
+/// so no binary-adjacent path is needed.
 pub fn default_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
@@ -21,13 +32,6 @@ pub fn default_search_dirs() -> Vec<PathBuf> {
     // 2. User-level config dir (platform-native)
     if let Some(config) = dirs::config_dir() {
         dirs.push(config.join("tokf/filters"));
-    }
-
-    // 3. Binary-adjacent stdlib
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(bin_dir) = exe.parent()
-    {
-        dirs.push(bin_dir.join("filters"));
     }
 
     dirs
@@ -120,11 +124,11 @@ fn collect_filter_files(dir: &Path, files: &mut Vec<PathBuf>) {
 /// A discovered filter with its config, source path, and priority level.
 pub struct ResolvedFilter {
     pub config: FilterConfig,
-    /// Absolute path to the filter file.
+    /// Absolute path to the filter file (or `<built-in>/…` for embedded filters).
     pub source_path: PathBuf,
     /// Path relative to its source search dir (for display).
     pub relative_path: PathBuf,
-    /// 0 = repo-local, 1 = user-level, 2 = stdlib.
+    /// 0 = repo-local, 1 = user-level, `u8::MAX` = built-in.
     pub priority: u8,
 }
 
@@ -155,12 +159,16 @@ impl ResolvedFilter {
         match self.priority {
             0 => "local",
             1 => "user",
-            _ => "stdlib",
+            _ => "built-in",
         }
     }
 }
 
-/// Discover all filters across `search_dirs`, sorted by `(priority ASC, specificity DESC)`.
+/// Discover all filters across `search_dirs` plus the embedded stdlib,
+/// sorted by `(priority ASC, specificity DESC)`.
+///
+/// Embedded stdlib entries are appended at priority `u8::MAX`,
+/// so local (0) and user (1) filters always shadow built-in ones.
 ///
 /// Deduplication: first occurrence of each command pattern (by `first()` string) wins.
 ///
@@ -187,6 +195,27 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
                 relative_path,
                 priority: u8::try_from(priority).unwrap_or(u8::MAX),
             });
+        }
+    }
+
+    // Append embedded stdlib at the lowest priority (u8::MAX ensures it always
+    // sorts after local/user dirs regardless of how many dirs are in the slice).
+    let stdlib_priority = u8::MAX;
+    if let Ok(entries) = STDLIB.find("**/*.toml") {
+        for entry in entries {
+            if let DirEntry::File(file) = entry {
+                let content = file.contents_utf8().unwrap_or("");
+                let Ok(config) = toml::from_str::<FilterConfig>(content) else {
+                    continue; // silently skip invalid embedded TOML
+                };
+                let rel = file.path().to_path_buf();
+                all_filters.push(ResolvedFilter {
+                    config,
+                    source_path: PathBuf::from("<built-in>").join(&rel),
+                    relative_path: rel,
+                    priority: stdlib_priority,
+                });
+            }
         }
     }
 
@@ -404,8 +433,8 @@ mod tests {
         let dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
         let filters = discover_all_filters(&dirs).unwrap();
 
-        // Should have both (different command strings)
-        assert_eq!(filters.len(), 2);
+        // Should have both (different command strings) plus embedded stdlib
+        assert!(filters.len() >= 2);
         assert_eq!(filters[0].config.command.first(), "my cmd local");
         assert_eq!(filters[0].priority, 0);
     }
@@ -422,8 +451,12 @@ mod tests {
         let filters = discover_all_filters(&dirs).unwrap();
 
         // Dedup by first() — only one entry for "git push"
-        assert_eq!(filters.len(), 1);
-        assert_eq!(filters[0].priority, 0);
+        let push_entries: Vec<_> = filters
+            .iter()
+            .filter(|f| f.config.command.first() == "git push")
+            .collect();
+        assert_eq!(push_entries.len(), 1);
+        assert_eq!(push_entries[0].priority, 0);
     }
 
     #[test]
@@ -437,7 +470,6 @@ mod tests {
         let dirs = vec![dir.path().to_path_buf()];
         let filters = discover_all_filters(&dirs).unwrap();
 
-        assert_eq!(filters.len(), 2);
         // "git push" (specificity=2) should come before "git *" (specificity=1)
         assert_eq!(filters[0].config.command.first(), "git push");
         assert_eq!(filters[1].config.command.first(), "git *");
@@ -450,8 +482,11 @@ mod tests {
         fs::write(dir.path().join("good.toml"), "command = \"my tool\"").unwrap();
 
         let filters = discover_all_filters(&[dir.path().to_path_buf()]).unwrap();
-        assert_eq!(filters.len(), 1);
-        assert_eq!(filters[0].config.command.first(), "my tool");
+        let my_tool: Vec<_> = filters
+            .iter()
+            .filter(|f| f.config.command.first() == "my tool")
+            .collect();
+        assert_eq!(my_tool.len(), 1);
     }
 
     #[test]
@@ -464,11 +499,78 @@ mod tests {
         .unwrap();
 
         let filters = discover_all_filters(&[dir.path().to_path_buf()]).unwrap();
+        let golangci: Vec<_> = filters
+            .iter()
+            .filter(|f| f.config.command.first() == "golangci-lint run")
+            .collect();
+        assert_eq!(golangci.len(), 1);
         let words = ["golangci-lint", "run"];
-        assert_eq!(filters[0].matches(&words), Some(2));
+        assert_eq!(golangci[0].matches(&words), Some(2));
 
         let words_no_match = ["golangci", "lint", "run"];
-        assert_eq!(filters[0].matches(&words_no_match), None);
+        assert_eq!(golangci[0].matches(&words_no_match), None);
+    }
+
+    // --- embedded stdlib tests ---
+
+    #[test]
+    fn embedded_stdlib_non_empty() {
+        let entries: Vec<_> = STDLIB.find("**/*.toml").unwrap().collect();
+        assert!(
+            entries.len() >= 10,
+            "expected at least 10 embedded filters, got {}",
+            entries.len()
+        );
+    }
+
+    #[test]
+    fn all_embedded_toml_parse() {
+        for entry in STDLIB.find("**/*.toml").unwrap() {
+            if let DirEntry::File(file) = entry {
+                let content = file.contents_utf8().unwrap_or("");
+                assert!(
+                    toml::from_str::<FilterConfig>(content).is_ok(),
+                    "failed to parse embedded filter: {}",
+                    file.path().display()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn embedded_filters_in_discover_with_no_dirs() {
+        // With empty search dirs, only embedded stdlib is returned
+        let filters = discover_all_filters(&[]).unwrap();
+        assert!(
+            !filters.is_empty(),
+            "expected embedded stdlib filters with no search dirs"
+        );
+        let has_git_push = filters
+            .iter()
+            .any(|f| f.config.command.first() == "git push");
+        assert!(has_git_push, "expected git push in embedded stdlib");
+    }
+
+    #[test]
+    fn local_filter_shadows_embedded() {
+        let dir = TempDir::new().unwrap();
+        // Override git push locally
+        fs::write(
+            dir.path().join("push.toml"),
+            "command = \"git push\"\n# local override",
+        )
+        .unwrap();
+
+        let dirs = vec![dir.path().to_path_buf()];
+        let filters = discover_all_filters(&dirs).unwrap();
+
+        // "git push" should appear exactly once (local shadows embedded)
+        let push_entries: Vec<_> = filters
+            .iter()
+            .filter(|f| f.config.command.first() == "git push")
+            .collect();
+        assert_eq!(push_entries.len(), 1);
+        assert_eq!(push_entries[0].priority, 0); // local priority
     }
 
     // --- try_load_filter ---
@@ -520,6 +622,19 @@ mod tests {
             dirs[0].ends_with(".tokf/filters"),
             "first dir should end with .tokf/filters, got: {:?}",
             dirs[0]
+        );
+    }
+
+    #[test]
+    fn test_default_search_dirs_only_local_and_user() {
+        let dirs = default_search_dirs();
+        // Should have at most 2 dirs: local (.tokf/filters) and user config
+        // The binary-adjacent path has been removed; embedded stdlib replaces it.
+        assert!(
+            dirs.len() <= 2,
+            "expected at most 2 search dirs (local + user), got {}: {:?}",
+            dirs.len(),
+            dirs
         );
     }
 

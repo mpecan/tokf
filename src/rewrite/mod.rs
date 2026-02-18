@@ -306,7 +306,11 @@ mod tests {
     fn build_rules_from_empty_dir() {
         let dir = TempDir::new().unwrap();
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-        assert!(rules.is_empty());
+        // Empty disk dir — embedded stdlib is always present
+        assert!(
+            !rules.is_empty(),
+            "embedded stdlib should provide built-in rules"
+        );
     }
 
     #[test]
@@ -324,11 +328,7 @@ mod tests {
         .unwrap();
 
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-        assert_eq!(rules.len(), 2);
-
-        // Verify the generated patterns actually match
-        let re0 = regex::Regex::new(&rules[0].match_pattern).unwrap();
-        let re1 = regex::Regex::new(&rules[1].match_pattern).unwrap();
+        // Disk-based rules plus embedded stdlib may be present
         let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
 
         // Both cargo test and git status patterns should be present
@@ -356,8 +356,6 @@ mod tests {
         assert!(re_cargo.is_match("cargo test --lib"));
         assert!(re_git.is_match("git status"));
         assert!(re_git.is_match("git status --short"));
-
-        let _ = (re0, re1); // suppress unused warnings
     }
 
     #[test]
@@ -378,7 +376,15 @@ mod tests {
 
         let rules =
             build_rules_from_filters(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
-        assert_eq!(rules.len(), 1);
+        // git status should appear exactly once even though it's in both dirs
+        let git_status_count = rules
+            .iter()
+            .filter(|r| r.match_pattern.contains("git") && r.match_pattern.contains("status"))
+            .count();
+        assert_eq!(
+            git_status_count, 1,
+            "git status should be deduped to one rule"
+        );
     }
 
     #[test]
@@ -388,8 +394,12 @@ mod tests {
         fs::write(dir.path().join("good.toml"), "command = \"my-tool\"").unwrap();
 
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-        assert_eq!(rules.len(), 1);
-        assert!(rules[0].match_pattern.contains("my\\-tool"));
+        // bad.toml is skipped; my-tool should be present
+        assert!(
+            rules.iter().any(|r| r.match_pattern.contains("my\\-tool")),
+            "expected my-tool rule in {:?}",
+            rules.iter().map(|r| &r.match_pattern).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -401,8 +411,6 @@ mod tests {
         fs::write(git_dir.join("status.toml"), "command = \"git status\"").unwrap();
 
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-        assert_eq!(rules.len(), 2);
-
         let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
         assert!(patterns.iter().any(|p| p.contains("push")));
         assert!(patterns.iter().any(|p| p.contains("status")));
@@ -418,11 +426,14 @@ mod tests {
         .unwrap();
 
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-        // Two patterns → two rules
-        assert_eq!(rules.len(), 2);
+        // Two command patterns → two disk-based rules (plus any embedded stdlib)
         let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
         assert!(patterns.iter().any(|p| p.contains("pnpm")));
-        assert!(patterns.iter().any(|p| p.contains("npm")));
+        assert!(
+            patterns
+                .iter()
+                .any(|p| p.contains("npm") && !p.contains("pnpm"))
+        );
     }
 
     #[test]
@@ -431,9 +442,11 @@ mod tests {
         fs::write(dir.path().join("npm-run.toml"), r#"command = "npm run *""#).unwrap();
 
         let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-        assert_eq!(rules.len(), 1);
-
-        let re = regex::Regex::new(&rules[0].match_pattern).unwrap();
+        let npm_run_rule = rules
+            .iter()
+            .find(|r| r.match_pattern.contains("npm") && r.match_pattern.contains("run"))
+            .expect("expected npm run rule");
+        let re = regex::Regex::new(&npm_run_rule.match_pattern).unwrap();
         assert!(re.is_match("npm run build"));
         assert!(re.is_match("npm run test"));
         assert!(!re.is_match("npm install"));

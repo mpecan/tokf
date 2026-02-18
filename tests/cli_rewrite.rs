@@ -4,34 +4,10 @@ fn tokf() -> Command {
     Command::new(env!("CARGO_BIN_EXE_tokf"))
 }
 
-fn manifest_dir() -> &'static str {
-    env!("CARGO_MANIFEST_DIR")
-}
-
-/// Recursively copy all files from `src` into `dst`, creating subdirectories as needed.
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for entry in std::fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else {
-            std::fs::copy(&src_path, &dst_path).unwrap();
-        }
-    }
-}
-
-/// Helper: set up a temp dir with stdlib filters copied in, and run `tokf rewrite`
-/// from that directory so the filters are discoverable.
+/// Helper: run `tokf rewrite` from a fresh tempdir.
+/// Embedded stdlib is always available, so no filters need to be copied.
 fn rewrite_with_stdlib(command: &str) -> String {
     let dir = tempfile::TempDir::new().unwrap();
-    let filters_dir = dir.path().join(".tokf/filters");
-
-    // Copy stdlib filters recursively (they now live in nested dirs)
-    let stdlib = format!("{}/filters", manifest_dir());
-    copy_dir_recursive(std::path::Path::new(&stdlib), &filters_dir);
 
     let output = tokf()
         .args(["rewrite", command])
@@ -102,6 +78,24 @@ fn rewrite_git_commit() {
     assert_eq!(result, "tokf run git commit");
 }
 
+#[test]
+fn rewrite_cargo_build() {
+    let result = rewrite_with_stdlib("cargo build");
+    assert_eq!(result, "tokf run cargo build");
+}
+
+#[test]
+fn rewrite_cargo_clippy() {
+    let result = rewrite_with_stdlib("cargo clippy");
+    assert_eq!(result, "tokf run cargo clippy");
+}
+
+#[test]
+fn rewrite_ls() {
+    let result = rewrite_with_stdlib("ls -la");
+    assert_eq!(result, "tokf run ls -la");
+}
+
 // --- Built-in skip patterns ---
 
 #[test]
@@ -122,12 +116,6 @@ fn rewrite_heredoc_unchanged() {
 fn rewrite_unknown_command_passthrough() {
     let result = rewrite_with_stdlib("unknown-cmd foo bar");
     assert_eq!(result, "unknown-cmd foo bar");
-}
-
-#[test]
-fn rewrite_ls_passthrough() {
-    let result = rewrite_with_stdlib("ls -la");
-    assert_eq!(result, "ls -la");
 }
 
 // --- With user rewrites.toml ---

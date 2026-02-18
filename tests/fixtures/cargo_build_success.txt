@@ -1,0 +1,3 @@
+   Compiling tokf v0.1.0 (/Users/user/project)
+    Checking serde v1.0.0
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.34s

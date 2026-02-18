@@ -65,6 +65,11 @@ enum Commands {
         /// The command string to look up (e.g. "git push origin main")
         command: String,
     },
+    /// Show the TOML source of an active filter
+    Show {
+        /// Filter relative path without extension (e.g. "git/push")
+        filter: String,
+    },
     /// Claude Code hook management
     Hook {
         #[command(subcommand)]
@@ -319,12 +324,53 @@ fn main() {
         Commands::Ls => cmd_ls(cli.verbose),
         Commands::Rewrite { command } => cmd_rewrite(command),
         Commands::Which { command } => cmd_which(command, cli.verbose),
+        Commands::Show { filter } => cmd_show(filter),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
             HookAction::Install { global } => cmd_hook_install(*global),
         },
     };
     std::process::exit(exit_code);
+}
+
+fn cmd_show(filter: &str) -> i32 {
+    // Normalize: strip ".toml" suffix if present
+    let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
+
+    let search_dirs = config::default_search_dirs();
+    let Ok(filters) = config::discover_all_filters(&search_dirs) else {
+        eprintln!("[tokf] error: failed to discover filters");
+        return 1;
+    };
+
+    let found = filters
+        .iter()
+        .find(|f| f.relative_path.with_extension("").to_string_lossy() == filter_name);
+
+    let Some(resolved) = found else {
+        eprintln!("[tokf] filter not found: {filter}");
+        return 1;
+    };
+
+    let content = if resolved.source_path.starts_with("<built-in>") {
+        if let Some(c) = config::get_embedded_filter(&resolved.relative_path) {
+            c.to_string()
+        } else {
+            eprintln!("[tokf] error: embedded filter not readable");
+            return 1;
+        }
+    } else {
+        match std::fs::read_to_string(&resolved.source_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[tokf] error reading filter: {e}");
+                return 1;
+            }
+        }
+    };
+
+    print!("{content}");
+    0
 }
 
 fn cmd_rewrite(command: &str) -> i32 {

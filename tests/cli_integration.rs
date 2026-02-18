@@ -8,21 +8,6 @@ fn manifest_dir() -> &'static str {
     env!("CARGO_MANIFEST_DIR")
 }
 
-/// Recursively copy all files from `src` into `dst`, creating subdirectories as needed.
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for entry in std::fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else {
-            std::fs::copy(&src_path, &dst_path).unwrap();
-        }
-    }
-}
-
 // --- tokf run ---
 
 #[test]
@@ -301,13 +286,8 @@ fn ls_exits_zero() {
 
 #[test]
 fn ls_stdlib_contains_all_expected_filters() {
-    // Copy stdlib filters (nested) into a repo-local .tokf/filters/ so the test
-    // is self-contained (the test binary lives in target/debug/, not the project root).
+    // Embedded stdlib is always available — no need to copy filters
     let dir = tempfile::TempDir::new().unwrap();
-    let filters_dir = dir.path().join(".tokf/filters");
-
-    let stdlib = format!("{}/filters", manifest_dir());
-    copy_dir_recursive(std::path::Path::new(&stdlib), &filters_dir);
 
     let output = tokf()
         .args(["ls"])
@@ -317,7 +297,6 @@ fn ls_stdlib_contains_all_expected_filters() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // With nested structure, commands are shown (not filenames)
     for cmd in [
         "git push",
         "git add",
@@ -326,6 +305,9 @@ fn ls_stdlib_contains_all_expected_filters() {
         "git log",
         "git status",
         "cargo test",
+        "cargo build",
+        "cargo clippy",
+        "ls",
     ] {
         assert!(
             stdout.contains(cmd),
@@ -417,12 +399,8 @@ fn ls_verbose_shows_source() {
 
 #[test]
 fn which_git_push_finds_stdlib() {
+    // Embedded stdlib is always available — no need to copy filters
     let dir = tempfile::TempDir::new().unwrap();
-    let filters_dir = dir.path().join(".tokf/filters");
-    copy_dir_recursive(
-        std::path::Path::new(&format!("{}/filters", manifest_dir())),
-        &filters_dir,
-    );
 
     let output = tokf()
         .args(["which", "git push"])
@@ -440,11 +418,6 @@ fn which_git_push_finds_stdlib() {
 #[test]
 fn which_git_push_with_trailing_args() {
     let dir = tempfile::TempDir::new().unwrap();
-    let filters_dir = dir.path().join(".tokf/filters");
-    copy_dir_recursive(
-        std::path::Path::new(&format!("{}/filters", manifest_dir())),
-        &filters_dir,
-    );
 
     let output = tokf()
         .args(["which", "git push origin main"])
@@ -476,6 +449,23 @@ fn which_unknown_command_exits_one() {
 
 #[test]
 fn which_shows_priority_label() {
+    // Embedded stdlib filter shows [built-in] when no local override
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = tokf()
+        .args(["which", "git push"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("[built-in]"),
+        "expected [built-in] priority label in which output, got: {stdout}"
+    );
+}
+
+#[test]
+fn which_shows_local_label_for_local_filter() {
     let dir = tempfile::TempDir::new().unwrap();
     let filters_dir = dir.path().join(".tokf/filters");
     std::fs::create_dir_all(&filters_dir).unwrap();
@@ -488,10 +478,9 @@ fn which_shows_priority_label() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // A filter in .tokf/filters is always [local]
     assert!(
         stdout.contains("[local]"),
-        "expected [local] priority label in which output, got: {stdout}"
+        "expected [local] priority label for local filter, got: {stdout}"
     );
 }
 
@@ -562,5 +551,79 @@ fn which_skips_invalid_toml_silently() {
     assert!(
         stdout.contains("good cmd"),
         "expected valid filter to be found, got: {stdout}"
+    );
+}
+
+// --- tokf show ---
+
+#[test]
+fn show_git_push_prints_toml() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = tokf()
+        .args(["show", "git/push"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("git push"),
+        "expected TOML with 'git push' command, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("on_success") || stdout.contains("on_failure"),
+        "expected TOML content, got: {stdout}"
+    );
+}
+
+#[test]
+fn show_with_toml_extension_works() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = tokf()
+        .args(["show", "git/push.toml"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("git push"),
+        "expected TOML content with .toml extension variant, got: {stdout}"
+    );
+}
+
+#[test]
+fn show_nonexistent_exits_one() {
+    let output = tokf().args(["show", "no/such/filter"]).output().unwrap();
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("filter not found"),
+        "expected 'filter not found' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn show_local_filter_prints_disk_content() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("my-tool.toml"),
+        "command = \"my tool\"\n# local comment\n",
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["show", "my-tool"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("local comment"),
+        "expected local filter content, got: {stdout}"
     );
 }

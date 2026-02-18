@@ -1,0 +1,12 @@
+    Checking tokf v0.1.0 (/Users/user/project)
+warning: unused variable: `x`
+ --> src/main.rs:3:5
+  |
+3 |     let x = 5;
+  |         ^ help: if this is intentional, prefix it with an underscore: `_x`
+  |
+  = note: `#[warn(unused_variables)]` on by default
+
+warning: 1 warning emitted
+
+error: could not compile `tokf` due to 1 previous error

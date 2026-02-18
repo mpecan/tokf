@@ -1,0 +1,12 @@
+command = "cargo clippy"
+skip = [
+  "^   Compiling ",
+  "^    Checking ",
+  "^     Locking ",
+]
+
+[on_success]
+output = "ok ✓ no warnings"
+
+[on_failure]
+tail = 30

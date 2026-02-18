@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn handle_json_with_config_no_match_returns_false() {
         let dir = tempfile::TempDir::new().unwrap();
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"ls -la"}}"#;
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
         let config = RewriteConfig::default();
         let result = handle_json_with_config(json, &config, &[dir.path().to_path_buf()]);
         assert!(!result);

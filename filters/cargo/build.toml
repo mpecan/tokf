@@ -1,0 +1,15 @@
+command = "cargo build"
+skip = [
+  "^   Compiling ",
+  "^    Checking ",
+  "^    Updating ",
+  "^   Downloaded ",
+  "^  Downloading ",
+  "^     Locking ",
+]
+
+[on_success]
+output = "ok ✓"
+
+[on_failure]
+tail = 30

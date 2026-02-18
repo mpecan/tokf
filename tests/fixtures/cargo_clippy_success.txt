@@ -1,0 +1,2 @@
+    Checking tokf v0.1.0 (/Users/user/project)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.23s

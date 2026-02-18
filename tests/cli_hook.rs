@@ -8,29 +8,10 @@ fn manifest_dir() -> &'static str {
     env!("CARGO_MANIFEST_DIR")
 }
 
-/// Recursively copy all files from `src` into `dst`, creating subdirectories as needed.
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for entry in std::fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else {
-            std::fs::copy(&src_path, &dst_path).unwrap();
-        }
-    }
-}
-
-/// Helper: pipe JSON to `tokf hook handle` with stdlib filters available.
+/// Helper: pipe JSON to `tokf hook handle` from a fresh tempdir.
+/// Embedded stdlib is always available, so no filters need to be copied.
 fn hook_handle_with_stdlib(json: &str) -> (String, bool) {
     let dir = tempfile::TempDir::new().unwrap();
-    let filters_dir = dir.path().join(".tokf/filters");
-
-    // Copy stdlib filters recursively (they now live in nested dirs)
-    let stdlib = format!("{}/filters", manifest_dir());
-    copy_dir_recursive(std::path::Path::new(&stdlib), &filters_dir);
 
     let mut child = tokf()
         .args(["hook", "handle"])
@@ -115,7 +96,8 @@ fn hook_handle_tokf_command_silent() {
 
 #[test]
 fn hook_handle_unmatched_command_silent() {
-    let json = r#"{"tool_name":"Bash","tool_input":{"command":"ls -la /tmp"}}"#;
+    // Use a command that has no filter in stdlib
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
     let (stdout, success) = hook_handle_with_stdlib(json);
     assert!(success);
     assert!(

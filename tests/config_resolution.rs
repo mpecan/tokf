@@ -27,11 +27,11 @@ fn test_discover_git_push_from_stdlib() {
 fn test_all_stdlib_filters_load() {
     let dirs = vec![stdlib_dir()];
     let filters = config::discover_all_filters(&dirs).unwrap();
-    // All 7 stdlib filters should load
+    // 10 stdlib filters: git/(add,commit,diff,log,push,status), cargo/(build,clippy,test), ls
     assert_eq!(
         filters.len(),
-        7,
-        "expected 7 stdlib filters, got {}",
+        10,
+        "expected 10 stdlib filters, got {}",
         filters.len()
     );
 }
@@ -41,7 +41,12 @@ fn test_discover_returns_ok_for_nonexistent_dir() {
     let dirs = vec![PathBuf::from("/no/such/directory/ever")];
     let result = config::discover_all_filters(&dirs);
     assert!(result.is_ok());
-    assert!(result.unwrap().is_empty());
+    // Embedded stdlib is always included even when search dirs don't exist
+    let filters = result.unwrap();
+    assert!(
+        !filters.is_empty(),
+        "expected embedded stdlib filters, got empty result"
+    );
 }
 
 #[test]
@@ -51,6 +56,54 @@ fn test_discover_nonexistent_command_returns_none() {
     let words = ["totally", "nonexistent", "command"];
     let found = filters.iter().any(|f| f.matches(&words).is_some());
     assert!(!found);
+}
+
+// --- Embedded stdlib ---
+
+#[test]
+fn test_embedded_filters_available_with_empty_dirs() {
+    // Embedded stdlib appears even with no search dirs
+    let filters = config::discover_all_filters(&[]).unwrap();
+    assert!(!filters.is_empty());
+    let has_git_push = filters
+        .iter()
+        .any(|f| f.config.command.first() == "git push");
+    assert!(has_git_push, "embedded git push not found");
+}
+
+#[test]
+fn test_embedded_filter_priority_label_is_builtin() {
+    // Embedded filters should report [built-in] priority label
+    let filters = config::discover_all_filters(&[]).unwrap();
+    let git_push = filters
+        .iter()
+        .find(|f| f.config.command.first() == "git push")
+        .expect("git push not in embedded stdlib");
+    assert_eq!(git_push.priority_label(), "built-in");
+}
+
+#[test]
+fn test_local_filter_shadows_embedded() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    // Write a local override for git push
+    fs::write(dir.path().join("push.toml"), r#"command = "git push""#).unwrap();
+
+    let dirs = vec![dir.path().to_path_buf()];
+    let filters = config::discover_all_filters(&dirs).unwrap();
+
+    // Should appear exactly once (local shadows embedded)
+    let push_entries: Vec<_> = filters
+        .iter()
+        .filter(|f| f.config.command.first() == "git push")
+        .collect();
+    assert_eq!(push_entries.len(), 1);
+    assert_eq!(
+        push_entries[0].priority, 0,
+        "local filter should have priority 0"
+    );
+    assert_eq!(push_entries[0].priority_label(), "local");
 }
 
 // --- CommandPattern matching ---
@@ -88,11 +141,14 @@ fn test_multiple_pattern_match() {
 
     let dirs = vec![dir.path().to_path_buf()];
     let filters = config::discover_all_filters(&dirs).unwrap();
-    assert_eq!(filters.len(), 1);
+    let test_runner = filters
+        .iter()
+        .find(|f| f.config.command.first() == "pnpm test")
+        .unwrap();
 
-    assert_eq!(filters[0].matches(&["pnpm", "test"]), Some(2));
-    assert_eq!(filters[0].matches(&["npm", "test"]), Some(2));
-    assert_eq!(filters[0].matches(&["yarn", "test"]), None);
+    assert_eq!(test_runner.matches(&["pnpm", "test"]), Some(2));
+    assert_eq!(test_runner.matches(&["npm", "test"]), Some(2));
+    assert_eq!(test_runner.matches(&["yarn", "test"]), None);
 }
 
 #[test]
@@ -104,11 +160,15 @@ fn test_wildcard_pattern_match() {
 
     let dirs = vec![dir.path().to_path_buf()];
     let filters = config::discover_all_filters(&dirs).unwrap();
+    let npm_run = filters
+        .iter()
+        .find(|f| f.config.command.first() == "npm run *")
+        .unwrap();
 
-    assert_eq!(filters[0].matches(&["npm", "run", "build"]), Some(3));
-    assert_eq!(filters[0].matches(&["npm", "run", "test"]), Some(3));
+    assert_eq!(npm_run.matches(&["npm", "run", "build"]), Some(3));
+    assert_eq!(npm_run.matches(&["npm", "run", "test"]), Some(3));
     // Wildcard requires at least one token after "run"
-    assert_eq!(filters[0].matches(&["npm", "run"]), None);
+    assert_eq!(npm_run.matches(&["npm", "run"]), None);
 }
 
 // --- Priority and dedup ---
@@ -128,8 +188,12 @@ fn test_priority_first_match_wins() {
     let filters = config::discover_all_filters(&dirs).unwrap();
 
     // Dedup: only one entry for "git push"
-    assert_eq!(filters.len(), 1);
-    assert_eq!(filters[0].priority, 0); // from dir1 (priority 0)
+    let push_entries: Vec<_> = filters
+        .iter()
+        .filter(|f| f.config.command.first() == "git push")
+        .collect();
+    assert_eq!(push_entries.len(), 1);
+    assert_eq!(push_entries[0].priority, 0); // from dir1 (priority 0)
 }
 
 #[test]
@@ -163,8 +227,9 @@ fn test_nested_dir_discovery() {
     let dirs = vec![dir.path().to_path_buf()];
     let filters = config::discover_all_filters(&dirs).unwrap();
 
-    assert_eq!(filters.len(), 2);
-    let commands: Vec<&str> = filters.iter().map(|f| f.config.command.first()).collect();
+    let local: Vec<_> = filters.iter().filter(|f| f.priority == 0).collect();
+    assert_eq!(local.len(), 2);
+    let commands: Vec<&str> = local.iter().map(|f| f.config.command.first()).collect();
     assert!(commands.contains(&"git push"));
     assert!(commands.contains(&"git status"));
 }
