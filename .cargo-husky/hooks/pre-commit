@@ -3,23 +3,27 @@ set -euo pipefail
 
 echo "Running pre-commit checks..."
 
-cargo fmt -- --check || {
+out=$(cargo fmt -- --check 2>&1) || {
     echo "Formatting check failed. Run 'cargo fmt' to fix."
+    echo "$out"
     exit 1
 }
 
-cargo clippy -- -D warnings || {
+out=$(cargo clippy -- -D warnings 2>&1) || {
     echo "Clippy check failed. Fix the warnings above."
+    echo "$out"
     exit 1
 }
 
-cargo test || {
+out=$(cargo test 2>&1) || {
     echo "Tests failed."
+    echo "$out"
     exit 1
 }
 
-bash scripts/check-file-sizes.sh || {
+out=$(bash scripts/check-file-sizes.sh 2>&1) || {
     echo "File size check failed."
+    echo "$out"
     exit 1
 }
 
