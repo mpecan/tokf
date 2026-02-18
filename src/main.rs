@@ -1,3 +1,5 @@
+mod gain;
+
 use std::path::Path;
 
 use clap::{Parser, Subcommand};
@@ -8,6 +10,7 @@ use tokf::filter;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
+use tokf::tracking;
 
 #[derive(Parser)]
 #[command(
@@ -75,6 +78,18 @@ enum Commands {
         #[command(subcommand)]
         action: HookAction,
     },
+    /// Show token savings statistics
+    Gain {
+        /// Show daily breakdown
+        #[arg(long)]
+        daily: bool,
+        /// Show breakdown by filter
+        #[arg(long, name = "by-filter")]
+        by_filter: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -125,6 +140,58 @@ fn find_filter(
     Ok((None, 0))
 }
 
+fn run_command(
+    filter_cfg: Option<&FilterConfig>,
+    words_consumed: usize,
+    command_args: &[String],
+    remaining_args: &[String],
+) -> anyhow::Result<runner::CommandResult> {
+    if let Some(cfg) = filter_cfg
+        && let Some(run_cmd) = &cfg.run
+    {
+        runner::execute_shell(run_cmd, remaining_args)
+    } else if words_consumed > 0 {
+        let cmd_str = command_args[..words_consumed].join(" ");
+        runner::execute(&cmd_str, remaining_args)
+    } else {
+        runner::execute(&command_args[0], remaining_args)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_run(
+    command_args: &[String],
+    filter_name: Option<&str>,
+    input_bytes: usize,
+    output_bytes: usize,
+    filter_time_ms: u128,
+    exit_code: i32,
+) {
+    let Some(path) = tracking::db_path() else {
+        eprintln!("[tokf] tracking: cannot determine DB path");
+        return;
+    };
+    let conn = match tracking::open_db(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[tokf] tracking error (db open): {e:#}");
+            return;
+        }
+    };
+    let command = command_args.join(" ");
+    let event = tracking::build_event(
+        &command,
+        filter_name,
+        input_bytes,
+        output_bytes,
+        filter_time_ms,
+        exit_code,
+    );
+    if let Err(e) = tracking::record_event(&conn, &event) {
+        eprintln!("[tokf] tracking error (record): {e:#}");
+    }
+}
+
 fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
     let (filter_cfg, words_consumed) = if cli.no_filter {
         (None, 0)
@@ -140,24 +207,24 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         vec![]
     };
 
-    let cmd_result = if let Some(ref cfg) = filter_cfg
-        && let Some(ref run_cmd) = cfg.run
-    {
-        runner::execute_shell(run_cmd, &remaining_args)?
-    } else if words_consumed > 0 {
-        let cmd_str = command_args[..words_consumed].join(" ");
-        runner::execute(&cmd_str, &remaining_args)?
-    } else {
-        runner::execute(&command_args[0], &remaining_args)?
-    };
+    let cmd_result = run_command(
+        filter_cfg.as_ref(),
+        words_consumed,
+        command_args,
+        &remaining_args,
+    )?;
 
     let Some(cfg) = filter_cfg else {
+        let bytes = cmd_result.combined.len();
         if !cmd_result.combined.is_empty() {
             println!("{}", cmd_result.combined);
         }
+        // filter_time_ms = 0: no filter was applied, not 0ms of filtering.
+        record_run(command_args, None, bytes, bytes, 0, cmd_result.exit_code);
         return Ok(cmd_result.exit_code);
     };
 
+    let input_bytes = cmd_result.combined.len();
     let start = std::time::Instant::now();
     let filtered = filter::apply(&cfg, &cmd_result);
     let elapsed = start.elapsed();
@@ -166,9 +233,20 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         eprintln!("[tokf] filter took {:.1}ms", elapsed.as_secs_f64() * 1000.0);
     }
 
+    let output_bytes = filtered.output.len();
     if !filtered.output.is_empty() {
         println!("{}", filtered.output);
     }
+
+    let filter_name = cfg.command.first();
+    record_run(
+        command_args,
+        Some(filter_name),
+        input_bytes,
+        output_bytes,
+        elapsed.as_millis(),
+        cmd_result.exit_code,
+    );
 
     Ok(cmd_result.exit_code)
 }
@@ -329,6 +407,11 @@ fn main() {
             HookAction::Handle => cmd_hook_handle(),
             HookAction::Install { global } => cmd_hook_install(*global),
         },
+        Commands::Gain {
+            daily,
+            by_filter,
+            json,
+        } => gain::cmd_gain(*daily, *by_filter, *json),
     };
     std::process::exit(exit_code);
 }
