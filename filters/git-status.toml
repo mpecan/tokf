@@ -1,0 +1,28 @@
+# git-status.toml — Grouping filter (Level 2)
+# Raw: 30+ lines of verbose git status with hints
+# Filtered: branch name + grouped file counts
+
+command = "git status"
+
+# Override: use porcelain for reliable machine parsing
+run = "git status --porcelain -b"
+
+match_output = [
+  { contains = "not a git repository", output = "Not a git repository" },
+]
+
+[parse]
+# First line: ## main...origin/main [ahead 2]
+branch = { line = 1, pattern = '## (\S+?)(?:\.\.\.(\S+))?(?:\s+\[(.+)\])?$', output = "{1}" }
+
+[parse.group]
+key = { pattern = '^(.{2}) ', output = "{1}" }
+labels = { "M " = "modified", " M" = "modified (unstaged)", "MM" = "modified (staged+unstaged)", "A " = "added", "??" = "untracked", "D " = "deleted", " D" = "deleted (unstaged)", "R " = "renamed", "UU" = "conflict", "AM" = "added+modified" }
+
+[output]
+format = """
+{branch}{tracking_info}
+{group_counts}"""
+
+group_counts_format = "  {label}: {count}"
+empty = "clean — nothing to commit"

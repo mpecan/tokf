@@ -1,0 +1,13 @@
+# git-log.toml — Override command to get compact format
+# Raw: multi-line commit entries with full metadata
+# Filtered: one-line-per-commit format
+
+command = "git log"
+
+# Override to get compact output directly from git
+run = "git log --oneline --no-decorate -n 20 {args}"
+
+# Nothing to filter — the override command already produces compact output
+# But if args include --stat or --patch, passthrough
+[on_success]
+output = "{output}"

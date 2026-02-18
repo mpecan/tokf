@@ -1,0 +1,15 @@
+# git-add.toml — Minimal filter
+# Raw: nothing on success, error messages on failure
+# Filtered: "ok ✓" or error
+
+command = "git add"
+
+match_output = [
+  { contains = "fatal:", output = "✗ {line_containing}" },
+]
+
+[on_success]
+output = "ok ✓"
+
+[on_failure]
+tail = 5

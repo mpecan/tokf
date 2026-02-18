@@ -1,0 +1,11 @@
+# git-commit.toml — Minimal filter
+# Raw: "[main abc1234] commit message\n 1 file changed, 10 insertions(+), 2 deletions(-)"
+# Filtered: "ok ✓ abc1234"
+
+command = "git commit"
+
+[on_success]
+extract = { pattern = '^\[(\S+)\s+(\w+)\]', output = "ok ✓ {2}" }
+
+[on_failure]
+tail = 5

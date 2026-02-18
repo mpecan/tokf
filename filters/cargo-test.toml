@@ -1,0 +1,56 @@
+# cargo-test.toml — Stateful filter (Level 3)
+# Raw: 200+ lines with compile noise, individual "test ... ok" lines, suite summaries
+# Filtered (pass): "✓ cargo test: 137 passed (24 suites)"
+# Filtered (fail): failure details + summary
+
+command = "cargo test"
+
+skip = [
+  "^\\s*Compiling ",
+  "^\\s*Downloading ",
+  "^\\s*Downloaded ",
+  "^\\s*Finished ",
+  "^\\s*Locking ",
+  "^running \\d+ tests?$",
+  "^test .+ \\.\\.\\. ok$",
+  "^\\s*$",
+  "^\\s*Doc-tests ",
+]
+
+# Sections: state machine for routing lines into collections
+
+[[section]]
+name = "failures"
+enter = "^failures:$"
+exit = "^test result:"
+split_on = "^\\s*$"
+collect_as = "failure_blocks"
+
+[[section]]
+name = "failure_names"
+enter = "^failures:$"
+exit = "^\\s*$"
+match = "^\\s+\\S+"
+collect_as = "failure_list"
+
+[[section]]
+name = "summary"
+match = "^test result:"
+collect_as = "summary_lines"
+
+# Success: no failure blocks → aggregate summaries into one line
+[on_success]
+aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "passed", count_as = "suites" }
+output = "✓ cargo test: {passed} passed ({suites} suites)"
+
+# Failure: show failure details + summary
+[on_failure]
+output = """
+FAILURES ({failure_blocks.count}):
+═══════════════════════════════════════
+{failure_blocks | each: "{index}. {value | truncate: 200}" | join: "\n"}
+
+{summary_lines | join: "\n"}"""
+
+[fallback]
+tail = 5

@@ -1,0 +1,28 @@
+# git-push.toml — Trivial filter (Level 1)
+# Raw: 15 lines of "Enumerating objects...", "Counting objects...", etc.
+# Filtered: "ok ✓ main" (1 line)
+
+command = "git push"
+
+# Check full output for special cases first
+match_output = [
+  { contains = "Everything up-to-date", output = "ok (up-to-date)" },
+  { contains = "rejected", output = "✗ push rejected (try pulling first)" },
+]
+
+[on_success]
+skip = [
+  "^Enumerating objects:",
+  "^Counting objects:",
+  "^Delta compression",
+  "^Compressing objects:",
+  "^Writing objects:",
+  "^Total \\d+",
+  "^remote:",
+  "^To ",
+]
+
+extract = { pattern = '(\S+)\s*->\s*(\S+)', output = "ok ✓ {2}" }
+
+[on_failure]
+tail = 10
