@@ -1,0 +1,42 @@
+   Compiling tokf v0.1.0 (/Users/dev/tokf)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.34s
+     Running unittests src/lib.rs (target/debug/deps/tokf-abc123)
+
+running 12 tests
+test config::tests::test_minimal_config ... ok
+test config::tests::test_deserialize_git_push ... ok
+test config::tests::test_deserialize_git_status ... ok
+test filter::tests::match_output_first_match_wins ... ok
+test filter::tests::branch_fixed_output ... ok
+test filter::tests::branch_tail_truncation ... ok
+test filter::skip::tests::skip_removes_matching ... ok
+test filter::skip::tests::skip_empty_passthrough ... ok
+test filter::extract::tests::extract_first_match ... ok
+test runner::tests::test_execute_echo ... ok
+test runner::tests::test_execute_failure ... ok
+test runner::tests::test_combined_both_streams ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/debug/deps/tokf-def456)
+
+running 8 tests
+test cli::tests::test_parse_args ... ok
+test cli::tests::test_version ... ok
+test cli::tests::test_help ... ok
+test cli::tests::test_filter_lookup ... ok
+test cli::tests::test_passthrough ... ok
+test cli::tests::test_timing_flag ... ok
+test cli::tests::test_verbose_flag ... ok
+test cli::tests::test_config_resolution ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests tokf
+
+running 3 tests
+test src/config/types.rs - config::types::FilterConfig (line 15) ... ok
+test src/filter/mod.rs - filter::apply (line 22) ... ok
+test src/runner.rs - runner::execute (line 10) ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s

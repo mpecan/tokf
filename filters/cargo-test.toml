@@ -22,7 +22,7 @@ skip = [
 [[section]]
 name = "failures"
 enter = "^failures:$"
-exit = "^test result:"
+exit = "^failures:$"
 split_on = "^\\s*$"
 collect_as = "failure_blocks"
 

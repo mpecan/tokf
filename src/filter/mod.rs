@@ -1,10 +1,15 @@
+mod aggregate;
 mod extract;
 mod group;
 mod parse;
+pub mod section;
 mod skip;
+mod template;
 
 use crate::config::types::{FilterConfig, MatchOutputRule, OutputBranch};
 use crate::runner::CommandResult;
+
+use self::section::SectionMap;
 
 /// The result of applying a filter to command output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,8 +23,9 @@ pub struct FilterResult {
 /// 1. `match_output` — substring check against combined output, first match wins
 /// 2. Top-level `skip`/`keep` pre-filtering
 /// 3. If `parse` exists → parse+output (alternative path to branches)
-/// 4. Select branch by exit code (0 → `on_success`, else → `on_failure`)
-/// 5. Apply the selected branch's rules or passthrough
+/// 4. Collect sections (state machine routing)
+/// 5. Select branch by exit code (0 → `on_success`, else → `on_failure`)
+/// 6. Apply branch with sections, or fallback
 pub fn apply(config: &FilterConfig, result: &CommandResult) -> FilterResult {
     // 1. match_output short-circuit
     if let Some(rule) = find_matching_rule(&config.match_output, &result.combined) {
@@ -41,12 +47,28 @@ pub fn apply(config: &FilterConfig, result: &CommandResult) -> FilterResult {
         return FilterResult { output };
     }
 
-    // 4. Select branch by exit code
+    // 4. Collect sections (from raw output — sections need structural
+    //    markers like blank lines that skip patterns remove)
+    let has_sections = !config.section.is_empty();
+    let sections = if has_sections {
+        let raw_lines: Vec<&str> = result.combined.lines().collect();
+        section::collect_sections(&config.section, &raw_lines)
+    } else {
+        SectionMap::new()
+    };
+
+    // 5. Select branch by exit code
     let branch = select_branch(config, result.exit_code);
 
-    // 5. Apply branch or passthrough (on pre-filtered lines)
+    // 6. Apply branch with sections, or fallback
     let pre_filtered = lines.join("\n");
-    let output = branch.map_or_else(|| pre_filtered.clone(), |b| apply_branch(b, &pre_filtered));
+    let output = branch.map_or_else(
+        || apply_fallback(config, &pre_filtered),
+        |b| {
+            apply_branch(b, &pre_filtered, &sections, has_sections)
+                .unwrap_or_else(|| apply_fallback(config, &pre_filtered))
+        },
+    );
 
     FilterResult { output }
 }
@@ -72,21 +94,48 @@ const fn select_branch(config: &FilterConfig, exit_code: i32) -> Option<&OutputB
 
 /// Apply a branch's processing rules to the combined output.
 ///
-/// Processing order:
+/// When `has_sections` is true and the branch has an output template,
+/// the template is rendered with aggregation vars and section data.
+/// Returns `None` when sections were expected but collected nothing
+/// (signals: use fallback).
+///
+/// Processing order (non-section path):
 /// 1. Fixed `output` string → return immediately
 /// 2. `tail` / `head` truncation
 /// 3. `skip` patterns
 /// 4. `extract` rule
 /// 5. Remaining lines joined with `\n`
-fn apply_branch(branch: &OutputBranch, combined: &str) -> String {
-    // 1. Fixed output — short-circuit
-    if let Some(ref output) = branch.output {
-        return output.clone();
+fn apply_branch(
+    branch: &OutputBranch,
+    combined: &str,
+    sections: &SectionMap,
+    has_sections: bool,
+) -> Option<String> {
+    // 1. Aggregation
+    let vars = branch
+        .aggregate
+        .as_ref()
+        .map_or_else(std::collections::HashMap::new, |agg_rule| {
+            aggregate::run_aggregate(agg_rule, sections)
+        });
+
+    // 2. Output template
+    if let Some(ref output_tmpl) = branch.output {
+        if has_sections {
+            let any_collected = sections
+                .values()
+                .any(|s| !s.lines.is_empty() || !s.blocks.is_empty());
+            if !any_collected && vars.is_empty() {
+                return None; // sections expected but empty → fallback
+            }
+            return Some(template::render_template(output_tmpl, &vars, sections));
+        }
+        return Some(output_tmpl.clone());
     }
 
+    // Non-template path (tail/head/skip/extract)
     let mut lines: Vec<&str> = combined.lines().collect();
 
-    // 2. tail / head truncation
     if let Some(tail) = branch.tail
         && lines.len() > tail
     {
@@ -96,16 +145,26 @@ fn apply_branch(branch: &OutputBranch, combined: &str) -> String {
         lines.truncate(head);
     }
 
-    // 3. skip patterns
     lines = skip::apply_skip(&branch.skip, &lines);
 
-    // 4. extract rule
     if let Some(ref rule) = branch.extract {
-        return extract::apply_extract(rule, &lines);
+        return Some(extract::apply_extract(rule, &lines));
     }
 
-    // 5. Join remaining lines
-    lines.join("\n")
+    Some(lines.join("\n"))
+}
+
+/// Fallback when no branch matches or sections collected nothing.
+fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
+    if let Some(ref fb) = config.fallback
+        && let Some(tail) = fb.tail
+    {
+        let lines: Vec<&str> = combined.lines().collect();
+        if lines.len() > tail {
+            return lines[lines.len() - tail..].join("\n");
+        }
+    }
+    combined.to_string()
 }
 
 #[cfg(test)]
@@ -204,6 +263,11 @@ mod tests {
 
     // --- apply_branch ---
 
+    /// Helper: call apply_branch with empty sections (non-section path).
+    fn branch_apply(branch: &OutputBranch, combined: &str) -> String {
+        apply_branch(branch, combined, &SectionMap::new(), false).unwrap()
+    }
+
     #[test]
     fn branch_fixed_output() {
         let branch = OutputBranch {
@@ -214,7 +278,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, "anything"), "ok \u{2713}");
+        assert_eq!(branch_apply(&branch, "anything"), "ok \u{2713}");
     }
 
     #[test]
@@ -227,7 +291,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, "a\nb\nc\nd"), "c\nd");
+        assert_eq!(branch_apply(&branch, "a\nb\nc\nd"), "c\nd");
     }
 
     #[test]
@@ -240,7 +304,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, "a\nb\nc\nd"), "a\nb");
+        assert_eq!(branch_apply(&branch, "a\nb\nc\nd"), "a\nb");
     }
 
     #[test]
@@ -254,7 +318,7 @@ mod tests {
             extract: None,
         };
         // tail 3 of [a,b,c,d] → [b,c,d], then head 2 → [b,c]
-        assert_eq!(apply_branch(&branch, "a\nb\nc\nd"), "b\nc");
+        assert_eq!(branch_apply(&branch, "a\nb\nc\nd"), "b\nc");
     }
 
     #[test]
@@ -268,7 +332,7 @@ mod tests {
             extract: None,
         };
         assert_eq!(
-            apply_branch(&branch, "noise line\nkeep me\nnoise again"),
+            branch_apply(&branch, "noise line\nkeep me\nnoise again"),
             "keep me"
         );
     }
@@ -286,7 +350,7 @@ mod tests {
                 output: "ok {2}".to_string(),
             }),
         };
-        assert_eq!(apply_branch(&branch, "main -> main"), "ok main");
+        assert_eq!(branch_apply(&branch, "main -> main"), "ok main");
     }
 
     #[test]
@@ -300,7 +364,7 @@ mod tests {
             extract: None,
         };
         // Only 3 lines, tail 10 → all lines kept
-        assert_eq!(apply_branch(&branch, "a\nb\nc"), "a\nb\nc");
+        assert_eq!(branch_apply(&branch, "a\nb\nc"), "a\nb\nc");
     }
 
     #[test]
@@ -313,7 +377,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, ""), "");
+        assert_eq!(branch_apply(&branch, ""), "");
     }
 
     #[test]
@@ -326,7 +390,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, "only-line"), "only-line");
+        assert_eq!(branch_apply(&branch, "only-line"), "only-line");
     }
 
     #[test]
@@ -339,7 +403,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, "a\nb\nc"), "");
+        assert_eq!(branch_apply(&branch, "a\nb\nc"), "");
     }
 
     #[test]
@@ -352,7 +416,7 @@ mod tests {
             skip: vec![],
             extract: None,
         };
-        assert_eq!(apply_branch(&branch, "a\nb\nc"), "");
+        assert_eq!(branch_apply(&branch, "a\nb\nc"), "");
     }
 
     // --- apply (full pipeline) ---

@@ -1,0 +1,23 @@
+   Compiling tokf v0.1.0 (/Users/dev/tokf)
+error[E0308]: mismatched types
+ --> src/filter/mod.rs:84:12
+  |
+84 |     return "hello";
+  |            ^^^^^^^ expected `String`, found `&str`
+  |
+help: try using a conversion method
+  |
+84 |     return "hello".to_string();
+  |                   ++++++++++++
+
+error[E0599]: no method named `foo` found for struct `FilterConfig` in the current scope
+ --> src/filter/mod.rs:90:12
+  |
+90 |     config.foo();
+  |            ^^^ method not found in `FilterConfig`
+
+error: aborting due to 2 previous errors
+
+Some errors have detailed explanations: E0308, E0599.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `tokf` (lib) due to 2 previous errors
