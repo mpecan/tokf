@@ -59,6 +59,23 @@ pub fn try_load_filter(path: &Path) -> anyhow::Result<Option<FilterConfig>> {
     Ok(Some(config))
 }
 
+/// Read a directory and return sorted TOML filter file entries.
+///
+/// Returns entries sorted by filename for deterministic ordering.
+/// Silently returns an empty vec if the directory doesn't exist or can't be read.
+pub fn sorted_filter_files(dir: &Path) -> Vec<std::fs::DirEntry> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    let mut toml_files: Vec<_> = entries
+        .filter_map(std::result::Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
+        .collect();
+    toml_files.sort_by_key(std::fs::DirEntry::file_name);
+    toml_files
+}
+
 /// Core resolution with injectable search dirs (for testing).
 ///
 /// # Errors

@@ -39,7 +39,7 @@ fn build_result(output: &std::process::Output) -> CommandResult {
 }
 
 /// Escape a string for safe inclusion in a shell command (single-quote wrapping).
-fn shell_escape(arg: &str) -> String {
+pub(crate) fn shell_escape(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
 }
 

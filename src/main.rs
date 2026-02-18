@@ -5,6 +5,8 @@ use clap::{Parser, Subcommand};
 use tokf::config;
 use tokf::config::types::FilterConfig;
 use tokf::filter;
+use tokf::hook;
+use tokf::rewrite;
 use tokf::runner;
 
 #[derive(Parser)]
@@ -53,6 +55,28 @@ enum Commands {
     },
     /// List available filters
     Ls,
+    /// Rewrite a command string (apply filter-derived rules)
+    Rewrite {
+        /// The command string to rewrite
+        command: String,
+    },
+    /// Claude Code hook management
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum HookAction {
+    /// Handle a `PreToolUse` hook invocation (reads JSON from stdin)
+    Handle,
+    /// Install the hook into Claude Code settings
+    Install {
+        /// Install globally (~/.config/tokf) instead of project-local (.tokf)
+        #[arg(long)]
+        global: bool,
+    },
 }
 
 /// Try progressively shorter prefixes of `command_args` to find a matching filter.
@@ -197,15 +221,7 @@ fn cmd_ls(verbose: bool) -> i32 {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for dir in &search_dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            continue;
-        };
-
-        let mut toml_files: Vec<_> = entries
-            .filter_map(std::result::Result::ok)
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
-            .collect();
-        toml_files.sort_by_key(std::fs::DirEntry::file_name);
+        let toml_files = config::sorted_filter_files(dir);
 
         for entry in toml_files {
             let filename = entry.file_name().to_string_lossy().to_string();
@@ -259,6 +275,32 @@ fn main() {
             1
         }),
         Commands::Ls => cmd_ls(cli.verbose),
+        Commands::Rewrite { command } => cmd_rewrite(command),
+        Commands::Hook { action } => match action {
+            HookAction::Handle => cmd_hook_handle(),
+            HookAction::Install { global } => cmd_hook_install(*global),
+        },
     };
     std::process::exit(exit_code);
+}
+
+fn cmd_rewrite(command: &str) -> i32 {
+    let result = rewrite::rewrite(command);
+    println!("{result}");
+    0
+}
+
+fn cmd_hook_handle() -> i32 {
+    hook::handle();
+    0
+}
+
+fn cmd_hook_install(global: bool) -> i32 {
+    match hook::install(global) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("[tokf] error: {e:#}");
+            1
+        }
+    }
 }
