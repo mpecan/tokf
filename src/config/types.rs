@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A command pattern — either a single string or a list of alternatives.
 ///
@@ -11,7 +11,7 @@ use serde::Deserialize;
 /// command = ["pnpm test", "npm test"]     # Multiple: any variant
 /// command = "npm run *"                   # Wildcard: * matches one word
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CommandPattern {
     Single(String),
@@ -43,7 +43,7 @@ impl Default for CommandPattern {
 }
 
 /// Top-level filter configuration, deserialized from a `.toml` file.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilterConfig {
     /// The command this filter applies to (e.g. "git push").
     pub command: CommandPattern,
@@ -91,7 +91,7 @@ pub struct FilterConfig {
 }
 
 /// A pipeline step that runs a sub-command and captures its output.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Step {
     /// Command to run.
     pub run: String,
@@ -106,7 +106,7 @@ pub struct Step {
 }
 
 /// Extracts a value from text using a regex pattern and formats it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractRule {
     /// Regex pattern with capture groups.
     pub pattern: String,
@@ -116,7 +116,7 @@ pub struct ExtractRule {
 }
 
 /// Matches against the full output and short-circuits with a fixed message.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchOutputRule {
     /// Substring to search for in the combined output.
     pub contains: String,
@@ -126,7 +126,7 @@ pub struct MatchOutputRule {
 }
 
 /// A state-machine section that collects lines between enter/exit markers.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Section {
     /// Name of this section (for diagnostics/debugging).
     pub name: Option<String>,
@@ -149,7 +149,7 @@ pub struct Section {
 }
 
 /// Output branch for success/failure exit codes.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputBranch {
     /// Template string for the output.
     pub output: Option<String>,
@@ -172,7 +172,7 @@ pub struct OutputBranch {
 }
 
 /// Aggregates values from a collected section using regex extraction.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AggregateRule {
     /// Name of the collected section to aggregate from.
     pub from: String,
@@ -188,7 +188,7 @@ pub struct AggregateRule {
 }
 
 /// Structured parsing configuration for status-like outputs.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParseConfig {
     /// Rule for extracting the branch name from the first line.
     pub branch: Option<LineExtract>,
@@ -198,7 +198,7 @@ pub struct ParseConfig {
 }
 
 /// Extracts a value from a specific line number.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LineExtract {
     /// 1-based line number to extract from.
     pub line: usize,
@@ -211,7 +211,7 @@ pub struct LineExtract {
 }
 
 /// Groups lines by a key pattern and maps keys to human labels.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupConfig {
     /// Rule for extracting the group key from each line.
     pub key: ExtractRule,
@@ -222,7 +222,7 @@ pub struct GroupConfig {
 }
 
 /// Output formatting configuration for the final rendered result.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputConfig {
     /// Top-level output format template.
     pub format: Option<String>,
@@ -235,7 +235,7 @@ pub struct OutputConfig {
 }
 
 /// Fallback behavior when no specific rule matches.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FallbackConfig {
     /// Number of lines to keep from the tail as a last resort.
     pub tail: Option<usize>,
