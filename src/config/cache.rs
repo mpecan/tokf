@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::SystemTime;
 
 use anyhow::Context;
@@ -18,7 +19,8 @@ const CACHE_VERSION: u32 = 1;
 pub struct CachedFilter {
     /// `FilterConfig` serialized as a JSON string.
     pub config_json: String,
-    /// `source_path` stored as a UTF-8 string (lossy). Non-UTF-8 paths cause a cache miss.
+    /// `source_path` stored as a UTF-8 string via `to_string_lossy()`. Non-UTF-8 path bytes
+    /// are replaced with U+FFFD — filters still work correctly; only the displayed path is affected.
     pub source_path: String,
     pub relative_path: String,
     pub priority: u8,
@@ -84,7 +86,8 @@ fn dir_mtime(path: &Path) -> u64 {
 }
 
 fn binary_mtime() -> u64 {
-    std::env::current_exe().ok().as_deref().map_or(0, dir_mtime)
+    static CACHE: OnceLock<u64> = OnceLock::new();
+    *CACHE.get_or_init(|| std::env::current_exe().ok().as_deref().map_or(0, dir_mtime))
 }
 
 fn compute_mtimes(search_dirs: &[PathBuf]) -> Vec<(String, u64)> {

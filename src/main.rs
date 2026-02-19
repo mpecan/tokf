@@ -323,6 +323,8 @@ fn cmd_test(
     Ok(0)
 }
 
+// Note: cmd_ls, cmd_which, and cmd_show always use the cache. The --no-cache flag
+// only affects `tokf run`. Pass --no-cache to `tokf run` if you need uncached resolution.
 fn cmd_ls(verbose: bool) -> i32 {
     let search_dirs = config::default_search_dirs();
     let Ok(filters) = config::cache::discover_with_cache(&search_dirs) else {
