@@ -26,3 +26,150 @@ jobs:
         run: cargo publish -p tokf
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-13
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binary
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#tokf-v}"
+          ARCHIVE="tokf-v${VERSION}-${{ matrix.target }}.tar.gz"
+          cp "target/${{ matrix.target }}/release/tokf" tokf
+          tar -czf "${ARCHIVE}" tokf
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+          openssl dgst -sha256 "${ARCHIVE}" | awk '{print $2}' > "${ARCHIVE}.sha256"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "${{ env.ARCHIVE }}" \
+            "${{ env.ARCHIVE }}.sha256"
+
+  update-homebrew:
+    name: Update Homebrew tap
+    needs: build-binaries
+    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute version
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "version=${TAG#tokf-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download SHA256 checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for TARGET in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
+            gh release download "${{ github.event.release.tag_name }}" \
+              --repo "${{ github.repository }}" \
+              --pattern "tokf-v${VERSION}-${TARGET}.tar.gz.sha256" \
+              --output "${TARGET}.sha256"
+          done
+          echo "SHA256_AARCH64=$(cat aarch64-apple-darwin.sha256)" >> "$GITHUB_ENV"
+          echo "SHA256_X86_64_DARWIN=$(cat x86_64-apple-darwin.sha256)" >> "$GITHUB_ENV"
+          echo "SHA256_LINUX=$(cat x86_64-unknown-linux-gnu.sha256)" >> "$GITHUB_ENV"
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
+          private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
+          repositories: homebrew-tokf
+
+      - name: Checkout homebrew-tokf tap
+        uses: actions/checkout@v4
+        with:
+          repository: mpecan/homebrew-tokf
+          token: ${{ steps.app-token.outputs.token }}
+          path: homebrew-tokf
+
+      - name: Update formula
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 - <<'EOF'
+          import os, textwrap
+          v = os.environ['VERSION']
+          sha_arm = os.environ['SHA256_AARCH64']
+          sha_intel = os.environ['SHA256_X86_64_DARWIN']
+          sha_linux = os.environ['SHA256_LINUX']
+          base = "https://github.com/mpecan/tokf/releases/download"
+          formula = textwrap.dedent(f"""
+            class Tokf < Formula
+              desc "Config-driven CLI that compresses command output before it reaches an LLM context"
+              homepage "https://tokf.net"
+              version "{v}"
+              license "MIT"
+
+              on_macos do
+                on_arm do
+                  url "{base}/tokf-v{v}/tokf-v{v}-aarch64-apple-darwin.tar.gz"
+                  sha256 "{sha_arm}"
+                end
+                on_intel do
+                  url "{base}/tokf-v{v}/tokf-v{v}-x86_64-apple-darwin.tar.gz"
+                  sha256 "{sha_intel}"
+                end
+              end
+
+              on_linux do
+                on_intel do
+                  url "{base}/tokf-v{v}/tokf-v{v}-x86_64-unknown-linux-gnu.tar.gz"
+                  sha256 "{sha_linux}"
+                end
+              end
+
+              def install
+                bin.install "tokf"
+              end
+
+              test do
+                assert_match "tokf", shell_output("#{{bin}}/tokf --version")
+              end
+            end
+          """).strip()
+          with open("homebrew-tokf/Formula/tokf.rb", "w") as f:
+              f.write(formula + "\n")
+          EOF
+
+      - name: Commit and push
+        working-directory: homebrew-tokf
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/tokf.rb
+          git commit -m "chore: update tokf to v${{ steps.version.outputs.version }}"
+          git push
