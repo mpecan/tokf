@@ -63,10 +63,18 @@ pub fn pattern_specificity(pattern: &str) -> usize {
     pattern.split_whitespace().filter(|w| *w != "*").count()
 }
 
+/// Extract the basename from a word that might be a path.
+/// Examples: `/usr/bin/ls` -> `ls`, `./mvnw` -> `mvnw`, `git` -> `git`
+fn extract_basename(word: &str) -> &str {
+    // Find the last path separator (/ or \)
+    word.rfind(['/', '\\']).map_or(word, |pos| &word[pos + 1..])
+}
+
 /// Returns `words_consumed` if pattern matches a prefix of `words`, else `None`.
 ///
 /// Pattern word `*` matches any single non-empty token.
 /// Trailing args beyond the pattern length are allowed (prefix semantics).
+/// The first word is matched by basename, so `/usr/bin/ls` matches pattern `ls`.
 pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
     let pattern_words: Vec<&str> = pattern.split_whitespace().collect();
     if pattern_words.is_empty() || words.len() < pattern_words.len() {
@@ -78,8 +86,16 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
             if words[i].is_empty() {
                 return None;
             }
-        } else if words[i] != *pword {
-            return None;
+        } else {
+            // For the first word, compare basenames to support path variants
+            let word_to_match = if i == 0 {
+                extract_basename(words[i])
+            } else {
+                words[i]
+            };
+            if word_to_match != *pword {
+                return None;
+            }
         }
     }
 
@@ -362,6 +378,22 @@ mod tests {
         let words = ["golangci-lint", "run"];
         assert_eq!(pattern_matches_prefix("golangci-lint run", &words), Some(2));
         assert_eq!(pattern_matches_prefix("golangci-lint", &words), Some(1));
+    }
+
+    #[test]
+    fn basename_matching() {
+        assert_eq!(pattern_matches_prefix("ls", &["/usr/bin/ls"]), Some(1));
+        assert_eq!(
+            pattern_matches_prefix("ls -la", &["/usr/bin/ls", "-la"]),
+            Some(2)
+        );
+        assert_eq!(pattern_matches_prefix("mvnw", &["./mvnw"]), Some(1));
+        assert_eq!(
+            pattern_matches_prefix("git push", &["git", "push"]),
+            Some(2)
+        );
+        assert_eq!(pattern_matches_prefix("git /p", &["git", "/p"]), Some(2));
+        assert_eq!(pattern_matches_prefix("git f", &["git", "/p"]), None);
     }
 
     // --- discover_filter_files ---
