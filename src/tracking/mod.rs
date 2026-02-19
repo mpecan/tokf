@@ -54,6 +54,7 @@ pub fn db_path() -> Option<PathBuf> {
 }
 
 /// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS`.
+/// Also initializes the history table from the history module.
 ///
 /// # Errors
 /// Returns an error if the directory cannot be created or the DB cannot be opened.
@@ -78,6 +79,10 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
         );",
     )
     .context("create events table")?;
+
+    // Initialize history table
+    crate::history::init_history_table(&conn).context("init history table")?;
+
     Ok(conn)
 }
 

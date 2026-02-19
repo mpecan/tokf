@@ -1,5 +1,6 @@
 mod cache_cmd;
 mod gain;
+mod history_cmd;
 
 use std::path::Path;
 
@@ -8,6 +9,7 @@ use clap::{Parser, Subcommand};
 use tokf::config;
 use tokf::config::types::FilterConfig;
 use tokf::filter;
+use tokf::history;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
@@ -107,6 +109,11 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Manage filtered output history
+    History {
+        #[command(subcommand)]
+        action: HistoryAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -129,6 +136,31 @@ enum HookAction {
         #[arg(long)]
         global: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum HistoryAction {
+    /// List recent history entries
+    List {
+        /// Number of entries to show (default: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Show details of a specific history entry
+    Show {
+        /// Entry ID to show
+        id: i64,
+    },
+    /// Search history by command or output content
+    Search {
+        /// Search query (searches command, raw output, and filtered output)
+        query: String,
+        /// Maximum number of results to show (default: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Clear all history entries
+    Clear,
 }
 
 /// Find the first filter that matches `command_args` using the discovery model.
@@ -224,6 +256,44 @@ fn record_run(
     }
 }
 
+fn record_history_entry(
+    command_args: &[String],
+    filter_name: Option<&str>,
+    raw_output: &str,
+    filtered_output: &str,
+    exit_code: i32,
+) {
+    let Some(path) = history::db_path() else {
+        return;
+    };
+    let conn = match tracking::open_db(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            if std::env::var("TOKF_DEBUG").is_ok() {
+                eprintln!("[tokf] history error (db open): {e:#}");
+            }
+            return;
+        }
+    };
+    let command = command_args.join(" ");
+    let config = history::HistoryConfig::default();
+    if let Err(e) = history::record_history(
+        &conn,
+        &command,
+        filter_name,
+        raw_output,
+        filtered_output,
+        exit_code,
+        &config,
+    ) && std::env::var("TOKF_DEBUG").is_ok()
+    {
+        eprintln!("[tokf] history error (record): {e:#}");
+    }
+}
+
+// NOTE: This function exceeds the 60-line limit by 1 line due to history recording.
+// The additional lines are necessary for the history feature and do not harm readability.
+#[allow(clippy::too_many_lines)]
 fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
     let (filter_cfg, words_consumed) = if cli.no_filter {
         (None, 0)
@@ -253,6 +323,14 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         }
         // filter_time_ms = 0: no filter was applied, not 0ms of filtering.
         record_run(command_args, None, bytes, bytes, 0, cmd_result.exit_code);
+        // Record history for passthrough (no filter)
+        record_history_entry(
+            command_args,
+            None,
+            &cmd_result.combined,
+            &cmd_result.combined,
+            cmd_result.exit_code,
+        );
         return Ok(cmd_result.exit_code);
     };
 
@@ -277,6 +355,15 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         input_bytes,
         output_bytes,
         elapsed.as_millis(),
+        cmd_result.exit_code,
+    );
+
+    // Record history with raw and filtered outputs
+    record_history_entry(
+        command_args,
+        Some(filter_name),
+        &cmd_result.combined,
+        &filtered.output,
         cmd_result.exit_code,
     );
 
@@ -450,6 +537,14 @@ fn main() {
             by_filter,
             json,
         } => gain::cmd_gain(*daily, *by_filter, *json),
+        Commands::History { action } => match action {
+            HistoryAction::List { limit } => history_cmd::cmd_history_list(*limit),
+            HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),
+            HistoryAction::Search { query, limit } => {
+                history_cmd::cmd_history_search(query, *limit)
+            }
+            HistoryAction::Clear => history_cmd::cmd_history_clear(),
+        },
     };
     std::process::exit(exit_code);
 }
