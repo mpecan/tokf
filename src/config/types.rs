@@ -43,6 +43,9 @@ impl Default for CommandPattern {
 }
 
 /// Top-level filter configuration, deserialized from a `.toml` file.
+// FilterConfig has many independent boolean flags that map directly to TOML keys.
+// Grouping them into enums would not improve clarity here.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilterConfig {
     /// The command this filter applies to (e.g. "git push").
@@ -99,6 +102,22 @@ pub struct FilterConfig {
 
     /// Window size for dedup (default: consecutive only).
     pub dedup_window: Option<usize>,
+
+    /// Strip ANSI escape sequences before skip/keep pattern matching.
+    #[serde(default)]
+    pub strip_ansi: bool,
+
+    /// Trim leading/trailing whitespace from each line before skip/keep matching.
+    #[serde(default)]
+    pub trim_lines: bool,
+
+    /// Remove all blank lines from the final output.
+    #[serde(default)]
+    pub strip_empty_lines: bool,
+
+    /// Collapse consecutive blank lines into one in the final output.
+    #[serde(default)]
+    pub collapse_empty_lines: bool,
 
     /// Optional Lua/Luau script escape hatch.
     #[serde(default)]
@@ -492,6 +511,10 @@ mod tests {
         assert!(cfg.replace.is_empty());
         assert!(!cfg.dedup);
         assert_eq!(cfg.dedup_window, None);
+        assert!(!cfg.strip_ansi);
+        assert!(!cfg.trim_lines);
+        assert!(!cfg.strip_empty_lines);
+        assert!(!cfg.collapse_empty_lines);
         assert_eq!(cfg.lua_script, None);
     }
 

@@ -475,3 +475,111 @@ output = "Found {items.count} items in:\n{output}"
         "Found 2 items in:\nheader\nitem: one\nitem: two\nfooter"
     );
 }
+
+// --- cleanup flag integration tests ---
+
+#[test]
+fn apply_strip_ansi_before_skip() {
+    // ANSI codes stripped at stage 1.6, before skip patterns run at stage 2.
+    // A skip pattern matching the plain text must fire even though the raw
+    // line contained color codes.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+strip_ansi = true
+skip = ["^warning"]
+"#,
+    )
+    .unwrap();
+    let result = make_result("\x1b[33mwarning\x1b[0m: overflow\ninfo: ok", 0);
+    let filtered = apply(&config, &result, &[]);
+    assert_eq!(filtered.output, "info: ok");
+}
+
+#[test]
+fn apply_trim_lines_before_keep() {
+    // trim_lines fires at stage 1.6, before keep at stage 2.
+    // A keep pattern matching the trimmed text must retain the line.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+trim_lines = true
+keep = ["^OK"]
+"#,
+    )
+    .unwrap();
+    let result = make_result("   OK done   \n   FAIL   ", 0);
+    let filtered = apply(&config, &result, &[]);
+    assert_eq!(filtered.output, "OK done");
+}
+
+#[test]
+fn apply_strip_empty_lines_after_branch_template() {
+    // strip_empty_lines post-processes output from on_success branch template.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+strip_empty_lines = true
+
+[on_success]
+output = "{output}"
+"#,
+    )
+    .unwrap();
+    let result = make_result("line1\n\nline2\n   \nline3", 0);
+    let filtered = apply(&config, &result, &[]);
+    assert_eq!(filtered.output, "line1\nline2\nline3");
+}
+
+#[test]
+fn apply_strip_empty_lines_on_match_output_path() {
+    // match_output early-return also applies post_process_output.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+strip_empty_lines = true
+
+[[match_output]]
+contains = "sentinel"
+output = "header\n\nbody\n\nfooter"
+"#,
+    )
+    .unwrap();
+    let result = make_result("sentinel found", 0);
+    let filtered = apply(&config, &result, &[]);
+    assert_eq!(filtered.output, "header\nbody\nfooter");
+}
+
+#[test]
+fn apply_collapse_empty_lines_after_branch() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+collapse_empty_lines = true
+
+[on_success]
+output = "{output}"
+"#,
+    )
+    .unwrap();
+    let result = make_result("a\n\n\n\nb", 0);
+    let filtered = apply(&config, &result, &[]);
+    assert_eq!(filtered.output, "a\n\nb");
+}
+
+#[test]
+fn apply_strip_ansi_then_dedup() {
+    // Cleanup (1.6) runs before dedup (2.5).
+    // Two ANSI-colored identical lines should be deduplicated after stripping.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+strip_ansi = true
+dedup = true
+"#,
+    )
+    .unwrap();
+    let result = make_result("\x1b[33ma\x1b[0m\n\x1b[33ma\x1b[0m\nb", 0);
+    let filtered = apply(&config, &result, &[]);
+    assert_eq!(filtered.output, "a\nb");
+}

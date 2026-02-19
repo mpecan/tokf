@@ -1,4 +1,5 @@
 mod aggregate;
+mod cleanup;
 mod dedup;
 mod extract;
 mod group;
@@ -28,6 +29,7 @@ pub struct FilterResult {
 /// ```text
 /// 1.   match_output  — substring check, first match wins
 /// 1.5. [[replace]]   — per-line regex transformations
+/// 1.6. strip_ansi / trim_lines — per-line cleanup
 /// 2.   skip/keep     — top-level pre-filtering
 /// 2.5. dedup         — collapse duplicate lines
 /// 2b.  lua_script    — escape hatch (if configured)
@@ -35,25 +37,38 @@ pub struct FilterResult {
 /// 4.   sections      — state-machine line collection
 /// 5.   select branch — exit code 0 → on_success, else on_failure
 /// 6.   apply branch  — render output or fallback
+/// 6.5. strip_empty_lines / collapse_empty_lines — post-process output
 /// ```
+/// Apply stage 1.5 + 1.6 pre-filter transforms (`replace`, `strip_ansi`, `trim_lines`).
+///
+/// Returns an owned `Vec<String>` so lifetimes stay simple in `apply`.
+fn build_raw_lines(combined: &str, config: &FilterConfig) -> Vec<String> {
+    let initial: Vec<&str> = combined.lines().collect();
+    let after_replace = if config.replace.is_empty() {
+        initial.iter().map(ToString::to_string).collect()
+    } else {
+        replace::apply_replace(&config.replace, &initial)
+    };
+    if config.strip_ansi || config.trim_lines {
+        let refs: Vec<&str> = after_replace.iter().map(String::as_str).collect();
+        cleanup::apply_line_cleanup(config, &refs)
+    } else {
+        after_replace
+    }
+}
+
 pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> FilterResult {
     // 1. match_output short-circuit
     if let Some(rule) = match_output::find_matching_rule(&config.match_output, &result.combined) {
         let output = match_output::render_output(&rule.output, &rule.contains, &result.combined);
-        return FilterResult { output };
+        return FilterResult {
+            output: cleanup::post_process_output(config, output),
+        };
     }
 
-    // 1.5. Per-line [[replace]] transformations (before skip/keep)
-    let replace_buf: Vec<String>;
-    let raw_lines: Vec<&str> = if config.replace.is_empty() {
-        replace_buf = vec![];
-        let _ = &replace_buf; // ensure replace_buf outlives raw_lines
-        result.combined.lines().collect()
-    } else {
-        let initial: Vec<&str> = result.combined.lines().collect();
-        replace_buf = replace::apply_replace(&config.replace, &initial);
-        replace_buf.iter().map(String::as_str).collect()
-    };
+    // 1.5 + 1.6. Replace + per-line cleanup (strip_ansi, trim_lines)
+    let transformed = build_raw_lines(&result.combined, config);
+    let raw_lines: Vec<&str> = transformed.iter().map(String::as_str).collect();
 
     // 2. Top-level skip/keep pre-filtering
     let lines = skip::apply_skip(&config.skip, &raw_lines);
@@ -70,7 +85,11 @@ pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> 
     if let Some(ref script_cfg) = config.lua_script {
         let pre_filtered = lines.join("\n");
         match lua::run_lua_script(script_cfg, &pre_filtered, result.exit_code, args) {
-            Ok(Some(output)) => return FilterResult { output },
+            Ok(Some(output)) => {
+                return FilterResult {
+                    output: cleanup::post_process_output(config, output),
+                };
+            }
             Ok(None) => {} // passthrough → continue normal pipeline
             Err(e) => eprintln!("[tokf] lua script error: {e:#}"),
         }
@@ -81,11 +100,17 @@ pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> 
         let parse_result = parse::run_parse(parse_config, &lines);
         let output_config = config.output.clone().unwrap_or_default();
         let output = parse::render_output(&output_config, &parse_result);
-        return FilterResult { output };
+        return FilterResult {
+            output: cleanup::post_process_output(config, output),
+        };
     }
 
     // 4. Collect sections (from raw output — sections need structural
-    //    markers like blank lines that skip patterns remove)
+    //    markers like blank lines that skip patterns remove).
+    //    DESIGN NOTE: section enter/exit regexes match against the original,
+    //    unmodified lines. If the command emits ANSI codes in marker lines,
+    //    set `strip_ansi = true` AND write patterns that match the raw text,
+    //    or configure the command to disable color (e.g. `--no-color`).
     let has_sections = !config.section.is_empty();
     let sections = if has_sections {
         let raw_lines: Vec<&str> = result.combined.lines().collect();
@@ -107,7 +132,9 @@ pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> 
         },
     );
 
-    FilterResult { output }
+    FilterResult {
+        output: cleanup::post_process_output(config, output),
+    }
 }
 
 /// Select the output branch based on exit code.
