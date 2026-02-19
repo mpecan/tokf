@@ -139,10 +139,11 @@ fn patch_settings(settings_path: &Path, hook_script: &Path) -> anyhow::Result<()
         serde_json::json!({})
     };
 
-    let hook_command = hook_script
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("hook script path is not valid UTF-8"))?
-        .to_string();
+    let hook_command = runner::shell_escape(
+        hook_script
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("hook script path is not valid UTF-8"))?,
+    );
 
     let tokf_hook_entry = serde_json::json!({
         "matcher": "Bash",
@@ -357,6 +358,31 @@ mod tests {
             arr.len(),
             2,
             "should have both the existing hook and the new tokf hook"
+        );
+    }
+
+    #[test]
+    fn patch_settings_quotes_path_with_spaces() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        // Simulate a hook script path that contains spaces
+        let hook = std::path::Path::new("/Users/my name/.tokf/hooks/pre-tool-use.sh");
+
+        patch_settings(&settings_path, hook).unwrap();
+
+        let content = std::fs::read_to_string(&settings_path).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        let cmd = value["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        assert!(
+            cmd.starts_with('\''),
+            "command should be single-quoted for shell safety, got: {cmd}"
+        );
+        assert!(
+            cmd.contains("my name"),
+            "path with space should be preserved, got: {cmd}"
         );
     }
 
