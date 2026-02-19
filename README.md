@@ -136,6 +136,15 @@ run = "git push {args}"       # override command to actually execute
 skip = ["^Enumerating", "^Counting"]  # drop lines matching these regexes
 keep = ["^error"]                      # keep only lines matching (inverse of skip)
 
+# Per-line regex replacement — applied before skip/keep, in order.
+# Capture groups use {1}, {2}, … . Invalid patterns are silently skipped.
+[[replace]]
+pattern = '^(\S+)\s+\S+\s+(\S+)\s+(\S+)'
+output = "{1}: {2} → {3}"
+
+dedup = true                  # collapse consecutive identical lines
+dedup_window = 10             # optional: compare within a N-line sliding window
+
 match_output = [              # whole-output substring checks, short-circuit the pipeline
   { contains = "rejected", output = "push rejected" },
 ]
@@ -145,6 +154,33 @@ output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 
 [on_failure]                  # branch for non-zero exit
 tail = 10                     # keep the last N lines
+```
+
+### Template pipes
+
+Output templates support pipe chains: `{var | pipe | pipe: "arg"}`.
+
+| Pipe | Input → Output | Description |
+|---|---|---|
+| `join: "sep"` | Collection → Str | Join items with separator |
+| `each: "tmpl"` | Collection → Collection | Map each item through a sub-template |
+| `truncate: N` | Str → Str | Truncate to N characters, appending `…` |
+| `lines` | Str → Collection | Split on newlines |
+| `keep: "re"` | Collection → Collection | Retain items matching the regex |
+| `where: "re"` | Collection → Collection | Alias for `keep:` |
+
+Example — filter a multi-line output variable to only error lines:
+
+```toml
+[on_failure]
+output = "{output | lines | keep: \"^error\" | join: \"\\n\"}"
+```
+
+Example — for each collected block, show only `>` (pointer) and `E` (assertion) lines:
+
+```toml
+[on_failure]
+output = "{failure_lines | each: \"{value | lines | keep: \\\"^[>E] \\\"}\" | join: \"\\n\"}"
 ```
 
 ### Lua escape hatch
