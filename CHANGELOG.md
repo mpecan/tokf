@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/mpecan/tokf/compare/tokf-v0.1.3...tokf-v0.1.4) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** use macos-14 runner for x86_64-apple-darwin cross-compilation ([#32](https://github.com/mpecan/tokf/issues/32)) ([30be4d1](https://github.com/mpecan/tokf/commit/30be4d133a38d67f2c969ce41ff931ea0d01493b))
+
 ## [0.1.3](https://github.com/mpecan/tokf/compare/tokf-v0.1.2...tokf-v0.1.3) (2026-02-19)
 
 
