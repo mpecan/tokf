@@ -27,13 +27,13 @@ fn test_discover_git_push_from_stdlib() {
 fn test_all_stdlib_filters_load() {
     let dirs = vec![stdlib_dir()];
     let filters = config::discover_all_filters(&dirs).unwrap();
-    // 27 stdlib filters: git/(add,commit,diff,log,push,show,status), cargo/(build,check,clippy,install,test),
+    // 29 stdlib filters: git/(add,commit,diff,log,push,show,status), cargo/(build,check,clippy,install,test),
     // ls, npm/run, pnpm/(add,install), go/(build,vet), pytest, tsc,
-    // docker/(images,ps), kubectl/get, gh/(issue,pr), next/build, prisma/generate
+    // docker/(build,compose,images,ps), kubectl/get, gh/(issue,pr), next/build, prisma/generate
     assert_eq!(
         filters.len(),
-        27,
-        "expected 27 stdlib filters, got {}",
+        29,
+        "expected 29 stdlib filters, got {}",
         filters.len()
     );
 }

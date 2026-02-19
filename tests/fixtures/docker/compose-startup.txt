@@ -1,0 +1,20 @@
+[+] Running 4/4
+ ⠿ Network app_default        Created                                      0.1s
+ ⠿ Container app-db-1         Created                                      0.1s
+ ⠿ Container app-api-1        Created                                      0.1s
+ ⠿ Container app-web-1        Created                                      0.1s
+Attaching to app-db-1, app-api-1, app-web-1
+app-db-1   | 2026-02-19 18:12:34.123 UTC [1] LOG:  starting PostgreSQL 15.1...
+app-api-1  | 
+app-api-1  | > api@1.0.0 start
+app-api-1  | > node dist/main.js
+app-api-1  | 
+app-db-1   | 2026-02-19 18:12:34.456 UTC [1] LOG:  database system is ready to accept connections
+app-web-1  | 18:12:35 [info] Starting development server...
+app-api-1  | [Nest] 1  - 02/19/2026, 6:12:35 PM     LOG [NestFactory] Starting Nest application...
+app-web-1  | 18:12:36 [info] Ready on http://localhost:3000
+app-api-1  | [Nest] 1  - 02/19/2026, 6:12:36 PM     LOG [RoutesResolver] AppController {/}: +1ms
+app-api-1  | [Nest] 1  - 02/19/2026, 6:12:36 PM   ERROR [ExceptionsHandler] Connection refused: localhost:5432
+app-api-1  | Error: Connection refused
+app-api-1  |     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1494:16)
+app-web-1  | 18:12:37 [warn] API connection failed, retrying...
