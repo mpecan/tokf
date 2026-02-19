@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/mpecan/tokf/compare/tokf-v0.1.4...tokf-v0.1.5) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** explicitly add rustup target before cross-compiling x86_64-apple-darwin ([#34](https://github.com/mpecan/tokf/issues/34)) ([ca91c5e](https://github.com/mpecan/tokf/commit/ca91c5eb9e877667c462875f695274ec98f8564e))
+
 ## [0.1.4](https://github.com/mpecan/tokf/compare/tokf-v0.1.3...tokf-v0.1.4) (2026-02-19)
 
 
