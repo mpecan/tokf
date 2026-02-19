@@ -16,7 +16,7 @@ collect_as = "summary_lines"
 extract = { pattern = "(\\d+) passed", output = "✓ pytest: {1} passed" }
 
 [on_failure]
-output = """{failure_lines | join: "\n"}
+output = """{failure_lines | each: "{value | lines | keep: "^[>E] "}" | join: "\n"}
 
 {summary_lines | join: "\n"}"""
 

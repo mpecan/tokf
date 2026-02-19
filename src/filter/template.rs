@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use regex::Regex;
+
 use super::section::SectionMap;
 
 /// Maximum recursion depth to prevent infinite loops.
@@ -198,6 +200,13 @@ fn apply_pipe(
         apply_each(arg.trim(), value, vars, sections, depth)
     } else if let Some(arg) = pipe.strip_prefix("truncate:") {
         apply_truncate(arg.trim(), value)
+    } else if pipe == "lines" {
+        apply_lines(value)
+    } else if let Some(arg) = pipe
+        .strip_prefix("keep:")
+        .or_else(|| pipe.strip_prefix("where:"))
+    {
+        apply_keep_pipe(arg.trim(), value)
     } else {
         value // unknown pipe → passthrough
     }
@@ -280,6 +289,32 @@ fn apply_truncate(arg: &str, value: Value) -> Value {
                 .collect();
             Value::Collection(truncated)
         }
+    }
+}
+
+/// `| lines` — split a string value into a collection on newline boundaries.
+///
+/// Collections pass through unchanged.
+fn apply_lines(value: Value) -> Value {
+    match value {
+        Value::Str(s) => Value::Collection(s.lines().map(str::to_string).collect()),
+        c @ Value::Collection(_) => c,
+    }
+}
+
+/// `| keep: "re"` / `| where: "re"` — retain only collection items matching the regex.
+///
+/// Strings and invalid patterns pass through unchanged.
+fn apply_keep_pipe(arg: &str, value: Value) -> Value {
+    let pattern = parse_string_arg(arg);
+    let Ok(re) = Regex::new(&pattern) else {
+        return value;
+    };
+    match value {
+        Value::Collection(items) => {
+            Value::Collection(items.into_iter().filter(|l| re.is_match(l)).collect())
+        }
+        s @ Value::Str(_) => s,
     }
 }
 
@@ -542,5 +577,90 @@ mod tests {
     #[test]
     fn unescape_escaped_quote() {
         assert_eq!(super::unescape(r#"say \"hello\""#), "say \"hello\"");
+    }
+
+    // --- Gap 5: lines, keep, where pipes ---
+
+    #[test]
+    fn pipe_lines_splits_string() {
+        let v = vars(&[("msg", "a\nb\nc")]);
+        // lines splits into a collection; join reassembles
+        let result = render_template("{msg | lines | join: \",\"}", &v, &SectionMap::new());
+        assert_eq!(result, "a,b,c");
+    }
+
+    #[test]
+    fn pipe_lines_on_collection_passthrough() {
+        let s = sections_with("items", vec!["x", "y"]);
+        // Already a collection → lines is a no-op
+        let result = render_template("{items | lines | join: \",\"}", &HashMap::new(), &s);
+        assert_eq!(result, "x,y");
+    }
+
+    #[test]
+    fn pipe_keep_filters_collection() {
+        let s = sections_with("lines", vec!["ok line", "error: bad", "ok again"]);
+        let result = render_template(
+            "{lines | keep: \"^error\" | join: \"||\"}",
+            &HashMap::new(),
+            &s,
+        );
+        assert_eq!(result, "error: bad");
+    }
+
+    #[test]
+    fn pipe_where_is_alias_for_keep() {
+        let s = sections_with("lines", vec!["ok line", "error: bad", "ok again"]);
+        let result = render_template(
+            "{lines | where: \"^error\" | join: \"||\"}",
+            &HashMap::new(),
+            &s,
+        );
+        assert_eq!(result, "error: bad");
+    }
+
+    #[test]
+    fn pipe_keep_no_match_returns_empty() {
+        let s = sections_with("lines", vec!["foo", "bar"]);
+        let result = render_template(
+            "{lines | keep: \"^NOMATCH\" | join: \",\"}",
+            &HashMap::new(),
+            &s,
+        );
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn pipe_keep_invalid_regex_passthrough() {
+        let s = sections_with("lines", vec!["a", "b"]);
+        // Bad regex → value passes through as-is (collection)
+        let result = render_template(
+            "{lines | keep: \"[invalid\" | join: \",\"}",
+            &HashMap::new(),
+            &s,
+        );
+        assert_eq!(result, "a,b");
+    }
+
+    #[test]
+    fn pipe_lines_then_keep_chain() {
+        let v = vars(&[("log", "ok\nfail\nok")]);
+        let result = render_template(
+            "{log | lines | keep: \"fail\" | join: \",\"}",
+            &v,
+            &SectionMap::new(),
+        );
+        assert_eq!(result, "fail");
+    }
+
+    #[test]
+    fn pipe_lines_then_keep_then_join_chain() {
+        let v = vars(&[("log", "pass\nERROR: bad\npass")]);
+        let result = render_template(
+            "{log | lines | keep: \"^ERROR\" | join: \"\\n\"}",
+            &v,
+            &SectionMap::new(),
+        );
+        assert_eq!(result, "ERROR: bad");
     }
 }
