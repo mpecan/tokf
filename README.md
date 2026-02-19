@@ -1,6 +1,6 @@
 # tokf
 
-**Token filter** — a config-driven CLI that compresses command output before it reaches an LLM context.
+**[tokf.net](https://tokf.net)** — a config-driven CLI that compresses command output before it reaches an LLM context.
 
 Commands like `git push`, `cargo test`, or `docker build` produce verbose output full of progress bars, compile noise, and boilerplate. tokf intercepts that output, applies a TOML filter, and emits only what matters. Less context consumed, cleaner signal for the model.
 

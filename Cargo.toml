@@ -5,7 +5,7 @@ edition = "2024"
 description = "Config-driven CLI tool that compresses command output before it reaches an LLM context"
 license = "MIT"
 repository = "https://github.com/mpecan/tokf"
-homepage = "https://github.com/mpecan/tokf"
+homepage = "https://tokf.net"
 keywords = ["llm", "cli", "filter", "output", "tokens"]
 categories = ["command-line-utilities", "development-tools"]
 
