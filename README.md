@@ -24,11 +24,19 @@ The filter logic lives in plain TOML files — no recompilation required. Anyone
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```sh
+brew install mpecan/tokf/tokf
+```
+
+### cargo
+
 ```sh
 cargo install tokf
 ```
 
-Or build from source:
+### Build from source
 
 ```sh
 git clone https://github.com/mpecan/tokf
