@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 /// A single filter serialized for the binary cache.
 ///

@@ -88,6 +88,10 @@ pub struct FilterConfig {
 
     /// Fallback behavior when no other rule matches.
     pub fallback: Option<FallbackConfig>,
+
+    /// Optional Lua/Luau script escape hatch.
+    #[serde(default)]
+    pub lua_script: Option<ScriptConfig>,
 }
 
 /// A pipeline step that runs a sub-command and captures its output.
@@ -239,6 +243,25 @@ pub struct OutputConfig {
 pub struct FallbackConfig {
     /// Number of lines to keep from the tail as a last resort.
     pub tail: Option<usize>,
+}
+
+/// Supported scripting languages for the `[lua_script]` escape hatch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScriptLang {
+    Luau,
+}
+
+/// Lua/Luau script escape hatch configuration.
+/// Exactly one of `file` or `source` must be set.
+/// `file` paths resolve relative to the current working directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScriptConfig {
+    pub lang: ScriptLang,
+    /// Path to a `.luau` file (resolved relative to CWD).
+    pub file: Option<String>,
+    /// Inline Luau source.
+    pub source: Option<String>,
 }
 
 #[cfg(test)]
@@ -444,6 +467,7 @@ mod tests {
         assert_eq!(cfg.parse, None);
         assert_eq!(cfg.output, None);
         assert_eq!(cfg.fallback, None);
+        assert_eq!(cfg.lua_script, None);
     }
 
     // --- Negative tests ---
