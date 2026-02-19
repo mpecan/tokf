@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/mpecan/tokf/compare/tokf-v0.1.2...tokf-v0.1.3) (2026-02-19)
+
+
+### Features
+
+* Homebrew installation support ([#30](https://github.com/mpecan/tokf/issues/30)) ([45acd28](https://github.com/mpecan/tokf/commit/45acd2837d79182ec56e238491328b740c0dc286))
+
 ## [0.1.2](https://github.com/mpecan/tokf/compare/tokf-v0.1.1...tokf-v0.1.2) (2026-02-19)
 
 
