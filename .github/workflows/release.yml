@@ -16,7 +16,7 @@ jobs:
     if: startsWith(github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -42,7 +42,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -106,14 +106,14 @@ jobs:
 
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
           private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
           repositories: homebrew-tokf
 
       - name: Checkout homebrew-tokf tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: mpecan/homebrew-tokf
           token: ${{ steps.app-token.outputs.token }}
