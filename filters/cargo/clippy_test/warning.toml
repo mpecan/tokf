@@ -1,0 +1,6 @@
+name = "warnings show lint output"
+fixture = "warning.txt"
+exit_code = 1
+
+[[expect]]
+contains = "warning"

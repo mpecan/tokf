@@ -1,0 +1,18 @@
+name = "compose startup shows errors and ready messages, hides spinner lines"
+fixture = "startup.txt"
+exit_code = 0
+
+[[expect]]
+contains = "ERROR"
+
+[[expect]]
+contains = "database system is ready to accept connections"
+
+[[expect]]
+contains = "Ready on http://localhost:3000"
+
+[[expect]]
+not_contains = "⠿ Network"
+
+[[expect]]
+not_contains = "⠿ Container"

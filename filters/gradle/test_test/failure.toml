@@ -1,0 +1,15 @@
+name = "failed test shows assertion error and summary, hides noise"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "AssertionFailedError"
+
+[[expect]]
+contains = "tests completed"
+
+[[expect]]
+not_contains = "UP-TO-DATE"
+
+[[expect]]
+not_contains = "SKIPPED"

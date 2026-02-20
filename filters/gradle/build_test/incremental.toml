@@ -1,0 +1,9 @@
+name = "incremental build shows time, hides task headers"
+fixture = "incremental.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "ok ✓ "
+
+[[expect]]
+not_contains = "> Task"

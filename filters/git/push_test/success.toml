@@ -1,5 +1,5 @@
 name = "success extracts branch name"
-fixture = "tests/fixtures/git_push_success.txt"
+fixture = "success.txt"
 exit_code = 0
 
 [[expect]]

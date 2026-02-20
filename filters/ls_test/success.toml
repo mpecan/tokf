@@ -1,0 +1,6 @@
+name = "ls output passes through unchanged"
+fixture = "output.txt"
+exit_code = 0
+
+[[expect]]
+contains = "Cargo.toml"

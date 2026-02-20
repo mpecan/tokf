@@ -1,5 +1,5 @@
 name = "all status types show correct counts and labels"
-fixture = "tests/fixtures/git_status_all_types.txt"
+fixture = "all_types.txt"
 exit_code = 0
 
 [[expect]]

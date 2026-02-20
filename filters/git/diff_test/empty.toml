@@ -1,0 +1,6 @@
+name = "empty diff produces no output"
+fixture = "empty.txt"
+exit_code = 0
+
+[[expect]]
+equals = ""

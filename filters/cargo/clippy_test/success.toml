@@ -1,0 +1,9 @@
+name = "success output shows no warnings"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓ no warnings"
+
+[[expect]]
+not_contains = "Checking"

@@ -1,0 +1,6 @@
+name = "fatal pathspec error shows friendly message"
+fixture = "fatal.txt"
+exit_code = 128
+
+[[expect]]
+equals = "✗ fatal: pathspec 'nonexistent.txt' did not match any files"

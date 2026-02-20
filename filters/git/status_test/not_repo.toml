@@ -1,5 +1,5 @@
 name = "not a git repository shows friendly error"
-fixture = "tests/fixtures/git_status_not_repo.txt"
+fixture = "not_repo.txt"
 exit_code = 128
 
 [[expect]]

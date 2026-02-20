@@ -1,0 +1,15 @@
+name = "failing tests show failure details"
+fixture = "failure.txt"
+exit_code = 101
+
+[[expect]]
+starts_with = "FAILURES (2):"
+
+[[expect]]
+contains = "branch_fixed_output"
+
+[[expect]]
+contains = "extract_first_match"
+
+[[expect]]
+contains = "test result: FAILED."
