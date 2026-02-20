@@ -267,3 +267,34 @@ fn test_try_load_filter_stdlib() {
     let config = tokf::config::try_load_filter(&path).unwrap().unwrap();
     assert_eq!(config.command.first(), "git push");
 }
+
+// --- Basename matching ---
+
+#[test]
+fn test_basename_matching() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("mvnw.toml"), r#"command = "mvnw clean""#).unwrap();
+
+    let dirs = vec![dir.path().to_path_buf(), stdlib_dir()];
+    let filters = config::discover_all_filters(&dirs).unwrap();
+
+    // Test with stdlib git filter
+    let git_push = filters
+        .iter()
+        .find(|f| f.config.command.first() == "git push")
+        .unwrap();
+    assert_eq!(git_push.matches(&["/usr/bin/git", "push"]), Some(2));
+    assert_eq!(git_push.matches(&["./git", "push"]), Some(2));
+    assert_eq!(git_push.matches(&["/usr/bin/ls", "-la"]), None); // wrong basename
+
+    // Test with custom mvnw filter
+    let mvnw = filters
+        .iter()
+        .find(|f| f.config.command.first() == "mvnw clean")
+        .unwrap();
+    assert_eq!(mvnw.matches(&["./mvnw", "clean"]), Some(2));
+    assert_eq!(mvnw.matches(&["/home/user/project/mvnw", "clean"]), Some(2));
+    assert_eq!(mvnw.matches(&[r"C:\project\mvnw", "clean"]), Some(2)); // Windows path
+}
