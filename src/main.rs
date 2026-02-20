@@ -140,27 +140,37 @@ enum HookAction {
 
 #[derive(Subcommand)]
 enum HistoryAction {
-    /// List recent history entries
+    /// List recent history entries (current project by default)
     List {
         /// Number of entries to show (default: 10)
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+        /// Show history from all projects
+        #[arg(short, long)]
+        all: bool,
     },
     /// Show details of a specific history entry
     Show {
         /// Entry ID to show
         id: i64,
     },
-    /// Search history by command or output content
+    /// Search history by command or output content (current project by default)
     Search {
         /// Search query (searches command, raw output, and filtered output)
         query: String,
         /// Maximum number of results to show (default: 10)
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+        /// Search across all projects
+        #[arg(short, long)]
+        all: bool,
     },
-    /// Clear all history entries
-    Clear,
+    /// Clear history entries (current project by default)
+    Clear {
+        /// Clear history for all projects
+        #[arg(short, long)]
+        all: bool,
+    },
 }
 
 /// Find the first filter that matches `command_args` using the discovery model.
@@ -497,12 +507,12 @@ fn main() {
             json,
         } => gain::cmd_gain(*daily, *by_filter, *json),
         Commands::History { action } => match action {
-            HistoryAction::List { limit } => history_cmd::cmd_history_list(*limit),
+            HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),
-            HistoryAction::Search { query, limit } => {
-                history_cmd::cmd_history_search(query, *limit)
+            HistoryAction::Search { query, limit, all } => {
+                history_cmd::cmd_history_search(query, *limit, *all)
             }
-            HistoryAction::Clear => history_cmd::cmd_history_clear(),
+            HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
         },
     };
     std::process::exit(exit_code);
