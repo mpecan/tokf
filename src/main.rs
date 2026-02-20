@@ -126,6 +126,9 @@ enum Commands {
         /// Output results as JSON
         #[arg(long)]
         json: bool,
+        /// Fail if any filters have no test suite
+        #[arg(long)]
+        require_all: bool,
     },
 }
 
@@ -519,9 +522,12 @@ fn main() {
             by_filter,
             json,
         } => gain::cmd_gain(*daily, *by_filter, *json),
-        Commands::Verify { filter, list, json } => {
-            verify_cmd::cmd_verify(filter.as_deref(), *list, *json)
-        }
+        Commands::Verify {
+            filter,
+            list,
+            json,
+            require_all,
+        } => verify_cmd::cmd_verify(filter.as_deref(), *list, *json, *require_all),
         Commands::History { action } => match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),

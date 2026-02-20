@@ -43,7 +43,7 @@ jobs:
         run: cargo test
 
       - name: Verify filter test suites
-        run: ./target/debug/tokf verify
+        run: ./target/debug/tokf verify --require-all
 
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
