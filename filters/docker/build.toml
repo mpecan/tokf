@@ -1,0 +1,17 @@
+command = ["docker build", "docker buildx build"]
+skip = [
+  "^ +=> +=> [a-z]",      # Skip transferring, fetching, extracting
+  "^ +=> +\\[internal\\]", # Skip metadata loading (noise)
+  "^Sending build context",
+]
+
+[on_success]
+skip = [
+  "^ +=> +\\[[0-9/]+\\]", # Skip routine steps like [1/5]
+  "^Step [0-9/]+ : ",      # Skip legacy step headers
+  "^ ---> [0-9a-f]+",      # Skip legacy hash markers
+  "^ ---> Using cache",   # Skip legacy cache messages
+]
+
+[on_failure]
+tail = 50

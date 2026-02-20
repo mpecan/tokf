@@ -1,0 +1,22 @@
+command = ["docker compose", "docker-compose"]
+skip = [
+  "^ +⠿ (Network|Container|Volume|Config|Secret) .* (Created|Starting|Started|Healthy)",
+  "^Attaching to ",
+]
+keep = [
+  "(?i)error",
+  "(?i)fatal",
+  "(?i)warn",
+  "(?i)panic",
+  "(?i)health check",
+  "(?i)ready",
+  "(?i)started",
+  "(?i)listening",
+  "(?i)failed",
+  "(?i)critical",
+  "(?i)exception",
+  "\\[\\+\\] Running",
+]
+
+[on_failure]
+tail = 100
