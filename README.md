@@ -79,6 +79,8 @@ tokf verify                    # run all test suites
 tokf verify git/push           # run a specific suite
 tokf verify --list             # list available suites and case counts
 tokf verify --json             # output results as JSON
+tokf verify --require-all      # fail if any filter has no test suite
+tokf verify --list --require-all  # show ✓/✗ coverage per filter
 ```
 
 ### Explore available filters
@@ -259,7 +261,7 @@ contains = "clean"
 | `matches` | Output matches this regex |
 | `not_matches` | Output does not match this regex |
 
-Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error.
+Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error or uncovered filters (`--require-all`).
 
 ---
 
