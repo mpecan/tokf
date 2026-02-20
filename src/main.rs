@@ -167,7 +167,7 @@ enum HistoryAction {
     },
     /// Clear history entries (current project by default)
     Clear {
-        /// Clear history for all projects
+        /// Clear history for all projects — this is destructive and cannot be undone
         #[arg(short, long)]
         all: bool,
     },
@@ -513,7 +513,11 @@ fn main() {
                 history_cmd::cmd_history_search(query, *limit, *all)
             }
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
-        },
+        }
+        .unwrap_or_else(|e| {
+            eprintln!("[tokf] error: {e:#}");
+            1
+        }),
     };
     std::process::exit(exit_code);
 }
