@@ -47,6 +47,49 @@ fn open_db_idempotent() {
     open_db(&path).expect("second open — must not error");
 }
 
+/// tracking::open_db must NOT create the history table — that is history::open_db's job.
+#[test]
+fn open_db_does_not_create_history_table() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("tracking.db");
+    let conn = open_db(&path).expect("open_db");
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='history'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("query");
+    assert_eq!(
+        exists, 0,
+        "tracking::open_db must not create the history table"
+    );
+}
+
+/// Must run serially: changes the current working directory.
+#[test]
+#[serial]
+fn db_path_per_project_when_tokf_dir_exists() {
+    let dir = TempDir::new().expect("tempdir");
+    // Canonicalize to resolve platform symlinks (e.g. /var → /private/var on macOS).
+    let real_dir = dir.path().canonicalize().expect("canonicalize");
+    let tokf_dir = real_dir.join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+
+    let original_cwd = std::env::current_dir().expect("current_dir");
+    unsafe {
+        std::env::remove_var("TOKF_DB_PATH");
+        // SAFETY: test-only CWD change; #[serial] prevents races with other tests.
+        std::env::set_current_dir(&real_dir).expect("set_current_dir");
+    }
+    let result = db_path();
+    unsafe {
+        std::env::set_current_dir(&original_cwd).expect("restore cwd");
+    }
+
+    assert_eq!(result, Some(tokf_dir.join("tracking.db")));
+}
+
 // --- record_event ---
 
 #[test]
