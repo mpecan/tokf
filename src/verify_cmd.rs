@@ -60,6 +60,63 @@ struct SuiteResult {
     error: Option<String>,
 }
 
+// --- All-filter coverage discovery (for --require-all) ---
+
+fn collect_all_filters(
+    root: &Path,
+    dir: &Path,
+    result: &mut Vec<(String, bool)>,
+    seen: &mut HashSet<String>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    for entry in &entries {
+        let path = entry.path();
+        let name_str = entry.file_name().to_string_lossy().to_string();
+        if name_str.starts_with('.') {
+            continue;
+        }
+        if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+            let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+            let suite_dir = path.parent().unwrap_or(dir).join(format!("{stem}_test"));
+            let filter_name = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .with_extension("")
+                .to_string_lossy()
+                .into_owned();
+            #[cfg(windows)]
+            let filter_name = filter_name.replace('\\', "/");
+            if seen.insert(filter_name.clone()) {
+                result.push((filter_name, suite_dir.is_dir()));
+            }
+        } else if path.is_dir() && !name_str.ends_with("_test") {
+            collect_all_filters(root, &path, result, seen);
+        }
+    }
+}
+
+fn discover_all_filters_with_coverage(
+    search_dirs: &[PathBuf],
+    prefix: Option<&str>,
+) -> Vec<(String, bool)> {
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+    for dir in search_dirs {
+        if !dir.exists() {
+            continue;
+        }
+        collect_all_filters(dir, dir, &mut result, &mut seen);
+    }
+    if let Some(pfx) = prefix {
+        result.retain(|(name, _)| name == pfx || name.starts_with(&format!("{pfx}/")));
+    }
+    result
+}
+
 // --- Search dirs for verify ---
 
 fn verify_search_dirs() -> Vec<PathBuf> {
@@ -449,9 +506,41 @@ fn print_json(results: &[SuiteResult]) {
 
 // --- Entry point ---
 
-pub fn cmd_verify(filter: Option<&str>, list: bool, json: bool) -> i32 {
+pub fn cmd_verify(filter: Option<&str>, list: bool, json: bool, require_all: bool) -> i32 {
     // Exit codes: 0 = all pass, 1 = assertion failure, 2 = config/IO error.
     let search_dirs = verify_search_dirs();
+
+    if list && require_all {
+        let all = discover_all_filters_with_coverage(&search_dirs, filter);
+        for (name, covered) in &all {
+            let icon = if *covered { "\u{2713}" } else { "\u{2717}" };
+            println!("{icon} {name}");
+        }
+        let uncovered = all.iter().filter(|(_, c)| !c).count();
+        if uncovered > 0 {
+            println!("\n{uncovered} filter(s) have no test suite.");
+            return 2;
+        }
+        return 0;
+    }
+
+    if require_all {
+        let all = discover_all_filters_with_coverage(&search_dirs, filter);
+        let uncovered: Vec<_> = all
+            .iter()
+            .filter(|(_, c)| !c)
+            .map(|(n, _)| n.as_str())
+            .collect();
+        if !uncovered.is_empty() {
+            eprintln!("\u{2717} uncovered filters (no test suite found):");
+            for name in &uncovered {
+                eprintln!("  {name}");
+            }
+            eprintln!("\nRun `tokf verify --list` to see discovered suites.");
+            return 2;
+        }
+    }
+
     let suites = discover_suites(&search_dirs, filter);
 
     if suites.is_empty() {
