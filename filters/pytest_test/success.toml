@@ -1,0 +1,6 @@
+name = "all tests pass shows summary"
+inline = ".....\n5 passed in 0.12s"
+exit_code = 0
+
+[[expect]]
+equals = "✓ pytest: 5 passed"

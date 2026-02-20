@@ -1,0 +1,5 @@
+┌─────────────────────────────────────────────────────────┐
+│ Prisma schema loaded from prisma/schema.prisma          │
+└─────────────────────────────────────────────────────────┘
+Environment variables loaded from .env
+✔ Generated Prisma Client (v5.9.1) to ./node_modules/@prisma/client in 67ms

@@ -1,0 +1,6 @@
+name = "test failure shows FAILED summary"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "FAILED"

@@ -1,0 +1,5 @@
+src/app.ts(10,5): error TS2322: Type 'string' is not assignable to type 'number'.
+src/utils.ts(34,12): error TS2339: Property 'foo' does not exist on type 'Bar'.
+src/components/Button.tsx(8,3): warning TS6133: 'unused' is declared but its value is never read.
+
+Found 3 errors in 3 files.
