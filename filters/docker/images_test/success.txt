@@ -1,0 +1,4 @@
+REPOSITORY          TAG       IMAGE ID       CREATED         SIZE
+ubuntu              22.04     1234567890ab   2 weeks ago     77.8MB
+nginx               latest    abcdef123456   3 weeks ago     187MB
+postgres            15        fedcba654321   1 month ago     412MB

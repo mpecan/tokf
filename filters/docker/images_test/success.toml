@@ -1,0 +1,9 @@
+name = "image list passes through"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "REPOSITORY"
+
+[[expect]]
+contains = "nginx"

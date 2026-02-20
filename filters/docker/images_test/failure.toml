@@ -1,0 +1,6 @@
+name = "daemon error shows tail"
+inline = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+exit_code = 1
+
+[[expect]]
+contains = "Cannot connect"
