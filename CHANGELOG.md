@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.6](https://github.com/mpecan/tokf/compare/tokf-v0.1.5...tokf-v0.1.6) (2026-02-20)
+
+
+### Features
+
+* **config:** basename matching + transparent global flag interception ([#55](https://github.com/mpecan/tokf/issues/55)) ([86ee7b5](https://github.com/mpecan/tokf/commit/86ee7b55fb50ad8bd539464ba06495357cfc1e9e))
+* **filter:** add docker build and compose filters ([#50](https://github.com/mpecan/tokf/issues/50)) ([44bffe8](https://github.com/mpecan/tokf/commit/44bffe811881548597a12f8f2598232ae5ada15f))
+* **filter:** add Gradle build/test/dependencies filters ([#54](https://github.com/mpecan/tokf/issues/54)) ([029cacb](https://github.com/mpecan/tokf/commit/029cacb1a6672fd4fdd71967e50b3bb31aa02c2a))
+* **filter:** output cleanup flags — strip_ansi, trim_lines, strip_empty_lines, collapse_empty_lines ([#46](https://github.com/mpecan/tokf/issues/46)) ([#47](https://github.com/mpecan/tokf/issues/47)) ([9bdf69b](https://github.com/mpecan/tokf/commit/9bdf69bd2896d6886bbebf46a09d725dd7239e1b))
+* **history:** store raw and filtered outputs for debugging ([#52](https://github.com/mpecan/tokf/issues/52)) ([d193109](https://github.com/mpecan/tokf/commit/d193109a1515a98b50652fa499c67398a00fe393))
+
 ## [0.1.5](https://github.com/mpecan/tokf/compare/tokf-v0.1.4...tokf-v0.1.5) (2026-02-19)
 
 
