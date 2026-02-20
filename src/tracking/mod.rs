@@ -77,10 +77,14 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             input_tokens_est  INTEGER NOT NULL,
             output_tokens_est INTEGER NOT NULL,
             filter_time_ms    INTEGER NOT NULL,
-            exit_code         INTEGER NOT NULL
+            exit_code         INTEGER NOT NULL,
+            synced_to_otel_at TEXT
         );",
     )
     .context("create events table")?;
+    // Migration: add synced_to_otel_at for databases created before this column existed.
+    // Intentionally ignore error — fails harmlessly if the column already exists.
+    let _ = conn.execute_batch("ALTER TABLE events ADD COLUMN synced_to_otel_at TEXT;");
     Ok(conn)
 }
 

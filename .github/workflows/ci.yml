@@ -39,8 +39,20 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
+      - name: Clippy (otel feature)
+        run: cargo clippy --features otel -- -D warnings
+
+      - name: Clippy (otel-grpc feature)
+        run: cargo clippy --features otel-grpc -- -D warnings
+
       - name: Run tests
         run: cargo test
+
+      - name: Run tests (otel feature)
+        run: cargo test --features otel
+
+      - name: Run tests (otel-grpc feature)
+        run: cargo test --features otel-grpc
 
       - name: Verify filter test suites
         run: ./target/debug/tokf verify --require-all

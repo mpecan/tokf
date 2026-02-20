@@ -21,6 +21,32 @@ include_dir = { version = "0.7", features = ["glob"] }
 rusqlite = { version = "0.38", features = ["bundled"] }
 bincode = "1"
 mlua = { version = "0.11.6", features = ["luau", "vendored", "error-send"] }
+opentelemetry     = { version = "0.28", optional = true, features = ["metrics"] }
+opentelemetry_sdk = { version = "0.28", optional = true, features = ["metrics"] }
+opentelemetry-otlp = { version = "0.28", optional = true }
+tokio             = { version = "1", optional = true, features = ["rt-multi-thread"] }
+
+[features]
+default = []
+otel = ["otel-http"]
+otel-http = [
+  "dep:opentelemetry",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-otlp",
+  "opentelemetry-otlp/http-proto",
+  "opentelemetry-otlp/reqwest-blocking-client",
+  "opentelemetry-otlp/metrics",
+  "opentelemetry_sdk/metrics",
+]
+otel-grpc = [
+  "dep:opentelemetry",
+  "dep:opentelemetry_sdk",
+  "dep:opentelemetry-otlp",
+  "opentelemetry-otlp/grpc-tonic",
+  "opentelemetry-otlp/metrics",
+  "opentelemetry_sdk/metrics",
+  "dep:tokio",
+]
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
