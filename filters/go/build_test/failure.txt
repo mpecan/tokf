@@ -1,0 +1,4 @@
+# myproject/cmd
+./main.go:15:2: undefined: foo
+./main.go:20:10: cannot use x (variable of type string) as int
+./utils.go:8:5: declared and not used: result
