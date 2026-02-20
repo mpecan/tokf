@@ -70,36 +70,118 @@ fn extract_basename(word: &str) -> &str {
     word.rfind(['/', '\\']).map_or(word, |pos| &word[pos + 1..])
 }
 
+/// Skip flag-like tokens at the start of `words` until `target` is found.
+///
+/// Used to transparently handle global flags between a command name and its
+/// subcommand, e.g. `git -C /path log` where `-C /path` are skipped when
+/// matching against the pattern `git log`.
+///
+/// Returns the number of elements consumed from `words` **including** `target`,
+/// or `None` if `target` was not found after only flag-like tokens.
+///
+/// Skipping rules:
+/// - `--flag=value` : single token
+/// - `-f` / `--flag` followed by a non-flag, non-target word : two tokens
+/// - `-f` / `--flag` immediately before another flag or `target` : single token
+///
+/// # Ambiguity note
+///
+/// When a flag's prospective value word equals `target`, the value is **not**
+/// consumed — the target is matched at that position instead.  This means
+/// `git -C log log` matches `git log` with `words_consumed = 3`, treating the
+/// first `log` as `-C`'s value… but that is the correct interpretation: git
+/// changes to the directory named `log` and then runs `git log`.
+fn skip_flags_to_match(words: &[&str], target: &str) -> Option<usize> {
+    let mut i = 0;
+    while i < words.len() {
+        if words[i] == target {
+            return Some(i + 1);
+        }
+        if words[i].starts_with('-') {
+            if words[i].contains('=') {
+                // --flag=value: entire flag is a single token
+                i += 1;
+            } else {
+                // -f or --flag: skip the flag itself
+                i += 1;
+                // If the next word is not a flag and not our target, treat it
+                // as the flag's value argument and skip it too.
+                if i < words.len() && !words[i].starts_with('-') && words[i] != target {
+                    i += 1;
+                }
+            }
+        } else {
+            // Non-flag, non-target: cannot skip transparently
+            return None;
+        }
+    }
+    None
+}
+
 /// Returns `words_consumed` if pattern matches a prefix of `words`, else `None`.
 ///
 /// Pattern word `*` matches any single non-empty token.
 /// Trailing args beyond the pattern length are allowed (prefix semantics).
-/// The first word is matched by basename, so `/usr/bin/ls` matches pattern `ls`.
+/// The first word is matched by basename, so `/usr/bin/git` matches pattern `git`.
+///
+/// Between consecutive pattern words, flag-like tokens (`-f`, `--flag`,
+/// `--flag=value`) are skipped transparently, so `git -C /path log` matches
+/// pattern `git log`.  The returned count includes any transparently-skipped
+/// tokens, ensuring `command_args[..consumed]` still forms the full command
+/// prefix (with the global flags in-place) when the command is re-executed.
+///
+/// # Implementation note
+///
+/// `word_idx` (the position in `words`) is tracked independently of the
+/// pattern index so that transparently-skipped flag tokens advance `word_idx`
+/// without advancing the pattern position.  As a result, the returned count
+/// may exceed `pattern.split_whitespace().count()`.  This is intentional and
+/// correct: the caller uses `command_args[..consumed]` as the full command
+/// prefix, which must include the global flags.
 pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
     let pattern_words: Vec<&str> = pattern.split_whitespace().collect();
-    if pattern_words.is_empty() || words.len() < pattern_words.len() {
+    if pattern_words.is_empty() || words.is_empty() {
         return None;
     }
 
-    for (i, pword) in pattern_words.iter().enumerate() {
+    // word_idx tracks our position in `words`; it advances past both matched
+    // pattern tokens and any transparently-skipped flag tokens.
+    let mut word_idx = 0;
+
+    for (pat_idx, pword) in pattern_words.iter().enumerate() {
+        if word_idx >= words.len() {
+            return None;
+        }
+
         if *pword == "*" {
-            if words[i].is_empty() {
+            if words[word_idx].is_empty() {
                 return None;
             }
+            word_idx += 1;
         } else {
-            // For the first word, compare basenames to support path variants
-            let word_to_match = if i == 0 {
-                extract_basename(words[i])
+            // For the first word compare basenames, supporting path variants.
+            let word_to_match = if pat_idx == 0 {
+                extract_basename(words[word_idx])
             } else {
-                words[i]
+                words[word_idx]
             };
-            if word_to_match != *pword {
+
+            if word_to_match == *pword {
+                word_idx += 1;
+            } else if pat_idx > 0 {
+                // Between pattern words, try to skip over global flag tokens.
+                if let Some(advance) = skip_flags_to_match(&words[word_idx..], pword) {
+                    word_idx += advance;
+                } else {
+                    return None;
+                }
+            } else {
                 return None;
             }
         }
     }
 
-    Some(pattern_words.len())
+    Some(word_idx)
 }
 
 /// Recursively find all `.toml` files under `dir`, sorted by relative path.
@@ -252,19 +334,75 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
 }
 
 /// Build a rewrite regex pattern for a command pattern string.
-/// `*` is replaced with `\S+` to match any single non-whitespace token.
+///
+/// The generated regex mirrors the two runtime matching behaviours:
+///
+/// 1. **Basename matching** — the first word allows an optional leading path
+///    prefix (`/usr/bin/`, `./`, …), so `/usr/bin/git push` matches the
+///    pattern `git push`.
+///
+/// 2. **Transparent global flags** — between consecutive literal pattern words,
+///    flag-like tokens (`-f`, `--flag`, `--flag=value`, `-f value`) are
+///    tolerated, mirroring the logic in `skip_flags_to_match`.  The optional
+///    flag-value group `(?:\s+[^-\s]\S*)?` naturally avoids consuming the next
+///    pattern word because the NFA engine backtracks the optional group when
+///    doing so is the only way the overall regex can match.  Wildcards (`*`)
+///    use plain `\s+` between words.
+///
+/// # Examples
+///
+/// Pattern `"git log"` produces a regex that matches all of:
+/// - `git log`
+/// - `git log --oneline`
+/// - `git -C /path log`
+/// - `/usr/bin/git --no-pager -C /repo log --oneline`
 pub fn command_pattern_to_regex(pattern: &str) -> String {
-    let escaped_words: Vec<String> = pattern
-        .split_whitespace()
-        .map(|w| {
-            if w == "*" {
-                r"\S+".to_string()
+    let words: Vec<&str> = pattern.split_whitespace().collect();
+    if words.is_empty() {
+        return "^(\\s.*)?$".to_string();
+    }
+
+    let mut regex = String::from("^");
+
+    for (i, &word) in words.iter().enumerate() {
+        let word_re = if word == "*" {
+            r"\S+".to_string()
+        } else {
+            regex::escape(word)
+        };
+
+        if i == 0 {
+            if word == "*" {
+                regex.push_str(r"\S+");
             } else {
-                regex::escape(w)
+                // Allow an optional leading path prefix (e.g. `/usr/bin/` or
+                // `./`) so that `/usr/bin/git` matches the pattern `git`.
+                regex.push_str(r"(?:[^\s]*/)?");
+                regex.push_str(&word_re);
             }
-        })
-        .collect();
-    format!("^{}(\\s.*)?$", escaped_words.join(r"\ "))
+        } else if word == "*" {
+            // Wildcard: require exactly one whitespace-separated token.
+            regex.push_str(r"\s+\S+");
+        } else {
+            // Between consecutive literal words, allow any number of flag-like
+            // tokens to be skipped transparently.
+            //
+            // A flag segment is one of:
+            //   -flag=value          single token with embedded value
+            //   -flag                standalone flag (no value)
+            //   -flag <value>        flag then a separate non-flag, non-target word
+            //
+            // The optional `(?:\s+[^-\s]\S*)?` captures a flag's value
+            // argument.  When the value would consume the target pattern word,
+            // the NFA engine backtracks that optional group (making it empty)
+            // so that `\s+{word_re}` can match instead.
+            regex.push_str(r"(?:\s+-[^=\s]+(?:=[^\s]+)?(?:\s+[^-\s]\S*)?)*\s+");
+            regex.push_str(&word_re);
+        }
+    }
+
+    regex.push_str(r"(\s.*)?$");
+    regex
 }
 
 /// Extract command patterns as rewrite regex strings for a `CommandPattern`.
@@ -277,418 +415,4 @@ pub fn command_pattern_regexes(command: &CommandPattern) -> Vec<(String, String)
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use std::fs;
-
-    use tempfile::TempDir;
-
-    use super::*;
-
-    // --- pattern_specificity ---
-
-    #[test]
-    fn specificity_two_literals() {
-        assert_eq!(pattern_specificity("git push"), 2);
-    }
-
-    #[test]
-    fn specificity_wildcard_counts_less() {
-        assert_eq!(pattern_specificity("git *"), 1);
-        assert_eq!(pattern_specificity("* push"), 1);
-    }
-
-    #[test]
-    fn specificity_all_wildcards() {
-        assert_eq!(pattern_specificity("* *"), 0);
-    }
-
-    #[test]
-    fn specificity_ordering() {
-        // "git push" more specific than "git *" more specific than "* push"
-        assert!(pattern_specificity("git push") > pattern_specificity("git *"));
-        assert!(pattern_specificity("git *") == pattern_specificity("* push"));
-    }
-
-    // --- pattern_matches_prefix ---
-
-    #[test]
-    fn matches_exact() {
-        let words = ["git", "push"];
-        assert_eq!(pattern_matches_prefix("git push", &words), Some(2));
-    }
-
-    #[test]
-    fn matches_prefix_with_trailing_args() {
-        let words = ["git", "push", "origin", "main"];
-        assert_eq!(pattern_matches_prefix("git push", &words), Some(2));
-    }
-
-    #[test]
-    fn matches_wildcard() {
-        let words = ["npm", "run", "build"];
-        assert_eq!(pattern_matches_prefix("npm run *", &words), Some(3));
-    }
-
-    #[test]
-    fn no_match_different_command() {
-        let words = ["cargo", "test"];
-        assert_eq!(pattern_matches_prefix("git push", &words), None);
-    }
-
-    #[test]
-    fn no_match_too_short() {
-        let words = ["git"];
-        assert_eq!(pattern_matches_prefix("git push", &words), None);
-    }
-
-    #[test]
-    fn empty_pattern_returns_none() {
-        let words = ["git", "push"];
-        assert_eq!(pattern_matches_prefix("", &words), None);
-    }
-
-    #[test]
-    fn empty_words_returns_none() {
-        assert_eq!(pattern_matches_prefix("git push", &[]), None);
-    }
-
-    #[test]
-    fn single_word_pattern_prefix_match() {
-        assert_eq!(pattern_matches_prefix("echo", &["echo"]), Some(1));
-        assert_eq!(pattern_matches_prefix("echo", &["echo", "hello"]), Some(1));
-        assert_eq!(pattern_matches_prefix("echo", &["ls"]), None);
-    }
-
-    #[test]
-    fn wildcard_rejects_empty_token() {
-        // An empty string slice element is not a valid word match for `*`
-        assert_eq!(pattern_matches_prefix("git *", &["git", ""]), None);
-    }
-
-    #[test]
-    fn wildcard_at_start() {
-        let words = ["my-tool", "subcommand"];
-        assert_eq!(pattern_matches_prefix("* subcommand", &words), Some(2));
-    }
-
-    #[test]
-    fn hyphenated_tool_not_ambiguous() {
-        // golangci-lint run should match "golangci-lint run" but not "golangci-lint"
-        let words = ["golangci-lint", "run"];
-        assert_eq!(pattern_matches_prefix("golangci-lint run", &words), Some(2));
-        assert_eq!(pattern_matches_prefix("golangci-lint", &words), Some(1));
-    }
-
-    #[test]
-    fn basename_matching() {
-        assert_eq!(pattern_matches_prefix("ls", &["/usr/bin/ls"]), Some(1));
-        assert_eq!(
-            pattern_matches_prefix("ls -la", &["/usr/bin/ls", "-la"]),
-            Some(2)
-        );
-        assert_eq!(pattern_matches_prefix("mvnw", &["./mvnw"]), Some(1));
-        assert_eq!(
-            pattern_matches_prefix("git push", &["git", "push"]),
-            Some(2)
-        );
-        assert_eq!(pattern_matches_prefix("git /p", &["git", "/p"]), Some(2));
-        assert_eq!(pattern_matches_prefix("git f", &["git", "/p"]), None);
-    }
-
-    // --- discover_filter_files ---
-
-    #[test]
-    fn discover_flat_dir() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("a.toml"), "").unwrap();
-        fs::write(dir.path().join("b.toml"), "").unwrap();
-        fs::write(dir.path().join("not-toml.txt"), "").unwrap();
-
-        let files = discover_filter_files(dir.path());
-        assert_eq!(files.len(), 2);
-        assert!(files[0].ends_with("a.toml"));
-        assert!(files[1].ends_with("b.toml"));
-    }
-
-    #[test]
-    fn discover_nested_dirs() {
-        let dir = TempDir::new().unwrap();
-        let sub = dir.path().join("git");
-        fs::create_dir_all(&sub).unwrap();
-        fs::write(sub.join("push.toml"), "").unwrap();
-        fs::write(sub.join("status.toml"), "").unwrap();
-        fs::write(dir.path().join("root.toml"), "").unwrap();
-
-        let files = discover_filter_files(dir.path());
-        assert_eq!(files.len(), 3);
-        // sorted by path: git/push.toml, git/status.toml, root.toml
-        assert!(files[0].ends_with("git/push.toml"));
-        assert!(files[1].ends_with("git/status.toml"));
-        assert!(files[2].ends_with("root.toml"));
-    }
-
-    #[test]
-    fn discover_skips_hidden_entries() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join(".hidden.toml"), "").unwrap();
-        fs::write(dir.path().join("visible.toml"), "").unwrap();
-        let hidden_dir = dir.path().join(".hiddendir");
-        fs::create_dir_all(&hidden_dir).unwrap();
-        fs::write(hidden_dir.join("inside.toml"), "").unwrap();
-
-        let files = discover_filter_files(dir.path());
-        assert_eq!(files.len(), 1);
-        assert!(files[0].ends_with("visible.toml"));
-    }
-
-    #[test]
-    fn discover_nonexistent_dir_returns_empty() {
-        let files = discover_filter_files(Path::new("/no/such/directory/ever"));
-        assert!(files.is_empty());
-    }
-
-    // --- discover_all_filters ---
-
-    #[test]
-    fn discover_all_priority_ordering() {
-        let dir1 = TempDir::new().unwrap();
-        let dir2 = TempDir::new().unwrap();
-
-        // dir1 = priority 0 (local), dir2 = priority 1 (user)
-        fs::write(
-            dir1.path().join("my-cmd.toml"),
-            "command = \"my cmd local\"",
-        )
-        .unwrap();
-        fs::write(dir2.path().join("my-cmd.toml"), "command = \"my cmd user\"").unwrap();
-
-        let dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
-        let filters = discover_all_filters(&dirs).unwrap();
-
-        // Should have both (different command strings) plus embedded stdlib
-        assert!(filters.len() >= 2);
-        assert_eq!(filters[0].config.command.first(), "my cmd local");
-        assert_eq!(filters[0].priority, 0);
-    }
-
-    #[test]
-    fn discover_all_dedup_same_command() {
-        let dir1 = TempDir::new().unwrap();
-        let dir2 = TempDir::new().unwrap();
-
-        fs::write(dir1.path().join("a.toml"), "command = \"git push\"").unwrap();
-        fs::write(dir2.path().join("b.toml"), "command = \"git push\"").unwrap();
-
-        let dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
-        let filters = discover_all_filters(&dirs).unwrap();
-
-        // Dedup by first() — only one entry for "git push"
-        let push_entries: Vec<_> = filters
-            .iter()
-            .filter(|f| f.config.command.first() == "git push")
-            .collect();
-        assert_eq!(push_entries.len(), 1);
-        assert_eq!(push_entries[0].priority, 0);
-    }
-
-    #[test]
-    fn discover_all_specificity_ordering() {
-        let dir = TempDir::new().unwrap();
-
-        // More specific patterns should sort first within same priority
-        fs::write(dir.path().join("a.toml"), "command = \"git *\"").unwrap();
-        fs::write(dir.path().join("b.toml"), "command = \"git push\"").unwrap();
-
-        let dirs = vec![dir.path().to_path_buf()];
-        let filters = discover_all_filters(&dirs).unwrap();
-
-        // "git push" (specificity=2) should come before "git *" (specificity=1)
-        assert_eq!(filters[0].config.command.first(), "git push");
-        assert_eq!(filters[1].config.command.first(), "git *");
-    }
-
-    #[test]
-    fn discover_all_skips_invalid_toml() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("bad.toml"), "not valid [[[").unwrap();
-        fs::write(dir.path().join("good.toml"), "command = \"my tool\"").unwrap();
-
-        let filters = discover_all_filters(&[dir.path().to_path_buf()]).unwrap();
-        let my_tool: Vec<_> = filters
-            .iter()
-            .filter(|f| f.config.command.first() == "my tool")
-            .collect();
-        assert_eq!(my_tool.len(), 1);
-    }
-
-    #[test]
-    fn discover_all_hyphenated_tool_not_ambiguous() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("golangci-lint.toml"),
-            "command = \"golangci-lint run\"",
-        )
-        .unwrap();
-
-        let filters = discover_all_filters(&[dir.path().to_path_buf()]).unwrap();
-        let golangci: Vec<_> = filters
-            .iter()
-            .filter(|f| f.config.command.first() == "golangci-lint run")
-            .collect();
-        assert_eq!(golangci.len(), 1);
-        let words = ["golangci-lint", "run"];
-        assert_eq!(golangci[0].matches(&words), Some(2));
-
-        let words_no_match = ["golangci", "lint", "run"];
-        assert_eq!(golangci[0].matches(&words_no_match), None);
-    }
-
-    // --- embedded stdlib tests ---
-
-    #[test]
-    fn embedded_stdlib_non_empty() {
-        let entries: Vec<_> = STDLIB.find("**/*.toml").unwrap().collect();
-        assert!(
-            entries.len() >= 10,
-            "expected at least 10 embedded filters, got {}",
-            entries.len()
-        );
-    }
-
-    #[test]
-    fn all_embedded_toml_parse() {
-        for entry in STDLIB.find("**/*.toml").unwrap() {
-            if let DirEntry::File(file) = entry {
-                let content = file.contents_utf8().unwrap_or("");
-                assert!(
-                    toml::from_str::<FilterConfig>(content).is_ok(),
-                    "failed to parse embedded filter: {}",
-                    file.path().display()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn embedded_filters_in_discover_with_no_dirs() {
-        // With empty search dirs, only embedded stdlib is returned
-        let filters = discover_all_filters(&[]).unwrap();
-        assert!(
-            !filters.is_empty(),
-            "expected embedded stdlib filters with no search dirs"
-        );
-        let has_git_push = filters
-            .iter()
-            .any(|f| f.config.command.first() == "git push");
-        assert!(has_git_push, "expected git push in embedded stdlib");
-    }
-
-    #[test]
-    fn local_filter_shadows_embedded() {
-        let dir = TempDir::new().unwrap();
-        // Override git push locally
-        fs::write(
-            dir.path().join("push.toml"),
-            "command = \"git push\"\n# local override",
-        )
-        .unwrap();
-
-        let dirs = vec![dir.path().to_path_buf()];
-        let filters = discover_all_filters(&dirs).unwrap();
-
-        // "git push" should appear exactly once (local shadows embedded)
-        let push_entries: Vec<_> = filters
-            .iter()
-            .filter(|f| f.config.command.first() == "git push")
-            .collect();
-        assert_eq!(push_entries.len(), 1);
-        assert_eq!(push_entries[0].priority, 0); // local priority
-    }
-
-    // --- try_load_filter ---
-
-    #[test]
-    fn test_load_valid_toml() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("test.toml");
-        fs::write(&path, "command = \"echo hello\"").unwrap();
-
-        let config = try_load_filter(&path).unwrap().unwrap();
-        assert_eq!(config.command.first(), "echo hello");
-    }
-
-    #[test]
-    fn test_load_invalid_toml() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("bad.toml");
-        fs::write(&path, "not valid toml [[[").unwrap();
-
-        assert!(try_load_filter(&path).is_err());
-    }
-
-    #[test]
-    fn test_load_nonexistent_returns_none() {
-        let path = PathBuf::from("/tmp/nonexistent-tokf-test-file.toml");
-        assert!(try_load_filter(&path).unwrap().is_none());
-    }
-
-    #[test]
-    fn test_load_real_stdlib_filter() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("filters/git/push.toml");
-        let config = try_load_filter(&path).unwrap().unwrap();
-        assert_eq!(config.command.first(), "git push");
-    }
-
-    // --- default_search_dirs ---
-
-    #[test]
-    fn test_default_search_dirs_non_empty_and_starts_with_local() {
-        let dirs = default_search_dirs();
-        assert!(!dirs.is_empty());
-        assert!(
-            dirs[0].is_absolute(),
-            "first dir should be absolute, got: {:?}",
-            dirs[0]
-        );
-        assert!(
-            dirs[0].ends_with(".tokf/filters"),
-            "first dir should end with .tokf/filters, got: {:?}",
-            dirs[0]
-        );
-    }
-
-    #[test]
-    fn test_default_search_dirs_only_local_and_user() {
-        let dirs = default_search_dirs();
-        // Should have at most 2 dirs: local (.tokf/filters) and user config
-        // The binary-adjacent path has been removed; embedded stdlib replaces it.
-        assert!(
-            dirs.len() <= 2,
-            "expected at most 2 search dirs (local + user), got {}: {:?}",
-            dirs.len(),
-            dirs
-        );
-    }
-
-    // --- command_pattern_to_regex ---
-
-    #[test]
-    fn regex_from_literal_pattern() {
-        let r = command_pattern_to_regex("git push");
-        let re = regex::Regex::new(&r).unwrap();
-        assert!(re.is_match("git push"));
-        assert!(re.is_match("git push origin main"));
-        assert!(!re.is_match("git status"));
-    }
-
-    #[test]
-    fn regex_from_wildcard_pattern() {
-        let r = command_pattern_to_regex("npm run *");
-        let re = regex::Regex::new(&r).unwrap();
-        assert!(re.is_match("npm run build"));
-        assert!(re.is_match("npm run test --watch"));
-        assert!(!re.is_match("npm run"));
-        assert!(!re.is_match("npm install"));
-    }
-}
+mod tests;
