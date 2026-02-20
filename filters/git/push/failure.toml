@@ -1,0 +1,9 @@
+name = "failed push (no remote) passes through error lines"
+fixture = "tests/fixtures/git_push_failure.txt"
+exit_code = 128
+
+[[expect]]
+contains = "fatal"
+
+[[expect]]
+contains = "repository"

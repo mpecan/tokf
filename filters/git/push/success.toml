@@ -1,0 +1,6 @@
+name = "success extracts branch name"
+fixture = "tests/fixtures/git_push_success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok \u2713 main"

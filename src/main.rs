@@ -1,6 +1,7 @@
 mod cache_cmd;
 mod gain;
 mod history_cmd;
+mod verify_cmd;
 
 use std::path::Path;
 
@@ -113,6 +114,17 @@ enum Commands {
     History {
         #[command(subcommand)]
         action: HistoryAction,
+    },
+    /// Run declarative test suites for filters
+    Verify {
+        /// Filter name to test (e.g. "cargo/build"). Omit to run all.
+        filter: Option<String>,
+        /// List available test suites without running them
+        #[arg(long)]
+        list: bool,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -506,6 +518,9 @@ fn main() {
             by_filter,
             json,
         } => gain::cmd_gain(*daily, *by_filter, *json),
+        Commands::Verify { filter, list, json } => {
+            verify_cmd::cmd_verify(filter.as_deref(), *list, *json)
+        }
         Commands::History { action } => match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),

@@ -1,0 +1,12 @@
+name = "success output is a single clean line with no compile noise"
+fixture = "tests/fixtures/cargo_build_success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok \u2713"
+
+[[expect]]
+not_contains = "Compiling"
+
+[[expect]]
+not_contains = "Checking"

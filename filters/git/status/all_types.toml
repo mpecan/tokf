@@ -1,0 +1,6 @@
+name = "all status types show correct counts and labels"
+fixture = "tests/fixtures/git_status_all_types.txt"
+exit_code = 0
+
+[[expect]]
+equals = "feature-branch\n  added: 1\n  added+modified: 1\n  conflict: 1\n  deleted: 1\n  deleted (unstaged): 1\n  modified: 2\n  modified (staged+unstaged): 1\n  modified (unstaged): 1\n  renamed: 1\n  untracked: 2"
