@@ -1,0 +1,9 @@
+name = "pnpm add strips progress and shows result"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "Progress:"
+
+[[expect]]
+contains = "lodash"

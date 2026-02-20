@@ -1,0 +1,6 @@
+name = "script failure shows tail"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "ERR"

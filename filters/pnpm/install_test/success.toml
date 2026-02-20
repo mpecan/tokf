@@ -1,0 +1,9 @@
+name = "pnpm install strips progress lines"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "Progress:"
+
+[[expect]]
+contains = "Done"

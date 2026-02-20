@@ -1,0 +1,9 @@
+name = "next build strips info lines"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "info  -"
+
+[[expect]]
+contains = "Compiled"
