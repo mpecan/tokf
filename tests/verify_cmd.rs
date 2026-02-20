@@ -116,7 +116,7 @@ fn verify_failing_expectation_exits_1() {
     let dir = tempfile::tempdir().unwrap();
     let filters_dir = dir.path().join("filters").join("mytest");
     fs::create_dir_all(&filters_dir).unwrap();
-    let suite_dir = dir.path().join("filters").join("mytest").join("cmd");
+    let suite_dir = dir.path().join("filters").join("mytest").join("cmd_test");
     fs::create_dir_all(&suite_dir).unwrap();
 
     // Write a minimal filter TOML

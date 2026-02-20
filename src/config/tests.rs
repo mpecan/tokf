@@ -473,18 +473,12 @@ fn all_embedded_toml_parse() {
     for entry in STDLIB.find("**/*.toml").unwrap() {
         if let DirEntry::File(file) = entry {
             let path = file.path();
-            // Skip test case files: a file living inside a suite directory, identified by
-            // the presence of a sibling <parent_dir_name>.toml next to its parent directory.
-            // This mirrors the logic in verify_cmd::collect_suites().
-            if let (Some(parent), Some(grandparent)) =
-                (path.parent(), path.parent().and_then(Path::parent))
+            // Skip test case files: those living inside a <stem>_test/ suite directory.
+            if path
+                .components()
+                .any(|c| c.as_os_str().to_string_lossy().ends_with("_test"))
             {
-                if let Some(dir_name) = parent.file_name() {
-                    let sibling = grandparent.join(format!("{}.toml", dir_name.to_string_lossy()));
-                    if STDLIB.get_file(sibling).is_some() {
-                        continue;
-                    }
-                }
+                continue;
             }
             let content = file.contents_utf8().unwrap_or("");
             assert!(

@@ -136,7 +136,8 @@ fn collect_suites(root: &Path, dir: &Path, result: &mut Vec<DiscoveredSuite>) {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            let suite_dir = path.parent().unwrap_or(dir).join(&stem);
+            // Suite directories use the convention <stem>_test/ adjacent to <stem>.toml.
+            let suite_dir = path.parent().unwrap_or(dir).join(format!("{stem}_test"));
             if suite_dir.is_dir() {
                 let filter_name = path
                     .strip_prefix(root)
@@ -154,15 +155,11 @@ fn collect_suites(root: &Path, dir: &Path, result: &mut Vec<DiscoveredSuite>) {
                 });
             }
         } else if path.is_dir() {
-            // Only recurse if this dir does NOT have a sibling .toml with the same name
-            // (which would make it a suite directory rather than a filter category dir).
-            let sibling_toml = path
-                .parent()
-                .unwrap_or(dir)
-                .join(format!("{name_str}.toml"));
-            if !sibling_toml.exists() {
-                collect_suites(root, &path, result);
+            // Skip _test directories — they are suite dirs, not filter category dirs.
+            if name_str.ends_with("_test") {
+                continue;
             }
+            collect_suites(root, &path, result);
         }
     }
 }
