@@ -1,0 +1,6 @@
+name = "rejected push shows pull hint"
+fixture = "tests/fixtures/git_push_rejected.txt"
+exit_code = 1
+
+[[expect]]
+equals = "\u2717 push rejected (try pulling first)"

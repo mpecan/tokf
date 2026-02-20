@@ -1,0 +1,6 @@
+name = "normal repo shows branch and grouped file counts"
+fixture = "tests/fixtures/git_status_normal.txt"
+exit_code = 0
+
+[[expect]]
+equals = "main\n  modified: 1\n  modified (unstaged): 1\n  untracked: 2"

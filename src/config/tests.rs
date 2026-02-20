@@ -472,11 +472,19 @@ fn embedded_stdlib_non_empty() {
 fn all_embedded_toml_parse() {
     for entry in STDLIB.find("**/*.toml").unwrap() {
         if let DirEntry::File(file) = entry {
+            let path = file.path();
+            // Skip test case files: those living inside a <stem>_test/ suite directory.
+            if path
+                .components()
+                .any(|c| c.as_os_str().to_string_lossy().ends_with("_test"))
+            {
+                continue;
+            }
             let content = file.contents_utf8().unwrap_or("");
             assert!(
                 toml::from_str::<FilterConfig>(content).is_ok(),
                 "failed to parse embedded filter: {}",
-                file.path().display()
+                path.display()
             );
         }
     }

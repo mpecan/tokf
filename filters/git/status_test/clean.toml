@@ -1,0 +1,9 @@
+name = "clean repo shows branch and clean message"
+fixture = "tests/fixtures/git_status_clean.txt"
+exit_code = 0
+
+[[expect]]
+contains = "clean"
+
+[[expect]]
+starts_with = "main"
