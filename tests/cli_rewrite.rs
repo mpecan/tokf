@@ -342,6 +342,49 @@ fn rewrite_golangci_lint_alone_passthrough() {
     );
 }
 
+// --- Piped command passthrough ---
+
+#[test]
+fn rewrite_piped_command_passes_through_unchanged() {
+    // cargo/test filter would normally match "cargo test", but piped commands are left alone.
+    let result = rewrite_with_stdlib("cargo test | grep FAILED");
+    assert_eq!(result, "cargo test | grep FAILED");
+}
+
+#[test]
+fn rewrite_git_diff_pipe_head_passes_through() {
+    // The exact motivating example from issue #92.
+    let result = rewrite_with_stdlib("git diff HEAD | head -5");
+    assert_eq!(result, "git diff HEAD | head -5");
+}
+
+#[test]
+fn rewrite_multi_pipe_chain_passes_through() {
+    let result = rewrite_with_stdlib("git status | grep M | wc -l");
+    assert_eq!(result, "git status | grep M | wc -l");
+}
+
+#[test]
+fn rewrite_logical_or_still_rewritten_integration() {
+    let result = rewrite_with_stdlib("cargo test || echo failed");
+    assert_eq!(result, "tokf run cargo test || echo failed");
+}
+
+#[test]
+fn rewrite_logical_or_then_pipe_passes_through() {
+    // Mixed: || followed by |. The bare pipe takes priority and the whole command passes through.
+    let result = rewrite_with_stdlib("cargo test || cargo test | grep ok");
+    assert_eq!(result, "cargo test || cargo test | grep ok");
+}
+
+#[test]
+fn rewrite_quoted_pipe_not_treated_as_pipe() {
+    // A pipe inside single quotes is not a shell pipe operator — the command should be rewritten.
+    // git/log has a stdlib filter and the | is inside quotes so no bare pipe is detected.
+    let result = rewrite_with_stdlib("git log --grep='feat|fix'");
+    assert_eq!(result, "tokf run git log --grep='feat|fix'");
+}
+
 // --- Exit code ---
 
 #[test]

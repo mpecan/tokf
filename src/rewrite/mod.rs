@@ -7,7 +7,7 @@ pub(crate) mod user_config;
 use std::path::PathBuf;
 
 use crate::config;
-use compound::split_compound;
+use compound::{has_bare_pipe, split_compound};
 use rules::{apply_rules, should_skip};
 use types::{RewriteConfig, RewriteRule};
 
@@ -52,9 +52,14 @@ pub(crate) fn build_rules_from_filters(search_dirs: &[PathBuf]) -> Vec<RewriteRu
 }
 
 /// Top-level rewrite function. Orchestrates skip check, user rules, and filter rules.
-pub fn rewrite(command: &str) -> String {
+pub fn rewrite(command: &str, verbose: bool) -> String {
     let user_config = load_user_config().unwrap_or_default();
-    rewrite_with_config(command, &user_config, &config::default_search_dirs())
+    rewrite_with_config(
+        command,
+        &user_config,
+        &config::default_search_dirs(),
+        verbose,
+    )
 }
 
 /// Testable version with explicit config and search dirs.
@@ -62,6 +67,7 @@ pub(crate) fn rewrite_with_config(
     command: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
+    verbose: bool,
 ) -> String {
     let user_skip_patterns = user_config
         .skip
@@ -72,9 +78,19 @@ pub(crate) fn rewrite_with_config(
         return command.to_string();
     }
 
+    // User rules run before the pipe guard so they can explicitly wrap piped commands.
     let user_result = apply_rules(&user_config.rewrite, command);
     if user_result != command {
         return user_result;
+    }
+
+    // Auto-filter rules are skipped for piped commands — downstream tools (grep, wc, tee, …)
+    // depend on the raw output and would be broken by tokf wrapping.
+    if has_bare_pipe(command) {
+        if verbose {
+            eprintln!("[tokf] skipping rewrite: command contains a pipe");
+        }
+        return command.to_string();
     }
 
     let filter_rules = build_rules_from_filters(search_dirs);
@@ -271,7 +287,7 @@ mod tests {
         .unwrap();
 
         let config = RewriteConfig::default();
-        let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()]);
+        let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
         assert_eq!(result, "tokf run git status");
     }
 
@@ -285,8 +301,12 @@ mod tests {
         .unwrap();
 
         let config = RewriteConfig::default();
-        let result =
-            rewrite_with_config("git status --short", &config, &[dir.path().to_path_buf()]);
+        let result = rewrite_with_config(
+            "git status --short",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
         assert_eq!(result, "tokf run git status --short");
     }
 
@@ -294,8 +314,12 @@ mod tests {
     fn rewrite_builtin_skip_tokf() {
         let dir = TempDir::new().unwrap();
         let config = RewriteConfig::default();
-        let result =
-            rewrite_with_config("tokf run git status", &config, &[dir.path().to_path_buf()]);
+        let result = rewrite_with_config(
+            "tokf run git status",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
         assert_eq!(result, "tokf run git status");
     }
 
@@ -303,7 +327,12 @@ mod tests {
     fn rewrite_no_match_passthrough() {
         let dir = TempDir::new().unwrap();
         let config = RewriteConfig::default();
-        let result = rewrite_with_config("unknown-cmd foo", &config, &[dir.path().to_path_buf()]);
+        let result = rewrite_with_config(
+            "unknown-cmd foo",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
         assert_eq!(result, "unknown-cmd foo");
     }
 
@@ -323,7 +352,7 @@ mod tests {
                 replace: "custom-wrapper {0}".to_string(),
             }],
         };
-        let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()]);
+        let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
         assert_eq!(result, "custom-wrapper git status");
     }
 
@@ -342,7 +371,7 @@ mod tests {
             }),
             rewrite: vec![],
         };
-        let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()]);
+        let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
         assert_eq!(result, "git status");
     }
 
@@ -356,6 +385,7 @@ mod tests {
             "git -C /path log --oneline",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
         assert_eq!(result, "tokf run git -C /path log --oneline");
     }
@@ -374,6 +404,7 @@ mod tests {
             "/usr/bin/git status --short",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
         assert_eq!(result, "tokf run /usr/bin/git status --short");
     }
@@ -388,6 +419,7 @@ mod tests {
             "/usr/bin/git --no-pager -C /repo log --oneline",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
         assert_eq!(
             result,
@@ -412,6 +444,7 @@ mod tests {
             "git add foo && git status",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
         assert_eq!(r, "tokf run git add foo && tokf run git status");
     }
@@ -430,12 +463,13 @@ mod tests {
             "unknown-cmd && git status",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
         assert_eq!(r, "unknown-cmd && tokf run git status");
     }
 
     #[test]
-    fn rewrite_compound_pipe_not_split() {
+    fn rewrite_pipe_command_passes_through() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
 
@@ -444,9 +478,67 @@ mod tests {
             "git diff HEAD | head -5",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
-        // Pipe is NOT a chain separator — the whole string is one segment.
-        assert_eq!(r, "tokf run git diff HEAD | head -5");
+        // Piped command passes through unchanged — caller is doing their own processing.
+        assert_eq!(r, "git diff HEAD | head -5");
+    }
+
+    #[test]
+    fn rewrite_pipe_with_matching_filter_not_rewritten() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("cargo-test.toml"),
+            "command = \"cargo test\"",
+        )
+        .unwrap();
+
+        let config = RewriteConfig::default();
+        let r = rewrite_with_config(
+            "cargo test | grep FAILED",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        assert_eq!(r, "cargo test | grep FAILED");
+    }
+
+    #[test]
+    fn rewrite_logical_or_still_rewritten() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("cargo-test.toml"),
+            "command = \"cargo test\"",
+        )
+        .unwrap();
+
+        let config = RewriteConfig::default();
+        let r = rewrite_with_config(
+            "cargo test || echo failed",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        assert_eq!(r, "tokf run cargo test || echo failed");
+    }
+
+    #[test]
+    fn rewrite_multi_pipe_chain_not_rewritten() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("git-status.toml"),
+            "command = \"git status\"",
+        )
+        .unwrap();
+
+        let config = RewriteConfig::default();
+        let r = rewrite_with_config(
+            "git status | grep M | wc -l",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        assert_eq!(r, "git status | grep M | wc -l");
     }
 
     #[test]
@@ -457,7 +549,85 @@ mod tests {
             "unknown-a && unknown-b",
             &config,
             &[dir.path().to_path_buf()],
+            false,
         );
         assert_eq!(r, "unknown-a && unknown-b");
+    }
+
+    #[test]
+    fn rewrite_user_rule_wraps_piped_command() {
+        // User-configured rules run before the pipe guard, so they CAN wrap piped commands.
+        // Using {0}{rest} captures both the matched portion and the remainder (including the pipe).
+        let dir = TempDir::new().unwrap();
+        let config = RewriteConfig {
+            skip: None,
+            rewrite: vec![RewriteRule {
+                match_pattern: "^cargo test".to_string(),
+                replace: "my-wrapper {0}{rest}".to_string(),
+            }],
+        };
+        let r = rewrite_with_config(
+            "cargo test | grep FAILED",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        assert_eq!(r, "my-wrapper cargo test| grep FAILED");
+    }
+
+    #[test]
+    fn rewrite_skip_pattern_wins_over_pipe_guard() {
+        // should_skip is checked first; a piped command that matches a skip pattern
+        // returns early before the pipe guard even runs.
+        let dir = TempDir::new().unwrap();
+        let config = RewriteConfig {
+            skip: Some(types::SkipConfig {
+                patterns: vec!["^git".to_string()],
+            }),
+            rewrite: vec![],
+        };
+        let r = rewrite_with_config(
+            "git status | grep M",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        assert_eq!(r, "git status | grep M");
+    }
+
+    #[test]
+    fn rewrite_compound_then_pipe_not_rewritten() {
+        // A command with both a chain operator (&&) AND a pipe: the pipe guard fires
+        // because has_bare_pipe sees the | regardless of the &&.
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("git-add.toml"), "command = \"git add\"").unwrap();
+        fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
+
+        let config = RewriteConfig::default();
+        let r = rewrite_with_config(
+            "git add . && git diff | head -5",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        // The whole command has a bare pipe, so nothing is rewritten.
+        assert_eq!(r, "git add . && git diff | head -5");
+    }
+
+    #[test]
+    fn rewrite_quoted_pipe_is_not_a_bare_pipe() {
+        // A pipe inside quotes is not a shell pipe operator — the command should be rewritten.
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("grep.toml"), "command = \"grep\"").unwrap();
+
+        let config = RewriteConfig::default();
+        let r = rewrite_with_config(
+            "grep -E 'foo|bar' file.txt",
+            &config,
+            &[dir.path().to_path_buf()],
+            false,
+        );
+        // No bare pipe — the filter rule should fire.
+        assert_eq!(r, "tokf run grep -E 'foo|bar' file.txt");
     }
 }
