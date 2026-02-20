@@ -1,0 +1,6 @@
+name = "commit stat passes through unchanged"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "file changed"

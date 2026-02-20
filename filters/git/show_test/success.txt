@@ -1,0 +1,8 @@
+commit a1b2c3d4e5f6789012345678901234567890abcd
+Author: User <user@example.com>
+Date:   Fri Feb 20 12:00:00 2026 +0100
+
+    feat(filter): add new filter
+
+ src/filter/mod.rs | 10 ++++++++++
+ 1 file changed, 10 insertions(+), 0 deletions(-)

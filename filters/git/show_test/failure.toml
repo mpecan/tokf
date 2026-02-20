@@ -1,0 +1,6 @@
+name = "bad revision shows fatal error"
+inline = "fatal: bad object 'nonexistent'\nfatal: the remote end hung up unexpectedly"
+exit_code = 128
+
+[[expect]]
+contains = "fatal:"

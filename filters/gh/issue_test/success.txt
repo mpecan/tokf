@@ -1,0 +1,3 @@
+#42	Bug: memory leak in filter engine	OPEN	bug	about 2 days ago
+#38	feat: add JSON output mode	OPEN	enhancement	about 5 days ago
+#35	docs: improve README examples	CLOSED	docs	about 1 week ago

@@ -1,0 +1,3 @@
+#69	refactor: replace Rust filter tests with declarative verify suites	OPEN	about 2 hours ago
+#67	feat: add pnpm support	OPEN	about 1 day ago
+#61	feat: add tokf verify command	MERGED	about 3 days ago

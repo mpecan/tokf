@@ -1,0 +1,9 @@
+name = "PR list passes through"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "#"
+
+[[expect]]
+contains = "OPEN"
