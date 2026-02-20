@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/mpecan/tokf/compare/tokf-v0.1.6...tokf-v0.1.7) (2026-02-20)
+
+
+### Bug Fixes
+
+* **cli:** add --version flag to tokf ([#58](https://github.com/mpecan/tokf/issues/58)) ([6527cbc](https://github.com/mpecan/tokf/commit/6527cbc896c828406a0c90a6aade06dd7ab077ef))
+
 ## [0.1.6](https://github.com/mpecan/tokf/compare/tokf-v0.1.5...tokf-v0.1.6) (2026-02-20)
 
 
