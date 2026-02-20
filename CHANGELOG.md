@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.8](https://github.com/mpecan/tokf/compare/tokf-v0.1.7...tokf-v0.1.8) (2026-02-20)
+
+
+### Features
+
+* **cli:** add tokf verify — declarative filter test suites ([#57](https://github.com/mpecan/tokf/issues/57)) ([#61](https://github.com/mpecan/tokf/issues/61)) ([78fc4c9](https://github.com/mpecan/tokf/commit/78fc4c9057ba88288cab7c7c91cf7a7d720f2527))
+* **verify:** add --require-all flag to fail on uncovered filters ([#77](https://github.com/mpecan/tokf/issues/77)) ([b7adfd8](https://github.com/mpecan/tokf/commit/b7adfd851de1a8cf4f92b953eb84390770737ceb))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate toml to 0.9 ([#64](https://github.com/mpecan/tokf/issues/64)) ([091d0ea](https://github.com/mpecan/tokf/commit/091d0ea2c613eae88f762d2b9f2ba297023c06cc))
+* **deps:** update rust crate toml to v1 ([#68](https://github.com/mpecan/tokf/issues/68)) ([e0d5745](https://github.com/mpecan/tokf/commit/e0d57451ed3f8d615a7312c2dcadcb45a2d461f1))
+
+
+### Code Refactoring
+
+* **filter:** replace Rust filter tests with declarative verify suites ([#69](https://github.com/mpecan/tokf/issues/69)) ([46e5591](https://github.com/mpecan/tokf/commit/46e5591c3b93b942ceccae95eecda30e30f60fe3))
+
 ## [0.1.7](https://github.com/mpecan/tokf/compare/tokf-v0.1.6...tokf-v0.1.7) (2026-02-20)
 
 
