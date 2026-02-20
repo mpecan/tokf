@@ -1,0 +1,12 @@
+name = "dependencies output removes task header and (*) lines, preserves tree"
+fixture = "output.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "> Task"
+
+[[expect]]
+not_contains = "(*)"
+
+[[expect]]
+contains = "compileClasspath"

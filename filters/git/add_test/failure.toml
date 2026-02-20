@@ -1,0 +1,6 @@
+name = "non-fatal failure passes through via tail"
+inline = "error: something\nwent wrong\ndetails here"
+exit_code = 1
+
+[[expect]]
+equals = "error: something\nwent wrong\ndetails here"

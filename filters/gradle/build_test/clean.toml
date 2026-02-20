@@ -1,0 +1,9 @@
+name = "clean build shows time, hides PASSED lines"
+fixture = "clean.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "ok ✓ "
+
+[[expect]]
+not_contains = " PASSED"

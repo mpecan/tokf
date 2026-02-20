@@ -1,5 +1,5 @@
 name = "success output is a single clean line with no compile noise"
-fixture = "tests/fixtures/cargo_build_success.txt"
+fixture = "success.txt"
 exit_code = 0
 
 [[expect]]

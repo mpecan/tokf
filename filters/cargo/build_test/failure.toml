@@ -1,5 +1,5 @@
 name = "failure output shows error lines"
-fixture = "tests/fixtures/cargo_build_failure.txt"
+fixture = "failure.txt"
 exit_code = 1
 
 [[expect]]

@@ -1,0 +1,6 @@
+name = "fatal revision error shows friendly message"
+fixture = "fatal.txt"
+exit_code = 128
+
+[[expect]]
+equals = "✗ fatal: bad revision 'nonexistent'"

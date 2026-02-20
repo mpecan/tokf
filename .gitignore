@@ -2,3 +2,4 @@
 .DS_Store
 .tokf/
 tarpaulin-report.html
+.idea/

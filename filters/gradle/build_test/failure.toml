@@ -1,0 +1,9 @@
+name = "failed build shows FAILED and BUILD FAILED, hides noise"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "BUILD FAILED"
+
+[[expect]]
+not_contains = "UpsertEntity.kt"

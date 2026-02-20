@@ -1,0 +1,12 @@
+name = "failed build shows ERROR and package name"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "ERROR"
+
+[[expect]]
+contains = "Unable to locate package nodejss"
+
+[[expect]]
+not_contains = "transferring"

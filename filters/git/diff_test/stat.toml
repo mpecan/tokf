@@ -1,0 +1,6 @@
+name = "diff stat output passes through unchanged"
+fixture = "stat.txt"
+exit_code = 0
+
+[[expect]]
+contains = "files changed"

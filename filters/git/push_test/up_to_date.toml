@@ -1,5 +1,5 @@
 name = "up-to-date push shows friendly message"
-fixture = "tests/fixtures/git_push_up_to_date.txt"
+fixture = "up_to_date.txt"
 exit_code = 0
 
 [[expect]]

@@ -1,0 +1,6 @@
+name = "successful commit extracts short hash"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓ abc1234"

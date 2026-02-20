@@ -1,0 +1,6 @@
+name = "failed commit shows tail output"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "nothing to commit"

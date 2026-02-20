@@ -1,5 +1,5 @@
 name = "rejected push shows pull hint"
-fixture = "tests/fixtures/git_push_rejected.txt"
+fixture = "rejected.txt"
 exit_code = 1
 
 [[expect]]

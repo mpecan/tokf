@@ -1,5 +1,5 @@
 name = "normal repo shows branch and grouped file counts"
-fixture = "tests/fixtures/git_status_normal.txt"
+fixture = "normal.txt"
 exit_code = 0
 
 [[expect]]

@@ -1,0 +1,15 @@
+name = "successful build shows CACHED and FINISHED, hides noise"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "FINISHED"
+
+[[expect]]
+contains = "CACHED"
+
+[[expect]]
+not_contains = "transferring"
+
+[[expect]]
+not_contains = "[internal]"

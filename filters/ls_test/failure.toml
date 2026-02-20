@@ -1,0 +1,6 @@
+name = "failed ls shows error message"
+inline = "ls: cannot access '/no/such/dir': No such file or directory"
+exit_code = 1
+
+[[expect]]
+contains = "No such file"

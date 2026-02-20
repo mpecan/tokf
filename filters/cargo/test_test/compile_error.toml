@@ -1,0 +1,6 @@
+name = "compile error falls back to tail output"
+fixture = "compile_error.txt"
+exit_code = 101
+
+[[expect]]
+contains = "could not compile"
