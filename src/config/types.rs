@@ -51,7 +51,26 @@ pub struct FilterConfig {
     /// The command this filter applies to (e.g. "git push").
     pub command: CommandPattern,
 
-    /// Optional override command to actually run instead.
+    /// Optional override command to run instead of the matched command prefix.
+    ///
+    /// Use `{args}` to interpolate the user-supplied arguments that appear
+    /// **after** the matched pattern words.  Example:
+    /// ```toml
+    /// run = "git log --oneline --no-decorate -n 20 {args}"
+    /// ```
+    ///
+    /// # Transparent global flags and `run`
+    ///
+    /// When the runtime matches a command like `git -C /repo log`, the global
+    /// flags (`-C /repo`) are skipped during pattern matching but are **not**
+    /// included in `{args}`.  `{args}` only contains arguments that appear
+    /// *after* the fully-matched pattern (`log` in this case), so the override
+    /// command receives `{args} = []` and the `-C /repo` flags are silently
+    /// dropped.
+    ///
+    /// If your override command must honour such flags, include them explicitly
+    /// in the `run` value or omit `run` to let tokf reconstruct the command
+    /// from `command_args[..words_consumed]` (which *does* preserve the flags).
     pub run: Option<String>,
 
     /// Patterns for lines to skip (applied before section parsing).

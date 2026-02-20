@@ -15,8 +15,14 @@ pub use user_config::load_user_config;
 
 /// Build rewrite rules by discovering installed filters (recursive walk).
 ///
-/// For each filter pattern, generates a rule:
-/// `^{command_pattern}(\s.*)?$` → `tokf run {0}`
+/// For each filter pattern, generates a rewrite rule via
+/// [`config::command_pattern_to_regex`].  The resulting regexes honour both
+/// runtime matching behaviours:
+///
+/// - **Basename matching** — the first word allows an optional leading path
+///   prefix, so `/usr/bin/git push` rewrites to `tokf run /usr/bin/git push`.
+/// - **Transparent global flags** — flag-like tokens between pattern words are
+///   tolerated, so `git -C /repo log` rewrites to `tokf run git -C /repo log`.
 ///
 /// Handles `CommandPattern::Multiple` (one rule per pattern string) and
 /// wildcards (`*` → `\S+` in the regex).
@@ -338,6 +344,55 @@ mod tests {
         };
         let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()]);
         assert_eq!(result, "git status");
+    }
+
+    #[test]
+    fn rewrite_transparent_global_flag() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("git-log.toml"), "command = \"git log\"").unwrap();
+
+        let config = RewriteConfig::default();
+        let result = rewrite_with_config(
+            "git -C /path log --oneline",
+            &config,
+            &[dir.path().to_path_buf()],
+        );
+        assert_eq!(result, "tokf run git -C /path log --oneline");
+    }
+
+    #[test]
+    fn rewrite_basename_full_path() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("git-status.toml"),
+            "command = \"git status\"",
+        )
+        .unwrap();
+
+        let config = RewriteConfig::default();
+        let result = rewrite_with_config(
+            "/usr/bin/git status --short",
+            &config,
+            &[dir.path().to_path_buf()],
+        );
+        assert_eq!(result, "tokf run /usr/bin/git status --short");
+    }
+
+    #[test]
+    fn rewrite_basename_and_transparent_flags_combined() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("git-log.toml"), "command = \"git log\"").unwrap();
+
+        let config = RewriteConfig::default();
+        let result = rewrite_with_config(
+            "/usr/bin/git --no-pager -C /repo log --oneline",
+            &config,
+            &[dir.path().to_path_buf()],
+        );
+        assert_eq!(
+            result,
+            "tokf run /usr/bin/git --no-pager -C /repo log --oneline"
+        );
     }
 
     // --- rewrite_with_config (compound commands) ---
