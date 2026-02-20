@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/mpecan/tokf/compare/tokf-v0.1.8...tokf-v0.2.0) (2026-02-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rewrite:** piped commands (e.g. `cargo test | grep FAILED`) are no longer rewritten by the hook or `tokf rewrite`. Previously they were wrapped with `tokf run`, causing downstream tools to receive filtered rather than raw output. The public `rewrite(command, verbose)` function signature now requires a `verbose: bool` argument.
+
+### Bug Fixes
+
+* **rewrite:** skip auto-rewrite for piped commands ([#93](https://github.com/mpecan/tokf/issues/93)) ([6b2e350](https://github.com/mpecan/tokf/commit/6b2e35012f27d7d295e4c48123e07400706e7019))
+
 ## [0.1.8](https://github.com/mpecan/tokf/compare/tokf-v0.1.7...tokf-v0.1.8) (2026-02-20)
 
 
