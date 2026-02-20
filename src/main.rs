@@ -19,6 +19,7 @@ use tokf::tracking;
 #[derive(Parser)]
 #[command(
     name = "tokf",
+    version,
     about = "Token filter — compress command output for LLM context"
 )]
 #[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
