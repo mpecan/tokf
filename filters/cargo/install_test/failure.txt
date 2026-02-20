@@ -1,0 +1,3 @@
+    Updating crates.io index
+  Downloading crates ...
+error: could not find `Cargo.toml` in `/tmp` or any parent directory

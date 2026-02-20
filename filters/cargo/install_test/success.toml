@@ -1,0 +1,6 @@
+name = "successful install shows installed package line"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "Installed package"

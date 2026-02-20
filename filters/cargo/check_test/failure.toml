@@ -1,0 +1,6 @@
+name = "type error shows compiler output"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "error[E"
