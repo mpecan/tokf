@@ -1,0 +1,10 @@
+command = ["gradle dependencies", "./gradlew dependencies"]
+strip_ansi = true
+
+skip = [
+  "^> Task :\\S+$",
+  "^\\d+ actionable tasks:",
+  " \\(\\*\\)$",
+  "^\\(\\*\\) -",
+  "^Downloading https?://",
+]
