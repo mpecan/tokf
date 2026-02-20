@@ -1,0 +1,6 @@
+name = "successful check collapses to single line"
+inline = "   Checking tokf v0.1.7 (/home/user/tokf)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.45s"
+exit_code = 0
+
+[[expect]]
+equals = "✓ cargo check: ok"

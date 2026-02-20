@@ -1,0 +1,6 @@
+name = "installation failure shows error tail"
+fixture = "failure.txt"
+exit_code = 101
+
+[[expect]]
+contains = "error"

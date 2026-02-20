@@ -1,0 +1,7 @@
+    Updating crates.io index
+  Downloading crates ...
+  Downloaded ripgrep v14.1.0
+   Compiling memchr v2.7.1
+   Compiling ripgrep v14.1.0
+    Installing ripgrep v14.1.0
+     Installed package `ripgrep v14.1.0` at /home/user/.cargo/bin/rg
