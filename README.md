@@ -154,6 +154,25 @@ output = "ok ✓"
 tail = 10
 ```
 
+### Command matching
+
+tokf matches commands against filter patterns using two built-in behaviours:
+
+**Basename matching** — the first word of a pattern is compared by basename, so a filter with `command = "git push"` will also match `/usr/bin/git push` or `./git push`.  This works automatically; no special pattern syntax is required.
+
+**Transparent global flags** — flag-like tokens between the command name and a subcommand keyword are skipped during matching.  A filter for `git log` will match all of:
+
+```
+git log
+git -C /path log
+git --no-pager -C /path log --oneline
+/usr/bin/git --no-pager -C /path log
+```
+
+The skipped flags are preserved in the command that actually runs — they are only bypassed during the pattern match.
+
+> **Note on `run` override and transparent flags:** If a filter sets a `run` field, transparent global flags are *not* included in `{args}`.  Only the arguments that appear after the matched pattern words are available as `{args}`.
+
 ### Common fields
 
 ```toml
