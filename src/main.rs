@@ -1,5 +1,6 @@
 mod cache_cmd;
 mod gain;
+mod history_cmd;
 
 use std::path::Path;
 
@@ -8,6 +9,7 @@ use clap::{Parser, Subcommand};
 use tokf::config;
 use tokf::config::types::FilterConfig;
 use tokf::filter;
+use tokf::history;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
@@ -107,6 +109,11 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Manage filtered output history
+    History {
+        #[command(subcommand)]
+        action: HistoryAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -128,6 +135,41 @@ enum HookAction {
         /// Install globally (~/.config/tokf) instead of project-local (.tokf)
         #[arg(long)]
         global: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum HistoryAction {
+    /// List recent history entries (current project by default)
+    List {
+        /// Number of entries to show (default: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+        /// Show history from all projects
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Show details of a specific history entry
+    Show {
+        /// Entry ID to show
+        id: i64,
+    },
+    /// Search history by command or output content (current project by default)
+    Search {
+        /// Search query (searches command, raw output, and filtered output)
+        query: String,
+        /// Maximum number of results to show (default: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+        /// Search across all projects
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Clear history entries (current project by default)
+    Clear {
+        /// Clear history for all projects — this is destructive and cannot be undone
+        #[arg(short, long)]
+        all: bool,
     },
 }
 
@@ -224,6 +266,10 @@ fn record_run(
     }
 }
 
+// NOTE: cmd_run integrates command resolution, execution, output rendering, tracking,
+// and history recording. Splitting would require threading 5+ values through helpers.
+// Approved to exceed the 60-line limit.
+#[allow(clippy::too_many_lines)]
 fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
     let (filter_cfg, words_consumed) = if cli.no_filter {
         (None, 0)
@@ -252,6 +298,8 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
             println!("{}", cmd_result.combined);
         }
         // filter_time_ms = 0: no filter was applied, not 0ms of filtering.
+        // Passthrough commands are not recorded to history: raw == filtered would
+        // waste storage and add noise with nothing useful to compare.
         record_run(command_args, None, bytes, bytes, 0, cmd_result.exit_code);
         return Ok(cmd_result.exit_code);
     };
@@ -277,6 +325,14 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         input_bytes,
         output_bytes,
         elapsed.as_millis(),
+        cmd_result.exit_code,
+    );
+
+    history::try_record(
+        &command_args.join(" "),
+        filter_name,
+        &cmd_result.combined,
+        &filtered.output,
         cmd_result.exit_code,
     );
 
@@ -450,6 +506,18 @@ fn main() {
             by_filter,
             json,
         } => gain::cmd_gain(*daily, *by_filter, *json),
+        Commands::History { action } => match action {
+            HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
+            HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),
+            HistoryAction::Search { query, limit, all } => {
+                history_cmd::cmd_history_search(query, *limit, *all)
+            }
+            HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
+        }
+        .unwrap_or_else(|e| {
+            eprintln!("[tokf] error: {e:#}");
+            1
+        }),
     };
     std::process::exit(exit_code);
 }

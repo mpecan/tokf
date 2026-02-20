@@ -1,5 +1,6 @@
 pub mod config;
 pub mod filter;
+pub mod history;
 pub mod hook;
 pub mod rewrite;
 pub mod runner;

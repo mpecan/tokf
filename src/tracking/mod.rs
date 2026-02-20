@@ -53,7 +53,10 @@ pub fn db_path() -> Option<PathBuf> {
     dirs::data_local_dir().map(|d| d.join("tokf").join("tracking.db"))
 }
 
-/// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS`.
+/// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS` for the
+/// events table.
+///
+/// To also initialize the history table, use [`crate::history::open_db`] instead.
 ///
 /// # Errors
 /// Returns an error if the directory cannot be created or the DB cannot be opened.
