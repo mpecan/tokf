@@ -96,9 +96,30 @@ tokf show git/push         # print the TOML source
 | Flag | Description |
 |---|---|
 | `--timing` | Print how long filtering took |
-| `--verbose` | Show which filter was matched |
+| `--verbose` | Show which filter was matched (also explains skipped rewrites) |
 | `--no-filter` | Pass output through without filtering |
 | `--no-cache` | Bypass the filter discovery cache |
+
+### Piped commands
+
+Commands containing a shell pipe (`|`) are passed through unchanged by the hook and `tokf rewrite`. This is intentional — downstream tools like `grep`, `wc -l`, and `tee` depend on the raw output and would produce wrong results if tokf transformed it first.
+
+```sh
+# These are NOT rewritten — tokf leaves them alone:
+git diff HEAD | head -5
+cargo test | grep FAILED
+kubectl get pods | grep Running | wc -l
+```
+
+If you want tokf to wrap a specific piped command, add an explicit rule to `.tokf/rewrites.toml`:
+
+```toml
+[[rewrite]]
+match = "^cargo test \\| tee"
+replace = "tokf run {0}"
+```
+
+Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see why a command was not rewritten.
 
 ---
 

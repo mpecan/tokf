@@ -506,7 +506,7 @@ fn main() {
             1
         }),
         Commands::Ls => cmd_ls(cli.verbose),
-        Commands::Rewrite { command } => cmd_rewrite(command),
+        Commands::Rewrite { command } => cmd_rewrite(command, cli.verbose),
         Commands::Which { command } => cmd_which(command, cli.verbose),
         Commands::Show { filter } => cmd_show(filter),
         Commands::Hook { action } => match action {
@@ -584,8 +584,8 @@ fn cmd_show(filter: &str) -> i32 {
     0
 }
 
-fn cmd_rewrite(command: &str) -> i32 {
-    let result = rewrite::rewrite(command);
+fn cmd_rewrite(command: &str, verbose: bool) -> i32 {
+    let result = rewrite::rewrite(command, verbose);
     println!("{result}");
     0
 }

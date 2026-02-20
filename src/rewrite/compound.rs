@@ -27,6 +27,51 @@ pub fn split_compound(input: &str) -> Vec<(String, String)> {
     parts
 }
 
+/// Returns `true` if `command` contains a bare pipe (`|`) not part of `||`.
+///
+/// Tracks single- and double-quote state so pipes inside quoted strings (e.g.
+/// `grep -E 'foo|bar'` or `echo "a | b"`) are not counted as shell pipe operators.
+/// Backslash escapes inside double-quoted strings are honoured.
+///
+/// Used to skip auto-rewriting commands where downstream processing (e.g. `grep`,
+/// `wc -l`, `tee`) depends on the raw output. Note: user-configured rewrite rules
+/// run before this check and can still wrap piped commands explicitly.
+pub fn has_bare_pipe(command: &str) -> bool {
+    let bytes = command.as_bytes();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_single {
+            if b == b'\'' {
+                in_single = false;
+            }
+        } else if in_double {
+            if b == b'\\' && i + 1 < bytes.len() {
+                i += 1; // skip the escaped character
+            } else if b == b'"' {
+                in_double = false;
+            }
+        } else {
+            match b {
+                b'\'' => in_single = true,
+                b'"' => in_double = true,
+                b'|' => {
+                    let prev_pipe = i > 0 && bytes[i - 1] == b'|';
+                    let next_pipe = i + 1 < bytes.len() && bytes[i + 1] == b'|';
+                    if !prev_pipe && !next_pipe {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -65,5 +110,73 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0].0, "git add .");
         assert_eq!(parts[1].0, "git status");
+    }
+
+    #[test]
+    fn has_bare_pipe_single_pipe() {
+        assert!(has_bare_pipe("git diff HEAD | head -5"));
+    }
+
+    #[test]
+    fn has_bare_pipe_multi_pipe_chain() {
+        assert!(has_bare_pipe("cmd | grep foo | wc -l"));
+    }
+
+    #[test]
+    fn has_bare_pipe_logical_or_only() {
+        assert!(!has_bare_pipe("make test || cargo test"));
+    }
+
+    #[test]
+    fn has_bare_pipe_no_pipe() {
+        assert!(!has_bare_pipe("cargo build --release"));
+    }
+
+    #[test]
+    fn has_bare_pipe_mixed_or_and_pipe() {
+        assert!(has_bare_pipe("a || b | c"));
+    }
+
+    // --- quote-awareness ---
+
+    #[test]
+    fn has_bare_pipe_pipe_in_single_quotes_ignored() {
+        assert!(!has_bare_pipe("grep -E 'foo|bar' file.txt"));
+    }
+
+    #[test]
+    fn has_bare_pipe_pipe_in_double_quotes_ignored() {
+        assert!(!has_bare_pipe(r#"echo "a | b""#));
+    }
+
+    #[test]
+    fn has_bare_pipe_escaped_quote_does_not_end_double_quote() {
+        // The \" inside the string does NOT close the double-quote context,
+        // so the | remains inside quotes and is not a bare pipe.
+        assert!(!has_bare_pipe(r#"echo "foo \" | bar""#));
+    }
+
+    #[test]
+    fn has_bare_pipe_pipe_after_closing_quote_is_bare() {
+        // The pipe is outside the quotes — it IS a bare pipe.
+        assert!(has_bare_pipe(r#"echo "hello" | grep o"#));
+    }
+
+    // --- edge cases ---
+
+    #[test]
+    fn has_bare_pipe_empty_string() {
+        assert!(!has_bare_pipe(""));
+    }
+
+    #[test]
+    fn has_bare_pipe_only_pipe() {
+        assert!(has_bare_pipe("|"));
+    }
+
+    #[test]
+    fn has_bare_pipe_bash_stderr_pipe() {
+        // |& is Bash's pipe-stderr shorthand; the leading | is still a bare pipe.
+        assert!(has_bare_pipe("cargo test |& tee log.txt"));
     }
 }

@@ -56,7 +56,7 @@ pub(crate) fn handle_json_with_config(
         return false;
     };
 
-    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs);
+    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
 
     if rewritten == command {
         return false;
