@@ -2,11 +2,11 @@ use tokf::history;
 use tokf::tracking;
 
 pub fn cmd_history_list(limit: usize) -> i32 {
-    let Some(path) = history::db_path() else {
+    let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] error: cannot determine history DB path");
         return 1;
     };
-    let conn = match tracking::open_db(&path) {
+    let conn = match history::open_db(&path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[tokf] error opening DB: {e:#}");
@@ -43,11 +43,11 @@ pub fn cmd_history_list(limit: usize) -> i32 {
 }
 
 pub fn cmd_history_show(id: i64) -> i32 {
-    let Some(path) = history::db_path() else {
+    let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] error: cannot determine history DB path");
         return 1;
     };
-    let conn = match tracking::open_db(&path) {
+    let conn = match history::open_db(&path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[tokf] error opening DB: {e:#}");
@@ -83,11 +83,11 @@ pub fn cmd_history_show(id: i64) -> i32 {
 }
 
 pub fn cmd_history_search(query: &str, limit: usize) -> i32 {
-    let Some(path) = history::db_path() else {
+    let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] error: cannot determine history DB path");
         return 1;
     };
-    let conn = match tracking::open_db(&path) {
+    let conn = match history::open_db(&path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[tokf] error opening DB: {e:#}");
@@ -124,11 +124,11 @@ pub fn cmd_history_search(query: &str, limit: usize) -> i32 {
 }
 
 pub fn cmd_history_clear() -> i32 {
-    let Some(path) = history::db_path() else {
+    let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] error: cannot determine history DB path");
         return 1;
     };
-    let conn = match tracking::open_db(&path) {
+    let conn = match history::open_db(&path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[tokf] error opening DB: {e:#}");

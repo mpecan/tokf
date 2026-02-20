@@ -44,17 +44,28 @@ pub struct FilterGain {
     pub savings_pct: f64,
 }
 
-/// Returns the DB path: `TOKF_DB_PATH` env var overrides; else
-/// `dirs::data_local_dir()/tokf/tracking.db`.
+/// Returns the DB path, in priority order:
+/// 1. `TOKF_DB_PATH` env var override
+/// 2. `.tokf/tracking.db` in the current directory (per-project), if `.tokf/` exists
+/// 3. `dirs::data_local_dir()/tokf/tracking.db` (global fallback)
 pub fn db_path() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("TOKF_DB_PATH") {
         return Some(PathBuf::from(p));
     }
+    // Per-project: use .tokf/tracking.db when the .tokf directory already exists in CWD.
+    if let Ok(cwd) = std::env::current_dir() {
+        let tokf_dir = cwd.join(".tokf");
+        if tokf_dir.is_dir() {
+            return Some(tokf_dir.join("tracking.db"));
+        }
+    }
     dirs::data_local_dir().map(|d| d.join("tokf").join("tracking.db"))
 }
 
-/// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS`.
-/// Also initializes the history table from the history module.
+/// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS` for the
+/// events table.
+///
+/// To also initialize the history table, use [`crate::history::open_db`] instead.
 ///
 /// # Errors
 /// Returns an error if the directory cannot be created or the DB cannot be opened.
@@ -79,10 +90,6 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
         );",
     )
     .context("create events table")?;
-
-    // Initialize history table
-    crate::history::init_history_table(&conn).context("init history table")?;
-
     Ok(conn)
 }
 

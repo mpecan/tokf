@@ -256,43 +256,9 @@ fn record_run(
     }
 }
 
-fn record_history_entry(
-    command_args: &[String],
-    filter_name: Option<&str>,
-    raw_output: &str,
-    filtered_output: &str,
-    exit_code: i32,
-) {
-    let Some(path) = history::db_path() else {
-        return;
-    };
-    let conn = match tracking::open_db(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            if std::env::var("TOKF_DEBUG").is_ok() {
-                eprintln!("[tokf] history error (db open): {e:#}");
-            }
-            return;
-        }
-    };
-    let command = command_args.join(" ");
-    let config = history::HistoryConfig::default();
-    if let Err(e) = history::record_history(
-        &conn,
-        &command,
-        filter_name,
-        raw_output,
-        filtered_output,
-        exit_code,
-        &config,
-    ) && std::env::var("TOKF_DEBUG").is_ok()
-    {
-        eprintln!("[tokf] history error (record): {e:#}");
-    }
-}
-
-// NOTE: This function exceeds the 60-line limit by 1 line due to history recording.
-// The additional lines are necessary for the history feature and do not harm readability.
+// NOTE: cmd_run integrates command resolution, execution, output rendering, tracking,
+// and history recording. Splitting would require threading 5+ values through helpers.
+// Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
 fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
     let (filter_cfg, words_consumed) = if cli.no_filter {
@@ -322,15 +288,9 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
             println!("{}", cmd_result.combined);
         }
         // filter_time_ms = 0: no filter was applied, not 0ms of filtering.
+        // Passthrough commands are not recorded to history: raw == filtered would
+        // waste storage and add noise with nothing useful to compare.
         record_run(command_args, None, bytes, bytes, 0, cmd_result.exit_code);
-        // Record history for passthrough (no filter)
-        record_history_entry(
-            command_args,
-            None,
-            &cmd_result.combined,
-            &cmd_result.combined,
-            cmd_result.exit_code,
-        );
         return Ok(cmd_result.exit_code);
     };
 
@@ -358,10 +318,9 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         cmd_result.exit_code,
     );
 
-    // Record history with raw and filtered outputs
-    record_history_entry(
-        command_args,
-        Some(filter_name),
+    history::try_record(
+        &command_args.join(" "),
+        filter_name,
         &cmd_result.combined,
         &filtered.output,
         cmd_result.exit_code,
