@@ -15,6 +15,7 @@ use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
 use tokf::skill;
+use tokf::telemetry;
 use tokf::tracking;
 
 #[derive(Parser)]
@@ -40,6 +41,10 @@ struct Cli {
     /// Bypass the binary config cache for this invocation
     #[arg(long, global = true)]
     no_cache: bool,
+
+    /// Export metrics via OpenTelemetry OTLP (requires --features otel)
+    #[arg(long)]
+    otel_export: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -286,7 +291,11 @@ fn record_run(
 // and history recording. Splitting would require threading 5+ values through helpers.
 // Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
-fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
+fn cmd_run(
+    command_args: &[String],
+    cli: &Cli,
+    reporter: &dyn telemetry::TelemetryReporter,
+) -> anyhow::Result<i32> {
     let (filter_cfg, words_consumed) = if cli.no_filter {
         (None, 0)
     } else {
@@ -317,6 +326,22 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         // Passthrough commands are not recorded to history: raw == filtered would
         // waste storage and add noise with nothing useful to compare.
         record_run(command_args, None, bytes, bytes, 0, cmd_result.exit_code);
+
+        #[allow(clippy::cast_possible_truncation)]
+        let line_count = cmd_result.combined.lines().count() as u64;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let token_est = (bytes / 4) as u64;
+        reporter.report(&telemetry::TelemetryEvent {
+            filter_name: None,
+            command: command_args.join(" "),
+            input_lines: line_count,
+            output_lines: line_count,
+            input_tokens: token_est,
+            output_tokens: token_est,
+            filter_duration_secs: 0.0,
+            exit_code: cmd_result.exit_code,
+            pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
+        });
         return Ok(cmd_result.exit_code);
     };
 
@@ -351,6 +376,26 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
         &filtered.output,
         cmd_result.exit_code,
     );
+
+    #[allow(clippy::cast_possible_truncation)]
+    let input_lines = cmd_result.combined.lines().count() as u64;
+    #[allow(clippy::cast_possible_truncation)]
+    let output_lines = filtered.output.lines().count() as u64;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let input_tokens = (input_bytes / 4) as u64;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let output_tokens = (output_bytes / 4) as u64;
+    reporter.report(&telemetry::TelemetryEvent {
+        filter_name: Some(filter_name.to_string()),
+        command: command_args.join(" "),
+        input_lines,
+        output_lines,
+        input_tokens,
+        output_tokens,
+        filter_duration_secs: elapsed.as_secs_f64(),
+        exit_code: cmd_result.exit_code,
+        pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
+    });
 
     Ok(cmd_result.exit_code)
 }
@@ -483,13 +528,26 @@ fn cmd_which(command: &str, verbose: bool) -> i32 {
     1
 }
 
+// Telemetry init + subcommand dispatch + shutdown added 2 lines — approved to exceed 60-line limit.
+#[allow(clippy::too_many_lines)]
 fn main() {
     let cli = Cli::parse();
+    let reporter = telemetry::init(cli.otel_export);
+    if cli.verbose {
+        match reporter.endpoint_description() {
+            Some(ref desc) => eprintln!("[tokf] telemetry: enabled (endpoint: {desc})"),
+            None if cli.otel_export => {
+                eprintln!("[tokf] telemetry: disabled (OTel feature not compiled in)");
+            }
+            None => {}
+        }
+    }
     let exit_code = match &cli.command {
-        Commands::Run { command_args } => cmd_run(command_args, &cli).unwrap_or_else(|e| {
-            eprintln!("[tokf] error: {e:#}");
-            1
-        }),
+        Commands::Run { command_args } => cmd_run(command_args, &cli, reporter.as_ref())
+            .unwrap_or_else(|e| {
+                eprintln!("[tokf] error: {e:#}");
+                1
+            }),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
         Commands::Test {
             filter_path,
@@ -541,6 +599,14 @@ fn main() {
             1
         }),
     };
+    let flushed = reporter.shutdown();
+    if cli.verbose && reporter.endpoint_description().is_some() {
+        if flushed {
+            eprintln!("[tokf] telemetry: metrics exported");
+        } else {
+            eprintln!("[tokf] telemetry: export timed out — events are in local DB");
+        }
+    }
     std::process::exit(exit_code);
 }
 
