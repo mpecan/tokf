@@ -1,0 +1,6 @@
+> myapp@1.0.0 build
+> webpack --mode production
+
+assets by status 142 KiB [emitted]
+  asset bundle.js 142 KiB [emitted] [minimized] (name: main)
+webpack 5.75.0 compiled successfully in 2340 ms

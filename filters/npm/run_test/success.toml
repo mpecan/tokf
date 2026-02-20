@@ -1,0 +1,9 @@
+name = "npm run strips package header and noise"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "@1.0.0"
+
+[[expect]]
+contains = "compiled successfully"

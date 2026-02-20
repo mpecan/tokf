@@ -1,0 +1,7 @@
+ Progress: resolved 42, reused 42, downloaded 0, added 1
+Packages: +1
++
+dependencies:
++ lodash 4.17.21
+
+Done in 892ms

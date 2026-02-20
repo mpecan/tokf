@@ -1,0 +1,11 @@
+info  - Loaded env from /app/.env
+info  - Using webpack 5. Opts in to future default behavior
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+ ✓ Linting and checking validity of types
+ ✓ Collecting page data
+ ✓ Generating static pages (3/3)
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    5.23 kB        87.2 kB
+└ ○ /about                               2.11 kB        84.1 kB

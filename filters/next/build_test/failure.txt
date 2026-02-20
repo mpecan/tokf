@@ -1,0 +1,12 @@
+info  - Loaded env from /app/.env
+info  - Using webpack 5. Opts in to future default behavior
+   Creating an optimized production build ...
+Failed to compile.
+
+./src/app/page.tsx
+Type error: Type 'string' is not assignable to type 'number'.
+
+  10 | const x: number = "hello"
+     |                   ^^^^^^^
+
+error: build failed

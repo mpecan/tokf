@@ -1,0 +1,6 @@
+name = "package not found shows error"
+inline = " ERR_PNPM_NO_MATCHING_VERSION  No matching version found for nonexistent-pkg@latest"
+exit_code = 1
+
+[[expect]]
+contains = "ERR_PNPM"

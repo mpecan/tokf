@@ -1,0 +1,10 @@
+> myapp@1.0.0 test
+> jest
+
+FAIL src/app.test.js
+  ● Test suite failed to run
+
+    Cannot find module './missing' from 'src/app.test.js'
+
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
