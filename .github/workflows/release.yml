@@ -176,3 +176,25 @@ jobs:
           git add Formula/tokf.rb
           git commit -m "chore: update tokf to v${{ steps.version.outputs.version }}"
           git push
+
+  trigger-site-rebuild:
+    name: Trigger tokf.net rebuild
+    needs: build-binaries
+    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
+          private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
+          repositories: tokf-net
+
+      - name: Dispatch rebuild
+        run: |
+          gh api repos/mpecan/tokf-net/dispatches \
+            --method POST \
+            --field event_type=tokf-release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
