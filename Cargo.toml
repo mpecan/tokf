@@ -11,7 +11,7 @@ categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-toml = "0.8"
+toml = "0.9"
 serde = { version = "1", features = ["derive"] }
 regex = "1"
 anyhow = "1"
