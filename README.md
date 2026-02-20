@@ -72,6 +72,15 @@ tokf run docker build .
 tokf test filters/git/push.toml tests/fixtures/git_push_success.txt --exit-code 0
 ```
 
+### Verify filter test suites
+
+```sh
+tokf verify                    # run all test suites
+tokf verify git/push           # run a specific suite
+tokf verify --list             # list available suites and case counts
+tokf verify --json             # output results as JSON
+```
+
 ### Explore available filters
 
 ```sh
@@ -201,6 +210,58 @@ output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 [on_failure]                  # branch for non-zero exit
 tail = 10                     # keep the last N lines
 ```
+
+### Writing test cases
+
+Filter tests live in a `<stem>_test/` directory adjacent to the filter TOML:
+
+```
+filters/
+  git/
+    push.toml          ← filter config
+    push_test/         ← test suite
+      success.toml
+      rejected.toml
+```
+
+Each test case is a TOML file specifying a fixture (inline or file path), expected exit code, and one or more `[[expect]]` assertions:
+
+```toml
+name = "rejected push shows pull hint"
+fixture = "tests/fixtures/git_push_rejected.txt"
+exit_code = 1
+
+[[expect]]
+equals = "✗ push rejected (try pulling first)"
+```
+
+For quick inline fixtures without a file:
+
+```toml
+name = "clean tree shows nothing to commit"
+inline = "## main...origin/main\n"
+exit_code = 0
+
+[[expect]]
+contains = "clean"
+```
+
+**Assertion types**:
+
+| Field | Description |
+|---|---|
+| `equals` | Output exactly equals this string |
+| `contains` | Output contains this substring |
+| `not_contains` | Output does not contain this substring |
+| `starts_with` | Output starts with this string |
+| `ends_with` | Output ends with this string |
+| `line_count` | Output has exactly N non-empty lines |
+| `matches` | Output matches this regex |
+| `not_matches` | Output does not match this regex |
+
+Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error.
+
+---
 
 ### Template pipes
 

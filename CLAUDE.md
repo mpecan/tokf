@@ -38,6 +38,7 @@ Keep commits atomic — one logical change per commit. Don't bundle unrelated ch
 - **Minimum 80% coverage, target 90%.**
 - Every module gets unit tests. Every filter gets integration tests with fixture data.
 - Fixture-driven: save real command outputs as `.txt` files in `tests/fixtures/`. Tests load fixtures, apply filters, assert on output. No dependency on external tools in tests.
+- **Declarative filter tests**: place test cases in a `<stem>_test/` directory adjacent to the filter TOML (e.g. `filters/git/push_test/` next to `filters/git/push.toml`). Each case is a TOML file with `name`, `inline` or `fixture`, `exit_code`, and `[[expect]]` blocks. Run with `tokf verify`.
 - Run `cargo test` after every meaningful change. Tests must pass before committing.
 
 ### Pragmatism
@@ -80,6 +81,9 @@ src/
   runner.rs        — Command execution, stdout/stderr capture
   output.rs        — Template rendering, variable interpolation
 filters/           — Standard library of filter configs (.toml)
+  git/
+    push.toml      — filter config
+    push_test/     — declarative test suite for git/push
 tests/
   integration/     — End-to-end tests
   fixtures/        — Sample command outputs for testing

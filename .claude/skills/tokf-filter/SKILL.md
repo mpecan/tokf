@@ -421,14 +421,54 @@ Start at the lowest level that handles the use case. Don't reach for `[[section]
 7. Write `[on_failure]` with enough context to diagnose (`tail = 20` is a safe default)
 8. Add `[fallback]` with `tail = 5` as a safety net for complex filters
 
-### Step 4: Test the filter
+### Step 4: Write test cases and verify
+
+Create a `<stem>_test/` directory adjacent to the filter TOML and add at least one test case per meaningful outcome (success, failure, edge cases):
+
+```
+filters/mytool/
+  mysubcmd.toml       ← filter config
+  mysubcmd_test/      ← test suite
+    success.toml
+    failure.toml
+```
+
+Each test case is a TOML file:
+
+```toml
+name = "success shows one clean line"
+fixture = "tests/fixtures/mytool_success.txt"  # path relative to this file, then CWD
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓"
+
+[[expect]]
+not_contains = "noise"
+```
+
+Or with an inline fixture (no file needed):
+
+```toml
+name = "known error message"
+inline = "Error: connection refused\n"
+exit_code = 1
+
+[[expect]]
+contains = "connection refused"
+```
+
+Run the suite:
 
 ```sh
-# Save example output to a fixture file
-tokf test filters/mytool/mysubcmd.toml tests/fixtures/mytool_output.txt --exit-code 0
+tokf verify mytool/mysubcmd   # run one suite
+tokf verify                   # run all suites
+```
 
-# Or run against live output
-tokf run mytool mysubcmd
+For quick one-off testing without creating test files:
+
+```sh
+tokf test filters/mytool/mysubcmd.toml tests/fixtures/mytool_output.txt --exit-code 0
 ```
 
 ### Step 5: Place and name the file correctly
@@ -616,7 +656,66 @@ tail = 5
 
 ---
 
-## Section 9 — Common Mistakes to Avoid
+## Section 9 — Writing Test Cases
+
+Every filter in the standard library has a `<stem>_test/` directory with declarative test cases. When writing or modifying a filter, write test cases alongside it.
+
+### Test case format
+
+```toml
+name = "success output is a single clean line"   # required, human-readable
+fixture = "tests/fixtures/cargo_build_success.txt"  # path to raw output file
+# inline = "some raw output\nline two"            # alternative: inline fixture
+exit_code = 0                                    # optional, default 0
+args = []                                        # optional, forwarded to filter
+
+[[expect]]
+equals = "ok ✓"          # exact match
+
+[[expect]]
+not_contains = "Compiling"  # noise must be gone
+```
+
+### Assertion types
+
+| Field | Description |
+|---|---|
+| `equals` | Output exactly equals this string |
+| `contains` | Output contains this substring |
+| `not_contains` | Output does not contain this substring |
+| `starts_with` | Output starts with this string |
+| `ends_with` | Output ends with this string |
+| `line_count` | Output has exactly N non-empty lines |
+| `matches` | Output matches this regex |
+| `not_matches` | Output does not match this regex |
+
+Every `[[expect]]` entry checks one assertion. A test case with multiple `[[expect]]` entries must pass all of them. A test case with no `[[expect]]` entries is an error.
+
+### What to test
+
+For every filter, write at least:
+- **Success case**: the happy path produces the expected one-liner or summary
+- **Failure case**: a failing exit code produces enough context to diagnose
+- **Edge cases**: cover each `match_output` branch (e.g., "up-to-date", "rejected")
+
+### Directory convention
+
+```
+filters/
+  git/
+    push.toml          ← filter config
+    push_test/         ← test suite (identified by _test suffix)
+      success.toml
+      up_to_date.toml
+      rejected.toml
+      failure.toml
+```
+
+The `_test` suffix makes suite directories immediately identifiable in file listings and distinguishes them from filter category directories.
+
+---
+
+## Section 10 — Common Mistakes to Avoid
 
 1. **Don't use `keep` when `skip` is enough.** `keep` is an allow-list — it drops everything that doesn't match. Use it only when you want to radically filter to a specific type of line.
 
