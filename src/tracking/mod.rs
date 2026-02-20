@@ -44,20 +44,11 @@ pub struct FilterGain {
     pub savings_pct: f64,
 }
 
-/// Returns the DB path, in priority order:
-/// 1. `TOKF_DB_PATH` env var override
-/// 2. `.tokf/tracking.db` in the current directory (per-project), if `.tokf/` exists
-/// 3. `dirs::data_local_dir()/tokf/tracking.db` (global fallback)
+/// Returns the DB path: `TOKF_DB_PATH` env var overrides; else
+/// `dirs::data_local_dir()/tokf/tracking.db`.
 pub fn db_path() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("TOKF_DB_PATH") {
         return Some(PathBuf::from(p));
-    }
-    // Per-project: use .tokf/tracking.db when the .tokf directory already exists in CWD.
-    if let Ok(cwd) = std::env::current_dir() {
-        let tokf_dir = cwd.join(".tokf");
-        if tokf_dir.is_dir() {
-            return Some(tokf_dir.join("tracking.db"));
-        }
     }
     dirs::data_local_dir().map(|d| d.join("tokf").join("tracking.db"))
 }
