@@ -12,6 +12,7 @@ fn temp_db() -> (TempDir, Connection) {
 }
 
 fn make_record(
+    project: &str,
     cmd: &str,
     filter: Option<&str>,
     raw: &str,
@@ -19,12 +20,45 @@ fn make_record(
     ec: i32,
 ) -> HistoryRecord {
     HistoryRecord {
+        project: project.to_owned(),
         command: cmd.to_owned(),
         filter_name: filter.map(ToOwned::to_owned),
         raw_output: raw.to_owned(),
         filtered_output: filtered.to_owned(),
         exit_code: ec,
     }
+}
+
+// --- project_root_for ---
+
+#[test]
+fn project_root_for_finds_git_dir() {
+    let dir = TempDir::new().expect("tempdir");
+    let real = dir.path().canonicalize().expect("canonicalize");
+    std::fs::create_dir(real.join(".git")).expect("create .git");
+    let subdir = real.join("src").join("components");
+    std::fs::create_dir_all(&subdir).expect("create subdir");
+
+    assert_eq!(project_root_for(&subdir), real);
+}
+
+#[test]
+fn project_root_for_finds_tokf_dir() {
+    let dir = TempDir::new().expect("tempdir");
+    let real = dir.path().canonicalize().expect("canonicalize");
+    std::fs::create_dir(real.join(".tokf")).expect("create .tokf");
+    let subdir = real.join("src");
+    std::fs::create_dir(&subdir).expect("create subdir");
+
+    assert_eq!(project_root_for(&subdir), real);
+}
+
+#[test]
+fn project_root_for_falls_back_to_dir() {
+    let dir = TempDir::new().expect("tempdir");
+    let real = dir.path().canonicalize().expect("canonicalize");
+    // No .git or .tokf — should return the input dir
+    assert_eq!(project_root_for(&real), real);
 }
 
 // --- init_history_table ---
@@ -44,13 +78,48 @@ fn init_history_table_creates_table_and_indexes() {
             |r| r.get(0),
         )
         .expect("query indexes");
-    assert!(idx_count >= 2, "expected at least 2 indexes");
+    assert!(
+        idx_count >= 3,
+        "expected at least 3 indexes (timestamp, command, project)"
+    );
 }
 
 #[test]
 fn init_history_table_idempotent() {
     let (_dir, conn) = temp_db();
     init_history_table(&conn).expect("second init — must not error");
+}
+
+#[test]
+fn init_history_table_migrates_schema_adds_project_column() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("history.db");
+    let conn = Connection::open(&path).expect("open db");
+
+    // Simulate old schema without the project column
+    conn.execute_batch(
+        "CREATE TABLE history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp       TEXT    NOT NULL,
+            command         TEXT    NOT NULL,
+            filter_name     TEXT,
+            raw_output      TEXT    NOT NULL,
+            filtered_output TEXT    NOT NULL,
+            exit_code       INTEGER NOT NULL
+        );",
+    )
+    .expect("create old schema");
+
+    init_history_table(&conn).expect("migrate");
+
+    let has_project: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('history') WHERE name='project'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("check column");
+    assert_eq!(has_project, 1, "project column must exist after migration");
 }
 
 // --- record_history ---
@@ -62,6 +131,7 @@ fn record_history_inserts_entry() {
     record_history(
         &conn,
         &make_record(
+            "/proj",
             "git status",
             Some("git-status"),
             "raw output",
@@ -85,6 +155,7 @@ fn record_history_all_fields_persisted() {
     record_history(
         &conn,
         &make_record(
+            "/myproject",
             "cargo test",
             Some("cargo-test"),
             "raw test output",
@@ -95,14 +166,32 @@ fn record_history_all_fields_persisted() {
     )
     .expect("record");
 
-    let (cmd, fname, raw, filtered, ec): (String, Option<String>, String, String, i32) = conn
+    let (proj, cmd, fname, raw, filtered, ec): (
+        String,
+        String,
+        Option<String>,
+        String,
+        String,
+        i32,
+    ) = conn
         .query_row(
-            "SELECT command, filter_name, raw_output, filtered_output, exit_code FROM history",
+            "SELECT project, command, filter_name, raw_output, filtered_output, exit_code
+             FROM history",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
         )
         .expect("select");
 
+    assert_eq!(proj, "/myproject");
     assert_eq!(cmd, "cargo test");
     assert_eq!(fname.as_deref(), Some("cargo-test"));
     assert_eq!(raw, "raw test output");
@@ -116,7 +205,7 @@ fn record_history_timestamp_iso8601() {
     let config = HistoryConfig::default();
     record_history(
         &conn,
-        &make_record("cmd", None, "raw", "filtered", 0),
+        &make_record("/p", "cmd", None, "raw", "filtered", 0),
         &config,
     )
     .expect("record");
@@ -133,33 +222,40 @@ fn record_history_timestamp_iso8601() {
 }
 
 #[test]
-fn record_history_enforces_retention_limit() {
+fn record_history_enforces_retention_per_project() {
     let (_dir, conn) = temp_db();
-    let config = HistoryConfig { retention_count: 3 };
+    let config = HistoryConfig { retention_count: 2 };
 
-    for i in 1..=5 {
+    // Insert 3 entries for proj-a — only 2 should remain
+    for i in 1..=3 {
         record_history(
             &conn,
-            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
+            &make_record("proj-a", &format!("cmd-a{i}"), None, "raw", "filtered", 0),
+            &config,
+        )
+        .expect("record");
+    }
+    // Insert 2 entries for proj-b — both should remain
+    for i in 1..=2 {
+        record_history(
+            &conn,
+            &make_record("proj-b", &format!("cmd-b{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
 
-    let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM history", [], |r| r.get(0))
-        .expect("count");
-    assert_eq!(count, 3, "should only keep last 3 entries");
+    let proj_a = list_history(&conn, 10, Some("proj-a")).expect("list proj-a");
+    assert_eq!(proj_a.len(), 2, "proj-a should have 2 (retention=2)");
+    // Oldest cmd-a1 should have been pruned
+    assert_eq!(proj_a[0].command, "cmd-a3");
+    assert_eq!(proj_a[1].command, "cmd-a2");
 
-    let commands: Vec<String> = conn
-        .prepare("SELECT command FROM history ORDER BY id ASC")
-        .expect("prepare")
-        .query_map([], |r| r.get(0))
-        .expect("query")
-        .collect::<Result<Vec<_>, _>>()
-        .expect("collect");
+    let proj_b = list_history(&conn, 10, Some("proj-b")).expect("list proj-b");
+    assert_eq!(proj_b.len(), 2, "proj-b should still have 2");
 
-    assert_eq!(commands, vec!["cmd3", "cmd4", "cmd5"]);
+    let all = list_history(&conn, 10, None).expect("list all");
+    assert_eq!(all.len(), 4, "total across projects should be 4");
 }
 
 // --- list_history ---
@@ -167,7 +263,7 @@ fn record_history_enforces_retention_limit() {
 #[test]
 fn list_history_empty_db() {
     let (_dir, conn) = temp_db();
-    let entries = list_history(&conn, 10).expect("list");
+    let entries = list_history(&conn, 10, None).expect("list");
     assert_eq!(entries.len(), 0);
 }
 
@@ -179,13 +275,13 @@ fn list_history_returns_entries_desc() {
     for i in 1..=3 {
         record_history(
             &conn,
-            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
+            &make_record("proj", &format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
 
-    let entries = list_history(&conn, 10).expect("list");
+    let entries = list_history(&conn, 10, Some("proj")).expect("list");
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].command, "cmd3");
     assert_eq!(entries[1].command, "cmd2");
@@ -200,16 +296,48 @@ fn list_history_respects_limit() {
     for i in 1..=5 {
         record_history(
             &conn,
-            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
+            &make_record("proj", &format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
 
-    let entries = list_history(&conn, 2).expect("list");
+    let entries = list_history(&conn, 2, Some("proj")).expect("list");
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].command, "cmd5");
     assert_eq!(entries[1].command, "cmd4");
+}
+
+#[test]
+fn list_history_filters_by_project() {
+    let (_dir, conn) = temp_db();
+    let config = HistoryConfig::default();
+
+    record_history(
+        &conn,
+        &make_record("proj-a", "cmd1", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+    record_history(
+        &conn,
+        &make_record("proj-b", "cmd2", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+    record_history(
+        &conn,
+        &make_record("proj-a", "cmd3", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+
+    let proj_a = list_history(&conn, 10, Some("proj-a")).expect("list");
+    assert_eq!(proj_a.len(), 2);
+    assert!(proj_a.iter().all(|e| e.project == "proj-a"));
+
+    let all = list_history(&conn, 10, None).expect("list all");
+    assert_eq!(all.len(), 3);
 }
 
 // --- get_history_entry ---
@@ -228,6 +356,7 @@ fn get_history_entry_found() {
     record_history(
         &conn,
         &make_record(
+            "/repo",
             "test cmd",
             Some("test-filter"),
             "raw data",
@@ -243,6 +372,7 @@ fn get_history_entry_found() {
         .expect("get id");
 
     let entry = get_history_entry(&conn, id).expect("get").expect("entry");
+    assert_eq!(entry.project, "/repo");
     assert_eq!(entry.command, "test cmd");
     assert_eq!(entry.filter_name.as_deref(), Some("test-filter"));
     assert_eq!(entry.raw_output, "raw data");
@@ -255,7 +385,7 @@ fn get_history_entry_found() {
 #[test]
 fn search_history_empty_db() {
     let (_dir, conn) = temp_db();
-    let entries = search_history(&conn, "test", 10).expect("search");
+    let entries = search_history(&conn, "test", 10, None).expect("search");
     assert_eq!(entries.len(), 0);
 }
 
@@ -266,24 +396,24 @@ fn search_history_by_command() {
 
     record_history(
         &conn,
-        &make_record("git status", None, "raw1", "filtered1", 0),
+        &make_record("p", "git status", None, "r1", "f1", 0),
         &config,
     )
     .expect("record");
     record_history(
         &conn,
-        &make_record("cargo test", None, "raw2", "filtered2", 0),
+        &make_record("p", "cargo test", None, "r2", "f2", 0),
         &config,
     )
     .expect("record");
     record_history(
         &conn,
-        &make_record("git push", None, "raw3", "filtered3", 0),
+        &make_record("p", "git push", None, "r3", "f3", 0),
         &config,
     )
     .expect("record");
 
-    let entries = search_history(&conn, "git", 10).expect("search");
+    let entries = search_history(&conn, "git", 10, Some("p")).expect("search");
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].command, "git push");
     assert_eq!(entries[1].command, "git status");
@@ -296,18 +426,18 @@ fn search_history_by_raw_output() {
 
     record_history(
         &conn,
-        &make_record("cmd1", None, "raw with needle", "filtered1", 0),
+        &make_record("p", "cmd1", None, "raw with needle", "filtered1", 0),
         &config,
     )
     .expect("record");
     record_history(
         &conn,
-        &make_record("cmd2", None, "raw without", "filtered2", 0),
+        &make_record("p", "cmd2", None, "raw without", "filtered2", 0),
         &config,
     )
     .expect("record");
 
-    let entries = search_history(&conn, "needle", 10).expect("search");
+    let entries = search_history(&conn, "needle", 10, Some("p")).expect("search");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].command, "cmd1");
 }
@@ -319,18 +449,18 @@ fn search_history_by_filtered_output() {
 
     record_history(
         &conn,
-        &make_record("cmd1", None, "raw1", "filtered with target", 0),
+        &make_record("p", "cmd1", None, "raw1", "filtered with target", 0),
         &config,
     )
     .expect("record");
     record_history(
         &conn,
-        &make_record("cmd2", None, "raw2", "filtered without", 0),
+        &make_record("p", "cmd2", None, "raw2", "filtered without", 0),
         &config,
     )
     .expect("record");
 
-    let entries = search_history(&conn, "target", 10).expect("search");
+    let entries = search_history(&conn, "target", 10, Some("p")).expect("search");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].command, "cmd1");
 }
@@ -343,14 +473,37 @@ fn search_history_respects_limit() {
     for i in 1..=5 {
         record_history(
             &conn,
-            &make_record(&format!("git cmd{i}"), None, "raw", "filtered", 0),
+            &make_record("p", &format!("git cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
 
-    let entries = search_history(&conn, "git", 2).expect("search");
+    let entries = search_history(&conn, "git", 2, Some("p")).expect("search");
     assert_eq!(entries.len(), 2);
+}
+
+#[test]
+fn search_history_filters_by_project() {
+    let (_dir, conn) = temp_db();
+    let config = HistoryConfig::default();
+
+    record_history(
+        &conn,
+        &make_record("proj-a", "git status", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+    record_history(
+        &conn,
+        &make_record("proj-b", "git push", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+
+    let proj_a = search_history(&conn, "git", 10, Some("proj-a")).expect("search");
+    assert_eq!(proj_a.len(), 1);
+    assert_eq!(proj_a[0].command, "git status");
 }
 
 // --- clear_history ---
@@ -363,13 +516,13 @@ fn clear_history_removes_all_entries() {
     for i in 1..=3 {
         record_history(
             &conn,
-            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
+            &make_record("p", &format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
 
-    clear_history(&conn).expect("clear");
+    clear_history(&conn, None).expect("clear");
 
     let count_after: i64 = conn
         .query_row("SELECT COUNT(*) FROM history", [], |r| r.get(0))
@@ -378,25 +531,49 @@ fn clear_history_removes_all_entries() {
 }
 
 #[test]
+fn clear_history_scopes_to_project() {
+    let (_dir, conn) = temp_db();
+    let config = HistoryConfig::default();
+
+    record_history(
+        &conn,
+        &make_record("proj-a", "cmd1", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+    record_history(
+        &conn,
+        &make_record("proj-b", "cmd2", None, "r", "f", 0),
+        &config,
+    )
+    .expect("record");
+
+    clear_history(&conn, Some("proj-a")).expect("clear proj-a");
+
+    let remaining = list_history(&conn, 10, None).expect("list all");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].project, "proj-b");
+}
+
+#[test]
 fn clear_history_resets_autoincrement() {
     let (_dir, conn) = temp_db();
     let config = HistoryConfig::default();
 
-    // Insert entries, clear, then insert again — IDs should restart from 1.
     for i in 1..=3 {
         record_history(
             &conn,
-            &make_record(&format!("before{i}"), None, "raw", "filtered", 0),
+            &make_record("p", &format!("before{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
 
-    clear_history(&conn).expect("clear");
+    clear_history(&conn, None).expect("clear all");
 
     record_history(
         &conn,
-        &make_record("after1", None, "raw", "filtered", 0),
+        &make_record("p", "after1", None, "raw", "filtered", 0),
         &config,
     )
     .expect("record after clear");
@@ -404,7 +581,7 @@ fn clear_history_resets_autoincrement() {
     let id: i64 = conn
         .query_row("SELECT id FROM history LIMIT 1", [], |r| r.get(0))
         .expect("get id");
-    assert_eq!(id, 1, "ID should restart from 1 after clear");
+    assert_eq!(id, 1, "ID should restart from 1 after clearing all");
 }
 
 // --- HistoryConfig ---
@@ -418,12 +595,11 @@ fn history_config_default_retention() {
 /// Must run serially: mutates the global process environment.
 #[test]
 #[serial]
-fn history_config_from_env_custom() {
-    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
+fn history_config_load_env_custom() {
     unsafe {
         std::env::set_var("TOKF_HISTORY_RETENTION", "5");
     }
-    let config = HistoryConfig::from_env();
+    let config = HistoryConfig::load(None);
     unsafe {
         std::env::remove_var("TOKF_HISTORY_RETENTION");
     }
@@ -433,24 +609,33 @@ fn history_config_from_env_custom() {
 /// Must run serially: mutates the global process environment.
 #[test]
 #[serial]
-fn history_config_from_env_invalid_falls_back_to_default() {
+fn history_config_load_env_invalid_falls_back_to_default() {
     unsafe {
         std::env::set_var("TOKF_HISTORY_RETENTION", "not-a-number");
     }
-    let config = HistoryConfig::from_env();
+    let config = HistoryConfig::load(None);
     unsafe {
         std::env::remove_var("TOKF_HISTORY_RETENTION");
     }
     assert_eq!(config.retention_count, 10);
 }
 
-/// Must run serially: mutates the global process environment.
 #[test]
-#[serial]
-fn history_config_from_env_unset_uses_default() {
-    unsafe {
-        std::env::remove_var("TOKF_HISTORY_RETENTION");
-    }
-    let config = HistoryConfig::from_env();
+fn history_config_load_from_project_file() {
+    let dir = TempDir::new().expect("tempdir");
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(tokf_dir.join("config.toml"), "[history]\nretention = 25\n")
+        .expect("write config");
+
+    let config = HistoryConfig::load(Some(dir.path()));
+    assert_eq!(config.retention_count, 25);
+}
+
+#[test]
+fn history_config_load_missing_file_falls_back_to_default() {
+    let dir = TempDir::new().expect("tempdir");
+    // No .tokf/config.toml and no env var
+    let config = HistoryConfig::load(Some(dir.path()));
     assert_eq!(config.retention_count, 10);
 }
