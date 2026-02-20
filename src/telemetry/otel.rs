@@ -266,7 +266,7 @@ fn build_provider(config: &TelemetryConfig) -> anyhow::Result<SdkMeterProvider> 
     Ok(provider)
 }
 
-#[cfg(all(test, feature = "otel"))]
+#[cfg(all(test, any(feature = "otel", feature = "otel-grpc")))]
 mod tests {
     use opentelemetry_sdk::metrics::{ManualReader, SdkMeterProvider};
 

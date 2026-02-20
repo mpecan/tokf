@@ -2,15 +2,15 @@
 //!
 //! Entirely opt-in: disabled by default. Enable at runtime via
 //! `TOKF_TELEMETRY_ENABLED=true` (or the `--otel-export` flag) together with a
-//! compiled `--features otel` binary.  When disabled the [`NoopReporter`] is
-//! used, which has zero runtime cost.
+//! compiled `--features otel` (HTTP) or `--features otel-grpc` binary.
+//! When disabled the [`NoopReporter`] is used, which has zero runtime cost.
 //!
 //! The source of truth for every invocation is the local `SQLite` database (see
 //! `tracking` module). OpenTelemetry export is a best-effort real-time replica.
 
 pub mod config;
 
-#[cfg(feature = "otel")]
+#[cfg(any(feature = "otel", feature = "otel-grpc"))]
 mod otel;
 
 /// Data emitted per command invocation to the telemetry backend.
@@ -64,7 +64,7 @@ impl TelemetryReporter for NoopReporter {
 /// If `otel_export_requested` is `true` the config's `enabled` flag is forced on.
 /// Returns a `NoopReporter` when:
 /// - telemetry is disabled in both flags and config, or
-/// - the binary was not compiled with `--features otel`, or
+/// - the binary was not compiled with `--features otel` or `--features otel-grpc`, or
 /// - OTLP initialisation fails (with a warning printed to stderr).
 pub fn init(otel_export_requested: bool) -> Box<dyn TelemetryReporter> {
     let mut cfg = config::load();
@@ -77,7 +77,7 @@ pub fn init(otel_export_requested: bool) -> Box<dyn TelemetryReporter> {
     init_enabled(otel_export_requested, &cfg)
 }
 
-#[cfg(feature = "otel")]
+#[cfg(any(feature = "otel", feature = "otel-grpc"))]
 fn init_enabled(_requested: bool, cfg: &config::TelemetryConfig) -> Box<dyn TelemetryReporter> {
     match otel::OtelReporter::new(cfg) {
         Ok(reporter) => Box::new(reporter),
@@ -88,10 +88,12 @@ fn init_enabled(_requested: bool, cfg: &config::TelemetryConfig) -> Box<dyn Tele
     }
 }
 
-#[cfg(not(feature = "otel"))]
+#[cfg(not(any(feature = "otel", feature = "otel-grpc")))]
 fn init_enabled(requested: bool, _cfg: &config::TelemetryConfig) -> Box<dyn TelemetryReporter> {
     if requested {
-        eprintln!("[tokf] warning: OTel support not compiled in (need --features otel)");
+        eprintln!(
+            "[tokf] warning: OTel support not compiled in (need --features otel or otel-grpc)"
+        );
     }
     Box::new(NoopReporter)
 }
@@ -148,8 +150,8 @@ mod tests {
         assert!(NoopReporter.shutdown());
     }
 
-    /// When compiled without the `otel` feature, requesting OTel export falls back to NoopReporter.
-    #[cfg(not(feature = "otel"))]
+    /// When compiled without any otel feature, requesting OTel export falls back to NoopReporter.
+    #[cfg(not(any(feature = "otel", feature = "otel-grpc")))]
     #[test]
     fn test_init_without_otel_feature_returns_noop() {
         let reporter = init(true); // otel_export_requested=true, but feature not compiled in
