@@ -1,0 +1,6 @@
+name = "no errors collapses to single line"
+inline = ""
+exit_code = 0
+
+[[expect]]
+equals = "✓ TypeScript: ok"

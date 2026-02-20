@@ -1,0 +1,10 @@
+┌─────────────────────────────────────────────────────────┐
+│ Prisma schema loaded from prisma/schema.prisma          │
+└─────────────────────────────────────────────────────────┘
+Environment variables loaded from .env
+error: Schema parsing error
+  --> schema.prisma:10
+  |
+10|   unknown_field String
+  |
+  Attribute not known: "@unknown_field"

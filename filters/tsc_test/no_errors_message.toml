@@ -1,0 +1,6 @@
+name = "found 0 errors message shows no errors variant"
+inline = "Found 0 errors in 10 files."
+exit_code = 0
+
+[[expect]]
+equals = "✓ TypeScript: no errors"

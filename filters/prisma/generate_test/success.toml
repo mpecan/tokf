@@ -1,0 +1,6 @@
+name = "generate extracts client version"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "✓ Generated"
