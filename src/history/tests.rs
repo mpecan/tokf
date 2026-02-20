@@ -1,5 +1,6 @@
 use super::*;
 use rusqlite::Connection;
+use serial_test::serial;
 use tempfile::TempDir;
 
 fn temp_db() -> (TempDir, Connection) {
@@ -10,18 +11,32 @@ fn temp_db() -> (TempDir, Connection) {
     (dir, conn)
 }
 
+fn make_record(
+    cmd: &str,
+    filter: Option<&str>,
+    raw: &str,
+    filtered: &str,
+    ec: i32,
+) -> HistoryRecord {
+    HistoryRecord {
+        command: cmd.to_owned(),
+        filter_name: filter.map(ToOwned::to_owned),
+        raw_output: raw.to_owned(),
+        filtered_output: filtered.to_owned(),
+        exit_code: ec,
+    }
+}
+
 // --- init_history_table ---
 
 #[test]
 fn init_history_table_creates_table_and_indexes() {
     let (_dir, conn) = temp_db();
-    // Verify table exists
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM history", [], |r| r.get(0))
         .expect("query");
     assert_eq!(count, 0);
 
-    // Verify indexes exist
     let idx_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name LIKE 'idx_history_%'",
@@ -46,11 +61,13 @@ fn record_history_inserts_entry() {
     let config = HistoryConfig::default();
     record_history(
         &conn,
-        "git status",
-        Some("git-status"),
-        "raw output",
-        "filtered output",
-        0,
+        &make_record(
+            "git status",
+            Some("git-status"),
+            "raw output",
+            "filtered output",
+            0,
+        ),
         &config,
     )
     .expect("record");
@@ -67,11 +84,13 @@ fn record_history_all_fields_persisted() {
     let config = HistoryConfig::default();
     record_history(
         &conn,
-        "cargo test",
-        Some("cargo-test"),
-        "raw test output",
-        "filtered test output",
-        42,
+        &make_record(
+            "cargo test",
+            Some("cargo-test"),
+            "raw test output",
+            "filtered test output",
+            42,
+        ),
         &config,
     )
     .expect("record");
@@ -95,7 +114,12 @@ fn record_history_all_fields_persisted() {
 fn record_history_timestamp_iso8601() {
     let (_dir, conn) = temp_db();
     let config = HistoryConfig::default();
-    record_history(&conn, "cmd", None, "raw", "filtered", 0, &config).expect("record");
+    record_history(
+        &conn,
+        &make_record("cmd", None, "raw", "filtered", 0),
+        &config,
+    )
+    .expect("record");
 
     let ts: String = conn
         .query_row("SELECT timestamp FROM history", [], |r| r.get(0))
@@ -113,15 +137,10 @@ fn record_history_enforces_retention_limit() {
     let (_dir, conn) = temp_db();
     let config = HistoryConfig { retention_count: 3 };
 
-    // Insert 5 entries
     for i in 1..=5 {
         record_history(
             &conn,
-            &format!("cmd{i}"),
-            None,
-            "raw",
-            "filtered",
-            0,
+            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
@@ -132,7 +151,6 @@ fn record_history_enforces_retention_limit() {
         .expect("count");
     assert_eq!(count, 3, "should only keep last 3 entries");
 
-    // Verify the oldest entries were deleted (should keep most recent 3 by ID)
     let commands: Vec<String> = conn
         .prepare("SELECT command FROM history ORDER BY id ASC")
         .expect("prepare")
@@ -161,11 +179,7 @@ fn list_history_returns_entries_desc() {
     for i in 1..=3 {
         record_history(
             &conn,
-            &format!("cmd{i}"),
-            None,
-            "raw",
-            "filtered",
-            0,
+            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
@@ -173,7 +187,6 @@ fn list_history_returns_entries_desc() {
 
     let entries = list_history(&conn, 10).expect("list");
     assert_eq!(entries.len(), 3);
-    // Most recent first
     assert_eq!(entries[0].command, "cmd3");
     assert_eq!(entries[1].command, "cmd2");
     assert_eq!(entries[2].command, "cmd1");
@@ -187,11 +200,7 @@ fn list_history_respects_limit() {
     for i in 1..=5 {
         record_history(
             &conn,
-            &format!("cmd{i}"),
-            None,
-            "raw",
-            "filtered",
-            0,
+            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
@@ -218,11 +227,13 @@ fn get_history_entry_found() {
     let config = HistoryConfig::default();
     record_history(
         &conn,
-        "test cmd",
-        Some("test-filter"),
-        "raw data",
-        "filtered data",
-        5,
+        &make_record(
+            "test cmd",
+            Some("test-filter"),
+            "raw data",
+            "filtered data",
+            5,
+        ),
         &config,
     )
     .expect("record");
@@ -253,13 +264,27 @@ fn search_history_by_command() {
     let (_dir, conn) = temp_db();
     let config = HistoryConfig::default();
 
-    record_history(&conn, "git status", None, "raw1", "filtered1", 0, &config).expect("record");
-    record_history(&conn, "cargo test", None, "raw2", "filtered2", 0, &config).expect("record");
-    record_history(&conn, "git push", None, "raw3", "filtered3", 0, &config).expect("record");
+    record_history(
+        &conn,
+        &make_record("git status", None, "raw1", "filtered1", 0),
+        &config,
+    )
+    .expect("record");
+    record_history(
+        &conn,
+        &make_record("cargo test", None, "raw2", "filtered2", 0),
+        &config,
+    )
+    .expect("record");
+    record_history(
+        &conn,
+        &make_record("git push", None, "raw3", "filtered3", 0),
+        &config,
+    )
+    .expect("record");
 
     let entries = search_history(&conn, "git", 10).expect("search");
     assert_eq!(entries.len(), 2);
-    // Most recent first
     assert_eq!(entries[0].command, "git push");
     assert_eq!(entries[1].command, "git status");
 }
@@ -271,15 +296,16 @@ fn search_history_by_raw_output() {
 
     record_history(
         &conn,
-        "cmd1",
-        None,
-        "raw with needle",
-        "filtered1",
-        0,
+        &make_record("cmd1", None, "raw with needle", "filtered1", 0),
         &config,
     )
     .expect("record");
-    record_history(&conn, "cmd2", None, "raw without", "filtered2", 0, &config).expect("record");
+    record_history(
+        &conn,
+        &make_record("cmd2", None, "raw without", "filtered2", 0),
+        &config,
+    )
+    .expect("record");
 
     let entries = search_history(&conn, "needle", 10).expect("search");
     assert_eq!(entries.len(), 1);
@@ -293,15 +319,16 @@ fn search_history_by_filtered_output() {
 
     record_history(
         &conn,
-        "cmd1",
-        None,
-        "raw1",
-        "filtered with target",
-        0,
+        &make_record("cmd1", None, "raw1", "filtered with target", 0),
         &config,
     )
     .expect("record");
-    record_history(&conn, "cmd2", None, "raw2", "filtered without", 0, &config).expect("record");
+    record_history(
+        &conn,
+        &make_record("cmd2", None, "raw2", "filtered without", 0),
+        &config,
+    )
+    .expect("record");
 
     let entries = search_history(&conn, "target", 10).expect("search");
     assert_eq!(entries.len(), 1);
@@ -316,11 +343,7 @@ fn search_history_respects_limit() {
     for i in 1..=5 {
         record_history(
             &conn,
-            &format!("git cmd{i}"),
-            None,
-            "raw",
-            "filtered",
-            0,
+            &make_record(&format!("git cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
@@ -340,20 +363,11 @@ fn clear_history_removes_all_entries() {
     for i in 1..=3 {
         record_history(
             &conn,
-            &format!("cmd{i}"),
-            None,
-            "raw",
-            "filtered",
-            0,
+            &make_record(&format!("cmd{i}"), None, "raw", "filtered", 0),
             &config,
         )
         .expect("record");
     }
-
-    let count_before: i64 = conn
-        .query_row("SELECT COUNT(*) FROM history", [], |r| r.get(0))
-        .expect("count");
-    assert_eq!(count_before, 3);
 
     clear_history(&conn).expect("clear");
 
@@ -363,10 +377,80 @@ fn clear_history_removes_all_entries() {
     assert_eq!(count_after, 0);
 }
 
+#[test]
+fn clear_history_resets_autoincrement() {
+    let (_dir, conn) = temp_db();
+    let config = HistoryConfig::default();
+
+    // Insert entries, clear, then insert again — IDs should restart from 1.
+    for i in 1..=3 {
+        record_history(
+            &conn,
+            &make_record(&format!("before{i}"), None, "raw", "filtered", 0),
+            &config,
+        )
+        .expect("record");
+    }
+
+    clear_history(&conn).expect("clear");
+
+    record_history(
+        &conn,
+        &make_record("after1", None, "raw", "filtered", 0),
+        &config,
+    )
+    .expect("record after clear");
+
+    let id: i64 = conn
+        .query_row("SELECT id FROM history LIMIT 1", [], |r| r.get(0))
+        .expect("get id");
+    assert_eq!(id, 1, "ID should restart from 1 after clear");
+}
+
 // --- HistoryConfig ---
 
 #[test]
 fn history_config_default_retention() {
     let config = HistoryConfig::default();
+    assert_eq!(config.retention_count, 10);
+}
+
+/// Must run serially: mutates the global process environment.
+#[test]
+#[serial]
+fn history_config_from_env_custom() {
+    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
+    unsafe {
+        std::env::set_var("TOKF_HISTORY_RETENTION", "5");
+    }
+    let config = HistoryConfig::from_env();
+    unsafe {
+        std::env::remove_var("TOKF_HISTORY_RETENTION");
+    }
+    assert_eq!(config.retention_count, 5);
+}
+
+/// Must run serially: mutates the global process environment.
+#[test]
+#[serial]
+fn history_config_from_env_invalid_falls_back_to_default() {
+    unsafe {
+        std::env::set_var("TOKF_HISTORY_RETENTION", "not-a-number");
+    }
+    let config = HistoryConfig::from_env();
+    unsafe {
+        std::env::remove_var("TOKF_HISTORY_RETENTION");
+    }
+    assert_eq!(config.retention_count, 10);
+}
+
+/// Must run serially: mutates the global process environment.
+#[test]
+#[serial]
+fn history_config_from_env_unset_uses_default() {
+    unsafe {
+        std::env::remove_var("TOKF_HISTORY_RETENTION");
+    }
+    let config = HistoryConfig::from_env();
     assert_eq!(config.retention_count, 10);
 }
