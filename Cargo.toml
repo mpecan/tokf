@@ -6,7 +6,7 @@ description = "Config-driven CLI tool that compresses command output before it r
 license = "MIT"
 repository = "https://github.com/mpecan/tokf"
 homepage = "https://tokf.net"
-keywords = ["llm", "cli", "filter", "output", "tokens"]
+keywords = ["llm", "cli", "tokens", "ai", "context-window"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
