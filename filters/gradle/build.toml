@@ -1,0 +1,17 @@
+command = ["gradle build", "./gradlew build"]
+strip_ansi = true
+collapse_empty_lines = true
+
+skip = [
+  "\\s+(UP-TO-DATE|NO-SOURCE|SKIPPED|FROM-CACHE)$",
+  "^> Task :\\S+$",
+  " PASSED$",
+  "^\\d+ actionable tasks:",
+  "^Downloading https?://",
+]
+
+[on_success]
+extract = { pattern = "BUILD SUCCESSFUL in (.+)", output = "ok ✓ {1}" }
+
+[on_failure]
+tail = 20

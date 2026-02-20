@@ -1,0 +1,686 @@
+> Task :clean
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :processResources
+> Task :sourcesJar
+> Task :processTestResources
+> Task :compileKotlin
+> Task :compileJava NO-SOURCE
+> Task :classes
+> Task :resolveMainClassName
+> Task :bootJar SKIPPED
+> Task :jar
+> Task :assemble
+
+> Task :compileTestKotlin
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/test/kotlin/io/github/mpecan/upsert/type/TypeMapperRegistryTest.kt:21:63 Unchecked cast of 'ObjectProvider<*>!' to 'ObjectProvider<List<TypeMapper>>'.
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/test/kotlin/io/github/mpecan/upsert/type/TypeMapperRegistryTest.kt:154:66 Unchecked cast of 'ObjectProvider<*>!' to 'ObjectProvider<List<TypeMapper>>'.
+
+> Task :compileTestJava NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+IndexedBeanPropertySqlParameterSourceTest > should throw exception for invalid indexed property name with invalid index() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should throw exception for invalid indexed property name without underscore() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should handle single entity() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should handle empty bean list() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should delegate SQL types to underlying bean sources() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should return correct hasValue for indexed properties() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should delegate type names to underlying bean sources() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should handle property names with multiple underscores correctly() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should return correct values for indexed properties() PASSED
+
+IndexedBeanPropertySqlParameterSourceTest > should return indexed parameter names() PASSED
+
+TypeMapperAutoConfigurationTest > jacksonMapperIsPreferredOverGsonWhenBothAreAvailable() PASSED
+
+TypeMapperAutoConfigurationTest > gsonMapperIsUsedWhenJacksonIsNotAvailable() PASSED
+
+TypeMapperAutoConfigurationTest > jacksonMapperIsUsedWhenAvailable() PASSED
+
+TypeMapperAutoConfigurationTest > customMapperIsUsedWhenProvided() PASSED
+
+MySqlUpsertDialectTest > should place conditional field last in update clause for both dialects() PASSED
+
+MySqlUpsertDialectTest > should generate correct conditional upsert SQL for legacy MySQL with MoreOrEqual operator() PASSED
+
+MySqlUpsertDialectTest > should generate correct upsert SQL for MySQL with multiple key columns() PASSED
+
+MySqlUpsertDialectTest > should generate correct conditional upsert SQL for MySQL with MoreOrEqual operator() PASSED
+
+MySqlUpsertDialectTest > should generate correct insert clause for modern dialect with and without conditional() PASSED
+
+MySqlUpsertDialectTest > should generate correct conditional upsert SQL for MySQL with Less operator() PASSED
+
+MySqlUpsertDialectTest > should generate correct conditional upsert SQL for MySQL with LessOrEqual operator() PASSED
+
+MySqlUpsertDialectTest > should generate correct insert clause for legacy dialect regardless of conditional() PASSED
+
+MySqlUpsertDialectTest > should generate correct conditional upsert SQL for MySQL with More operator() PASSED
+
+MySqlUpsertDialectTest > should generate correct upsert SQL for MySQL() PASSED
+
+MySqlUpsertDialectTest > should generate correct conditional upsert SQL for legacy MySQL with More operator() PASSED
+
+MySqlUpsertDialectTest > should generate correct upsert SQL for MySQL without conditional when no conditional info provided() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct conditional upsert SQL for PostgreSQL with Less operator() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct upsert SQL for PostgreSQL without conditional when no conditional info provided() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct conditional upsert SQL for PostgreSQL with More operator() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct upsert SQL for PostgreSQL() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct conditional upsert SQL for PostgreSQL with MoreOrEqual operator() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct conditional upsert SQL for PostgreSQL with LessOrEqual operator() PASSED
+
+PostgreSqlUpsertDialectTest > should generate correct upsert SQL for PostgreSQL with multiple key columns() PASSED
+
+UpsertDialectFactoryTest > should return PostgreSqlUpsertDialect for PostgreSQL database() PASSED
+
+UpsertDialectFactoryTest > should return MySqlUpsertDialect for MySQL 8_0_19 and later() PASSED
+
+UpsertDialectFactoryTest > should return MySqlLegacyUpsertDialect for MySQL before 8_0_19() PASSED
+
+UpsertDialectFactoryTest > checkIfModernMySQLVersion should return false for version 5_7_35() PASSED
+
+UpsertDialectFactoryTest > checkIfModernMySQLVersion should return false for version 8_0_18() PASSED
+
+UpsertDialectFactoryTest > checkIfModernMySQLVersion should return true for version 9_0_0() PASSED
+
+UpsertDialectFactoryTest > should throw UnsupportedOperationException for unknown database type() PASSED
+
+UpsertDialectFactoryTest > should return MySqlLegacyUpsertDialect for MySQL 5_7_0() PASSED
+
+UpsertDialectFactoryTest > should return MySqlUpsertDialect for MySQL 8_1_0() PASSED
+
+UpsertDialectFactoryTest > should return MySqlUpsertDialect for MySQL 9_0_0() PASSED
+
+UpsertDialectFactoryTest > checkIfModernMySQLVersion should return true for version 8_0_19() PASSED
+
+UpsertDialectFactoryTest > checkIfModernMySQLVersion should return true for version 8_0_20() PASSED
+
+UpsertDialectFactoryTest > should return MySqlLegacyUpsertDialect for MySQL 8_0_12() PASSED
+
+UpsertDialectFactoryTest > should handle version parsing error gracefully and default to modern dialect() PASSED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should handle complex conditional upserts with multiple conditions() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should update only when updatedAt is more recent using More operator() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should handle conditional upsert with ignoring fields() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should update only when price is less using Less operator() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > test simple version update without condition() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should insert new entities regardless of conditional clause() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should update only when score is less or equal using LessOrEqual operator() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should update only when version is greater or equal using MoreOrEqual operator() SKIPPED
+
+MySqlBefore8019ConditionalUpsertIntegrationTest > should handle batch conditional upserts() SKIPPED
+
+MySqlConditionalUpsertIntegrationTest > should handle complex conditional upserts with multiple conditions() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should update only when updatedAt is more recent using More operator() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should handle conditional upsert with ignoring fields() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should update only when price is less using Less operator() PASSED
+
+MySqlConditionalUpsertIntegrationTest > test simple version update without condition() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should insert new entities regardless of conditional clause() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should update only when score is less or equal using LessOrEqual operator() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should update only when version is greater or equal using MoreOrEqual operator() PASSED
+
+MySqlConditionalUpsertIntegrationTest > should handle batch conditional upserts() PASSED
+
+MySqlConverterIntegrationTest > test upsert update with custom converter() PASSED
+
+MySqlConverterIntegrationTest > testUpsertEntityWithJsonFields() PASSED
+
+MySqlConverterIntegrationTest > test upsert with custom converter() PASSED
+
+MySqlCustomMethodsIntegrationTest > should upsert successfully ignoring name as IGNORING clause() PASSED
+
+MySqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause for multiple entities without uniqueness constraint() PASSED
+
+MySqlCustomMethodsIntegrationTest > should throw exception when using name and description as ON clause without uniqueness constraint() PASSED
+
+MySqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause and ignoring all fields without uniqueness constraint() PASSED
+
+MySqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause for multiple entities and ignoring active field without uniqueness constraint() PASSED
+
+MySqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause without uniqueness constraint() PASSED
+
+MySqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause and ignoring active field without uniqueness constraint() PASSED
+
+MySqlCustomMethodsIntegrationTest > should upsert successfully using id as ON clause() PASSED
+
+MySqlGeneratedValueIntegrationTest > should insert multiple new entities with generated ids() PASSED
+
+MySqlGeneratedValueIntegrationTest > should update existing entities with generated ids() PASSED
+
+MySqlGeneratedValueIntegrationTest > should handle empty list for upsertAll() PASSED
+
+MySqlGeneratedValueIntegrationTest > should handle entity with null description() PASSED
+
+MySqlGeneratedValueIntegrationTest > should update existing entity with generated id() PASSED
+
+MySqlGeneratedValueIntegrationTest > should insert new entity with generated id() PASSED
+
+MySqlGeneratedValueIntegrationTest > should handle mix of new and existing entities with generated ids() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should parse upsert method names correctly() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should insert new jpa entity using repository() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should throw exception if custom operations do not include columns with a uniqueness constraint() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should insert multiple new jpa entities using repository() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should update existing jpa entity using repository() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should update multiple existing jpa entities using repository() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should not update existing entity when using ignoreAllFields() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should handle empty list for upsertAll() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should handle jpa entity with null description() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should insert new entity when using ignoreAllFields() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should handle custom upsert operations using reflection() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should handle mix of new and existing jpa entities using repository() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should discover fields from MappedSuperclass in JPA metadata provider() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should upsert ExtendedTestEntity with inherited fields() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should update existing entities with inherited fields() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should upsert PureInheritanceTestEntity with inherited fields() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should discover fields from MappedSuperclass for pure inheritance entity() PASSED
+
+MySqlMappedSuperclassIntegrationTest > should handle mixed insert and update operations with inherited fields() PASSED
+
+MySqlRepositoryIntegrationTest > should parse upsert method names correctly() PASSED
+
+MySqlRepositoryIntegrationTest > should insert new jpa entity using repository() PASSED
+
+MySqlRepositoryIntegrationTest > should throw exception if custom operations do not include columns with a uniqueness constraint() PASSED
+
+MySqlRepositoryIntegrationTest > should insert multiple new jpa entities using repository() PASSED
+
+MySqlRepositoryIntegrationTest > should update existing jpa entity using repository() PASSED
+
+MySqlRepositoryIntegrationTest > should update multiple existing jpa entities using repository() PASSED
+
+MySqlRepositoryIntegrationTest > should not update existing entity when using ignoreAllFields() PASSED
+
+MySqlRepositoryIntegrationTest > should handle empty list for upsertAll() PASSED
+
+MySqlRepositoryIntegrationTest > should handle jpa entity with null description() PASSED
+
+MySqlRepositoryIntegrationTest > should insert new entity when using ignoreAllFields() PASSED
+
+MySqlRepositoryIntegrationTest > should handle custom upsert operations using reflection() PASSED
+
+MySqlRepositoryIntegrationTest > should handle mix of new and existing jpa entities using repository() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should handle complex conditional upserts with multiple conditions() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should update only when updatedAt is more recent using More operator() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should handle conditional upsert with ignoring fields() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should update only when price is less using Less operator() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > test simple version update without condition() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should insert new entities regardless of conditional clause() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should update only when score is less or equal using LessOrEqual operator() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should update only when version is greater or equal using MoreOrEqual operator() PASSED
+
+PostgreSqlConditionalUpsertIntegrationTest > should handle batch conditional upserts() PASSED
+
+PostgreSqlConverterIntegrationTest > test upsert update with custom converter() PASSED
+
+PostgreSqlConverterIntegrationTest > testUpsertEntityWithJsonFields() PASSED
+
+PostgreSqlConverterIntegrationTest > test upsert with custom converter() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should upsert successfully ignoring name as IGNORING clause() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause for multiple entities without uniqueness constraint() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should throw exception when using name and description as ON clause without uniqueness constraint() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause and ignoring all fields without uniqueness constraint() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause for multiple entities and ignoring active field without uniqueness constraint() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause without uniqueness constraint() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should throw exception when using name as ON clause and ignoring active field without uniqueness constraint() PASSED
+
+PostgreSqlCustomMethodsIntegrationTest > should upsert successfully using id as ON clause() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should insert multiple new entities with generated ids() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should update existing entities with generated ids() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should handle empty list for upsertAll() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should handle entity with null description() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should update existing entity with generated id() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should insert new entity with generated id() PASSED
+
+PostgreSqlGeneratedValueIntegrationTest > should handle mix of new and existing entities with generated ids() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should parse upsert method names correctly() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should insert new jpa entity using repository() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should throw exception if custom operations do not include columns with a uniqueness constraint() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should insert multiple new jpa entities using repository() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should update existing jpa entity using repository() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should update multiple existing jpa entities using repository() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should not update existing entity when using ignoreAllFields() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should handle empty list for upsertAll() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should handle jpa entity with null description() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should insert new entity when using ignoreAllFields() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should handle custom upsert operations using reflection() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should handle mix of new and existing jpa entities using repository() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should discover fields from MappedSuperclass in JPA metadata provider() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should upsert ExtendedTestEntity with inherited fields() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should update existing entities with inherited fields() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should upsert PureInheritanceTestEntity with inherited fields() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should discover fields from MappedSuperclass for pure inheritance entity() PASSED
+
+PostgreSqlMappedSuperclassIntegrationTest > should handle mixed insert and update operations with inherited fields() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should parse upsert method names correctly() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should insert new jpa entity using repository() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should throw exception if custom operations do not include columns with a uniqueness constraint() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should insert multiple new jpa entities using repository() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should update existing jpa entity using repository() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should update multiple existing jpa entities using repository() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should not update existing entity when using ignoreAllFields() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should handle empty list for upsertAll() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should handle jpa entity with null description() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should insert new entity when using ignoreAllFields() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should handle custom upsert operations using reflection() PASSED
+
+PostgreSqlRepositoryIntegrationTest > should handle mix of new and existing jpa entities using repository() PASSED
+
+JpaUpsertModelMetadataProviderTest > should return field  from entity class() PASSED
+
+JpaUpsertModelMetadataProviderTest > should return null when field is not found in entity class() PASSED
+
+JpaUpsertModelMetadataProviderTest > should return null when the field is not in the class hierarchy() PASSED
+
+JpaUpsertModelMetadataProviderTest > should return the correct field when the field is in the class hierarchy() PASSED
+
+UpsertModelTest > should return default values when fields list is empty() PASSED
+
+UpsertModelTest > should handle entities with generated IDs() PASSED
+
+UpsertModelTest > should throw exception when validating with missing update columns() PASSED
+
+UpsertModelTest > should validate upsert query() PASSED
+
+UpsertModelTest > should throw exception when validating upsert query with update columns that are part of the ON clause() PASSED
+
+UpsertModelTest > should identify values for insert query() PASSED
+
+UpsertModelTest > should return correct table name() PASSED
+
+UpsertModelTest > should throw exception when validating upsert query with invalid on columns() PASSED
+
+UpsertModelTest > should return default on columns when fields list is empty() PASSED
+
+UpsertModelTest > should return specific value columns when fields are provided() PASSED
+
+UpsertModelTest > should throw exception when validating upsert query with invalid columns() PASSED
+
+UpsertModelTest > should create upsert instance without specific value columns() PASSED
+
+UpsertModelTest > should create upsert instance with empty ignore columns list() PASSED
+
+UpsertModelTest > should identify fields for exclusive relationship() PASSED
+
+UpsertModelTest > should throw exception when no unique constraints found for forFirstUniqueConstraint() PASSED
+
+UpsertModelTest > should identify fields that will not be overwritten on conflict() PASSED
+
+UpsertModelTest > should throw exception when validating with missing ON columns() PASSED
+
+UpsertModelTest > should create upsert instance() PASSED
+
+UpsertModelTest > should create upsert instance with specific ignore columns() PASSED
+
+UpsertModelTest > should create upsert instance with conditional info() PASSED
+
+UpsertModelTest > should create upsert instance with ignore all fields() PASSED
+
+UpsertModelTest > should return specific on columns when fields are provided() PASSED
+
+UpsertModelTest > should create upsert instance for first unique constraint() PASSED
+
+UpsertMethodNameParserTest > should return null conditional info for method without When clause() PASSED
+
+UpsertMethodNameParserTest > should parse conditional field with camel intact() PASSED
+
+UpsertMethodNameParserTest > should parse upsertAllOnIdWhenUpdatedAtMoreIgnoringCreatedAt method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnNameIgnoringAllFields method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertAllOnNameIgnoringAllFields method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnIdWhenPriceLess method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertAllOnNameAndDescriptionIgnoringActive method name() PASSED
+
+UpsertMethodNameParserTest > should convert camel case to snake case() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnNameAndDescriptionWhenVersionMoreOrEqualIgnoringActive method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnNameIgnoringActive method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnIdWhenVersionMoreOrEqual method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnIdWhenUpdatedAtMore method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertAllOnName method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnIdWhenScoreLessOrEqual method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnName method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertAll method name() PASSED
+
+UpsertMethodNameParserTest > should return null for non-upsert method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsert method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertAllOnNameIgnoringActive method name() PASSED
+
+UpsertMethodNameParserTest > should parse upsertOnNameAndDescriptionIgnoringActive method name() PASSED
+
+UpsertRepositoryQueryTest > should create repository query for methods with ignore clause() PASSED
+
+UpsertRepositoryQueryTest > should create repository query for methods with conditional clause() PASSED
+
+UpsertRepositoryQueryTest > should throw exception for invalid method name() PASSED
+
+UpsertRepositoryQueryTest > should throw exception when no parameters provided() PASSED
+
+UpsertRepositoryQueryTest > should create repository query for upsertAll methods() PASSED
+
+UpsertRepositoryQueryTest > should create repository query for methods with on clause() PASSED
+
+UpsertRepositoryQueryTest > should throw exception when upsertAll called with non-collection parameter() PASSED
+
+UpsertRepositoryQueryTest > should execute successfully for upsertAll with collection() PASSED
+
+UpsertRepositoryQueryTest > should execute successfully with valid parameters() PASSED
+
+UpsertRepositoryQueryTest > should create repository query successfully() PASSED
+
+DefaultTypeMapperTest > should return value unchanged for non-enum types() PASSED
+
+DefaultTypeMapperTest > should convert enum to name string() PASSED
+
+DefaultTypeMapperTest > should get SQL type for field using TypeMapper static method() PASSED
+
+DefaultTypeMapperTest > should handle any field() PASSED
+
+DefaultTypeMapperTest > should handle any value() PASSED
+
+DefaultTypeMapperTest > should return null for null value() PASSED
+
+EnumTypeMapperTest > should not handle enum field with NAMED_ENUM annotation() PASSED
+
+EnumTypeMapperTest > should convert third enum value to ordinal two() PASSED
+
+EnumTypeMapperTest > should not handle enum field with other annotation() PASSED
+
+EnumTypeMapperTest > should handle enum values() PASSED
+
+EnumTypeMapperTest > should return original value for non-enum types() PASSED
+
+EnumTypeMapperTest > should not handle null value() PASSED
+
+EnumTypeMapperTest > should handle enum field with ORDINAL_ENUM annotation() PASSED
+
+EnumTypeMapperTest > should convert enum to ordinal value() PASSED
+
+EnumTypeMapperTest > should get SQL type for enum field using TypeMapper static method() PASSED
+
+EnumTypeMapperTest > should handle enum field without annotation() PASSED
+
+EnumTypeMapperTest > should not handle non-enum field() PASSED
+
+EnumTypeMapperTest > should not handle non-enum values() PASSED
+
+EnumTypeMapperTest > should convert first enum value to ordinal zero() PASSED
+
+EnumTypeMapperTest > should return null for null value() PASSED
+
+NamedEnumTypeMapperTest > should not handle enum field without annotation() PASSED
+
+NamedEnumTypeMapperTest > should not handle enum field with other annotation() PASSED
+
+NamedEnumTypeMapperTest > should not handle enum field with ORDINAL_ENUM annotation() PASSED
+
+NamedEnumTypeMapperTest > should convert different enum values to their names() PASSED
+
+NamedEnumTypeMapperTest > should handle enum values() PASSED
+
+NamedEnumTypeMapperTest > should return original value for non-enum types() PASSED
+
+NamedEnumTypeMapperTest > should not handle null value() PASSED
+
+NamedEnumTypeMapperTest > should get SQL type for enum field using TypeMapper static method() PASSED
+
+NamedEnumTypeMapperTest > should convert enum to name string() PASSED
+
+NamedEnumTypeMapperTest > should not handle non-enum field() PASSED
+
+NamedEnumTypeMapperTest > should not handle non-enum values() PASSED
+
+NamedEnumTypeMapperTest > should handle complex enum with many values() PASSED
+
+NamedEnumTypeMapperTest > should handle enum field with NAMED_ENUM annotation() PASSED
+
+NamedEnumTypeMapperTest > should return null for null value() PASSED
+
+TypeMapperRegistryTest > should use DefaultTypeMapper when no mapper can handle field() PASSED
+
+TypeMapperRegistryTest > should get SQL type from mapper when no annotation present() PASSED
+
+TypeMapperRegistryTest > should fallback to default type when mapper selection fails() PASSED
+
+TypeMapperRegistryTest > should handle exception when checking if mapper can handle field() PASSED
+
+TypeMapperRegistryTest > should return OTHER type when type determination throws exception() PASSED
+
+TypeMapperRegistryTest > should return list of registered mappers() PASSED
+
+TypeMapperRegistryTest > should return original value when conversion fails() PASSED
+
+TypeMapperRegistryTest > should fallback to default SQL type when mapper throws exception() PASSED
+
+TypeMapperRegistryTest > should use second mapper when first cannot handle field() PASSED
+
+TypeMapperRegistryTest > should convert value using appropriate mapper() PASSED
+
+TypeMapperRegistryTest > should get SQL type from mapper when annotation not found() PASSED
+
+TypeMapperRegistryTest > should return null when converting null value() PASSED
+
+TypeMapperTest > should map UUID as VARCHAR() PASSED
+
+TypeMapperTest > should map Java 8 date and time types correctly() PASSED
+
+TypeMapperTest > should map basic Java types correctly() PASSED
+
+JsonTypeMapperTest > testGsonJsonMapper() PASSED
+
+JsonTypeMapperTest > testTypeMapperRegistryWithJsonMapper() PASSED
+
+JsonTypeMapperTest > testJsonbMapper() PASSED
+
+JsonTypeMapperTest > testJacksonJsonMapper() PASSED
+
+2026-02-19T19:00:53.977+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:00:53.977+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-02-19T19:00:53.978+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+2026-02-19T19:00:53.979+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:00:54.078+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-2 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@76e28b38 (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:00:59.089+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08S01
+2026-02-19T19:00:59.089+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-2 - Connection is not available, request timed out after 5006ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:00:59.089+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Communications link failure
+
+The last packet sent successfully to the server was 0 milliseconds ago. The driver has not received any packets from the server.
+2026-02-19T19:00:59.091+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-2 - Connection is not available, request timed out after 5006ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:00:59.092+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Shutdown initiated...
+2026-02-19T19:00:59.228+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Shutdown completed.
+2026-02-19T19:00:59.231+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:00:59.232+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-3 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@57f759c (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:04.239+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08S01
+2026-02-19T19:01:04.240+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-3 - Connection is not available, request timed out after 5007ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:04.240+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Communications link failure
+
+The last packet sent successfully to the server was 0 milliseconds ago. The driver has not received any packets from the server.
+2026-02-19T19:01:04.240+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-3 - Connection is not available, request timed out after 5007ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:04.240+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-3 - Shutdown initiated...
+2026-02-19T19:01:04.391+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-3 - Shutdown completed.
+2026-02-19T19:01:04.392+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:04.393+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-4 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@c32058d (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:09.398+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08S01
+2026-02-19T19:01:09.398+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-4 - Connection is not available, request timed out after 5005ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:09.398+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Communications link failure
+
+The last packet sent successfully to the server was 0 milliseconds ago. The driver has not received any packets from the server.
+2026-02-19T19:01:09.398+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-4 - Connection is not available, request timed out after 5005ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:09.398+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-4 - Shutdown initiated...
+2026-02-19T19:01:09.556+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-4 - Shutdown completed.
+2026-02-19T19:01:09.557+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:09.558+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-5 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@450b21a2 (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:14.562+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08S01
+2026-02-19T19:01:14.562+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-5 - Connection is not available, request timed out after 5004ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:14.562+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Communications link failure
+
+The last packet sent successfully to the server was 0 milliseconds ago. The driver has not received any packets from the server.
+2026-02-19T19:01:14.562+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-5 - Connection is not available, request timed out after 5004ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:14.562+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-5 - Shutdown initiated...
+2026-02-19T19:01:14.723+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-5 - Shutdown completed.
+2026-02-19T19:01:14.725+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:14.727+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-6 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@7daf48e0 (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:19.730+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08S01
+2026-02-19T19:01:19.730+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-6 - Connection is not available, request timed out after 5004ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:19.730+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Communications link failure
+
+The last packet sent successfully to the server was 0 milliseconds ago. The driver has not received any packets from the server.
+2026-02-19T19:01:19.730+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-6 - Connection is not available, request timed out after 5004ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:19.730+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-6 - Shutdown initiated...
+2026-02-19T19:01:19.889+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-6 - Shutdown completed.
+2026-02-19T19:01:19.890+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:19.890+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-7 - Shutdown initiated...
+2026-02-19T19:01:19.891+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-7 - Shutdown completed.
+2026-02-19T19:01:19.891+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:19.895+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-8 - Failed to validate connection org.postgresql.jdbc.PgConnection@68320fb2 (This connection has been closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:24.897+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08001
+2026-02-19T19:01:24.897+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-8 - Connection is not available, request timed out after 5005ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:24.897+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Connection to localhost:41911 refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.
+2026-02-19T19:01:24.897+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-8 - Connection is not available, request timed out after 5005ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:24.897+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-8 - Shutdown initiated...
+2026-02-19T19:01:25.050+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-8 - Shutdown completed.
+2026-02-19T19:01:25.051+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:25.052+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-9 - Failed to validate connection org.postgresql.jdbc.PgConnection@5ff25edf (This connection has been closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:30.055+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08001
+2026-02-19T19:01:30.055+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-9 - Connection is not available, request timed out after 5003ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:30.055+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Connection to localhost:39945 refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.
+2026-02-19T19:01:30.055+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-9 - Connection is not available, request timed out after 5003ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:30.055+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-9 - Shutdown initiated...
+2026-02-19T19:01:30.205+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-9 - Shutdown completed.
+2026-02-19T19:01:30.206+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:30.207+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-10 - Failed to validate connection org.postgresql.jdbc.PgConnection@365fdb5a (This connection has been closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:35.213+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08001
+2026-02-19T19:01:35.213+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-10 - Connection is not available, request timed out after 5007ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:35.213+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Connection to localhost:46537 refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.
+2026-02-19T19:01:35.214+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-10 - Connection is not available, request timed out after 5007ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:35.214+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-10 - Shutdown initiated...
+2026-02-19T19:01:35.361+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-10 - Shutdown completed.
+2026-02-19T19:01:35.362+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:35.363+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-11 - Failed to validate connection org.postgresql.jdbc.PgConnection@7a19f84b (This connection has been closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:35.364+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-11 - Failed to validate connection org.postgresql.jdbc.PgConnection@7841c8bc (This connection has been closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:40.369+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08001
+2026-02-19T19:01:40.370+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-11 - Connection is not available, request timed out after 5003ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:40.370+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Connection to localhost:41041 refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.
+2026-02-19T19:01:40.370+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-11 - Connection is not available, request timed out after 5003ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:40.370+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-11 - Shutdown initiated...
+2026-02-19T19:01:40.500+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-11 - Shutdown completed.
+2026-02-19T19:01:40.502+01:00  INFO 65119 --- [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-02-19T19:01:40.504+01:00  WARN 65119 --- [ionShutdownHook] com.zaxxer.hikari.pool.PoolBase          : HikariPool-12 - Failed to validate connection org.postgresql.jdbc.PgConnection@140b31cd (This connection has been closed.). Possibly consider using a shorter maxLifetime value.
+2026-02-19T19:01:45.505+01:00  WARN 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 08001
+2026-02-19T19:01:45.506+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : HikariPool-12 - Connection is not available, request timed out after 5003ms (total=0, active=0, idle=0, waiting=0)
+2026-02-19T19:01:45.506+01:00 ERROR 65119 --- [ionShutdownHook] o.h.engine.jdbc.spi.SqlExceptionHelper   : Connection to localhost:38273 refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.
+2026-02-19T19:01:45.506+01:00  WARN 65119 --- [ionShutdownHook] o.s.b.f.support.DisposableBeanAdapter    : Invocation of destroy method failed on bean with name 'entityManagerFactory': org.hibernate.exception.JDBCConnectionException: Unable to open JDBC Connection for DDL execution [HikariPool-12 - Connection is not available, request timed out after 5003ms (total=0, active=0, idle=0, waiting=0)] [n/a]
+2026-02-19T19:01:45.506+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-12 - Shutdown initiated...
+2026-02-19T19:01:45.659+01:00  INFO 65119 --- [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-12 - Shutdown completed.
+
+> Task :check
+> Task :build
+> Task :jacocoTestReport
+
+BUILD SUCCESSFUL in 1m 34s
+10 actionable tasks: 10 executed

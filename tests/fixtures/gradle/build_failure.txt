@@ -1,0 +1,34 @@
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :compileJava NO-SOURCE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileKotlin
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/model/UpsertEntity.kt:12:5 warning: Parameter 'id' is never used
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/model/UpsertEntity.kt:15:5 warning: Parameter 'name' is never used
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/service/UpsertService.kt:23:9 warning: Variable 'result' is never read
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/service/UpsertService.kt:31:9 warning: Unchecked cast of 'Any' to 'String'
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/repository/UpsertRepository.kt:44:12 warning: Deprecated API usage
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/repository/UpsertRepository.kt:67:18 warning: Deprecated API usage
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/config/DatabaseConfig.kt:19:5 warning: Parameter 'dataSource' is never used
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/config/DatabaseConfig.kt:28:12 warning: Variable 'config' is never read
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/UpsertRepositoryImpl.kt:55:9 warning: Unnecessary safe call on non-nullable receiver
+w: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/UpsertRepositoryImpl.kt:72:15 warning: Unused import directive
+
+e: file:///Users/mdp/src/github.com/mpecan/upsert/src/main/kotlin/io/github/mpecan/upsert/UpsertRepositoryImpl.kt:87:5: error: Unresolved reference: nonExistentFunction
+
+> Task :compileKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileKotlin'.
+> Compilation error. See log for more details
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 5s
+2 actionable tasks: 1 executed, 1 up-to-date

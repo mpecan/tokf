@@ -1,0 +1,36 @@
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :compileKotlin UP-TO-DATE
+> Task :compileJava NO-SOURCE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :jar UP-TO-DATE
+> Task :compileTestKotlin UP-TO-DATE
+> Task :compileTestJava NO-SOURCE
+> Task :processTestResources UP-TO-DATE
+> Task :testClasses UP-TO-DATE
+> Task :test
+
+io.github.mpecan.upsert.UpsertRepositoryTest > shouldUpsertSingleEntity FAILED
+    org.opentest4j.AssertionFailedError: expected: <1> but was: <0>
+        at io.github.mpecan.upsert.UpsertRepositoryTest.shouldUpsertSingleEntity(UpsertRepositoryTest.kt:45)
+
+io.github.mpecan.upsert.UpsertRepositoryTest > shouldUpsertMultipleEntities PASSED
+
+2 tests completed, 1 failed
+
+> Task :test FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///Users/mdp/src/github.com/mpecan/upsert/build/reports/tests/test/index.html
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 8s
+2 actionable tasks: 1 executed, 1 up-to-date
