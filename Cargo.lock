@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "tokf"
-version = "0.1.8"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bincode",
