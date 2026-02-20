@@ -1,0 +1,9 @@
+name = "running containers pass through"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "CONTAINER ID"
+
+[[expect]]
+contains = "nginx"

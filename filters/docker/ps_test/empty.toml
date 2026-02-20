@@ -1,0 +1,9 @@
+name = "no running containers shows header only"
+inline = "CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES"
+exit_code = 0
+
+[[expect]]
+contains = "CONTAINER ID"
+
+[[expect]]
+not_contains = "Up"
