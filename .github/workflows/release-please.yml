@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
           private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
