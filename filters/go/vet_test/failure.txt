@@ -1,0 +1,3 @@
+# myproject
+./main.go:10:5: printf: wrong type for string
+./handler.go:34:2: loop variable captured by func literal

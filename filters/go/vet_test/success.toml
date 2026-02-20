@@ -1,0 +1,6 @@
+name = "clean vet collapses to single line"
+inline = ""
+exit_code = 0
+
+[[expect]]
+equals = "✓ go vet: ok"

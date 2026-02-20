@@ -1,0 +1,6 @@
+name = "resource not found shows error"
+inline = "Error from server (NotFound): pods \"myapp\" not found"
+exit_code = 1
+
+[[expect]]
+contains = "NotFound"

@@ -1,0 +1,6 @@
+name = "compile error shows file references"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = ".go:"
