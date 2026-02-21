@@ -3,19 +3,19 @@ use std::sync::OnceLock;
 use std::time::SystemTime;
 
 use anyhow::Context;
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize, rancor};
 
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 
 /// A single filter serialized for the binary cache.
 ///
-/// `FilterConfig` uses `#[serde(untagged)]` on `CommandPattern`, which bincode
-/// cannot handle (it requires `deserialize_any`). We therefore serialize the
-/// config as a JSON string and embed it in the bincode blob.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `FilterConfig` uses `#[serde(untagged)]` on `CommandPattern`, which most
+/// binary serializers cannot handle directly. We therefore serialize the
+/// config as a JSON string and embed it in the binary blob.
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 pub struct CachedFilter {
     /// `FilterConfig` serialized as a JSON string.
     pub config_json: String,
@@ -27,7 +27,7 @@ pub struct CachedFilter {
 }
 
 /// The on-disk binary manifest: version guard, mtime fingerprints, and the filter list.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct ResolvedManifest {
     pub version: u32,
     /// `(dir_path_string, mtime_nanos_since_epoch)` for each search dir plus `"<binary>"`.
@@ -114,7 +114,8 @@ pub fn is_cache_valid(manifest: &ResolvedManifest, search_dirs: &[PathBuf]) -> b
 /// Returns an error if the file cannot be read or the binary data is malformed.
 pub fn load_manifest(path: &Path) -> anyhow::Result<ResolvedManifest> {
     let data = std::fs::read(path).context("read cache file")?;
-    bincode::deserialize(&data).map_err(|e| anyhow::anyhow!("deserialize cache: {e}"))
+    rkyv::from_bytes::<ResolvedManifest, rancor::Error>(&data)
+        .map_err(|e| anyhow::anyhow!("deserialize cache: {e}"))
 }
 
 fn write_manifest(
@@ -128,8 +129,8 @@ fn write_manifest(
         dir_mtimes: compute_mtimes(search_dirs),
         filters: cached?,
     };
-    let data =
-        bincode::serialize(&manifest).map_err(|e| anyhow::anyhow!("serialize cache: {e}"))?;
+    let data = rkyv::to_bytes::<rancor::Error>(&manifest)
+        .map_err(|e| anyhow::anyhow!("serialize cache: {e}"))?;
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("cache path has no parent"))?;
@@ -203,8 +204,8 @@ mod tests {
             dir_mtimes: vec![("<binary>".to_string(), 42)],
             filters: vec![cached],
         };
-        let data = bincode::serialize(&manifest).unwrap();
-        let manifest2: ResolvedManifest = bincode::deserialize(&data).unwrap();
+        let data = rkyv::to_bytes::<rancor::Error>(&manifest).unwrap();
+        let manifest2 = rkyv::from_bytes::<ResolvedManifest, rancor::Error>(&data).unwrap();
 
         assert_eq!(manifest2.version, CACHE_VERSION);
         assert_eq!(manifest2.filters.len(), 1);
