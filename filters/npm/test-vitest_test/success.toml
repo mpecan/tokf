@@ -12,6 +12,18 @@ not_contains = "stdout |"
 not_contains = "Duration"
 
 [[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "npm info"
+
+[[expect]]
+not_contains = "> vitest run"
+
+[[expect]]
+not_contains = "> vitest-test-project@"
+
+[[expect]]
 contains = "Test Files  2 passed"
 
 [[expect]]

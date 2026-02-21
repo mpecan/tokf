@@ -1,3 +1,7 @@
+
+> jest-test-project@1.0.0 test
+> jest
+
 PASS src/utils.test.ts
 PASS src/app.test.ts
 
@@ -5,3 +9,9 @@ Test Suites: 2 passed, 2 total
 Tests:       5 passed, 5 total
 Snapshots:   0 total
 Time:        1.234 s
+npm verbose cli /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js
+npm info using npm@10.9.2
+npm info using node@v23.9.0
+npm verbose cwd /home/user/myapp
+npm verbose exit 0
+npm info ok

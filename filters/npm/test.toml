@@ -3,10 +3,8 @@ command = ["npm test", "pnpm test", "yarn test"]
 # Parent fallback — used when no variant matches
 strip_ansi = true
 skip = [
-  "^> .+@",
-  "^\\s*npm warn",
-  "^\\s*npm notice",
-  "^\\s*npm WARN",
+  "^> ",
+  "^\\s*npm (warn|notice|WARN|verbose|info|timing|error|ERR)",
   "^\\s*WARN\\s",
   "^\\s*ERR!",
   "^\\s*yarn run",

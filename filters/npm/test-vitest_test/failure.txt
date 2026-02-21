@@ -1,3 +1,7 @@
+
+> vitest-test-project@1.0.0 test
+> vitest run
+
  DEV  v1.6.0 /home/user/myapp
 
  RUN  default
@@ -20,3 +24,8 @@ AssertionError: expected -1 to be 1
       Tests  1 failed | 4 passed (5)
    Start at  14:30:00
    Duration  120ms
+npm verbose cli /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js
+npm info using npm@10.9.2
+npm verbose cwd /home/user/myapp
+npm verbose exit 1
+npm verbose code 1

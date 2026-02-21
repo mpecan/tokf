@@ -1,3 +1,7 @@
+
+> jest-test-project@1.0.0 test
+> jest
+
 FAIL src/utils.test.ts
   ● add › handles negative numbers
 
@@ -16,3 +20,8 @@ Test Suites: 1 failed, 1 passed, 2 total
 Tests:       1 failed, 4 passed, 5 total
 Snapshots:   0 total
 Time:        1.456 s
+npm verbose cli /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js
+npm info using npm@10.9.2
+npm verbose cwd /home/user/myapp
+npm verbose exit 1
+npm verbose code 1

@@ -436,7 +436,7 @@ Some commands are wrappers around different underlying tools (e.g. `npm test` ma
 command = ["npm test", "pnpm test", "yarn test"]
 
 strip_ansi = true
-skip = ["^> .+@", "^\\s*npm warn", "^\\s*npm notice"]
+skip = ["^> ", "^\\s*npm (warn|notice|WARN|verbose|info|timing|error|ERR)"]
 
 [on_success]
 output = "{output}"

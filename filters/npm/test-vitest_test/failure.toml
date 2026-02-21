@@ -1,4 +1,4 @@
-name = "vitest failure shows error details"
+name = "vitest failure shows error details, strips npm noise"
 fixture = "failure.txt"
 exit_code = 1
 
@@ -10,3 +10,12 @@ contains = "expected -1 to be 1"
 
 [[expect]]
 contains = "Test Files  1 failed"
+
+[[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "npm info"
+
+[[expect]]
+not_contains = "> vitest run"
