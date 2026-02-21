@@ -1,9 +1,15 @@
-name = "image list passes through"
+name = "groups images by repository"
 fixture = "success.txt"
 exit_code = 0
 
 [[expect]]
-contains = "REPOSITORY"
+contains = "ubuntu: 22.04, 20.04 (72.8MB)"
 
 [[expect]]
-contains = "nginx"
+contains = "nginx: latest, 1.24 (185MB)"
+
+[[expect]]
+contains = "postgres: 15 (412MB)"
+
+[[expect]]
+line_count = 5

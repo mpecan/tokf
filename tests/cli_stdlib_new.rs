@@ -452,13 +452,13 @@ fn docker_images_success_shows_images() {
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
-        filtered.output.contains("REPOSITORY"),
-        "expected header row, got: {}",
+        filtered.output.contains("nginx: latest (187MB)"),
+        "expected grouped nginx, got: {}",
         filtered.output
     );
     assert!(
-        filtered.output.contains("nginx"),
-        "expected nginx image, got: {}",
+        filtered.output.contains("postgres: 15 (379MB)"),
+        "expected grouped postgres, got: {}",
         filtered.output
     );
 }

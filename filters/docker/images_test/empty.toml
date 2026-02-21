@@ -1,0 +1,6 @@
+name = "no images shows message"
+inline = ""
+exit_code = 0
+
+[[expect]]
+equals = "No images"

@@ -1,7 +1,35 @@
 command = "docker images"
+run = "docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' {args}"
+skip = ["^<none>:<none>"]
 
-[on_success]
-head = 30
+[lua_script]
+lang = "luau"
+source = '''
+if exit_code ~= 0 then return nil end
+local repos = {}
+local order = {}
+for line in output:gmatch("[^\n]+") do
+  local repo_tag, size = line:match("^(.+)\t(.+)$")
+  if repo_tag then
+    local repo, tag = repo_tag:match("^(.+):(.+)$")
+    if repo and tag then
+      if not repos[repo] then
+        repos[repo] = { tags = {}, size = size }
+        table.insert(order, repo)
+      end
+      table.insert(repos[repo].tags, tag)
+      repos[repo].size = size
+    end
+  end
+end
+if #order == 0 then return "No images" end
+local lines = {}
+for _, repo in ipairs(order) do
+  local e = repos[repo]
+  table.insert(lines, repo .. ": " .. table.concat(e.tags, ", ") .. " (" .. e.size .. ")")
+end
+return table.concat(lines, "\n")
+'''
 
 [on_failure]
 tail = 10
