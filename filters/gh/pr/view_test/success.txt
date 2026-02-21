@@ -1,0 +1,11 @@
+title:	feat: add pnpm support
+state:	OPEN
+author:	mpecan
+url:	https://github.com/mpecan/tokf/pull/67
+assignees:
+reviewers:
+projects:
+milestone:
+labels:	enhancement
+--
+This PR adds pnpm support to the filter engine.

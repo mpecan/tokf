@@ -1,0 +1,6 @@
+name = "daemon not running shows short message"
+inline = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+exit_code = 1
+
+[[expect]]
+equals = "Docker daemon not running"

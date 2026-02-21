@@ -1,0 +1,9 @@
+name = "dangling images are skipped"
+inline = "<none>:<none>\t1.2GB\nnginx:latest\t187MB"
+exit_code = 0
+
+[[expect]]
+contains = "nginx: latest (187MB)"
+
+[[expect]]
+not_contains = "<none>"

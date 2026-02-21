@@ -1,7 +1,0 @@
-command = "gh issue *"
-
-[on_success]
-head = 40
-
-[on_failure]
-tail = 10

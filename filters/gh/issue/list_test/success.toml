@@ -1,0 +1,15 @@
+name = "issue list strips timestamps"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "#42"
+
+[[expect]]
+contains = "bug"
+
+[[expect]]
+not_contains = "about 2 days ago"
+
+[[expect]]
+not_contains = "about 1 week ago"

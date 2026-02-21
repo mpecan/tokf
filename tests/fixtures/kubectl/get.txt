@@ -1,5 +1,6 @@
-NAME                          READY   STATUS    RESTARTS   AGE
-web-deployment-7d6b8c9f5-abc   1/1     Running   0          2d
-web-deployment-7d6b8c9f5-def   1/1     Running   0          2d
-db-statefulset-0               1/1     Running   0          7d
-cache-deployment-5f4d3c2b1-ghi 1/1     Running   1          3d
+NAME                          READY   STATUS      RESTARTS   AGE
+web-deployment-7d6b8c9f5-abc   1/1     Running     0          2d
+web-deployment-7d6b8c9f5-def   1/1     Running     0          2d
+db-statefulset-0               1/1     Running     0          7d
+cache-deployment-5f4d3c2b1-ghi 1/1     Running     1          3d
+migration-job-xyz              0/1     Completed   0          1d

@@ -1,9 +1,0 @@
-name = "pod list passes through"
-fixture = "success.txt"
-exit_code = 0
-
-[[expect]]
-contains = "NAME"
-
-[[expect]]
-contains = "Running"

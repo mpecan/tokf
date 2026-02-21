@@ -1,0 +1,6 @@
+name = "all checks passed condenses to short message"
+inline = "All checks were successful\n0 failing, 5 successful, 0 skipped, and 0 pending checks\n\npass  ci/build  1m23s  https://example.com/1\npass  ci/test   2m45s  https://example.com/2"
+exit_code = 0
+
+[[expect]]
+equals = "all checks passed"

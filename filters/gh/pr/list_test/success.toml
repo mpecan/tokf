@@ -1,0 +1,15 @@
+name = "PR list strips timestamps"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "#69"
+
+[[expect]]
+contains = "OPEN"
+
+[[expect]]
+not_contains = "about 2 hours ago"
+
+[[expect]]
+not_contains = "about 1 day ago"

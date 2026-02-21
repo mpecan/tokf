@@ -1,0 +1,9 @@
+title:	Bug: memory leak in filter engine
+state:	OPEN
+author:	mpecan
+assignees:
+projects:
+milestone:
+labels:
+--
+When running filters on large outputs, memory usage keeps growing.

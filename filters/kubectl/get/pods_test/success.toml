@@ -1,0 +1,18 @@
+name = "skips Completed and Evicted pods"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "NAME"
+
+[[expect]]
+contains = "Running"
+
+[[expect]]
+not_contains = "Completed"
+
+[[expect]]
+not_contains = "Evicted"
+
+[[expect]]
+line_count = 4

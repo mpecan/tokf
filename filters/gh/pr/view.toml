@@ -1,0 +1,14 @@
+command = "gh pr view *"
+
+skip = [
+  "^assignees:\\s*$",
+  "^reviewers:\\s*$",
+  "^projects:\\s*$",
+  "^milestone:\\s*$",
+]
+
+[on_success]
+head = 30
+
+[on_failure]
+tail = 10

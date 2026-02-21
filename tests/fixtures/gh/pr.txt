@@ -1,5 +1,5 @@
 Showing 3 of 3 pull requests in mpecan/tokf
 
-#12  feat(filter): add section-based grouping   mpecan  about 2 days ago
-#11  fix(output): handle empty template vars    mpecan  about 3 days ago
-#10  docs: update CLAUDE.md with conventions    mpecan  about 5 days ago
+#12	feat(filter): add section-based grouping	mpecan	about 2 days ago
+#11	fix(output): handle empty template vars	mpecan	about 3 days ago
+#10	docs: update CLAUDE.md with conventions	mpecan	about 5 days ago

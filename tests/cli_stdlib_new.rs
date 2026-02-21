@@ -417,13 +417,18 @@ fn docker_ps_success_shows_containers() {
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
-        filtered.output.contains("CONTAINER ID"),
-        "expected header row, got: {}",
+        filtered.output.contains("NAMES"),
+        "expected compact header row, got: {}",
         filtered.output
     );
     assert!(
         filtered.output.contains("nginx"),
         "expected nginx container, got: {}",
+        filtered.output
+    );
+    assert!(
+        !filtered.output.contains("CONTAINER ID"),
+        "expected no CONTAINER ID column, got: {}",
         filtered.output
     );
 }
@@ -435,10 +440,8 @@ fn docker_ps_failure_shows_error() {
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
-        filtered
-            .output
-            .contains("Cannot connect to the Docker daemon"),
-        "expected daemon error, got: {}",
+        filtered.output.contains("Docker daemon not running"),
+        "expected condensed daemon error, got: {}",
         filtered.output
     );
 }
@@ -452,13 +455,13 @@ fn docker_images_success_shows_images() {
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
-        filtered.output.contains("REPOSITORY"),
-        "expected header row, got: {}",
+        filtered.output.contains("nginx: latest (187MB)"),
+        "expected grouped nginx, got: {}",
         filtered.output
     );
     assert!(
-        filtered.output.contains("nginx"),
-        "expected nginx image, got: {}",
+        filtered.output.contains("postgres: 15 (379MB)"),
+        "expected grouped postgres, got: {}",
         filtered.output
     );
 }
@@ -481,8 +484,8 @@ fn docker_images_failure_shows_error() {
 // --- kubectl/get ---
 
 #[test]
-fn kubectl_get_success_shows_resources() {
-    let config = load_config("filters/kubectl/get.toml");
+fn kubectl_get_pods_skips_completed() {
+    let config = load_config("filters/kubectl/get/pods.toml");
     let fixture = load_fixture("kubectl/get.txt");
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
@@ -496,11 +499,16 @@ fn kubectl_get_success_shows_resources() {
         "expected Running status, got: {}",
         filtered.output
     );
+    assert!(
+        !filtered.output.contains("Completed"),
+        "expected Completed pods filtered out, got: {}",
+        filtered.output
+    );
 }
 
 #[test]
-fn kubectl_get_failure_shows_error() {
-    let config = load_config("filters/kubectl/get.toml");
+fn kubectl_get_pods_failure_shows_error() {
+    let config = load_config("filters/kubectl/get/pods.toml");
     let fixture = load_fixture("kubectl/get_failure.txt");
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
@@ -519,8 +527,8 @@ fn kubectl_get_failure_shows_error() {
 // --- gh/pr ---
 
 #[test]
-fn gh_pr_success_shows_prs() {
-    let config = load_config("filters/gh/pr.toml");
+fn gh_pr_list_strips_timestamps() {
+    let config = load_config("filters/gh/pr/list.toml");
     let fixture = load_fixture("gh/pr.txt");
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
@@ -530,15 +538,15 @@ fn gh_pr_success_shows_prs() {
         filtered.output
     );
     assert!(
-        filtered.output.contains("mpecan"),
-        "expected author name, got: {}",
+        !filtered.output.contains("about 2 days ago"),
+        "expected timestamps stripped, got: {}",
         filtered.output
     );
 }
 
 #[test]
-fn gh_pr_failure_shows_error() {
-    let config = load_config("filters/gh/pr.toml");
+fn gh_pr_list_failure_shows_error() {
+    let config = load_config("filters/gh/pr/list.toml");
     let fixture = load_fixture("gh/pr_failure.txt");
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
@@ -547,18 +555,13 @@ fn gh_pr_failure_shows_error() {
         "expected GraphQL error, got: {}",
         filtered.output
     );
-    assert!(
-        filtered.output.contains("Could not resolve"),
-        "expected resolution error, got: {}",
-        filtered.output
-    );
 }
 
 // --- gh/issue ---
 
 #[test]
-fn gh_issue_success_shows_issues() {
-    let config = load_config("filters/gh/issue.toml");
+fn gh_issue_list_strips_timestamps() {
+    let config = load_config("filters/gh/issue/list.toml");
     let fixture = load_fixture("gh/issue.txt");
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
@@ -568,26 +571,21 @@ fn gh_issue_success_shows_issues() {
         filtered.output
     );
     assert!(
-        filtered.output.contains("enhancement"),
-        "expected enhancement label, got: {}",
+        !filtered.output.contains("about 1 day ago"),
+        "expected timestamps stripped, got: {}",
         filtered.output
     );
 }
 
 #[test]
-fn gh_issue_failure_shows_error() {
-    let config = load_config("filters/gh/issue.toml");
+fn gh_issue_list_failure_shows_error() {
+    let config = load_config("filters/gh/issue/list.toml");
     let fixture = load_fixture("gh/issue_failure.txt");
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
         filtered.output.contains("GraphQL"),
         "expected GraphQL error, got: {}",
-        filtered.output
-    );
-    assert!(
-        filtered.output.contains("Could not resolve"),
-        "expected resolution error, got: {}",
         filtered.output
     );
 }

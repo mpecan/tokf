@@ -1,7 +1,0 @@
-command = "kubectl get *"
-
-[on_success]
-head = 30
-
-[on_failure]
-tail = 10
