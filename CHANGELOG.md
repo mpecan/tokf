@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/mpecan/tokf/compare/tokf-v0.2.1...tokf-v0.2.2) (2026-02-21)
+
+
+### Documentation
+
+* **readme:** document eject subcommand ([#102](https://github.com/mpecan/tokf/issues/102)) ([27479cc](https://github.com/mpecan/tokf/commit/27479cc2f341faa3a12f36d4b6a10e0d9de32b4b))
+
 ## [0.2.1](https://github.com/mpecan/tokf/compare/tokf-v0.2.0...tokf-v0.2.1) (2026-02-21)
 
 
