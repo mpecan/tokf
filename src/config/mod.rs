@@ -16,6 +16,17 @@ pub fn get_embedded_filter(relative_path: &Path) -> Option<&'static str> {
     STDLIB.get_file(relative_path)?.contents_utf8()
 }
 
+/// Returns all embedded files under `dir_path` as `(relative_path, utf8_content)` pairs.
+/// `dir_path` is relative to the stdlib root (e.g. `"cargo/build_test"`).
+pub fn get_embedded_dir_files(dir_path: &Path) -> Vec<(PathBuf, &'static str)> {
+    let Some(dir) = STDLIB.get_dir(dir_path) else {
+        return Vec::new();
+    };
+    dir.files()
+        .filter_map(|f| Some((f.path().to_path_buf(), f.contents_utf8()?)))
+        .collect()
+}
+
 /// Build default search dirs in priority order:
 /// 1. `.tokf/filters/` (repo-local, resolved from CWD)
 /// 2. `{config_dir}/tokf/filters/` (user-level, platform-native)

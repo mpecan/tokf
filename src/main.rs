@@ -1,4 +1,5 @@
 mod cache_cmd;
+mod eject_cmd;
 mod gain;
 mod history_cmd;
 mod verify_cmd;
@@ -83,6 +84,14 @@ enum Commands {
     Show {
         /// Filter relative path without extension (e.g. "git/push")
         filter: String,
+    },
+    /// Copy a filter to your local or global config for customization
+    Eject {
+        /// Filter relative path without extension (e.g. "cargo/build")
+        filter: String,
+        /// Eject to global config dir instead of project-local .tokf/
+        #[arg(long)]
+        global: bool,
     },
     /// Claude Code hook management
     Hook {
@@ -509,6 +518,7 @@ fn main() {
         Commands::Rewrite { command } => cmd_rewrite(command, cli.verbose),
         Commands::Which { command } => cmd_which(command, cli.verbose),
         Commands::Show { filter } => cmd_show(filter),
+        Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
             HookAction::Install { global } => cmd_hook_install(*global),
