@@ -1,0 +1,21 @@
+name = "jest success shows test summary, strips npm noise"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "PASS src/utils.test.ts"
+
+[[expect]]
+contains = "Test Suites: 2 passed"
+
+[[expect]]
+contains = "Tests:       5 passed"
+
+[[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "npm info"
+
+[[expect]]
+not_contains = "> jest"

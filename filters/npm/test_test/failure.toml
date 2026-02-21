@@ -1,0 +1,18 @@
+name = "fallback failure shows tail, strips npm noise"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "FAIL tests/app.test.js"
+
+[[expect]]
+contains = "SyntaxError"
+
+[[expect]]
+not_contains = "npm warn"
+
+[[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "> myapp@"

@@ -141,6 +141,10 @@ pub struct FilterConfig {
     /// Optional Lua/Luau script escape hatch.
     #[serde(default)]
     pub lua_script: Option<ScriptConfig>,
+
+    /// Variant entries for context-aware filter delegation.
+    #[serde(default)]
+    pub variant: Vec<Variant>,
 }
 
 /// A pipeline step that runs a sub-command and captures its output.
@@ -322,6 +326,27 @@ pub struct ScriptConfig {
     pub file: Option<String>,
     /// Inline Luau source.
     pub source: Option<String>,
+}
+
+/// Detection criteria for a filter variant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VariantDetect {
+    /// File paths to check in CWD (pre-execution detection).
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Regex pattern to match against command output (post-execution fallback).
+    pub output_pattern: Option<String>,
+}
+
+/// A variant entry that delegates to a specialized child filter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Variant {
+    /// Human-readable name for this variant.
+    pub name: String,
+    /// Detection criteria (file-based and/or output-pattern).
+    pub detect: VariantDetect,
+    /// Filter name to delegate to (relative path without `.toml`).
+    pub filter: String,
 }
 
 #[cfg(test)]
@@ -535,6 +560,87 @@ mod tests {
         assert!(!cfg.strip_empty_lines);
         assert!(!cfg.collapse_empty_lines);
         assert_eq!(cfg.lua_script, None);
+        assert!(cfg.variant.is_empty());
+    }
+
+    // --- Variant deserialization ---
+
+    #[test]
+    fn test_variant_with_file_detection() {
+        let cfg: FilterConfig = toml::from_str(
+            r#"
+command = ["npm test", "pnpm test"]
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js"]
+filter = "npm/test-vitest"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(cfg.variant.len(), 1);
+        assert_eq!(cfg.variant[0].name, "vitest");
+        assert_eq!(
+            cfg.variant[0].detect.files,
+            vec!["vitest.config.ts", "vitest.config.js"]
+        );
+        assert_eq!(cfg.variant[0].detect.output_pattern, None);
+        assert_eq!(cfg.variant[0].filter, "npm/test-vitest");
+    }
+
+    #[test]
+    fn test_variant_with_output_pattern() {
+        let cfg: FilterConfig = toml::from_str(
+            r#"
+command = "npm test"
+
+[[variant]]
+name = "mocha"
+detect.output_pattern = "passing|failing|pending"
+filter = "npm/test-mocha"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(cfg.variant.len(), 1);
+        assert_eq!(cfg.variant[0].name, "mocha");
+        assert!(cfg.variant[0].detect.files.is_empty());
+        assert_eq!(
+            cfg.variant[0].detect.output_pattern.as_deref(),
+            Some("passing|failing|pending")
+        );
+        assert_eq!(cfg.variant[0].filter, "npm/test-mocha");
+    }
+
+    #[test]
+    fn test_multiple_variants() {
+        let cfg: FilterConfig = toml::from_str(
+            r#"
+command = "npm test"
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js"]
+filter = "npm/test-jest"
+
+[[variant]]
+name = "mocha"
+detect.output_pattern = "passing|failing"
+filter = "npm/test-mocha"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(cfg.variant.len(), 3);
+        assert_eq!(cfg.variant[0].name, "vitest");
+        assert_eq!(cfg.variant[1].name, "jest");
+        assert_eq!(cfg.variant[2].name, "mocha");
     }
 
     // --- Negative tests ---
