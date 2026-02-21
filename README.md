@@ -226,17 +226,21 @@ Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see why a command was
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
 | `cargo/clippy` | `cargo clippy` |
-| `cargo/install` | `cargo install` |
+| `cargo/install` | `cargo install *` |
 | `cargo/test` | `cargo test` |
-| `docker/*` | `docker build`, `docker ps`, … |
-| `npm/*` | `npm install`, `npm run`, … |
-| `pnpm/*` | pnpm equivalents |
-| `go/*` | `go build`, `go test`, … |
-| `gh/*` | GitHub CLI commands |
-| `kubectl/*` | Kubernetes CLI |
-| `next/*` | Next.js dev/build |
+| `docker/*` | `docker build`, `docker compose`, `docker images`, `docker ps` |
+| `npm/run` | `npm run *` |
+| `npm/test` | `npm test`, `pnpm test`, `yarn test` (with vitest/jest variants) |
+| `pnpm/*` | `pnpm add`, `pnpm install` |
+| `go/*` | `go build`, `go vet` |
+| `gradle/*` | `gradle build`, `gradle test`, `gradle dependencies` |
+| `gh/*` | `gh pr list`, `gh pr view`, `gh pr checks`, `gh issue list`, `gh issue view` |
+| `kubectl/*` | `kubectl get pods` |
+| `next/*` | `next build` |
+| `prisma/*` | `prisma generate` |
 | `pytest` | Python test runner |
 | `tsc` | TypeScript compiler |
+| `ls` | `ls` |
 
 ---
 
@@ -431,7 +435,8 @@ Some commands are wrappers around different underlying tools (e.g. `npm test` ma
 ```toml
 command = ["npm test", "pnpm test", "yarn test"]
 
-skip = ["^> .+@", "^\\s*npm warn"]
+strip_ansi = true
+skip = ["^> .+@", "^\\s*npm warn", "^\\s*npm notice"]
 
 [on_success]
 output = "{output}"
@@ -441,18 +446,13 @@ tail = 20
 
 [[variant]]
 name = "vitest"
-detect.files = ["vitest.config.ts", "vitest.config.js"]
+detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
 filter = "npm/test-vitest"
 
 [[variant]]
 name = "jest"
-detect.files = ["jest.config.js", "jest.config.ts"]
+detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
 filter = "npm/test-jest"
-
-[[variant]]
-name = "mocha"
-detect.output_pattern = "passing|failing|pending"
-filter = "npm/test-mocha"
 ```
 
 Detection is two-phase:
