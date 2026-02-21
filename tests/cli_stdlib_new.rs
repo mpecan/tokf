@@ -417,13 +417,18 @@ fn docker_ps_success_shows_containers() {
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
-        filtered.output.contains("CONTAINER ID"),
-        "expected header row, got: {}",
+        filtered.output.contains("NAMES"),
+        "expected compact header row, got: {}",
         filtered.output
     );
     assert!(
         filtered.output.contains("nginx"),
         "expected nginx container, got: {}",
+        filtered.output
+    );
+    assert!(
+        !filtered.output.contains("CONTAINER ID"),
+        "expected no CONTAINER ID column, got: {}",
         filtered.output
     );
 }
@@ -435,10 +440,8 @@ fn docker_ps_failure_shows_error() {
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
-        filtered
-            .output
-            .contains("Cannot connect to the Docker daemon"),
-        "expected daemon error, got: {}",
+        filtered.output.contains("Docker daemon not running"),
+        "expected condensed daemon error, got: {}",
         filtered.output
     );
 }

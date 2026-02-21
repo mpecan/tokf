@@ -1,6 +1,6 @@
-name = "daemon error shows tail"
-inline = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+name = "generic error shows tail"
+inline = "Error response from daemon: driver failed programming external connectivity"
 exit_code = 1
 
 [[expect]]
-contains = "Cannot connect"
+contains = "driver failed"

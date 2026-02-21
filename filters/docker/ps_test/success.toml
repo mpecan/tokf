@@ -1,9 +1,15 @@
-name = "running containers pass through"
+name = "running containers show compact format"
 fixture = "success.txt"
 exit_code = 0
 
 [[expect]]
-contains = "CONTAINER ID"
+contains = "NAMES"
 
 [[expect]]
-contains = "nginx"
+contains = "webserver"
+
+[[expect]]
+not_contains = "CONTAINER ID"
+
+[[expect]]
+not_contains = "COMMAND"

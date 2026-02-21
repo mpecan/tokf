@@ -1,4 +1,9 @@
 command = "docker ps"
+run = "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' {args}"
+
+match_output = [
+  { contains = "Cannot connect to the Docker daemon", output = "Docker daemon not running" },
+]
 
 [on_success]
 head = 30
