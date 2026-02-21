@@ -1,7 +1,7 @@
 command = "ls"
 
 [on_success]
-output = "{output}"
+head = 50
 
 [on_failure]
 tail = 5
