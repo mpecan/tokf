@@ -1,5 +1,6 @@
 
 > myapp@1.0.0 test
+> node run-tests.js
 npm warn deprecated some-package@1.0.0: use other-package instead
 
 FAIL tests/app.test.js
@@ -11,3 +12,5 @@ FAIL tests/app.test.js
 
 Error: Test failed
 npm ERR! Test failed.  See above for more details.
+npm verbose exit 1
+npm verbose code 1

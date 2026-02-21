@@ -1,4 +1,4 @@
-name = "jest failure shows error details"
+name = "jest failure shows error details, strips npm noise"
 fixture = "failure.txt"
 exit_code = 1
 
@@ -10,3 +10,12 @@ contains = "Expected: 1"
 
 [[expect]]
 contains = "Test Suites: 1 failed"
+
+[[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "npm info"
+
+[[expect]]
+not_contains = "> jest"

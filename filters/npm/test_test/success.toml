@@ -9,7 +9,16 @@ not_contains = "npm warn"
 not_contains = "npm WARN"
 
 [[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "npm info"
+
+[[expect]]
 not_contains = "> myapp@"
+
+[[expect]]
+not_contains = "> node run-tests"
 
 [[expect]]
 contains = "all tests passed"

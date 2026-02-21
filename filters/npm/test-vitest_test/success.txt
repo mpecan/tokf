@@ -1,3 +1,7 @@
+
+> vitest-test-project@1.0.0 test
+> vitest run
+
  DEV  v1.6.0 /home/user/myapp
 
  RUN  default
@@ -12,3 +16,13 @@ debug output here
       Tests  5 passed (5)
    Start at  14:30:00
    Duration  120ms
+npm verbose cli /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js
+npm info using npm@10.9.2
+npm info using node@v23.9.0
+npm verbose title npm test
+npm verbose argv "test"
+npm verbose logfile logs-max:10 dir:/home/user/.npm/_logs/2026-02-21-
+npm verbose cwd /home/user/myapp
+npm verbose os Linux 6.1.0
+npm verbose exit 0
+npm info ok
