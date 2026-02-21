@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1](https://github.com/mpecan/tokf/compare/tokf-v0.2.0...tokf-v0.2.1) (2026-02-21)
+
+
+### Features
+
+* **cli:** add eject subcommand for filter customization ([#100](https://github.com/mpecan/tokf/issues/100)) ([f855dd0](https://github.com/mpecan/tokf/commit/f855dd0f20fecadc59241087ca741f2170ef1de3))
+* **filter:** improve weak stdlib filters ([#98](https://github.com/mpecan/tokf/issues/98)) ([c766fc5](https://github.com/mpecan/tokf/commit/c766fc50685b8641230d50e855462e62a8a3f607))
+
+
+### Documentation
+
+* **readme:** improve discoverability and add before/after examples ([#96](https://github.com/mpecan/tokf/issues/96)) ([4b3d809](https://github.com/mpecan/tokf/commit/4b3d80908d76008e993d7018ae811c620bd68423))
+
 ## [0.2.0](https://github.com/mpecan/tokf/compare/tokf-v0.1.8...tokf-v0.2.0) (2026-02-20)
 
 
