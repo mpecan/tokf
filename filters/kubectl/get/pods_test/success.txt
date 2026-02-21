@@ -1,0 +1,7 @@
+NAME                          READY   STATUS      RESTARTS   AGE
+nginx-deployment-7fb96c846b   1/1     Running     0          2d
+postgres-statefulset-0        1/1     Running     0          5d
+redis-deployment-5d4c9b8d7f   1/1     Running     2          12h
+migration-job-abc12           0/1     Completed   0          1d
+old-pod-evicted-xyz           0/1     Evicted     0          3d
+batch-job-def34               0/1     Completed   0          6h

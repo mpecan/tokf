@@ -484,8 +484,8 @@ fn docker_images_failure_shows_error() {
 // --- kubectl/get ---
 
 #[test]
-fn kubectl_get_success_shows_resources() {
-    let config = load_config("filters/kubectl/get.toml");
+fn kubectl_get_pods_skips_completed() {
+    let config = load_config("filters/kubectl/get/pods.toml");
     let fixture = load_fixture("kubectl/get.txt");
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
@@ -499,11 +499,16 @@ fn kubectl_get_success_shows_resources() {
         "expected Running status, got: {}",
         filtered.output
     );
+    assert!(
+        !filtered.output.contains("Completed"),
+        "expected Completed pods filtered out, got: {}",
+        filtered.output
+    );
 }
 
 #[test]
-fn kubectl_get_failure_shows_error() {
-    let config = load_config("filters/kubectl/get.toml");
+fn kubectl_get_pods_failure_shows_error() {
+    let config = load_config("filters/kubectl/get/pods.toml");
     let fixture = load_fixture("kubectl/get_failure.txt");
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);

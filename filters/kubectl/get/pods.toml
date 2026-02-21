@@ -1,0 +1,11 @@
+command = ["kubectl get pods", "kubectl get pod", "kubectl get po"]
+
+[on_success]
+skip = [
+  "\\s+Completed\\s+",
+  "\\s+Evicted\\s+",
+]
+head = 30
+
+[on_failure]
+tail = 10

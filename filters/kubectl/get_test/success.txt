@@ -1,4 +1,0 @@
-NAME                          READY   STATUS    RESTARTS   AGE
-nginx-deployment-7fb96c846b   1/1     Running   0          2d
-postgres-statefulset-0        1/1     Running   0          5d
-redis-deployment-5d4c9b8d7f   1/1     Running   2          12h
