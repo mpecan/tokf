@@ -1,0 +1,11 @@
+command = "gh issue list"
+
+[[replace]]
+pattern = '^(.*?)\tabout .+ ago$'
+output = '{1}'
+
+[on_success]
+head = 40
+
+[on_failure]
+tail = 10

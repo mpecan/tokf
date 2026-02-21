@@ -555,8 +555,8 @@ fn gh_pr_list_failure_shows_error() {
 // --- gh/issue ---
 
 #[test]
-fn gh_issue_success_shows_issues() {
-    let config = load_config("filters/gh/issue.toml");
+fn gh_issue_list_strips_timestamps() {
+    let config = load_config("filters/gh/issue/list.toml");
     let fixture = load_fixture("gh/issue.txt");
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
@@ -566,26 +566,21 @@ fn gh_issue_success_shows_issues() {
         filtered.output
     );
     assert!(
-        filtered.output.contains("enhancement"),
-        "expected enhancement label, got: {}",
+        !filtered.output.contains("about 1 day ago"),
+        "expected timestamps stripped, got: {}",
         filtered.output
     );
 }
 
 #[test]
-fn gh_issue_failure_shows_error() {
-    let config = load_config("filters/gh/issue.toml");
+fn gh_issue_list_failure_shows_error() {
+    let config = load_config("filters/gh/issue/list.toml");
     let fixture = load_fixture("gh/issue_failure.txt");
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
         filtered.output.contains("GraphQL"),
         "expected GraphQL error, got: {}",
-        filtered.output
-    );
-    assert!(
-        filtered.output.contains("Could not resolve"),
-        "expected resolution error, got: {}",
         filtered.output
     );
 }

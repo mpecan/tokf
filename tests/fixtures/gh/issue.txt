@@ -1,4 +1,4 @@
 Showing 2 of 2 open issues in mpecan/tokf
 
-#14  Phase 4: Lua escape hatch              enhancement  about 1 day ago
-#13  Phase 3: token tracking with SQLite    enhancement  about 2 days ago
+#14	Phase 4: Lua escape hatch	enhancement	about 1 day ago
+#13	Phase 3: token tracking with SQLite	enhancement	about 2 days ago

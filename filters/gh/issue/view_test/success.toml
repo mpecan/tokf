@@ -1,0 +1,21 @@
+name = "issue view skips empty metadata"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "Bug: memory leak"
+
+[[expect]]
+contains = "OPEN"
+
+[[expect]]
+not_contains = "assignees:"
+
+[[expect]]
+not_contains = "projects:"
+
+[[expect]]
+not_contains = "milestone:"
+
+[[expect]]
+not_contains = "labels:"
