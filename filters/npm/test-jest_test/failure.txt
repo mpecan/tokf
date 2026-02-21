@@ -1,0 +1,18 @@
+FAIL src/utils.test.ts
+  ● add › handles negative numbers
+
+    expect(received).toBe(expected)
+
+    Expected: 1
+    Received: -1
+
+       8 |   it('handles negative numbers', () => {
+       9 |     expect(add(-1, 0)).toBe(1);
+      10 |   });
+
+PASS src/app.test.ts
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 4 passed, 5 total
+Snapshots:   0 total
+Time:        1.456 s

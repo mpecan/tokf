@@ -247,12 +247,15 @@ fn rewrite_multiple_patterns_non_variant_passthrough() {
     .unwrap();
 
     let output = tokf()
-        .args(["rewrite", "yarn test"])
+        .args(["rewrite", "tokf_test_sentinel_cmd test"])
         .current_dir(dir.path())
         .output()
         .unwrap();
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "yarn test");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "tokf_test_sentinel_cmd test"
+    );
 }
 
 // --- Wildcard pattern rewrites ---
@@ -478,6 +481,69 @@ fn rewrite_pipe_grep_quoted_pattern_escaped() {
     assert_eq!(
         result,
         "tokf run --baseline-pipe 'grep -E '\\''fail|error'\\''' cargo test"
+    );
+}
+
+// --- Variant filter integration tests ---
+
+#[test]
+fn rewrite_variant_parent_rewrites_npm_test() {
+    // npm/test.toml from stdlib should match "npm test"
+    let result = rewrite_with_stdlib("npm test");
+    assert_eq!(result, "tokf run npm test");
+}
+
+#[test]
+fn rewrite_variant_parent_rewrites_pnpm_test() {
+    let result = rewrite_with_stdlib("pnpm test");
+    assert_eq!(result, "tokf run pnpm test");
+}
+
+#[test]
+fn rewrite_variant_parent_rewrites_yarn_test() {
+    let result = rewrite_with_stdlib("yarn test");
+    assert_eq!(result, "tokf run yarn test");
+}
+
+#[test]
+fn which_shows_variant_info() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["which", "npm test"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should mention variants since npm/test.toml has them
+    assert!(
+        stdout.contains("variant") || stdout.contains("npm/test"),
+        "expected variant info or filter name, got: {stdout}"
+    );
+}
+
+#[test]
+fn which_variant_file_match() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // Create a vitest config file so the variant resolves
+    std::fs::write(dir.path().join("vitest.config.ts"), "").unwrap();
+
+    let output = tokf()
+        .args(["which", "npm test", "--verbose"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    // Should show variant resolution to vitest
+    assert!(
+        combined.contains("vitest") || combined.contains("variant"),
+        "expected vitest variant resolution, got stdout={stdout}, stderr={stderr}"
     );
 }
 

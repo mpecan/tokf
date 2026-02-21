@@ -307,7 +307,7 @@ fn hook_handle_multiple_pattern_second_variant() {
 
 #[test]
 fn hook_handle_multiple_pattern_non_variant_silent() {
-    let json = r#"{"tool_name":"Bash","tool_input":{"command":"yarn test"}}"#;
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"tokf_test_sentinel_cmd test"}}"#;
     let stdout = hook_handle_with_filter(
         json,
         "test-runner.toml",
@@ -316,6 +316,35 @@ fn hook_handle_multiple_pattern_non_variant_silent() {
     assert!(
         stdout.trim().is_empty(),
         "expected no output for non-matching variant, got: {stdout}"
+    );
+}
+
+// --- Variant hook integration tests ---
+
+#[test]
+fn hook_handle_stdlib_npm_test_rewrites() {
+    // npm/test.toml from stdlib should match and rewrite "npm test"
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"npm test"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run npm test"
+    );
+}
+
+#[test]
+fn hook_handle_stdlib_yarn_test_rewrites() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"yarn test"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run yarn test"
     );
 }
 

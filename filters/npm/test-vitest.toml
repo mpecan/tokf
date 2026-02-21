@@ -1,0 +1,22 @@
+command = "vitest"
+strip_ansi = true
+skip = [
+  "^\\s*$",
+  "^\\s*npm warn",
+  "^\\s*npm notice",
+  "^\\s*npm WARN",
+  "^\\s*WARN\\s",
+  "^> .+@",
+  "^\\s*DEV\\s",
+  "^\\s*RUN\\s",
+  "^stdout \\|",
+  "^\\s*Duration",
+  "^\\s*Start at",
+  "^\\s*Snapshots",
+]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 30

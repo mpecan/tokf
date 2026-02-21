@@ -1,0 +1,9 @@
+name = "fallback failure shows tail"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "FAIL tests/app.test.js"
+
+[[expect]]
+contains = "SyntaxError"
