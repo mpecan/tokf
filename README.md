@@ -424,6 +424,48 @@ Available globals: `output` (string), `exit_code` (integer), `args` (table).
 Return a string to replace output, or `nil` to fall through to the rest of the TOML pipeline.
 The sandbox blocks `io`, `os`, and `package` — no filesystem or network access from scripts.
 
+### Filter variants
+
+Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:
+
+```toml
+command = ["npm test", "pnpm test", "yarn test"]
+
+skip = ["^> .+@", "^\\s*npm warn"]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 20
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js", "jest.config.ts"]
+filter = "npm/test-jest"
+
+[[variant]]
+name = "mocha"
+detect.output_pattern = "passing|failing|pending"
+filter = "npm/test-mocha"
+```
+
+Detection is two-phase:
+
+1. **File detection** (before execution) — checks if config files exist in the current directory. First match wins.
+2. **Output pattern** (after execution) — regex-matches command output. Used as a fallback when no file was detected.
+
+When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback.
+
+The `filter` field references another filter by its discovery name (relative path without `.toml`). Use `tokf which "npm test" -v` to see variant resolution.
+
+> **TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields (`skip`, `[on_success]`, etc.) because TOML array-of-tables sections capture subsequent keys.
+
 ---
 
 ## Filter resolution

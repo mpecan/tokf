@@ -1,0 +1,14 @@
+ DEV  v1.6.0 /home/user/myapp
+
+ RUN  default
+
+stdout | src/utils.test.ts > add > adds two numbers
+debug output here
+
+ ✓ src/utils.test.ts (3 tests) 5ms
+ ✓ src/app.test.ts (2 tests) 12ms
+
+ Test Files  2 passed (2)
+      Tests  5 passed (5)
+   Start at  14:30:00
+   Duration  120ms

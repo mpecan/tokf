@@ -1,0 +1,12 @@
+name = "vitest failure shows error details"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "FAIL  src/utils.test.ts"
+
+[[expect]]
+contains = "expected -1 to be 1"
+
+[[expect]]
+contains = "Test Files  1 failed"

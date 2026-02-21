@@ -1,0 +1,7 @@
+PASS src/utils.test.ts
+PASS src/app.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        1.234 s

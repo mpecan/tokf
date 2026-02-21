@@ -1,0 +1,15 @@
+name = "fallback success strips npm noise"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "npm warn"
+
+[[expect]]
+not_contains = "npm WARN"
+
+[[expect]]
+not_contains = "> myapp@"
+
+[[expect]]
+contains = "all tests passed"

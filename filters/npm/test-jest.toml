@@ -1,0 +1,18 @@
+command = "jest"
+strip_ansi = true
+skip = [
+  "^\\s*$",
+  "^\\s*npm warn",
+  "^\\s*npm notice",
+  "^\\s*npm WARN",
+  "^\\s*WARN\\s",
+  "^> .+@",
+  "^\\s*console\\.log",
+  "^\\s*at Object",
+]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 30

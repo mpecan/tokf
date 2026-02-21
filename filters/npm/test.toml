@@ -1,0 +1,30 @@
+command = ["npm test", "pnpm test", "yarn test"]
+
+# Parent fallback — used when no variant matches
+strip_ansi = true
+skip = [
+  "^> .+@",
+  "^\\s*npm warn",
+  "^\\s*npm notice",
+  "^\\s*npm WARN",
+  "^\\s*WARN\\s",
+  "^\\s*ERR!",
+  "^\\s*yarn run",
+  "^\\s*\\$\\s",
+]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 20
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
+filter = "npm/test-jest"
