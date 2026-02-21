@@ -171,6 +171,15 @@ tokf which "cargo test"    # which filter would match
 tokf show git/push         # print the TOML source
 ```
 
+### Customize a built-in filter
+
+```sh
+tokf eject cargo/build            # copy to .tokf/filters/ (project-local)
+tokf eject cargo/build --global   # copy to ~/.config/tokf/filters/ (user-level)
+```
+
+This copies the filter TOML and its test suite to your config directory, where it shadows the built-in. Edit the ejected copy freely — tokf's priority system ensures your version is used instead of the original.
+
 ### Flags
 
 | Flag | Description |
