@@ -1,0 +1,12 @@
+command = "gh pr checks *"
+
+match_output = [
+  { contains = "All checks were successful", output = "all checks passed" },
+]
+
+[on_success]
+head = 20
+
+[on_failure]
+skip = ["^pass"]
+head = 20

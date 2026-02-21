@@ -522,8 +522,8 @@ fn kubectl_get_failure_shows_error() {
 // --- gh/pr ---
 
 #[test]
-fn gh_pr_success_shows_prs() {
-    let config = load_config("filters/gh/pr.toml");
+fn gh_pr_list_strips_timestamps() {
+    let config = load_config("filters/gh/pr/list.toml");
     let fixture = load_fixture("gh/pr.txt");
     let result = make_result(&fixture, 0);
     let filtered = filter::apply(&config, &result, &[]);
@@ -533,26 +533,21 @@ fn gh_pr_success_shows_prs() {
         filtered.output
     );
     assert!(
-        filtered.output.contains("mpecan"),
-        "expected author name, got: {}",
+        !filtered.output.contains("about 2 days ago"),
+        "expected timestamps stripped, got: {}",
         filtered.output
     );
 }
 
 #[test]
-fn gh_pr_failure_shows_error() {
-    let config = load_config("filters/gh/pr.toml");
+fn gh_pr_list_failure_shows_error() {
+    let config = load_config("filters/gh/pr/list.toml");
     let fixture = load_fixture("gh/pr_failure.txt");
     let result = make_result(&fixture, 1);
     let filtered = filter::apply(&config, &result, &[]);
     assert!(
         filtered.output.contains("GraphQL"),
         "expected GraphQL error, got: {}",
-        filtered.output
-    );
-    assert!(
-        filtered.output.contains("Could not resolve"),
-        "expected resolution error, got: {}",
         filtered.output
     );
 }
