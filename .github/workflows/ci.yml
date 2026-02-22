@@ -34,13 +34,13 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check formatting
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Verify filter test suites
         run: ./target/debug/tokf verify --require-all

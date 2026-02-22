@@ -13,7 +13,7 @@ while IFS= read -r file; do
     elif [ "$lines" -gt "$SOFT_LIMIT" ]; then
         echo "WARNING: $file has $lines lines (soft limit: $SOFT_LIMIT)"
     fi
-done < <(find src -name '*.rs' -type f)
+done < <(find crates/*/src -name '*.rs' -type f)
 
 if [ "$exit_code" -eq 0 ]; then
     echo "File size check passed."
