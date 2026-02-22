@@ -2,6 +2,31 @@ use sha2::{Digest, Sha256};
 
 use crate::config::types::FilterConfig;
 
+/// Error returned when a [`FilterConfig`] cannot be hashed.
+///
+/// Wraps the underlying serialization error without exposing `serde_json` as
+/// a public dependency of this crate.
+#[derive(Debug)]
+pub struct HashError(serde_json::Error);
+
+impl std::fmt::Display for HashError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for HashError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl From<serde_json::Error> for HashError {
+    fn from(e: serde_json::Error) -> Self {
+        Self(e)
+    }
+}
+
 /// Compute a deterministic SHA-256 content hash for a [`FilterConfig`].
 ///
 /// Two configs that are logically identical (same fields, same values) produce
@@ -10,9 +35,10 @@ use crate::config::types::FilterConfig;
 ///
 /// # Errors
 ///
-/// Returns an error if `config` cannot be serialized to JSON (should not happen
-/// for well-formed `FilterConfig` values, but callers must handle it).
-pub fn canonical_hash(config: &FilterConfig) -> Result<String, serde_json::Error> {
+/// Returns a [`HashError`] if `config` cannot be serialized to JSON (should
+/// not happen for well-formed `FilterConfig` values, but callers must handle
+/// it).
+pub fn canonical_hash(config: &FilterConfig) -> Result<String, HashError> {
     let json = serde_json::to_vec(config)?;
     let digest = Sha256::digest(&json);
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
@@ -48,12 +74,17 @@ mod tests {
 
     #[test]
     fn label_key_order_invariance() {
+        // GroupConfig lives at FilterConfig.parse.group — use the correct TOML
+        // path. The key field is ExtractRule { pattern, output } (no `line`).
         let a = parse(
             r#"
 command = "git status"
-[[group]]
-key = { line = 1, pattern = "^(\\S+)" }
-[group.labels]
+
+[parse.group.key]
+pattern = "^(.{2}) "
+output = "{1}"
+
+[parse.group.labels]
 M = "modified"
 A = "added"
 "#,
@@ -61,9 +92,12 @@ A = "added"
         let b = parse(
             r#"
 command = "git status"
-[[group]]
-key = { line = 1, pattern = "^(\\S+)" }
-[group.labels]
+
+[parse.group.key]
+pattern = "^(.{2}) "
+output = "{1}"
+
+[parse.group.labels]
 A = "added"
 M = "modified"
 "#,

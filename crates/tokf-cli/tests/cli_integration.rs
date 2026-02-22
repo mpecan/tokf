@@ -632,8 +632,10 @@ fn show_hash_differs_for_different_filters() {
 
 #[test]
 fn show_hash_nonexistent_filter_exits_one() {
+    let dir = tempfile::TempDir::new().unwrap();
     let output = tokf()
         .args(["show", "no/such/filter", "--hash"])
+        .current_dir(dir.path())
         .output()
         .unwrap();
     assert!(!output.status.success());
