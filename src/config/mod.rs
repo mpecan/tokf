@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod types;
+pub mod variant;
 
 use std::path::{Path, PathBuf};
 

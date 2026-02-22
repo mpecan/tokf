@@ -68,24 +68,52 @@ We are pragmatic. The limits below are guidelines that produce better code in th
 ```
 src/
   main.rs          — CLI entry, argument parsing, subcommand routing
+  lib.rs           — Public module declarations
+  resolve.rs       — Filter resolution, command execution, tracking (binary crate)
+  runner.rs        — Command execution, stdout/stderr capture
   config/
-    mod.rs         — Config loading, file resolution
+    mod.rs         — Config loading, file discovery, pattern matching
     types.rs       — Serde structs for the TOML schema
+    variant.rs     — Two-phase variant resolution (file detection + output pattern)
+    cache.rs       — Binary config cache (rkyv serialization)
   filter/
     mod.rs         — FilterEngine orchestration
     skip.rs        — Skip/keep line filtering
     extract.rs     — Regex capture and template interpolation
+    replace.rs     — Per-line regex replacement
     group.rs       — Line grouping by key pattern
     section.rs     — State machine section parsing
     aggregate.rs   — Sum/count across collected items
-  runner.rs        — Command execution, stdout/stderr capture
-  output.rs        — Template rendering, variable interpolation
+    template.rs    — Template rendering, variable interpolation, pipe chains
+    match_output.rs — Whole-output substring matching
+    dedup.rs       — Line deduplication
+    cleanup.rs     — ANSI stripping, line trimming, blank line handling
+    lua.rs         — Luau script escape hatch
+  rewrite/         — Shell rewrite engine (hook + CLI)
+  hook/            — Claude Code PreToolUse hook handler + installer
+  tracking/        — Token savings tracking (SQLite)
+  history/         — Filtered output history (SQLite)
+  skill.rs         — Claude Code skill installer
+  verify_cmd.rs    — Declarative test suite runner
+  eject_cmd.rs     — Filter ejection to local/global config
+  cache_cmd.rs     — Cache management subcommand
+  gain.rs          — Token savings display
+  history_cmd.rs   — History subcommand
 filters/           — Standard library of filter configs (.toml)
-  git/
-    push.toml      — filter config
-    push_test/     — declarative test suite for git/push
+  git/             — git add, commit, diff, log, push, show, status
+  cargo/           — cargo build, check, clippy, install, test
+  npm/             — npm run, npm/pnpm/yarn test (with vitest/jest variants)
+  docker/          — docker build, compose, images, ps
+  go/              — go build, go vet
+  gradle/          — gradle build, test, dependencies
+  gh/              — GitHub CLI (pr, issue)
+  kubectl/         — kubectl get pods
+  next/            — next build
+  pnpm/            — pnpm add, install
+  prisma/          — prisma generate
 tests/
-  integration/     — End-to-end tests
+  cli_*.rs         — End-to-end CLI integration tests
+  filter_*.rs      — Filter pipeline integration tests
   fixtures/        — Sample command outputs for testing
 ```
 
@@ -95,6 +123,8 @@ tests/
 - **First match wins** for config resolution. No merging, no inheritance.
 - **Passthrough on missing filter.** Never block a command because a filter doesn't exist.
 - **Exit code propagation.** tokf must return the same exit code as the underlying command.
+- **Variant delegation, not inheritance.** Parent filters delegate to child filters via `[[variant]]` — the child filter replaces the parent entirely, it doesn't inherit or merge fields.
+- **Two-phase variant detection.** File detection (pre-execution) takes priority; output-pattern matching (post-execution) is the fallback. Parent config applies when no variant matches.
 
 ## Build & Run
 
@@ -108,6 +138,5 @@ cargo fmt -- --check     # Format check
 ## What Not To Do
 
 - Don't add features beyond what the current issue asks for.
-- Don't add dependencies for Phase 3/4 concerns during Phase 1.
 - Don't implement streaming, hot-reloading, HTTP registries, GUIs, parallel execution, output caching, or advanced linting. These are explicitly deferred.
 - Don't sacrifice user experience for implementation convenience.

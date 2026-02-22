@@ -226,17 +226,21 @@ Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see why a command was
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
 | `cargo/clippy` | `cargo clippy` |
-| `cargo/install` | `cargo install` |
+| `cargo/install` | `cargo install *` |
 | `cargo/test` | `cargo test` |
-| `docker/*` | `docker build`, `docker ps`, … |
-| `npm/*` | `npm install`, `npm run`, … |
-| `pnpm/*` | pnpm equivalents |
-| `go/*` | `go build`, `go test`, … |
-| `gh/*` | GitHub CLI commands |
-| `kubectl/*` | Kubernetes CLI |
-| `next/*` | Next.js dev/build |
+| `docker/*` | `docker build`, `docker compose`, `docker images`, `docker ps` |
+| `npm/run` | `npm run *` |
+| `npm/test` | `npm test`, `pnpm test`, `yarn test` (with vitest/jest variants) |
+| `pnpm/*` | `pnpm add`, `pnpm install` |
+| `go/*` | `go build`, `go vet` |
+| `gradle/*` | `gradle build`, `gradle test`, `gradle dependencies` |
+| `gh/*` | `gh pr list`, `gh pr view`, `gh pr checks`, `gh issue list`, `gh issue view` |
+| `kubectl/*` | `kubectl get pods` |
+| `next/*` | `next build` |
+| `prisma/*` | `prisma generate` |
 | `pytest` | Python test runner |
 | `tsc` | TypeScript compiler |
+| `ls` | `ls` |
 
 ---
 
@@ -423,6 +427,44 @@ end
 Available globals: `output` (string), `exit_code` (integer), `args` (table).
 Return a string to replace output, or `nil` to fall through to the rest of the TOML pipeline.
 The sandbox blocks `io`, `os`, and `package` — no filesystem or network access from scripts.
+
+### Filter variants
+
+Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:
+
+```toml
+command = ["npm test", "pnpm test", "yarn test"]
+
+strip_ansi = true
+skip = ["^> ", "^\\s*npm (warn|notice|WARN|verbose|info|timing|error|ERR)"]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 20
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
+filter = "npm/test-jest"
+```
+
+Detection is two-phase:
+
+1. **File detection** (before execution) — checks if config files exist in the current directory. First match wins.
+2. **Output pattern** (after execution) — regex-matches command output. Used as a fallback when no file was detected.
+
+When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback.
+
+The `filter` field references another filter by its discovery name (relative path without `.toml`). Use `tokf which "npm test" -v` to see variant resolution.
+
+> **TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields (`skip`, `[on_success]`, etc.) because TOML array-of-tables sections capture subsequent keys.
 
 ---
 

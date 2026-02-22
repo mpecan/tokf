@@ -1,0 +1,18 @@
+
+> myapp@1.0.0 test
+> node run-tests.js
+npm warn deprecated some-package@1.0.0: use other-package instead
+npm WARN deprecated another@2.0.0: moved to @scope/another
+npm verbose cli /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js
+npm info using npm@10.9.2
+
+running 5 tests...
+test 1 passed
+test 2 passed
+test 3 passed
+test 4 passed
+test 5 passed
+
+all tests passed
+npm verbose exit 0
+npm info ok

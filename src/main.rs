@@ -2,6 +2,7 @@ mod cache_cmd;
 mod eject_cmd;
 mod gain;
 mod history_cmd;
+mod resolve;
 mod verify_cmd;
 
 use std::path::Path;
@@ -10,14 +11,12 @@ use clap::{Parser, Subcommand};
 
 use tokf::baseline;
 use tokf::config;
-use tokf::config::types::FilterConfig;
 use tokf::filter;
 use tokf::history;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
 use tokf::skill;
-use tokf::tracking;
 
 #[derive(Parser)]
 #[command(
@@ -202,117 +201,18 @@ enum HistoryAction {
     },
 }
 
-/// Find the first filter that matches `command_args` using the discovery model.
-/// Returns `(Option<FilterConfig>, words_consumed)`.
-fn find_filter(
-    command_args: &[String],
-    verbose: bool,
-    no_cache: bool,
-) -> anyhow::Result<(Option<FilterConfig>, usize)> {
-    let search_dirs = config::default_search_dirs();
-    let resolved = if no_cache {
-        config::discover_all_filters(&search_dirs)?
-    } else {
-        config::cache::discover_with_cache(&search_dirs)?
-    };
-    let words: Vec<&str> = command_args.iter().map(String::as_str).collect();
-
-    for filter in &resolved {
-        if let Some(consumed) = filter.matches(&words) {
-            if verbose {
-                eprintln!(
-                    "[tokf] matched {} (command: \"{}\") in {}",
-                    filter.relative_path.display(),
-                    filter.config.command.first(),
-                    filter
-                        .source_path
-                        .parent()
-                        .map_or("?", |p| p.to_str().unwrap_or("?")),
-                );
-            }
-            return Ok((Some(filter.config.clone()), consumed));
-        }
-    }
-
-    if verbose {
-        eprintln!(
-            "[tokf] no filter found for '{}', passing through",
-            words.join(" ")
-        );
-    }
-    Ok((None, 0))
-}
-
-fn run_command(
-    filter_cfg: Option<&FilterConfig>,
-    words_consumed: usize,
-    command_args: &[String],
-    remaining_args: &[String],
-) -> anyhow::Result<runner::CommandResult> {
-    if let Some(cfg) = filter_cfg
-        && let Some(run_cmd) = &cfg.run
-    {
-        runner::execute_shell(run_cmd, remaining_args)
-    } else if words_consumed > 0 {
-        let cmd_str = command_args[..words_consumed].join(" ");
-        runner::execute(&cmd_str, remaining_args)
-    } else {
-        runner::execute(&command_args[0], remaining_args)
-    }
-}
-
-/// Record a command run to the tracking database.
-///
-/// When `--baseline-pipe` is active, `input_bytes` reflects the piped baseline
-/// (what the user *would have seen* without tokf), not the full raw output.
-/// This means `tokens_saved` (input - output) can be negative when the filter
-/// produces more output than the pipe would have shown — this is correct and
-/// intentional for fair accounting.
-#[allow(clippy::too_many_arguments)]
-fn record_run(
-    command_args: &[String],
-    filter_name: Option<&str>,
-    input_bytes: usize,
-    output_bytes: usize,
-    filter_time_ms: u128,
-    exit_code: i32,
-) {
-    let Some(path) = tracking::db_path() else {
-        eprintln!("[tokf] tracking: cannot determine DB path");
-        return;
-    };
-    let conn = match tracking::open_db(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[tokf] tracking error (db open): {e:#}");
-            return;
-        }
-    };
-    let command = command_args.join(" ");
-    let event = tracking::build_event(
-        &command,
-        filter_name,
-        input_bytes,
-        output_bytes,
-        filter_time_ms,
-        exit_code,
-    );
-    if let Err(e) = tracking::record_event(&conn, &event) {
-        eprintln!("[tokf] tracking error (record): {e:#}");
-    }
-}
-
 // NOTE: cmd_run integrates command resolution, execution, output rendering, tracking,
 // and history recording. Splitting would require threading 5+ values through helpers.
 // Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
 fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> anyhow::Result<i32> {
-    let (filter_cfg, words_consumed) = if cli.no_filter {
-        (None, 0)
+    let filter_match = if cli.no_filter {
+        None
     } else {
-        find_filter(command_args, cli.verbose, cli.no_cache)?
+        resolve::find_filter(command_args, cli.verbose, cli.no_cache)?
     };
 
+    let words_consumed = filter_match.as_ref().map_or(0, |m| m.words_consumed);
     let remaining_args: Vec<String> = if words_consumed > 0 {
         command_args[words_consumed..].to_vec()
     } else if command_args.len() > 1 {
@@ -321,14 +221,11 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         vec![]
     };
 
-    let cmd_result = run_command(
-        filter_cfg.as_ref(),
-        words_consumed,
-        command_args,
-        &remaining_args,
-    )?;
+    let filter_cfg = filter_match.as_ref().map(|m| &m.config);
+    let cmd_result =
+        resolve::run_command(filter_cfg, words_consumed, command_args, &remaining_args)?;
 
-    let Some(cfg) = filter_cfg else {
+    let Some(filter_match) = filter_match else {
         let raw_len = cmd_result.combined.len();
         let input_bytes = match baseline_pipe {
             Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
@@ -341,7 +238,7 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         // Passthrough commands are not recorded to history: raw == filtered would
         // waste storage and add noise with nothing useful to compare.
         // output_bytes = raw_len: what tokf actually printed (full raw output).
-        record_run(
+        resolve::record_run(
             command_args,
             None,
             input_bytes,
@@ -351,6 +248,10 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         );
         return Ok(cmd_result.exit_code);
     };
+
+    // Phase B: resolve deferred output-pattern variants using the already-discovered
+    // filter list (no second discovery call needed).
+    let cfg = resolve::resolve_phase_b(filter_match, &cmd_result.combined, cli.verbose);
 
     let input_bytes = match baseline_pipe {
         Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
@@ -370,7 +271,7 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
     }
 
     let filter_name = cfg.command.first();
-    record_run(
+    resolve::record_run(
         command_args,
         Some(filter_name),
         input_bytes,
@@ -446,11 +347,10 @@ fn cmd_test(
     Ok(0)
 }
 
-// Note: cmd_ls, cmd_which, and cmd_show always use the cache. The --no-cache flag
+// Note: cmd_ls and cmd_which always use the cache. The --no-cache flag
 // only affects `tokf run`. Pass --no-cache to `tokf run` if you need uncached resolution.
 fn cmd_ls(verbose: bool) -> i32 {
-    let search_dirs = config::default_search_dirs();
-    let Ok(filters) = config::cache::discover_with_cache(&search_dirs) else {
+    let Ok(filters) = resolve::discover_filters(false) else {
         eprintln!("[tokf] error: failed to discover filters");
         return 1;
     };
@@ -486,13 +386,13 @@ fn cmd_ls(verbose: bool) -> i32 {
 }
 
 fn cmd_which(command: &str, verbose: bool) -> i32 {
-    let search_dirs = config::default_search_dirs();
-    let Ok(filters) = config::cache::discover_with_cache(&search_dirs) else {
+    let Ok(filters) = resolve::discover_filters(false) else {
         eprintln!("[tokf] error: failed to discover filters");
         return 1;
     };
 
     let words: Vec<&str> = command.split_whitespace().collect();
+    let cwd = std::env::current_dir().unwrap_or_default();
 
     for filter in &filters {
         if filter.matches(&words).is_some() {
@@ -501,9 +401,36 @@ fn cmd_which(command: &str, verbose: bool) -> i32 {
                 .with_extension("")
                 .display()
                 .to_string();
+
+            let variant_info = if filter.config.variant.is_empty() {
+                String::new()
+            } else {
+                let res =
+                    config::variant::resolve_variants(&filter.config, &filters, &cwd, verbose);
+                let resolved = res.config.command.first().to_string();
+                if resolved != filter.config.command.first() {
+                    format!(" -> variant: \"{resolved}\"")
+                } else if res.output_variants.is_empty() {
+                    format!(
+                        " ({} variant(s), none matched by file)",
+                        filter.config.variant.len()
+                    )
+                } else {
+                    let names: Vec<&str> = res
+                        .output_variants
+                        .iter()
+                        .map(|v| v.name.as_str())
+                        .collect();
+                    format!(
+                        " ({} variant(s), {} deferred to output-pattern: {})",
+                        filter.config.variant.len(),
+                        res.output_variants.len(),
+                        names.join(", ")
+                    )
+                }
+            };
             println!(
-                "{}  [{}]  command: \"{}\"",
-                display_name,
+                "{display_name}  [{}]  command: \"{}\"{variant_info}",
                 filter.priority_label(),
                 filter.config.command.first()
             );
@@ -583,8 +510,7 @@ fn cmd_show(filter: &str) -> i32 {
     // Normalize: strip ".toml" suffix if present
     let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
 
-    let search_dirs = config::default_search_dirs();
-    let Ok(filters) = config::cache::discover_with_cache(&search_dirs) else {
+    let Ok(filters) = resolve::discover_filters(false) else {
         eprintln!("[tokf] error: failed to discover filters");
         return 1;
     };

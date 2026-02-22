@@ -1,0 +1,30 @@
+name = "vitest success strips noise, keeps test results"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+not_contains = "DEV  v1.6.0"
+
+[[expect]]
+not_contains = "stdout |"
+
+[[expect]]
+not_contains = "Duration"
+
+[[expect]]
+not_contains = "npm verbose"
+
+[[expect]]
+not_contains = "npm info"
+
+[[expect]]
+not_contains = "> vitest run"
+
+[[expect]]
+not_contains = "> vitest-test-project@"
+
+[[expect]]
+contains = "Test Files  2 passed"
+
+[[expect]]
+contains = "Tests  5 passed"
