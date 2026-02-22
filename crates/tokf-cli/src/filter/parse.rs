@@ -79,11 +79,13 @@ pub fn render_output(output_config: &OutputConfig, parse_result: &ParseResult) -
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::config::types::{ExtractRule, GroupConfig, LineExtract};
 
     fn git_status_parse_config() -> ParseConfig {
-        let mut labels = HashMap::new();
+        let mut labels = BTreeMap::new();
         labels.insert("M ".to_string(), "modified".to_string());
         labels.insert(" M".to_string(), "modified (unstaged)".to_string());
         labels.insert("??".to_string(), "untracked".to_string());

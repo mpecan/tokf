@@ -87,6 +87,9 @@ enum Commands {
     Show {
         /// Filter relative path without extension (e.g. "git/push")
         filter: String,
+        /// Print the SHA-256 content hash of the filter (for identity verification or change detection)
+        #[arg(long)]
+        hash: bool,
     },
     /// Copy a filter to your local or global config for customization
     Eject {
@@ -473,7 +476,7 @@ fn main() {
         Commands::Ls => cmd_ls(cli.verbose),
         Commands::Rewrite { command } => cmd_rewrite(command, cli.verbose),
         Commands::Which { command } => cmd_which(command, cli.verbose),
-        Commands::Show { filter } => cmd_show(filter),
+        Commands::Show { filter, hash } => cmd_show(filter, *hash),
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
@@ -506,7 +509,7 @@ fn main() {
     std::process::exit(exit_code);
 }
 
-fn cmd_show(filter: &str) -> i32 {
+fn cmd_show(filter: &str, hash: bool) -> i32 {
     // Normalize: strip ".toml" suffix if present
     let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
 
@@ -523,6 +526,17 @@ fn cmd_show(filter: &str) -> i32 {
         eprintln!("[tokf] filter not found: {filter}");
         return 1;
     };
+
+    if hash {
+        match tokf_common::hash::canonical_hash(&resolved.config) {
+            Ok(h) => println!("{h}"),
+            Err(e) => {
+                eprintln!("[tokf] error computing hash: {e}");
+                return 1;
+            }
+        }
+        return 0;
+    }
 
     let content = if resolved.priority == u8::MAX {
         if let Some(c) = config::get_embedded_filter(&resolved.relative_path) {
