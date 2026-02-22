@@ -17,8 +17,19 @@
     {"type": "chore", "section": "Miscellaneous", "hidden": true}
   ],
   "packages": {
-    ".": {
-      "component": "tokf"
+    "crates/tokf-common": {},
+    "crates/tokf-cli": { "component": "tokf" },
+    "crates/tokf-server": {}
+  },
+  "plugins": [
+    {
+      "type": "cargo-workspace",
+      "merge": false
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "workspace",
+      "components": ["tokf-common", "tokf", "tokf-server"]
     }
-  }
+  ]
 }
