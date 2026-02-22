@@ -22,7 +22,7 @@ Use **Conventional Commits** strictly:
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `perf`, `build`
 
-Scopes: `config`, `filter`, `runner`, `output`, `cli`, `hook`, `tracking`
+Scopes: `config`, `filter`, `runner`, `output`, `cli`, `hook`, `tracking`, `history`
 
 Examples:
 - `feat(filter): implement skip/keep line filtering`
@@ -71,6 +71,7 @@ src/
   lib.rs           — Public module declarations
   resolve.rs       — Filter resolution, command execution, tracking (binary crate)
   runner.rs        — Command execution, stdout/stderr capture
+  baseline.rs      — Fair baseline computation for piped commands
   config/
     mod.rs         — Config loading, file discovery, pattern matching
     types.rs       — Serde structs for the TOML schema
@@ -87,6 +88,7 @@ src/
     template.rs    — Template rendering, variable interpolation, pipe chains
     match_output.rs — Whole-output substring matching
     dedup.rs       — Line deduplication
+    parse.rs       — Declarative structured parser (branch + group)
     cleanup.rs     — ANSI stripping, line trimming, blank line handling
     lua.rs         — Luau script escape hatch
   rewrite/         — Shell rewrite engine (hook + CLI)

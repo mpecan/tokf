@@ -99,6 +99,13 @@ tokf hook install --global # user-level (~/.config/tokf/)
 
 Once installed, every command Claude runs through the Bash tool is filtered transparently. Track cumulative savings with `tokf gain`.
 
+tokf also ships a filter-authoring skill that teaches Claude the complete filter schema:
+
+```sh
+tokf skill install          # project-local (.claude/skills/)
+tokf skill install --global # user-level (~/.claude/skills/)
+```
+
 ---
 
 ## Installation
@@ -316,6 +323,11 @@ output = "{1}: {2} → {3}"
 dedup = true                  # collapse consecutive identical lines
 dedup_window = 10             # optional: compare within a N-line sliding window
 
+strip_ansi = true             # strip ANSI escape sequences before processing
+trim_lines = true             # trim leading/trailing whitespace from each line
+strip_empty_lines = true      # remove all blank lines from the final output
+collapse_empty_lines = true   # collapse consecutive blank lines into one
+
 match_output = [              # whole-output substring checks, short-circuit the pipeline
   { contains = "rejected", output = "push rejected" },
 ]
@@ -487,6 +499,33 @@ tokf gain              # summary: total bytes saved and reduction %
 tokf gain --daily      # day-by-day breakdown
 tokf gain --by-filter  # breakdown by filter
 tokf gain --json       # machine-readable output
+```
+
+---
+
+## Output history
+
+tokf records raw and filtered outputs in a local SQLite database, useful for debugging filters or reviewing what an AI agent saw:
+
+```sh
+tokf history list              # recent entries (current project)
+tokf history list -l 20        # show 20 entries
+tokf history list --all        # entries from all projects
+tokf history show 42           # full details for entry #42
+tokf history search "error"    # search by command or output content
+tokf history clear             # clear current project history
+tokf history clear --all       # clear all history (destructive)
+```
+
+---
+
+## Cache management
+
+tokf caches the filter discovery index for faster startup. The cache rebuilds automatically when filters change, but you can manage it manually:
+
+```sh
+tokf cache info    # show cache location, size, and validity
+tokf cache clear   # delete the cache, forcing a rebuild on next run
 ```
 
 ---
