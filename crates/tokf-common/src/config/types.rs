@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -275,7 +275,7 @@ pub struct GroupConfig {
 
     /// Map from raw key to human-readable label.
     #[serde(default)]
-    pub labels: HashMap<String, String>,
+    pub labels: BTreeMap<String, String>,
 }
 
 /// Output formatting configuration for the final rendered result.

@@ -67,11 +67,13 @@ pub fn render_group_counts(counts: &[GroupCount], format: &str, empty: Option<&s
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::config::types::ExtractRule;
 
     fn git_status_group_config() -> GroupConfig {
-        let mut labels = HashMap::new();
+        let mut labels = BTreeMap::new();
         labels.insert("M ".to_string(), "modified".to_string());
         labels.insert(" M".to_string(), "modified (unstaged)".to_string());
         labels.insert("??".to_string(), "untracked".to_string());
@@ -131,7 +133,7 @@ mod tests {
                 pattern: "[invalid".to_string(),
                 output: "{1}".to_string(),
             },
-            labels: HashMap::new(),
+            labels: BTreeMap::new(),
         };
         let lines = vec!["M  src/main.rs"];
         let groups = collect_groups(&config, &lines);
@@ -145,7 +147,7 @@ mod tests {
                 pattern: r"^(.{2}) ".to_string(),
                 output: "{1}".to_string(),
             },
-            labels: HashMap::new(),
+            labels: BTreeMap::new(),
         };
         let lines = vec!["M  src/main.rs", "M  src/lib.rs"];
         let groups = collect_groups(&config, &lines);

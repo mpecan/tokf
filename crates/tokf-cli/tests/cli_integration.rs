@@ -557,6 +557,90 @@ fn which_skips_invalid_toml_silently() {
 // --- tokf show ---
 
 #[test]
+fn show_hash_produces_64_char_lowercase_hex() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = tokf()
+        .args(["show", "git/push", "--hash"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let hash = stdout.trim();
+    assert_eq!(hash.len(), 64, "hash must be 64 chars, got: {hash:?}");
+    assert!(
+        hash.chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+        "hash must be lowercase hex, got: {hash:?}"
+    );
+}
+
+#[test]
+fn show_hash_is_stable_across_two_calls() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hash1 = String::from_utf8_lossy(
+        &tokf()
+            .args(["show", "git/push", "--hash"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    let hash2 = String::from_utf8_lossy(
+        &tokf()
+            .args(["show", "git/push", "--hash"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert_eq!(hash1, hash2, "hash must be identical across invocations");
+}
+
+#[test]
+fn show_hash_differs_for_different_filters() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hash_push = String::from_utf8_lossy(
+        &tokf()
+            .args(["show", "git/push", "--hash"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    let hash_build = String::from_utf8_lossy(
+        &tokf()
+            .args(["show", "cargo/build", "--hash"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert_ne!(
+        hash_push, hash_build,
+        "different filters must produce different hashes"
+    );
+}
+
+#[test]
+fn show_hash_nonexistent_filter_exits_one() {
+    let output = tokf()
+        .args(["show", "no/such/filter", "--hash"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
 fn show_git_push_prints_toml() {
     let dir = tempfile::TempDir::new().unwrap();
     let output = tokf()
