@@ -190,6 +190,46 @@ fn hook_handle_fixture_read() {
     );
 }
 
+// --- Pipe stripping through hook handler ---
+
+#[test]
+fn hook_handle_strips_pipe_to_grep() {
+    // cargo test has a stdlib filter — pipe to grep is stripped.
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"cargo test | grep FAILED"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run --baseline-pipe 'grep FAILED' cargo test"
+    );
+}
+
+#[test]
+fn hook_handle_preserves_pipe_to_wc() {
+    // wc is not a strippable target — pipe preserved, no rewrite emitted.
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status | wc -l"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+    assert!(
+        stdout.trim().is_empty(),
+        "expected no output for non-strippable pipe, got: {stdout}"
+    );
+}
+
+#[test]
+fn hook_handle_preserves_pipe_no_filter() {
+    // Strippable target but no filter for the base command — pipe preserved.
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-cmd | tail -5"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+    assert!(
+        stdout.trim().is_empty(),
+        "expected no output for piped unknown command, got: {stdout}"
+    );
+}
+
 // --- Multiple-pattern filter hook integration ---
 
 /// Helper: pipe JSON to `tokf hook handle` with a single custom filter.
