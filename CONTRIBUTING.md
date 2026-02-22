@@ -19,14 +19,9 @@ The project requires a recent stable Rust toolchain. See `rust-toolchain.toml` f
 
 ## What to work on
 
-Check the [issue tracker](https://github.com/mpecan/tokf/issues) for open issues. Issues are labelled by phase:
+Check the [issue tracker](https://github.com/mpecan/tokf/issues) for open issues. Good first contributions include adding new filters, improving existing ones, or expanding documentation.
 
-- **Phase 1** (core runtime) — filter engine, CLI, config resolution
-- **Phase 2** (hook rewrite) — Claude Code hook integration
-- **Phase 3** (token tracking) — SQLite-backed savings stats
-- **Phase 4** (Lua escape hatch) — scripted filter logic
-
-If you want to add a new built-in filter, no issue is required — just open a PR with the TOML file and, if the output format is non-trivial, a fixture file.
+If you want to add a new built-in filter, no issue is required — just open a PR with the TOML file, a `_test/` suite, and fixture data.
 
 ---
 
@@ -40,7 +35,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `perf`, `build`
 
-Scopes: `config`, `filter`, `runner`, `output`, `cli`, `hook`, `tracking`
+Scopes: `config`, `filter`, `runner`, `output`, `cli`, `hook`, `tracking`, `history`
 
 Keep commits atomic — one logical change per commit.
 
@@ -73,10 +68,24 @@ When a limit genuinely harms readability, it can be overridden with `#[allow(...
 1. Create `filters/<tool>/<subcommand>.toml`
 2. Set `command` to the pattern users type (e.g. `"git push"`)
 3. Add `[on_success]` and/or `[on_failure]` branches
-4. Save a real command output as `tests/fixtures/<tool>_<subcommand>_<case>.txt`
-5. Add integration tests in `tests/filter_<tool>_<subcommand>.rs`
+4. Create a `<subcommand>_test/` directory adjacent to the TOML with declarative test cases
+5. Save real command output as fixture `.txt` files (inline fixtures work for short outputs)
+6. Run `tokf verify <tool>/<subcommand>` to validate
 
-Run `tokf test filters/my/filter.toml tests/fixtures/my_fixture.txt` to iterate quickly without a full `cargo test`.
+Example test case (`filters/git/push_test/success.toml`):
+
+```toml
+name = "successful push shows branch"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "ok"
+```
+
+Use `tokf test filters/my/filter.toml tests/fixtures/my_fixture.txt` to iterate quickly on a single fixture.
+
+Every filter in the stdlib **must** have a `_test/` suite — CI enforces this with `tokf verify --require-all`.
 
 ---
 

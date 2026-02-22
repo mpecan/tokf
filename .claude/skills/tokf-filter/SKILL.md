@@ -35,12 +35,14 @@ Steps execute in this fixed order — **do not rearrange them**:
 
 1. **`match_output`** — whole-output substring checks; if matched, short-circuits the entire pipeline and emits immediately
 2. **`[[replace]]`** — per-line regex transforms applied to every line, in array order
-3. **`skip` / `keep`** — line-level filtering (drop or retain lines by regex)
-4. **`dedup` / `dedup_window`** — collapse duplicate consecutive lines
-5. **`lua_script`** — Luau escape hatch; runs after dedup, before section/parse
-6. **`[[section]]` OR `[parse]`** — structured extraction (these are mutually exclusive; section is a state machine, parse is a declarative grouper)
-7. **Exit-code branch** — `[on_success]` or `[on_failure]` depending on exit code
-8. **`[fallback]`** — if neither `on_success` nor `on_failure` produced output
+3. **`strip_ansi` / `trim_lines`** — per-line cleanup (ANSI stripping, whitespace trimming)
+4. **`skip` / `keep`** — line-level filtering (drop or retain lines by regex)
+5. **`dedup` / `dedup_window`** — collapse duplicate consecutive lines
+6. **`lua_script`** — Luau escape hatch; runs after dedup, before section/parse
+7. **`[[section]]` OR `[parse]`** — structured extraction (these are mutually exclusive; section is a state machine, parse is a declarative grouper)
+8. **Exit-code branch** — `[on_success]` or `[on_failure]` depending on exit code
+9. **`[fallback]`** — if neither `on_success` nor `on_failure` produced output
+10. **`strip_empty_lines` / `collapse_empty_lines`** — post-processing cleanup on the final output
 
 Within `[on_success]` and `[on_failure]`, fields are processed as:
 - `head` / `tail` → trim lines
@@ -62,6 +64,8 @@ Within `[on_success]` and `[on_failure]`, fields are processed as:
 | `keep` | array of strings (regex) | `[]` | Retain only lines matching any regex. (Inverse of skip.) |
 | `dedup` | bool | `false` | Collapse consecutive identical lines. |
 | `dedup_window` | integer | `0` (off) | Dedup within a sliding window of N lines. |
+| `strip_ansi` | bool | `false` | Strip ANSI escape sequences before skip/keep. |
+| `trim_lines` | bool | `false` | Trim leading/trailing whitespace from each line. |
 | `lua_script` | table | (absent) | Luau escape hatch. |
 | `[[section]]` | array of tables | `[]` | State-machine section collectors. |
 | `[parse]` | table | (absent) | Declarative structured parser (branch + group). |
@@ -69,6 +73,9 @@ Within `[on_success]` and `[on_failure]`, fields are processed as:
 | `[on_failure]` | table | (absent) | Output branch for non-zero exit. |
 | `[output]` | table | (absent) | Top-level output template (used by `[parse]`). |
 | `[fallback]` | table | (absent) | Fallback when no branch matched. |
+| `strip_empty_lines` | bool | `false` | Remove all blank lines from the final output. |
+| `collapse_empty_lines` | bool | `false` | Collapse consecutive blank lines into one. |
+| `[[variant]]` | array of tables | `[]` | Context-aware delegation to specialized child filters. |
 
 ---
 
@@ -327,6 +334,59 @@ tail = 5
 ```
 
 **When to use**: as a safety net when you have complex branching logic. Ensures tokf never silently swallows output.
+
+---
+
+### 4.10 `[[variant]]` — Context-Aware Filter Delegation
+
+Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context.
+
+```toml
+command = ["npm test", "pnpm test", "yarn test"]
+
+strip_ansi = true
+skip = ["^> ", "^\\s*npm (warn|notice|WARN|verbose|info|timing|error|ERR)"]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 20
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
+filter = "npm/test-jest"
+```
+
+**Fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | Human-readable identifier for this variant |
+| `detect.files` | array of strings | no | File paths to check in CWD (pre-execution detection) |
+| `detect.output_pattern` | string (regex) | no | Regex to match against command output (post-execution fallback) |
+| `filter` | string | yes | Filter to delegate to (relative path without `.toml`, e.g. `"npm/test-vitest"`) |
+
+**Two-phase detection**:
+1. **File detection** (before execution) — checks if any listed config files exist in the current directory. First match wins.
+2. **Output pattern** (after execution) — regex-matches the command output. Used as a fallback when no file was detected.
+
+At least one of `detect.files` or `detect.output_pattern` must be set.
+
+**Behavior**:
+- When a variant matches, the child filter **replaces** the parent entirely — no field inheritance or merging
+- When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback
+- The `filter` field references another filter by its discovery name (e.g. `"npm/test-vitest"` maps to `filters/npm/test-vitest.toml`)
+
+**TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields (`skip`, `[on_success]`, etc.) because TOML array-of-tables sections capture subsequent keys.
+
+**When to use**: when a single command pattern maps to different underlying tools that produce fundamentally different output formats. Create a parent filter with a generic fallback, then create specialized child filters for each tool.
 
 ---
 

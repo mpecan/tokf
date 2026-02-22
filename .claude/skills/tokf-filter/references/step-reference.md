@@ -467,3 +467,132 @@ tail = 5
 **When this triggers**: if `[on_success]` or `[on_failure]` has an `output` template that renders to empty, or if neither branch is defined for the given exit code, `[fallback]` activates.
 
 **Recommendation**: Always add `[fallback] tail = 5` to complex filters using `[[section]]`. Acts as a safety net for edge cases.
+
+---
+
+## `strip_ansi`
+
+**Type**: `bool`
+**Required**: no
+**Default**: `false`
+
+Strip ANSI escape sequences (colors, bold, cursor movement) from each line before skip/keep pattern matching. Applied after `[[replace]]`, before `skip`/`keep`.
+
+```toml
+strip_ansi = true
+```
+
+**When to use**: for commands that emit colored output (e.g. test runners, linters). Without this, ANSI codes can interfere with regex matching in `skip`, `keep`, and `[[replace]]`.
+
+---
+
+## `trim_lines`
+
+**Type**: `bool`
+**Required**: no
+**Default**: `false`
+
+Trim leading and trailing whitespace from each line. Applied alongside `strip_ansi`, before `skip`/`keep`.
+
+```toml
+trim_lines = true
+```
+
+**When to use**: when command output has inconsistent indentation that would complicate regex patterns.
+
+---
+
+## `strip_empty_lines`
+
+**Type**: `bool`
+**Required**: no
+**Default**: `false`
+
+Remove all blank lines from the final output. Applied as a post-processing step after all other filtering.
+
+```toml
+strip_empty_lines = true
+```
+
+**When to use**: when the filtered output has excessive blank lines that waste tokens without adding structure.
+
+---
+
+## `collapse_empty_lines`
+
+**Type**: `bool`
+**Required**: no
+**Default**: `false`
+
+Collapse consecutive blank lines into a single blank line in the final output. Less aggressive than `strip_empty_lines`. Applied as a post-processing step after all other filtering.
+
+```toml
+collapse_empty_lines = true
+```
+
+**When to use**: when you want to preserve some visual structure (single blank lines as separators) but remove redundant consecutive blanks.
+
+---
+
+## `[[variant]]`
+
+**Type**: array of tables
+**Required**: no
+**Default**: `[]`
+
+Context-aware delegation to specialized child filters. Used when a single command pattern (e.g. `npm test`) can invoke different underlying tools (Jest, Vitest, Mocha) that produce fundamentally different output.
+
+```toml
+command = ["npm test", "pnpm test", "yarn test"]
+
+strip_ansi = true
+skip = ["^> "]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 20
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
+filter = "npm/test-jest"
+
+[[variant]]
+name = "mocha"
+detect.output_pattern = "passing|failing|pending"
+filter = "npm/test-mocha"
+```
+
+**Per-entry fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | Human-readable identifier for this variant (used in diagnostics and `--verbose` output) |
+| `detect.files` | array of strings | no | File paths to check for existence in the current working directory |
+| `detect.output_pattern` | string (regex) | no | Regex to match against the full command output |
+| `filter` | string | yes | Filter to delegate to, specified as a relative path without `.toml` (e.g. `"npm/test-vitest"`) |
+
+At least one of `detect.files` or `detect.output_pattern` must be set per variant.
+
+**Two-phase detection**:
+
+1. **File detection (Phase A, pre-execution)**: For each variant with `detect.files`, tokf checks if any of the listed files exist in the current working directory. First file match wins — that variant's filter is used immediately.
+2. **Output pattern (Phase B, post-execution)**: Variants with only `detect.output_pattern` are deferred. After the command runs, tokf regex-matches the output against each deferred variant's pattern. First match wins.
+
+File detection takes priority because it happens before execution and avoids unnecessary output analysis.
+
+**Delegation semantics**:
+- When a variant matches, the child filter **replaces** the parent entirely — no field inheritance or merging
+- When no variant matches, the parent filter's own fields apply as the fallback
+- The child filter is a standalone TOML file with its own `command`, `skip`, `on_success`, etc.
+
+**TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields and tables (`skip`, `[on_success]`, `[on_failure]`, etc.) because TOML array-of-tables sections capture all subsequent keys into the array entries.
+
+**Debugging**: Use `tokf which "npm test" -v` to see variant resolution details.
