@@ -408,13 +408,25 @@ fn cmd_which(command: &str, verbose: bool) -> i32 {
                 let res =
                     config::variant::resolve_variants(&filter.config, &filters, &cwd, verbose);
                 let resolved = res.config.command.first().to_string();
-                if resolved == filter.config.command.first() {
+                if resolved != filter.config.command.first() {
+                    format!(" -> variant: \"{resolved}\"")
+                } else if res.output_variants.is_empty() {
                     format!(
                         " ({} variant(s), none matched by file)",
                         filter.config.variant.len()
                     )
                 } else {
-                    format!(" -> variant: \"{resolved}\"")
+                    let names: Vec<&str> = res
+                        .output_variants
+                        .iter()
+                        .map(|v| v.name.as_str())
+                        .collect();
+                    format!(
+                        " ({} variant(s), {} deferred to output-pattern: {})",
+                        filter.config.variant.len(),
+                        res.output_variants.len(),
+                        names.join(", ")
+                    )
                 }
             };
             println!(
