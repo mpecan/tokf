@@ -68,7 +68,7 @@ fn interpolate_rewrite(template: &str, caps: &regex::Captures<'_>, full_input: &
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::trivial_regex)]
 mod tests {
     use super::*;
 

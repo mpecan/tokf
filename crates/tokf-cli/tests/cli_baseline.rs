@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::process::Command;
 
 fn tokf() -> Command {
@@ -20,7 +22,7 @@ fn last_event(db_path: &std::path::Path) -> (i64, i64) {
 
 // --- Core baseline-pipe tracking ---
 
-/// With --baseline-pipe 'tail -3', input_bytes should reflect ~3 lines, not all 10.
+/// With --baseline-pipe 'tail -3', `input_bytes` should reflect ~3 lines, not all 10.
 #[test]
 fn baseline_pipe_records_piped_byte_count() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -59,7 +61,7 @@ fn baseline_pipe_records_piped_byte_count() {
     );
 }
 
-/// Without --baseline-pipe, input_bytes should be the full output length.
+/// Without --baseline-pipe, `input_bytes` should be the full output length.
 #[test]
 fn no_baseline_pipe_records_full_byte_count() {
     let dir = tempfile::TempDir::new().unwrap();
@@ -84,7 +86,7 @@ fn no_baseline_pipe_records_full_byte_count() {
 
 // --- Passthrough output_bytes fix (remediation #2) ---
 
-/// In the no-filter passthrough path, output_bytes should be the full raw output
+/// In the no-filter passthrough path, `output_bytes` should be the full raw output
 /// (what tokf actually printed), not the piped baseline.
 #[test]
 fn passthrough_output_bytes_is_full_output() {
@@ -244,7 +246,7 @@ fn baseline_pipe_grep_records_matching_lines() {
 
 // --- Empty output ---
 
-/// baseline-pipe with a command that produces no output records input_bytes = 0.
+/// baseline-pipe with a command that produces no output records `input_bytes` = 0.
 #[test]
 fn baseline_pipe_empty_output() {
     let dir = tempfile::TempDir::new().unwrap();

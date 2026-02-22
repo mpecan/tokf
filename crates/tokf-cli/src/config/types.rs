@@ -2,7 +2,11 @@
 pub use tokf_common::config::types::*;
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::literal_string_with_formatting_args
+)]
 mod tests {
     use super::*;
 

@@ -1,0 +1,22 @@
+app = "tokf-server"
+primary_region = "iad"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+
+  [http_service.checks]
+    [http_service.checks.health]
+      grace_period = "5s"
+      interval = "10s"
+      method = "GET"
+      path = "/health"
+      protocol = "http"
+      timeout = "5s"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

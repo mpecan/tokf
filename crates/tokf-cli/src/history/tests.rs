@@ -1,6 +1,7 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_arguments)]
+
 use super::*;
 use rusqlite::Connection;
-use serial_test::serial;
 use tempfile::TempDir;
 
 fn temp_db() -> (TempDir, Connection) {

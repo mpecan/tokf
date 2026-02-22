@@ -94,10 +94,10 @@ replace = "tokf run {0}"
 
     #[test]
     fn deserialize_empty_skip_patterns() {
-        let toml_str = r#"
+        let toml_str = r"
 [skip]
 patterns = []
-"#;
+";
         let config: RewriteConfig = toml::from_str(toml_str).unwrap();
         let skip = config.skip.unwrap();
         assert!(skip.patterns.is_empty());

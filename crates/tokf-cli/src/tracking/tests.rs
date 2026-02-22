@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use super::*;
 use serial_test::serial;
 use tempfile::TempDir;
@@ -105,7 +107,7 @@ fn record_event_all_fields_persisted() {
     assert_eq!(ec, 0);
 }
 
-/// C1+C2: verify exit_code and filter_time_ms are readable with non-zero values.
+/// C1+C2: verify `exit_code` and `filter_time_ms` are readable with non-zero values.
 #[test]
 fn record_event_exit_code_and_filter_time_persisted() {
     let (_dir, conn) = temp_db();
@@ -163,7 +165,7 @@ fn query_summary_empty_db() {
     assert_eq!(s.total_input_tokens, 0);
     assert_eq!(s.total_output_tokens, 0);
     assert_eq!(s.tokens_saved, 0);
-    assert_eq!(s.savings_pct, 0.0);
+    assert!(s.savings_pct.abs() < f64::EPSILON);
 }
 
 #[test]
@@ -186,7 +188,7 @@ fn query_summary_zero_input_no_divide_by_zero() {
     let ev = build_event("cmd", None, 0, 0, 0, 0);
     record_event(&conn, &ev).expect("record");
     let s = query_summary(&conn).expect("summary");
-    assert_eq!(s.savings_pct, 0.0); // must not panic or NaN
+    assert!(s.savings_pct.abs() < f64::EPSILON); // must not panic or NaN
 }
 
 /// C3: multiple events with diverse byte counts — verify correct accumulation.
