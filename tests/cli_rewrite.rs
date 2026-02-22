@@ -342,20 +342,51 @@ fn rewrite_golangci_lint_alone_passthrough() {
     );
 }
 
-// --- Piped command passthrough ---
+// --- Pipe stripping (simple pipes stripped when filter matches) ---
 
 #[test]
-fn rewrite_piped_command_passes_through_unchanged() {
-    // cargo/test filter would normally match "cargo test", but piped commands are left alone.
+fn rewrite_pipe_grep_stripped() {
+    // cargo/test filter matches — pipe to grep is stripped.
     let result = rewrite_with_stdlib("cargo test | grep FAILED");
-    assert_eq!(result, "cargo test | grep FAILED");
+    assert_eq!(result, "tokf run cargo test");
 }
 
 #[test]
-fn rewrite_git_diff_pipe_head_passes_through() {
-    // The exact motivating example from issue #92.
+fn rewrite_pipe_head_stripped() {
     let result = rewrite_with_stdlib("git diff HEAD | head -5");
-    assert_eq!(result, "git diff HEAD | head -5");
+    assert_eq!(result, "tokf run git diff HEAD");
+}
+
+#[test]
+fn rewrite_pipe_tail_stripped() {
+    let result = rewrite_with_stdlib("cargo test | tail -n 5");
+    assert_eq!(result, "tokf run cargo test");
+}
+
+#[test]
+fn rewrite_pipe_grep_pattern_stripped() {
+    let result = rewrite_with_stdlib("git status | grep modified");
+    assert_eq!(result, "tokf run git status");
+}
+
+// --- Pipes that are NOT stripped ---
+
+#[test]
+fn rewrite_pipe_tail_follow_passes_through() {
+    let result = rewrite_with_stdlib("cargo test | tail -f");
+    assert_eq!(result, "cargo test | tail -f");
+}
+
+#[test]
+fn rewrite_pipe_wc_passes_through() {
+    let result = rewrite_with_stdlib("git status | wc -l");
+    assert_eq!(result, "git status | wc -l");
+}
+
+#[test]
+fn rewrite_pipe_no_filter_preserves_pipe() {
+    let result = rewrite_with_stdlib("unknown-cmd | tail -5");
+    assert_eq!(result, "unknown-cmd | tail -5");
 }
 
 #[test]
@@ -365,16 +396,31 @@ fn rewrite_multi_pipe_chain_passes_through() {
 }
 
 #[test]
+fn rewrite_multi_pipe_with_tail_passes_through() {
+    let result = rewrite_with_stdlib("cargo test | grep x | tail -5");
+    assert_eq!(result, "cargo test | grep x | tail -5");
+}
+
+// --- Compound + pipe ---
+
+#[test]
+fn rewrite_compound_then_tail_stripped() {
+    let result = rewrite_with_stdlib("git add . && cargo test | tail -5");
+    assert_eq!(result, "tokf run git add . && tokf run cargo test");
+}
+
+#[test]
 fn rewrite_logical_or_still_rewritten_integration() {
     let result = rewrite_with_stdlib("cargo test || echo failed");
     assert_eq!(result, "tokf run cargo test || echo failed");
 }
 
 #[test]
-fn rewrite_logical_or_then_pipe_passes_through() {
-    // Mixed: || followed by |. The bare pipe takes priority and the whole command passes through.
+fn rewrite_logical_or_then_pipe_stripped() {
+    // Mixed: || followed by |. The compound splitter handles each segment independently.
+    // Second segment "cargo test | grep ok" gets pipe stripped because cargo test has a filter.
     let result = rewrite_with_stdlib("cargo test || cargo test | grep ok");
-    assert_eq!(result, "cargo test || cargo test | grep ok");
+    assert_eq!(result, "tokf run cargo test || tokf run cargo test");
 }
 
 #[test]
@@ -383,6 +429,35 @@ fn rewrite_quoted_pipe_not_treated_as_pipe() {
     // git/log has a stdlib filter and the | is inside quotes so no bare pipe is detected.
     let result = rewrite_with_stdlib("git log --grep='feat|fix'");
     assert_eq!(result, "tokf run git log --grep='feat|fix'");
+}
+
+// --- Additional pipe edge cases ---
+
+#[test]
+fn rewrite_pipe_head_bytes_passes_through() {
+    // head -c (byte mode) is not strippable — different semantic.
+    let result = rewrite_with_stdlib("cargo test | head -c 50");
+    assert_eq!(result, "cargo test | head -c 50");
+}
+
+#[test]
+fn rewrite_compound_non_strippable_pipe_passes_through() {
+    // First segment rewritten, second has a non-strippable pipe (wc) — preserved.
+    let result = rewrite_with_stdlib("git add . && cargo test | wc -l");
+    assert_eq!(result, "tokf run git add . && cargo test | wc -l");
+}
+
+#[test]
+fn rewrite_compound_pipe_no_filter_preserves_pipe() {
+    // First segment rewritten, second has a strippable pipe but no filter — preserved.
+    let result = rewrite_with_stdlib("git add . && unknown-cmd | tail -5");
+    assert_eq!(result, "tokf run git add . && unknown-cmd | tail -5");
+}
+
+#[test]
+fn rewrite_semicolon_compound() {
+    let result = rewrite_with_stdlib("git add .; git status");
+    assert_eq!(result, "tokf run git add .; tokf run git status");
 }
 
 // --- Exit code ---
