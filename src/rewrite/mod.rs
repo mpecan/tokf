@@ -7,7 +7,7 @@ pub(crate) mod user_config;
 use std::path::PathBuf;
 
 use crate::config;
-use compound::{has_bare_pipe, split_compound, strip_simple_pipe};
+use compound::{StrippedPipe, has_bare_pipe, split_compound, strip_simple_pipe};
 use rules::{apply_rules, should_skip};
 use types::{RewriteConfig, RewriteRule};
 
@@ -65,17 +65,18 @@ pub fn rewrite(command: &str, verbose: bool) -> String {
 /// Rewrite a single command segment, handling pipe stripping when appropriate.
 ///
 /// If the segment has a bare pipe to a simple target (tail, head, grep) and the
-/// base command matches a tokf filter, the pipe is stripped and the filter-wrapped
-/// base is returned. Otherwise piped commands pass through unchanged.
+/// base command matches a tokf filter, the pipe is stripped and `--baseline-pipe`
+/// is injected so `tokf run` can compute fair savings. Otherwise piped commands
+/// pass through unchanged.
 fn rewrite_segment(segment: &str, filter_rules: &[RewriteRule], verbose: bool) -> String {
     if has_bare_pipe(segment) {
-        if let Some(base) = strip_simple_pipe(segment) {
+        if let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(segment) {
             let rewritten = apply_rules(filter_rules, &base);
             if rewritten != base {
                 if verbose {
                     eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
                 }
-                return rewritten;
+                return inject_baseline_pipe(&rewritten, &suffix);
             }
         }
         if verbose {
@@ -84,6 +85,20 @@ fn rewrite_segment(segment: &str, filter_rules: &[RewriteRule], verbose: bool) -
         return segment.to_string();
     }
     apply_rules(filter_rules, segment)
+}
+
+/// Insert `--baseline-pipe '<suffix>'` after `tokf run` in the rewritten command.
+///
+/// Single quotes in the suffix are escaped with the `'\''` idiom so the
+/// generated shell command remains valid (e.g. `grep -E 'fail|error'`).
+fn inject_baseline_pipe(rewritten: &str, suffix: &str) -> String {
+    rewritten.strip_prefix("tokf run ").map_or_else(
+        || rewritten.to_string(),
+        |rest| {
+            let escaped = suffix.replace('\'', "'\\''");
+            format!("tokf run --baseline-pipe '{escaped}' {rest}")
+        },
+    )
 }
 
 /// Testable version with explicit config and search dirs.

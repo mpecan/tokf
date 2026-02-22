@@ -8,6 +8,7 @@ use std::path::Path;
 
 use clap::{Parser, Subcommand};
 
+use tokf::baseline;
 use tokf::config;
 use tokf::config::types::FilterConfig;
 use tokf::filter;
@@ -50,6 +51,9 @@ struct Cli {
 enum Commands {
     /// Run a command and filter its output
     Run {
+        /// Pipe command for fair accounting (set by rewrite when stripping pipes)
+        #[arg(long)]
+        baseline_pipe: Option<String>,
         #[arg(trailing_var_arg = true, required = true)]
         command_args: Vec<String>,
     },
@@ -257,6 +261,13 @@ fn run_command(
     }
 }
 
+/// Record a command run to the tracking database.
+///
+/// When `--baseline-pipe` is active, `input_bytes` reflects the piped baseline
+/// (what the user *would have seen* without tokf), not the full raw output.
+/// This means `tokens_saved` (input - output) can be negative when the filter
+/// produces more output than the pipe would have shown — this is correct and
+/// intentional for fair accounting.
 #[allow(clippy::too_many_arguments)]
 fn record_run(
     command_args: &[String],
@@ -295,7 +306,7 @@ fn record_run(
 // and history recording. Splitting would require threading 5+ values through helpers.
 // Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
-fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
+fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> anyhow::Result<i32> {
     let (filter_cfg, words_consumed) = if cli.no_filter {
         (None, 0)
     } else {
@@ -318,18 +329,33 @@ fn cmd_run(command_args: &[String], cli: &Cli) -> anyhow::Result<i32> {
     )?;
 
     let Some(cfg) = filter_cfg else {
-        let bytes = cmd_result.combined.len();
+        let raw_len = cmd_result.combined.len();
+        let input_bytes = match baseline_pipe {
+            Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
+            None => raw_len,
+        };
         if !cmd_result.combined.is_empty() {
             println!("{}", cmd_result.combined);
         }
         // filter_time_ms = 0: no filter was applied, not 0ms of filtering.
         // Passthrough commands are not recorded to history: raw == filtered would
         // waste storage and add noise with nothing useful to compare.
-        record_run(command_args, None, bytes, bytes, 0, cmd_result.exit_code);
+        // output_bytes = raw_len: what tokf actually printed (full raw output).
+        record_run(
+            command_args,
+            None,
+            input_bytes,
+            raw_len,
+            0,
+            cmd_result.exit_code,
+        );
         return Ok(cmd_result.exit_code);
     };
 
-    let input_bytes = cmd_result.combined.len();
+    let input_bytes = match baseline_pipe {
+        Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
+        None => cmd_result.combined.len(),
+    };
     let start = std::time::Instant::now();
     let filtered = filter::apply(&cfg, &cmd_result, &remaining_args);
     let elapsed = start.elapsed();
@@ -492,28 +518,31 @@ fn cmd_which(command: &str, verbose: bool) -> i32 {
     1
 }
 
+fn or_exit(r: anyhow::Result<i32>) -> i32 {
+    r.unwrap_or_else(|e| {
+        eprintln!("[tokf] error: {e:#}");
+        1
+    })
+}
+
 fn main() {
     let cli = Cli::parse();
     let exit_code = match &cli.command {
-        Commands::Run { command_args } => cmd_run(command_args, &cli).unwrap_or_else(|e| {
-            eprintln!("[tokf] error: {e:#}");
-            1
-        }),
+        Commands::Run {
+            command_args,
+            baseline_pipe,
+        } => or_exit(cmd_run(command_args, baseline_pipe.as_deref(), &cli)),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
         Commands::Test {
             filter_path,
             fixture_path,
             exit_code,
-        } => cmd_test(
+        } => or_exit(cmd_test(
             Path::new(filter_path),
             Path::new(fixture_path),
             *exit_code,
             &cli,
-        )
-        .unwrap_or_else(|e| {
-            eprintln!("[tokf] error: {e:#}");
-            1
-        }),
+        )),
         Commands::Ls => cmd_ls(cli.verbose),
         Commands::Rewrite { command } => cmd_rewrite(command, cli.verbose),
         Commands::Which { command } => cmd_which(command, cli.verbose),
@@ -538,17 +567,13 @@ fn main() {
             json,
             require_all,
         } => verify_cmd::cmd_verify(filter.as_deref(), *list, *json, *require_all),
-        Commands::History { action } => match action {
+        Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),
             HistoryAction::Search { query, limit, all } => {
                 history_cmd::cmd_history_search(query, *limit, *all)
             }
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
-        }
-        .unwrap_or_else(|e| {
-            eprintln!("[tokf] error: {e:#}");
-            1
         }),
     };
     std::process::exit(exit_code);

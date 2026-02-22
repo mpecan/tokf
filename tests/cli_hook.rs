@@ -202,7 +202,7 @@ fn hook_handle_strips_pipe_to_grep() {
     let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
-        "tokf run cargo test"
+        "tokf run --baseline-pipe 'grep FAILED' cargo test"
     );
 }
 

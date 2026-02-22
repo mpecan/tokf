@@ -348,25 +348,28 @@ fn rewrite_golangci_lint_alone_passthrough() {
 fn rewrite_pipe_grep_stripped() {
     // cargo/test filter matches — pipe to grep is stripped.
     let result = rewrite_with_stdlib("cargo test | grep FAILED");
-    assert_eq!(result, "tokf run cargo test");
+    assert_eq!(result, "tokf run --baseline-pipe 'grep FAILED' cargo test");
 }
 
 #[test]
 fn rewrite_pipe_head_stripped() {
     let result = rewrite_with_stdlib("git diff HEAD | head -5");
-    assert_eq!(result, "tokf run git diff HEAD");
+    assert_eq!(result, "tokf run --baseline-pipe 'head -5' git diff HEAD");
 }
 
 #[test]
 fn rewrite_pipe_tail_stripped() {
     let result = rewrite_with_stdlib("cargo test | tail -n 5");
-    assert_eq!(result, "tokf run cargo test");
+    assert_eq!(result, "tokf run --baseline-pipe 'tail -n 5' cargo test");
 }
 
 #[test]
 fn rewrite_pipe_grep_pattern_stripped() {
     let result = rewrite_with_stdlib("git status | grep modified");
-    assert_eq!(result, "tokf run git status");
+    assert_eq!(
+        result,
+        "tokf run --baseline-pipe 'grep modified' git status"
+    );
 }
 
 // --- Pipes that are NOT stripped ---
@@ -406,7 +409,10 @@ fn rewrite_multi_pipe_with_tail_passes_through() {
 #[test]
 fn rewrite_compound_then_tail_stripped() {
     let result = rewrite_with_stdlib("git add . && cargo test | tail -5");
-    assert_eq!(result, "tokf run git add . && tokf run cargo test");
+    assert_eq!(
+        result,
+        "tokf run git add . && tokf run --baseline-pipe 'tail -5' cargo test"
+    );
 }
 
 #[test]
@@ -420,7 +426,10 @@ fn rewrite_logical_or_then_pipe_stripped() {
     // Mixed: || followed by |. The compound splitter handles each segment independently.
     // Second segment "cargo test | grep ok" gets pipe stripped because cargo test has a filter.
     let result = rewrite_with_stdlib("cargo test || cargo test | grep ok");
-    assert_eq!(result, "tokf run cargo test || tokf run cargo test");
+    assert_eq!(
+        result,
+        "tokf run cargo test || tokf run --baseline-pipe 'grep ok' cargo test"
+    );
 }
 
 #[test]
@@ -458,6 +467,18 @@ fn rewrite_compound_pipe_no_filter_preserves_pipe() {
 fn rewrite_semicolon_compound() {
     let result = rewrite_with_stdlib("git add .; git status");
     assert_eq!(result, "tokf run git add .; tokf run git status");
+}
+
+// --- Quoted grep patterns with baseline-pipe escaping ---
+
+#[test]
+fn rewrite_pipe_grep_quoted_pattern_escaped() {
+    // Single quotes in grep suffix are escaped in the --baseline-pipe value.
+    let result = rewrite_with_stdlib("cargo test | grep -E 'fail|error'");
+    assert_eq!(
+        result,
+        "tokf run --baseline-pipe 'grep -E '\\''fail|error'\\''' cargo test"
+    );
 }
 
 // --- Exit code ---

@@ -27,11 +27,20 @@ pub fn split_compound(input: &str) -> Vec<(String, String)> {
     parts
 }
 
+/// Result of stripping a simple pipe from a command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StrippedPipe {
+    /// The base command with the pipe removed (e.g. "cargo test").
+    pub base: String,
+    /// The raw pipe suffix (e.g. "tail -5", "grep FAIL").
+    pub suffix: String,
+}
+
 /// If the command has exactly one bare pipe whose target is simple output
 /// truncation or filtering (tail, head, grep), return the base command
-/// with the pipe stripped. Returns `None` for multi-pipe chains, pipes to
+/// and pipe suffix. Returns `None` for multi-pipe chains, pipes to
 /// other commands, or tail/head with non-line-selection flags (-f, -c).
-pub fn strip_simple_pipe(command: &str) -> Option<String> {
+pub fn strip_simple_pipe(command: &str) -> Option<StrippedPipe> {
     let positions = bare_pipe_positions(command);
     if positions.len() != 1 {
         return None;
@@ -41,7 +50,10 @@ pub fn strip_simple_pipe(command: &str) -> Option<String> {
     let suffix = command[pipe_pos + 1..].trim();
 
     if is_strippable_suffix(suffix) {
-        Some(command[..pipe_pos].trim_end().to_string())
+        Some(StrippedPipe {
+            base: command[..pipe_pos].trim_end().to_string(),
+            suffix: suffix.to_string(),
+        })
     } else {
         None
     }
@@ -275,11 +287,18 @@ mod tests {
 
     // --- strip_simple_pipe ---
 
+    fn stripped(base: &str, suffix: &str) -> Option<StrippedPipe> {
+        Some(StrippedPipe {
+            base: base.to_string(),
+            suffix: suffix.to_string(),
+        })
+    }
+
     #[test]
     fn strip_tail_n() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail -n 5"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "tail -n 5")
         );
     }
 
@@ -287,7 +306,7 @@ mod tests {
     fn strip_tail_numeric() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail -5"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "tail -5")
         );
     }
 
@@ -295,7 +314,7 @@ mod tests {
     fn strip_tail_bare() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "tail")
         );
     }
 
@@ -303,7 +322,7 @@ mod tests {
     fn strip_head_n() {
         assert_eq!(
             strip_simple_pipe("cargo test | head -n 10"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "head -n 10")
         );
     }
 
@@ -311,7 +330,7 @@ mod tests {
     fn strip_head_bare() {
         assert_eq!(
             strip_simple_pipe("cargo test | head"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "head")
         );
     }
 
@@ -319,7 +338,7 @@ mod tests {
     fn strip_tail_lines_long() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail --lines=5"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "tail --lines=5")
         );
     }
 
@@ -327,7 +346,7 @@ mod tests {
     fn strip_grep_pattern() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep FAIL"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "grep FAIL")
         );
     }
 
@@ -335,7 +354,7 @@ mod tests {
     fn strip_grep_case_insensitive() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -i error"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "grep -i error")
         );
     }
 
@@ -343,7 +362,7 @@ mod tests {
     fn strip_grep_extended() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -E 'fail|error'"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "grep -E 'fail|error'")
         );
     }
 
@@ -351,7 +370,7 @@ mod tests {
     fn strip_grep_invert() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -v noise"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "grep -v noise")
         );
     }
 
@@ -400,7 +419,7 @@ mod tests {
         // The pipe inside the quotes is not a bare pipe; the real pipe is to tail.
         assert_eq!(
             strip_simple_pipe("grep 'a|b' | tail -5"),
-            Some("grep 'a|b'".to_string())
+            stripped("grep 'a|b'", "tail -5")
         );
     }
 
@@ -419,7 +438,7 @@ mod tests {
     fn strip_grep_combined_flags() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -iv error"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "grep -iv error")
         );
     }
 
@@ -428,7 +447,7 @@ mod tests {
         // --lines with a space separator (not =)
         assert_eq!(
             strip_simple_pipe("cargo test | head --lines 10"),
-            Some("cargo test".to_string())
+            stripped("cargo test", "head --lines 10")
         );
     }
 

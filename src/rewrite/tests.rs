@@ -357,7 +357,7 @@ fn rewrite_pipe_head_stripped_when_filter_matches() {
         false,
     );
     // Simple pipe to head stripped — tokf filter provides structured output.
-    assert_eq!(r, "tokf run git diff HEAD");
+    assert_eq!(r, "tokf run --baseline-pipe 'head -5' git diff HEAD");
 }
 
 #[test]
@@ -376,7 +376,7 @@ fn rewrite_pipe_grep_stripped_when_filter_matches() {
         &[dir.path().to_path_buf()],
         false,
     );
-    assert_eq!(r, "tokf run cargo test");
+    assert_eq!(r, "tokf run --baseline-pipe 'grep FAILED' cargo test");
 }
 
 #[test]
@@ -540,7 +540,10 @@ fn rewrite_compound_then_pipe_stripped() {
         &[dir.path().to_path_buf()],
         false,
     );
-    assert_eq!(r, "tokf run git add . && tokf run git diff");
+    assert_eq!(
+        r,
+        "tokf run git add . && tokf run --baseline-pipe 'head -5' git diff"
+    );
 }
 
 #[test]
@@ -558,4 +561,28 @@ fn rewrite_quoted_pipe_is_not_a_bare_pipe() {
     );
     // No bare pipe — the filter rule should fire.
     assert_eq!(r, "tokf run grep -E 'foo|bar' file.txt");
+}
+
+#[test]
+fn rewrite_pipe_grep_quoted_pattern_escaped() {
+    // Single quotes in the grep suffix must be escaped with '\'' in the
+    // --baseline-pipe value so the shell command remains valid.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("cargo-test.toml"),
+        "command = \"cargo test\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "cargo test | grep -E 'fail|error'",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(
+        r,
+        "tokf run --baseline-pipe 'grep -E '\\''fail|error'\\''' cargo test"
+    );
 }
