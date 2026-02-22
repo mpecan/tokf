@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2](https://github.com/mpecan/tokf/compare/tokf-v0.2.1...tokf-v0.2.2) (2026-02-22)
+
+
+### Features
+
+* **filter:** support filter variants and delegation ([#104](https://github.com/mpecan/tokf/issues/104)) ([1525976](https://github.com/mpecan/tokf/commit/1525976f83eb499608253052498194b4c679688c))
+* **rewrite:** fair accounting for stripped pipes ([#105](https://github.com/mpecan/tokf/issues/105)) ([993120c](https://github.com/mpecan/tokf/commit/993120c8809e164d01d76565b22e11814ec48df5))
+
+
+### Documentation
+
+* comprehensive pre-release documentation update ([#106](https://github.com/mpecan/tokf/issues/106)) ([3b0ef96](https://github.com/mpecan/tokf/commit/3b0ef96e570186c10a3993b3585da482ceacf605))
+* **readme:** document eject subcommand ([#102](https://github.com/mpecan/tokf/issues/102)) ([27479cc](https://github.com/mpecan/tokf/commit/27479cc2f341faa3a12f36d4b6a10e0d9de32b4b))
+
 ## [0.2.1](https://github.com/mpecan/tokf/compare/tokf-v0.2.0...tokf-v0.2.1) (2026-02-21)
 
 
