@@ -287,18 +287,18 @@ mod tests {
 
     // --- strip_simple_pipe ---
 
-    fn stripped(base: &str, suffix: &str) -> Option<StrippedPipe> {
-        Some(StrippedPipe {
+    fn stripped(base: &str, suffix: &str) -> StrippedPipe {
+        StrippedPipe {
             base: base.to_string(),
             suffix: suffix.to_string(),
-        })
+        }
     }
 
     #[test]
     fn strip_tail_n() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail -n 5"),
-            stripped("cargo test", "tail -n 5")
+            Some(stripped("cargo test", "tail -n 5"))
         );
     }
 
@@ -306,7 +306,7 @@ mod tests {
     fn strip_tail_numeric() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail -5"),
-            stripped("cargo test", "tail -5")
+            Some(stripped("cargo test", "tail -5"))
         );
     }
 
@@ -314,7 +314,7 @@ mod tests {
     fn strip_tail_bare() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail"),
-            stripped("cargo test", "tail")
+            Some(stripped("cargo test", "tail"))
         );
     }
 
@@ -322,7 +322,7 @@ mod tests {
     fn strip_head_n() {
         assert_eq!(
             strip_simple_pipe("cargo test | head -n 10"),
-            stripped("cargo test", "head -n 10")
+            Some(stripped("cargo test", "head -n 10"))
         );
     }
 
@@ -330,7 +330,7 @@ mod tests {
     fn strip_head_bare() {
         assert_eq!(
             strip_simple_pipe("cargo test | head"),
-            stripped("cargo test", "head")
+            Some(stripped("cargo test", "head"))
         );
     }
 
@@ -338,7 +338,7 @@ mod tests {
     fn strip_tail_lines_long() {
         assert_eq!(
             strip_simple_pipe("cargo test | tail --lines=5"),
-            stripped("cargo test", "tail --lines=5")
+            Some(stripped("cargo test", "tail --lines=5"))
         );
     }
 
@@ -346,7 +346,7 @@ mod tests {
     fn strip_grep_pattern() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep FAIL"),
-            stripped("cargo test", "grep FAIL")
+            Some(stripped("cargo test", "grep FAIL"))
         );
     }
 
@@ -354,7 +354,7 @@ mod tests {
     fn strip_grep_case_insensitive() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -i error"),
-            stripped("cargo test", "grep -i error")
+            Some(stripped("cargo test", "grep -i error"))
         );
     }
 
@@ -362,7 +362,7 @@ mod tests {
     fn strip_grep_extended() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -E 'fail|error'"),
-            stripped("cargo test", "grep -E 'fail|error'")
+            Some(stripped("cargo test", "grep -E 'fail|error'"))
         );
     }
 
@@ -370,7 +370,7 @@ mod tests {
     fn strip_grep_invert() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -v noise"),
-            stripped("cargo test", "grep -v noise")
+            Some(stripped("cargo test", "grep -v noise"))
         );
     }
 
@@ -419,7 +419,7 @@ mod tests {
         // The pipe inside the quotes is not a bare pipe; the real pipe is to tail.
         assert_eq!(
             strip_simple_pipe("grep 'a|b' | tail -5"),
-            stripped("grep 'a|b'", "tail -5")
+            Some(stripped("grep 'a|b'", "tail -5"))
         );
     }
 
@@ -438,7 +438,7 @@ mod tests {
     fn strip_grep_combined_flags() {
         assert_eq!(
             strip_simple_pipe("cargo test | grep -iv error"),
-            stripped("cargo test", "grep -iv error")
+            Some(stripped("cargo test", "grep -iv error"))
         );
     }
 
@@ -447,7 +447,7 @@ mod tests {
         // --lines with a space separator (not =)
         assert_eq!(
             strip_simple_pipe("cargo test | head --lines 10"),
-            stripped("cargo test", "head --lines 10")
+            Some(stripped("cargo test", "head --lines 10"))
         );
     }
 

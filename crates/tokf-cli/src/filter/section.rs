@@ -172,7 +172,7 @@ pub fn collect_sections(sections: &[Section], lines: &[&str]) -> SectionMap {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_arguments)]
 mod tests {
     use super::*;
 

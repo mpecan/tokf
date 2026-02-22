@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use super::*;
 use serial_test::serial;
 use tempfile::TempDir;
@@ -112,7 +114,7 @@ fn current_project_returns_non_empty_string() {
 
 // --- try_record ---
 
-/// Must run serially: sets TOKF_DB_PATH env var.
+/// Must run serially: sets `TOKF_DB_PATH` env var.
 #[test]
 #[serial]
 fn try_record_records_entry_to_db() {
@@ -141,7 +143,7 @@ fn try_record_records_entry_to_db() {
     assert_eq!(count, 1, "try_record should insert one history entry");
 }
 
-/// Must run serially: sets TOKF_DB_PATH env var.
+/// Must run serially: sets `TOKF_DB_PATH` env var.
 #[test]
 #[serial]
 fn try_record_returns_id_on_success() {
@@ -181,7 +183,7 @@ fn try_record_does_not_panic_on_unwritable_db_path() {
     }
 }
 
-/// Must run serially: sets TOKF_DB_PATH and TOKF_DEBUG env vars.
+/// Must run serially: sets `TOKF_DB_PATH` and `TOKF_DEBUG` env vars.
 #[test]
 #[serial]
 fn try_record_does_not_panic_on_unwritable_db_path_with_debug() {

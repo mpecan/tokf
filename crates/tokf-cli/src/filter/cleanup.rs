@@ -85,7 +85,7 @@ pub fn post_process_output(config: &FilterConfig, output: String) -> String {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::config::types::{CommandPattern, FilterConfig};
+    use crate::config::types::FilterConfig;
 
     fn minimal_config() -> FilterConfig {
         toml::from_str(r#"command = "echo""#).unwrap()
@@ -137,7 +137,7 @@ mod tests {
         let result = apply_line_cleanup(&cfg, &lines);
         assert_eq!(
             result,
-            vec!["hello".to_string(), "world".to_string(), "".to_string()]
+            vec!["hello".to_string(), "world".to_string(), String::new()]
         );
     }
 

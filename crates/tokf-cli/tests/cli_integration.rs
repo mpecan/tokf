@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_const_for_fn)]
+
 use std::process::Command;
 
 fn tokf() -> Command {

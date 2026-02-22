@@ -1,0 +1,13 @@
+target/
+.git/
+.gitignore
+.idea/
+.vscode/
+.cargo-husky/
+.tokf/
+tarpaulin-report.html
+examples/
+*.md
+!README.md
+.github/
+tests/fixtures/
