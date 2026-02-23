@@ -1,4 +1,4 @@
-use tokf_server::{config, routes};
+use tokf_server::{config, db, routes, state};
 
 use anyhow::Result;
 use tokio::net::TcpListener;
@@ -16,7 +16,19 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = config::Config::from_env();
-    let app = routes::create_router().layer(
+    let database_url = cfg
+        .database_url
+        .ok_or_else(|| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
+    let pool = db::create_pool(&database_url).await?;
+
+    if cfg.run_migrations {
+        db::run_migrations(&pool).await?;
+    } else {
+        tracing::info!("skipping migrations (RUN_MIGRATIONS=false)");
+    }
+
+    let app_state = state::AppState { db: pool };
+    let app = routes::create_router(app_state).layer(
         // R11: explicitly disable header capture to prevent accidental secret leakage
         // when auth headers are added in the future.
         TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().include_headers(false)),
@@ -25,9 +37,32 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!("listening on {addr}");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // O-1: graceful shutdown with a 30-second drain timeout.
+    // A oneshot channel decouples OS-signal detection from axum's shutdown
+    // trigger, allowing tokio::select! to race the drain against a hard deadline.
+    let (drain_tx, drain_rx) = tokio::sync::oneshot::channel::<()>();
+
+    // Wrap in async {} so the IntoFuture impl is resolved before select!
+    let serve = async {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                drain_rx.await.ok();
+                tracing::info!("draining in-flight requests (30 s deadline)…");
+            })
+            .await
+    };
+
+    tokio::select! {
+        result = serve => { result?; }
+        () = async {
+            shutdown_signal().await;
+            drain_tx.send(()).ok();
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            tracing::warn!("graceful-shutdown drain timeout after 30 s; stopping now");
+        } => {}
+    }
+
+    tracing::info!("server stopped");
     Ok(())
 }
 
