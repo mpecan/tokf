@@ -47,7 +47,7 @@ We are pragmatic. The limits below are guidelines that produce better code in th
 
 ### Linting & Formatting
 - `cargo fmt` before every commit. No exceptions.
-- `cargo clippy -- -D warnings` must pass clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` must pass clean.
 - Functions should stay under 60 lines (enforced via `clippy.toml`). Can be overridden with `#[allow()]` when approved.
 - Source files:
   - **Soft limit: 500 lines** — aim to split before this. CI warns.
@@ -133,7 +133,7 @@ tests/
 ```sh
 cargo build              # Build
 cargo test               # Run all tests
-cargo clippy -- -D warnings  # Lint
+cargo clippy --workspace --all-targets -- -D warnings  # Lint
 cargo fmt -- --check     # Format check
 ```
 

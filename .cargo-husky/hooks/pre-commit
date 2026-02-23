@@ -9,7 +9,7 @@ out=$(cargo fmt -- --check 2>&1) || {
     exit 1
 }
 
-out=$(cargo clippy -- -D warnings 2>&1) || {
+out=$(cargo clippy --workspace --all-targets -- -D warnings 2>&1) || {
     echo "Clippy check failed. Fix the warnings above."
     echo "$out"
     exit 1
