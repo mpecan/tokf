@@ -1,6 +1,6 @@
 [package]
 name = "tokf-cli"
-version = "0.2.3"
+version = "0.2.4"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -17,7 +17,7 @@ name = "tokf"
 path = "src/main.rs"
 
 [dependencies]
-tokf-common = { path = "../tokf-common", version = "0.2.3" }
+tokf-common = { path = "../tokf-common", version = "0.2.4" }
 clap = { version = "4", features = ["derive"] }
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
