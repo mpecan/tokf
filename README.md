@@ -198,16 +198,25 @@ This copies the filter TOML and its test suite to your config directory, where i
 
 ### Piped commands
 
-Commands containing a shell pipe (`|`) are passed through unchanged by the hook and `tokf rewrite`. This is intentional — downstream tools like `grep`, `wc -l`, and `tee` depend on the raw output and would produce wrong results if tokf transformed it first.
+When a command is piped to a simple output-shaping tool (`grep`, `tail`, or `head`), tokf **strips the pipe automatically** and uses its own structured filter output instead. The original pipe suffix is passed to `--baseline-pipe` so token savings are still calculated accurately.
+
+```sh
+# These ARE rewritten — pipe is stripped, tokf applies its filter:
+cargo test | grep FAILED
+cargo test | tail -20
+git diff HEAD | head -5
+```
+
+Multi-pipe chains, pipes to other commands, or pipe targets with unsupported flags are left unchanged:
 
 ```sh
 # These are NOT rewritten — tokf leaves them alone:
-git diff HEAD | head -5
-cargo test | grep FAILED
-kubectl get pods | grep Running | wc -l
+kubectl get pods | grep Running | wc -l   # multi-pipe chain
+cargo test | wc -l                        # wc not supported
+cargo test | tail -f                      # -f (follow) not supported
 ```
 
-If you want tokf to wrap a specific piped command, add an explicit rule to `.tokf/rewrites.toml`:
+If you want tokf to wrap a piped command that wouldn't normally be rewritten, add an explicit rule to `.tokf/rewrites.toml`:
 
 ```toml
 [[rewrite]]
@@ -215,7 +224,7 @@ match = "^cargo test \\| tee"
 replace = "tokf run {0}"
 ```
 
-Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see why a command was not rewritten.
+Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see how a command is being rewritten.
 
 ---
 
@@ -327,6 +336,8 @@ strip_ansi = true             # strip ANSI escape sequences before processing
 trim_lines = true             # trim leading/trailing whitespace from each line
 strip_empty_lines = true      # remove all blank lines from the final output
 collapse_empty_lines = true   # collapse consecutive blank lines into one
+
+show_history_hint = true      # append a hint line pointing to the full output in history
 
 match_output = [              # whole-output substring checks, short-circuit the pipeline
   { contains = "rejected", output = "push rejected" },
@@ -516,6 +527,29 @@ tokf history search "error"    # search by command or output content
 tokf history clear             # clear current project history
 tokf history clear --all       # clear all history (destructive)
 ```
+
+### History hint
+
+When an LLM receives filtered output it may not realise the full output exists. Two mechanisms can automatically append a hint line pointing to the history entry:
+
+**1. Filter opt-in** — set `show_history_hint = true` in a filter TOML to always append the hint for that command:
+
+```toml
+command = "git status"
+show_history_hint = true
+
+[on_success]
+output = "{branch} — {counts}"
+```
+
+**2. Automatic repetition detection** — tokf detects when the same command is run twice in a row for the same project. This is a signal the caller didn't act on the previous filtered output and may need the full content:
+
+```
+✓ cargo test: 42 passed (2.31s)
+Filtered - for full content call: `tokf history show 99`
+```
+
+The hint is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line.
 
 ---
 

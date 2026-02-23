@@ -137,6 +137,18 @@ cargo clippy -- -D warnings  # Lint
 cargo fmt -- --check     # Format check
 ```
 
+## Documentation
+
+**Every user-facing feature or behaviour change must be documented in the same PR.**
+
+- New filter fields → add to the "Common fields" block and any relevant prose in `README.md`.
+- New CLI flags or subcommands → add to the "Usage" / "Flags" tables in `README.md`.
+- Changed behaviour (e.g. how piped commands are handled) → update the relevant section in `README.md`.
+- New runtime behaviours visible to LLMs or end-users → document with a concrete example showing input and output.
+- Significant new features → consider adding a dedicated section in `README.md` with a short explanation and a code/shell example.
+
+Documentation lives in `README.md` (end-user reference) and `CONTRIBUTING.md` (contributor guide). Do not open a PR that adds or changes behaviour without also updating these files.
+
 ## What Not To Do
 
 - Don't add features beyond what the current issue asks for.
