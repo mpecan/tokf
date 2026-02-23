@@ -177,6 +177,44 @@ pub fn has_bare_pipe(command: &str) -> bool {
     !bare_pipe_positions(command).is_empty()
 }
 
+/// Strip leading shell environment variable assignments from a command.
+///
+/// Returns `Some((env_prefix, rest))` where `env_prefix` includes the trailing
+/// whitespace (e.g. `"FOO=bar "`) and `rest` is the actual executable command.
+/// Returns `None` if no `KEY=VALUE` tokens precede the command.
+///
+/// Handles unquoted, single-quoted, and double-quoted values so that
+/// `FOO='bar baz' git status` correctly strips `FOO='bar baz' ` rather than
+/// stopping at the space inside the quoted value.
+///
+/// This mirrors how [`strip_simple_pipe`] is handled: env vars are ignored when
+/// determining whether a command matches a filter, but they are preserved in the
+/// rewritten output and applied to the command that runs.
+///
+/// # Examples
+/// - `"FOO=bar git status"` → `Some(("FOO=bar ", "git status"))`
+/// - `"A=1 B=2 cargo test"` → `Some(("A=1 B=2 ", "cargo test"))`
+/// - `"git status"` → `None`
+pub fn strip_env_prefix(command: &str) -> Option<(String, String)> {
+    // One env-var token: KEY=VALUE where VALUE is zero or more fragments:
+    //   - unquoted non-special chars:   [^\s\\'"]+   (excludes backslash explicitly)
+    //   - backslash-escape pair:        \\.           (handles FOO=bar\ baz and the '\'' idiom)
+    //   - single-quoted section:        '[^']*'
+    //   - double-quoted section:        "(?:[^"\\]|\\.)*"
+    // One or more such tokens, each followed by horizontal whitespace.
+    let Ok(re) = Regex::new(
+        r#"^((?:[A-Za-z_][A-Za-z0-9_]*=(?:[^\s\\'"]+|\\.|'[^']*'|"(?:[^"\\]|\\.)*")*[ \t]+)+)"#,
+    ) else {
+        return None;
+    };
+    let caps = re.captures(command)?;
+    let prefix = caps.get(1)?.as_str();
+    if prefix.is_empty() {
+        return None;
+    }
+    Some((prefix.to_string(), command[prefix.len()..].to_string()))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -461,5 +499,152 @@ mod tests {
     fn no_strip_grep_uppercase_l() {
         // -L is "files without match" — changes output format.
         assert_eq!(strip_simple_pipe("cargo test | grep -L FAIL"), None);
+    }
+
+    // --- strip_env_prefix ---
+
+    #[test]
+    fn env_prefix_single_var() {
+        assert_eq!(
+            strip_env_prefix("FOO=bar git status"),
+            Some(("FOO=bar ".to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_multiple_vars() {
+        assert_eq!(
+            strip_env_prefix("A=1 B=2 cargo test"),
+            Some(("A=1 B=2 ".to_string(), "cargo test".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_empty_value() {
+        assert_eq!(
+            strip_env_prefix("FOO= git status"),
+            Some(("FOO= ".to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_single_quoted_value() {
+        assert_eq!(
+            strip_env_prefix("FOO='bar baz' git status"),
+            Some(("FOO='bar baz' ".to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_double_quoted_value() {
+        assert_eq!(
+            strip_env_prefix(r#"FOO="bar baz" git status"#),
+            Some((r#"FOO="bar baz" "#.to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_none_for_plain_command() {
+        assert_eq!(strip_env_prefix("git status"), None);
+    }
+
+    #[test]
+    fn env_prefix_none_for_command_with_flags() {
+        assert_eq!(strip_env_prefix("cargo test --lib"), None);
+    }
+
+    #[test]
+    fn env_prefix_underscore_key() {
+        assert_eq!(
+            strip_env_prefix("_MY_VAR=1 make"),
+            Some(("_MY_VAR=1 ".to_string(), "make".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_real_world_rust() {
+        assert_eq!(
+            strip_env_prefix("RUST_LOG=debug CARGO_TERM_COLOR=always cargo test"),
+            Some((
+                "RUST_LOG=debug CARGO_TERM_COLOR=always ".to_string(),
+                "cargo test".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn env_prefix_equals_in_value() {
+        // Values containing '=' are valid and common (e.g. key-value pairs passed as env).
+        assert_eq!(
+            strip_env_prefix("FOO=a=b git status"),
+            Some(("FOO=a=b ".to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_long_path_value() {
+        // PATH-style values with colons are entirely unquoted non-whitespace chars.
+        assert_eq!(
+            strip_env_prefix("PATH=/usr/local/bin:/usr/bin:/bin git status"),
+            Some((
+                "PATH=/usr/local/bin:/usr/bin:/bin ".to_string(),
+                "git status".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn env_prefix_backslash_escaped_space() {
+        // FOO=bar\ baz is a single env var whose value contains an escaped space.
+        assert_eq!(
+            strip_env_prefix("FOO=bar\\ baz git status"),
+            Some(("FOO=bar\\ baz ".to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_single_quote_idiom() {
+        // The '\'' idiom embeds a literal single quote: 'hello'\''world' = hello'world.
+        // After fixing the regex to handle backslash-escape fragments, this should
+        // parse the whole assignment as one token.
+        assert_eq!(
+            strip_env_prefix("FOO='hello'\\''world' cargo test"),
+            Some((
+                "FOO='hello'\\''world' ".to_string(),
+                "cargo test".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn env_prefix_backslash_in_double_quoted_value() {
+        // Escaped backslash inside double-quoted value.
+        assert_eq!(
+            strip_env_prefix(r#"FOO="bar\"baz" git status"#),
+            Some((r#"FOO="bar\"baz" "#.to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_dollar_var_in_value() {
+        // Shell variable expansions ($HOME, ${HOME}) are just non-whitespace chars.
+        assert_eq!(
+            strip_env_prefix("PREFIX=$HOME/bin git status"),
+            Some(("PREFIX=$HOME/bin ".to_string(), "git status".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_numeric_value() {
+        assert_eq!(
+            strip_env_prefix("DEBUG=123456 cargo test"),
+            Some(("DEBUG=123456 ".to_string(), "cargo test".to_string()))
+        );
+    }
+
+    #[test]
+    fn env_prefix_numeric_key_not_matched() {
+        // POSIX: variable names must start with a letter or underscore.
+        assert_eq!(strip_env_prefix("1FOO=bar git status"), None);
     }
 }
