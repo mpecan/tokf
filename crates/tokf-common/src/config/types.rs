@@ -145,6 +145,17 @@ pub struct FilterConfig {
     /// Variant entries for context-aware filter delegation.
     #[serde(default)]
     pub variant: Vec<Variant>,
+
+    /// When true, append a hint line after the filtered output telling the reader
+    /// how to retrieve the full, unfiltered output from history.
+    ///
+    /// Example hint appended to output:
+    /// `Filtered - for full content call: \`tokf history show 42\``
+    ///
+    /// This is useful for LLM consumers that need to know complete output is
+    /// available even though tokf has compressed it.
+    #[serde(default)]
+    pub show_history_hint: bool,
 }
 
 /// A pipeline step that runs a sub-command and captures its output.

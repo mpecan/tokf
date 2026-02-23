@@ -19,13 +19,15 @@ pub(super) fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry>
 
 /// Record a history entry and enforce per-project retention policy.
 ///
+/// Returns the `SQLite` row ID of the newly inserted entry.
+///
 /// # Errors
 /// Returns an error if the INSERT or DELETE operations fail.
 pub fn record_history(
     conn: &Connection,
     record: &HistoryRecord,
     config: &HistoryConfig,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i64> {
     conn.execute(
         "INSERT INTO history
             (timestamp, project, command, filter_name, raw_output, filtered_output, exit_code)
@@ -42,6 +44,8 @@ pub fn record_history(
     )
     .context("insert history entry")?;
 
+    let id = conn.last_insert_rowid();
+
     // Retention is scoped per project so each project keeps its own N entries.
     let retention_i64 = i64::from(config.retention_count);
     conn.execute(
@@ -57,7 +61,7 @@ pub fn record_history(
     )
     .context("enforce history retention")?;
 
-    Ok(())
+    Ok(id)
 }
 
 /// List recent history entries.
@@ -146,6 +150,24 @@ pub fn search_history(
         result.push(row.context("read history row")?);
     }
     Ok(result)
+}
+
+/// Return the command string of the most recent history entry for a project.
+///
+/// # Errors
+/// Returns an error if the query fails.
+pub(super) fn most_recent_command(
+    conn: &Connection,
+    project: &str,
+) -> anyhow::Result<Option<String>> {
+    let mut stmt =
+        conn.prepare("SELECT command FROM history WHERE project = ?1 ORDER BY id DESC LIMIT 1")?;
+    let mut rows = stmt.query([project])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Clear history entries. Pass `project = Some("path")` to clear one project only,

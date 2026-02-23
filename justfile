@@ -20,3 +20,11 @@ lint:
 # Check file sizes
 file-size:
     bash scripts/check-file-sizes.sh
+
+# Install the CLI
+install:
+    cargo install --path crates/tokf-cli
+
+# Install the CLI
+force-install:
+    cargo install --force --path crates/tokf-cli
