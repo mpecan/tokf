@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.6](https://github.com/mpecan/tokf/compare/tokf-v0.2.5...tokf-v0.2.6) (2026-02-23)
+
+
+### Features
+
+* **rewrite:** strip leading env var prefix before command matching ([#141](https://github.com/mpecan/tokf/issues/141)) ([4aca301](https://github.com/mpecan/tokf/commit/4aca30114d353bce8db611755c2e04a40df14dfb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.5 to 0.2.6
+
 ## [0.2.5](https://github.com/mpecan/tokf/compare/tokf-v0.2.4...tokf-v0.2.5) (2026-02-23)
 
 

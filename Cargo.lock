@@ -1438,7 +1438,7 @@ dependencies = [
 
 [[package]]
 name = "tokf-common"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -1448,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "tokf-server"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "axum",
