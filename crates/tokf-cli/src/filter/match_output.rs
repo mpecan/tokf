@@ -27,7 +27,11 @@ pub fn render_output(output_tmpl: &str, contains: &str, combined: &str) -> Strin
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::literal_string_with_formatting_args
+)]
 mod tests {
     use super::*;
 

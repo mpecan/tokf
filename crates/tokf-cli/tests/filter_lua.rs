@@ -9,7 +9,7 @@ fn tokf() -> Command {
     Command::new(env!("CARGO_BIN_EXE_tokf"))
 }
 
-/// Write a TOML filter to a temp file; return (TempDir, filter_path).
+/// Write a TOML filter to a temp file; return (`TempDir`, `filter_path`).
 fn write_filter(content: &str) -> (TempDir, std::path::PathBuf) {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("filter.toml");
@@ -17,7 +17,7 @@ fn write_filter(content: &str) -> (TempDir, std::path::PathBuf) {
     (tmp, path)
 }
 
-/// Write a fixture to a temp file; return (TempDir, fixture_path).
+/// Write a fixture to a temp file; return (`TempDir`, `fixture_path`).
 fn write_fixture(content: &str) -> (TempDir, std::path::PathBuf) {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("fixture.txt");

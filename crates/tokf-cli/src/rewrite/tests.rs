@@ -42,8 +42,8 @@ fn build_rules_from_filter_files() {
     let has_git = patterns
         .iter()
         .any(|p| p.contains("git") && p.contains("status"));
-    assert!(has_cargo, "expected cargo test pattern in {:?}", patterns);
-    assert!(has_git, "expected git status pattern in {:?}", patterns);
+    assert!(has_cargo, "expected cargo test pattern in {patterns:?}");
+    assert!(has_git, "expected git status pattern in {patterns:?}");
 
     let cargo_rule = rules
         .iter()

@@ -49,7 +49,7 @@ fn select_branch_failure() {
 
 // --- apply_branch ---
 
-/// Helper: call apply_branch with empty sections (non-section path).
+/// Helper: call `apply_branch` with empty sections (non-section path).
 fn branch_apply(branch: &OutputBranch, combined: &str) -> String {
     apply_branch(branch, combined, &SectionMap::new(), false).unwrap()
 }
