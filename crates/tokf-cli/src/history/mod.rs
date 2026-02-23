@@ -9,6 +9,29 @@ pub use config::{HistoryConfig, current_project, project_root_for};
 pub use queries::{clear_history, get_history_entry, list_history, record_history, search_history};
 pub use types::{HistoryEntry, HistoryRecord};
 
+/// Return `true` when `command` matches the most recent history entry for the
+/// current project.  Errors are silently ignored (returns `false`).
+///
+/// This is used to detect when a caller re-runs the same command without
+/// acting on previous filtered output — a signal that they may need the
+/// full, unfiltered content.
+pub fn try_was_recently_run(command: &str) -> bool {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let project_root = project_root_for(&cwd);
+    let project = project_root.to_string_lossy().into_owned();
+
+    let Some(path) = crate::tracking::db_path() else {
+        return false;
+    };
+    let Ok(conn) = open_db(&path) else {
+        return false;
+    };
+    matches!(
+        queries::most_recent_command(&conn, &project),
+        Ok(Some(last)) if last == command
+    )
+}
+
 /// Open the shared tracking database and ensure the history schema is initialized.
 ///
 /// # Errors
@@ -67,28 +90,28 @@ pub fn init_history_table(conn: &Connection) -> anyhow::Result<()> {
 ///
 /// Only records commands where a filter was applied. Passthrough runs (no filter)
 /// are excluded because raw and filtered output would be identical.
+///
+/// Returns `Some(id)` with the new history entry ID on success, `None` on error.
 pub fn try_record(
     command: &str,
     filter_name: &str,
     raw_output: &str,
     filtered_output: &str,
     exit_code: i32,
-) {
+) -> Option<i64> {
     let cwd = std::env::current_dir().unwrap_or_default();
     let project_root = project_root_for(&cwd);
     let project = project_root.to_string_lossy().into_owned();
     let config = HistoryConfig::load(Some(&project_root));
 
-    let Some(path) = crate::tracking::db_path() else {
-        return;
-    };
+    let path = crate::tracking::db_path()?;
     let conn = match open_db(&path) {
         Ok(c) => c,
         Err(e) => {
             if std::env::var("TOKF_DEBUG").is_ok() {
                 eprintln!("[tokf] history error (db open): {e:#}");
             }
-            return;
+            return None;
         }
     };
     let record = HistoryRecord {
@@ -99,10 +122,14 @@ pub fn try_record(
         filtered_output: filtered_output.to_owned(),
         exit_code,
     };
-    if let Err(e) = record_history(&conn, &record, &config)
-        && std::env::var("TOKF_DEBUG").is_ok()
-    {
-        eprintln!("[tokf] history error (record): {e:#}");
+    match record_history(&conn, &record, &config) {
+        Ok(id) => Some(id),
+        Err(e) => {
+            if std::env::var("TOKF_DEBUG").is_ok() {
+                eprintln!("[tokf] history error (record): {e:#}");
+            }
+            None
+        }
     }
 }
 

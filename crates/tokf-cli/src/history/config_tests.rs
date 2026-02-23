@@ -122,7 +122,7 @@ fn try_record_records_entry_to_db() {
         std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
     }
 
-    try_record(
+    let _ = try_record(
         "git status",
         "git-status",
         "raw output",
@@ -144,6 +144,26 @@ fn try_record_records_entry_to_db() {
 /// Must run serially: sets TOKF_DB_PATH env var.
 #[test]
 #[serial]
+fn try_record_returns_id_on_success() {
+    let dir = TempDir::new().expect("tempdir");
+    let db_path = dir.path().join("tracking.db");
+    unsafe {
+        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
+    }
+
+    let id = try_record("cargo test", "cargo/test", "raw", "filtered", 0);
+
+    unsafe {
+        std::env::remove_var("TOKF_DB_PATH");
+    }
+
+    assert!(id.is_some(), "try_record should return Some(id) on success");
+    assert_eq!(id.unwrap(), 1, "first inserted entry should have id=1");
+}
+
+/// Must run serially: sets TOKF_DB_PATH env var.
+#[test]
+#[serial]
 fn try_record_does_not_panic_on_unwritable_db_path() {
     // Point to a path whose parent cannot be created.
     unsafe {
@@ -151,7 +171,11 @@ fn try_record_does_not_panic_on_unwritable_db_path() {
         std::env::remove_var("TOKF_DEBUG");
     }
     // Must not panic — errors are silently swallowed when TOKF_DEBUG is unset.
-    try_record("cmd", "filter", "raw", "filtered", 0);
+    let result = try_record("cmd", "filter", "raw", "filtered", 0);
+    assert!(
+        result.is_none(),
+        "try_record should return None on db error"
+    );
     unsafe {
         std::env::remove_var("TOKF_DB_PATH");
     }
@@ -166,9 +190,75 @@ fn try_record_does_not_panic_on_unwritable_db_path_with_debug() {
         std::env::set_var("TOKF_DEBUG", "1");
     }
     // Must not panic even when TOKF_DEBUG is set (it logs to stderr but does not panic).
-    try_record("cmd", "filter", "raw", "filtered", 0);
+    let _ = try_record("cmd", "filter", "raw", "filtered", 0);
     unsafe {
         std::env::remove_var("TOKF_DB_PATH");
         std::env::remove_var("TOKF_DEBUG");
     }
+}
+
+/// Must run serially: sets TOKF_DB_PATH env var.
+#[test]
+#[serial]
+fn try_was_recently_run_returns_true_for_repeated_command() {
+    let dir = TempDir::new().expect("tempdir");
+    let db_path = dir.path().join("tracking.db");
+    unsafe {
+        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
+    }
+
+    // Record first run.
+    let _ = try_record("git status", "git/status", "raw", "filtered", 0);
+
+    // Now the same command was "recently run".
+    let repeated = try_was_recently_run("git status");
+
+    unsafe {
+        std::env::remove_var("TOKF_DB_PATH");
+    }
+
+    assert!(repeated, "same command should be detected as recently run");
+}
+
+/// Must run serially: sets TOKF_DB_PATH env var.
+#[test]
+#[serial]
+fn try_was_recently_run_returns_false_for_different_command() {
+    let dir = TempDir::new().expect("tempdir");
+    let db_path = dir.path().join("tracking.db");
+    unsafe {
+        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
+    }
+
+    let _ = try_record("git status", "git/status", "raw", "filtered", 0);
+    let repeated = try_was_recently_run("cargo test");
+
+    unsafe {
+        std::env::remove_var("TOKF_DB_PATH");
+    }
+
+    assert!(
+        !repeated,
+        "different command should not be detected as recently run"
+    );
+}
+
+/// Must run serially: sets TOKF_DB_PATH env var.
+#[test]
+#[serial]
+fn try_was_recently_run_returns_false_on_empty_history() {
+    let dir = TempDir::new().expect("tempdir");
+    let db_path = dir.path().join("tracking.db");
+    unsafe {
+        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
+    }
+
+    // No entries recorded yet.
+    let repeated = try_was_recently_run("git status");
+
+    unsafe {
+        std::env::remove_var("TOKF_DB_PATH");
+    }
+
+    assert!(!repeated, "empty history should return false");
 }

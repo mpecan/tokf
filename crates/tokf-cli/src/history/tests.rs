@@ -149,6 +149,29 @@ fn record_history_inserts_entry() {
 }
 
 #[test]
+fn record_history_returns_inserted_id() {
+    let (_dir, conn) = temp_db();
+    let config = HistoryConfig::default();
+
+    let id1 = record_history(
+        &conn,
+        &make_record("/proj", "git status", None, "raw", "filtered", 0),
+        &config,
+    )
+    .expect("record first");
+
+    let id2 = record_history(
+        &conn,
+        &make_record("/proj", "cargo test", None, "raw", "filtered", 0),
+        &config,
+    )
+    .expect("record second");
+
+    assert!(id1 > 0, "id should be positive");
+    assert!(id2 > id1, "second id should be greater than first");
+}
+
+#[test]
 fn record_history_all_fields_persisted() {
     let (_dir, conn) = temp_db();
     let config = HistoryConfig::default();

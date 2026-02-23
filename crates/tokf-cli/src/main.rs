@@ -269,11 +269,9 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
     }
 
     let output_bytes = filtered.output.len();
-    if !filtered.output.is_empty() {
-        println!("{}", filtered.output);
-    }
-
     let filter_name = cfg.command.first();
+    let command_str = command_args.join(" ");
+
     resolve::record_run(
         command_args,
         Some(filter_name),
@@ -283,13 +281,28 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         cmd_result.exit_code,
     );
 
-    history::try_record(
-        &command_args.join(" "),
+    // Detect whether to show the history hint:
+    //   - filter author opted in via `show_history_hint = true`, or
+    //   - the same command was re-run (LLM confusion signal: it didn't act on
+    //     the previous filtered output and is asking again).
+    // Check the DB before recording so we compare against the *previous* run.
+    let show_hint = cfg.show_history_hint || history::try_was_recently_run(&command_str);
+
+    let history_id = history::try_record(
+        &command_str,
         filter_name,
         &cmd_result.combined,
         &filtered.output,
         cmd_result.exit_code,
     );
+
+    if !filtered.output.is_empty() {
+        println!("{}", filtered.output);
+    }
+
+    if show_hint && let Some(id) = history_id {
+        println!("Filtered - for full content call: `tokf history show {id}`");
+    }
 
     Ok(cmd_result.exit_code)
 }
