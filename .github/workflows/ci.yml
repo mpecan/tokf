@@ -8,11 +8,28 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
 
 jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tokf
+          POSTGRES_PASSWORD: tokf
+          POSTGRES_DB: tokf_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://tokf:tokf@localhost:5432/tokf_test
     steps:
       - uses: actions/checkout@v6
 
@@ -40,7 +57,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace -- --include-ignored
 
       - name: Verify filter test suites
         run: ./target/debug/tokf verify --require-all

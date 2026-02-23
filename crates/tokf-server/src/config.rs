@@ -1,9 +1,10 @@
-// Fields beyond `port` are unused today; they will be consumed when database
-// and R2 integrations land.
-#[allow(dead_code)]
 pub struct Config {
     pub port: u16,
     pub database_url: Option<String>,
+    /// When `false`, the server starts without applying migrations.
+    /// Set `RUN_MIGRATIONS=false` to manage migrations out-of-band (e.g. a
+    /// dedicated migration job in Kubernetes).  Defaults to `true`.
+    pub run_migrations: bool,
     pub r2_bucket: Option<String>,
     pub r2_access_key_id: Option<String>,
     pub r2_secret_access_key: Option<String>,
@@ -19,6 +20,7 @@ impl std::fmt::Debug for Config {
                 "database_url",
                 &self.database_url.as_deref().map(|_| "<redacted>"),
             )
+            .field("run_migrations", &self.run_migrations)
             .field("r2_bucket", &self.r2_bucket)
             .field(
                 "r2_access_key_id",
@@ -53,9 +55,13 @@ impl Config {
                 }
             }
         });
+        let run_migrations = std::env::var("RUN_MIGRATIONS")
+            .map(|v| !matches!(v.to_lowercase().as_str(), "false" | "0" | "no"))
+            .unwrap_or(true);
         Self {
             port,
             database_url: std::env::var("DATABASE_URL").ok(),
+            run_migrations,
             r2_bucket: std::env::var("R2_BUCKET").ok(),
             r2_access_key_id: std::env::var("R2_ACCESS_KEY_ID").ok(),
             r2_secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").ok(),
@@ -135,10 +141,34 @@ mod tests {
     }
 
     #[test]
+    fn run_migrations_defaults_to_true() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        unsafe { std::env::remove_var("RUN_MIGRATIONS") };
+        let cfg = Config::from_env();
+        assert!(cfg.run_migrations, "should default to true");
+    }
+
+    #[test]
+    fn run_migrations_can_be_disabled() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        unsafe { std::env::set_var("RUN_MIGRATIONS", "false") };
+        let cfg = Config::from_env();
+        unsafe { std::env::remove_var("RUN_MIGRATIONS") };
+        assert!(!cfg.run_migrations);
+    }
+
+    #[test]
     fn debug_masks_secrets() {
         let cfg = Config {
             port: 8080,
             database_url: Some("postgres://secret".to_string()),
+            run_migrations: true,
             r2_bucket: Some("my-bucket".to_string()),
             r2_access_key_id: Some("key-id".to_string()),
             r2_secret_access_key: Some("super-secret".to_string()),
