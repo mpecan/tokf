@@ -27,18 +27,6 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Wait for tokf-common on crates.io
-        run: |
-          VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; print(next(p['version'] for p in pkgs if p['name']=='tokf-common'))")
-          for i in $(seq 1 10); do
-            if curl -sf "https://crates.io/api/v1/crates/tokf-common/${VERSION}" > /dev/null; then
-              echo "tokf-common ${VERSION} available on crates.io"
-              break
-            fi
-            echo "Waiting for tokf-common ${VERSION}... attempt $i/10"
-            sleep 30
-          done
-
       - name: Publish tokf-cli
         run: cargo publish -p tokf
         env:
