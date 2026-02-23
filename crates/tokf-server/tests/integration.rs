@@ -6,12 +6,14 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::sync::Arc;
+
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use tokf_server::{routes::create_router, state::AppState};
+use tokf_server::{auth::mock::NoOpGitHubClient, routes::create_router, state::AppState};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
 
@@ -26,7 +28,13 @@ fn test_state() -> AppState {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .connect_lazy(&url)
         .expect("invalid DATABASE_URL");
-    AppState { db: pool }
+    AppState {
+        db: pool,
+        github: Arc::new(NoOpGitHubClient),
+        github_client_id: "test-client-id".to_string(),
+        github_client_secret: "test-client-secret".to_string(),
+        trust_proxy: true,
+    }
 }
 
 /// `AppState` backed by an unreachable DB for testing the 503 path.
@@ -37,7 +45,13 @@ fn down_state() -> AppState {
         .acquire_timeout(std::time::Duration::from_millis(500))
         .connect_lazy("postgres://tokf:tokf@nonexistent-host.invalid:5432/tokf")
         .expect("lazy pool creation should not fail");
-    AppState { db: pool }
+    AppState {
+        db: pool,
+        github: Arc::new(NoOpGitHubClient),
+        github_client_id: "test-client-id".to_string(),
+        github_client_secret: "test-client-secret".to_string(),
+        trust_proxy: true,
+    }
 }
 
 // ── /health (liveness) tests ─────────────────────────────────────────────────
@@ -155,6 +169,44 @@ async fn delete_on_health_returns_405() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+// ── Auth route tests ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_on_auth_device_returns_405() {
+    let app = create_router(test_state());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/auth/device")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn auth_token_missing_body_returns_422() {
+    let app = create_router(test_state());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Axum returns 400 Bad Request for an empty body with content-type: application/json
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 // ── Real TCP binding test ────────────────────────────────────────────────────

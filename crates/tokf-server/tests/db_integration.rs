@@ -14,14 +14,61 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::sync::Arc;
+
 use axum::{
+    Json, Router,
     body::Body,
     http::{Request, StatusCode},
+    routing::get,
 };
 use http_body_util::BodyExt;
 use sqlx::PgPool;
-use tokf_server::{routes::create_router, state::AppState};
+use tokf_server::{
+    auth::{
+        github::{AccessTokenResponse, DeviceCodeResponse, GitHubClient, GitHubOrg, GitHubUser},
+        mock::NoOpGitHubClient,
+        token::{AuthUser, generate_token, hash_token},
+    },
+    routes::create_router,
+    state::AppState,
+};
 use tower::ServiceExt;
+
+/// Handler that returns user info — used by `AuthUser` extractor tests.
+async fn protected_user_info(user: AuthUser) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "user_id": user.user_id,
+        "username": user.username,
+    }))
+}
+
+/// Handler that requires auth but returns a fixed response.
+async fn protected_ok(_user: AuthUser) -> Json<serde_json::Value> {
+    Json(serde_json::json!({"ok": true}))
+}
+
+fn db_state(pool: PgPool) -> AppState {
+    AppState {
+        db: pool,
+        github: Arc::new(NoOpGitHubClient),
+        github_client_id: "test-client-id".to_string(),
+        github_client_secret: "test-client-secret".to_string(),
+        trust_proxy: true,
+    }
+}
+
+fn db_state_with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> AppState {
+    AppState {
+        db: pool,
+        github,
+        github_client_id: "test-client-id".to_string(),
+        github_client_secret: "test-client-secret".to_string(),
+        trust_proxy: true,
+    }
+}
+
+// ── Existing schema tests ───────────────────────────────────────────────────
 
 #[ignore = "requires DATABASE_URL to be set"]
 #[sqlx::test(migrations = "./migrations")]
@@ -37,6 +84,7 @@ async fn migrations_apply_cleanly_and_all_tables_exist(pool: PgPool) {
 
     let expected = [
         "auth_tokens",
+        "device_flows",
         "filter_stats",
         "filter_tests",
         "filters",
@@ -56,7 +104,7 @@ async fn migrations_apply_cleanly_and_all_tables_exist(pool: PgPool) {
 #[ignore = "requires DATABASE_URL to be set"]
 #[sqlx::test(migrations = "./migrations")]
 async fn health_returns_200_and_ok_status_with_real_db(pool: PgPool) {
-    let state = AppState { db: pool };
+    let state = db_state(pool);
     let app = create_router(state);
     let resp = app
         .oneshot(
@@ -84,7 +132,7 @@ async fn health_returns_200_and_ok_status_with_real_db(pool: PgPool) {
 #[ignore = "requires DATABASE_URL to be set"]
 #[sqlx::test(migrations = "./migrations")]
 async fn ready_returns_200_and_ok_status_with_real_db(pool: PgPool) {
-    let state = AppState { db: pool };
+    let state = db_state(pool);
     let app = create_router(state);
     let resp = app
         .oneshot(
@@ -327,5 +375,602 @@ async fn usage_events_check_constraints_reject_negative_values(pool: PgPool) {
     assert!(
         result.is_err(),
         "negative input_tokens should be rejected by CHECK constraint"
+    );
+}
+
+// ── Device flow DB tests ────────────────────────────────────────────────────
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn device_flow_table_exists_after_migration(pool: PgPool) {
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = 'device_flows'",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("failed to query tables");
+
+    assert_eq!(tables.len(), 1);
+    assert_eq!(tables[0], "device_flows");
+}
+
+/// Mock GitHub client that returns a successful access token and user profile.
+struct SuccessGitHubClient;
+
+#[async_trait::async_trait]
+impl GitHubClient for SuccessGitHubClient {
+    async fn request_device_code(&self, _client_id: &str) -> anyhow::Result<DeviceCodeResponse> {
+        Ok(DeviceCodeResponse {
+            device_code: format!("dc-{}", rand::random::<u32>()),
+            user_code: "TEST-1234".to_string(),
+            verification_uri: "https://github.com/login/device".to_string(),
+            expires_in: 900,
+            interval: 5,
+        })
+    }
+
+    async fn poll_access_token(
+        &self,
+        _client_id: &str,
+        _client_secret: &str,
+        _device_code: &str,
+    ) -> anyhow::Result<AccessTokenResponse> {
+        Ok(AccessTokenResponse::Success {
+            access_token: "gho_test_token".to_string(),
+            token_type: "bearer".to_string(),
+            scope: "read:user,read:org".to_string(),
+        })
+    }
+
+    async fn get_user(&self, _access_token: &str) -> anyhow::Result<GitHubUser> {
+        Ok(GitHubUser {
+            id: 12345,
+            login: "testuser".to_string(),
+            avatar_url: "https://avatars.githubusercontent.com/u/12345".to_string(),
+            html_url: "https://github.com/testuser".to_string(),
+        })
+    }
+
+    async fn get_user_orgs(&self, _access_token: &str) -> anyhow::Result<Vec<GitHubOrg>> {
+        Ok(vec![GitHubOrg {
+            login: "test-org".to_string(),
+        }])
+    }
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn full_device_flow_creates_user_and_token(pool: PgPool) {
+    let state = db_state_with_github(pool.clone(), Arc::new(SuccessGitHubClient));
+    let app = create_router(state);
+
+    // Step 1: Initiate device flow
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/device")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let device_resp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let device_code = device_resp["device_code"].as_str().unwrap();
+
+    // Step 2: Poll for token (mock returns success immediately)
+    let poll_body = serde_json::json!({ "device_code": device_code });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::from(poll_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let token_resp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+    assert!(token_resp["access_token"].is_string());
+    assert_eq!(token_resp["token_type"], "bearer");
+    assert_eq!(token_resp["user"]["username"], "testuser");
+    assert_eq!(token_resp["user"]["id"].as_i64().unwrap(), 1); // first user in DB
+
+    // Verify user was created in DB
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE github_id = 12345")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(user_count, 1);
+
+    // Verify auth token was created
+    let bearer = token_resp["access_token"].as_str().unwrap();
+    let bearer_hash = hash_token(bearer);
+    let token_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM auth_tokens WHERE token_hash = $1")
+            .bind(&bearer_hash)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(token_count, 1);
+
+    // Verify device flow was marked completed
+    let flow_status: String =
+        sqlx::query_scalar("SELECT status FROM device_flows WHERE device_code = $1")
+            .bind(device_code)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(flow_status, "completed");
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn auth_token_with_unknown_device_code_returns_404(pool: PgPool) {
+    let state = db_state(pool);
+    let app = create_router(state);
+
+    let body = serde_json::json!({ "device_code": "nonexistent-code" });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn rate_limit_rejects_11th_device_flow(pool: PgPool) {
+    // Insert 10 device flows for the same IP
+    for i in 0..10 {
+        sqlx::query(
+            "INSERT INTO device_flows (device_code, user_code, verification_uri, ip_address, expires_at)
+             VALUES ($1, $2, 'https://github.com/login/device', 'test-ip', NOW() + INTERVAL '15 minutes')",
+        )
+        .bind(format!("dc-{i}"))
+        .bind(format!("CODE-{i}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let state = db_state(pool);
+    let app = create_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/device")
+                .header("x-forwarded-for", "test-ip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn expired_flows_are_cleaned_up_on_initiate(pool: PgPool) {
+    // Insert an expired flow
+    sqlx::query(
+        "INSERT INTO device_flows (device_code, user_code, verification_uri, ip_address, expires_at)
+         VALUES ('expired-dc', 'EXP-1234', 'https://github.com/login/device', '1.2.3.4', NOW() - INTERVAL '1 hour')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = db_state(pool.clone());
+    let app = create_router(state);
+
+    // Initiate a new flow — should trigger cleanup
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/device")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Verify expired flow was cleaned up
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM device_flows WHERE device_code = 'expired-dc'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 0, "expired flow should have been cleaned up");
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn auth_user_extractor_with_valid_token(pool: PgPool) {
+    // Create a user and token directly in the DB
+    let user_id: i64 = sqlx::query_scalar(
+        "INSERT INTO users (github_id, username, avatar_url, profile_url)
+         VALUES (999, 'extractor-test', 'https://example.com/a.png', 'https://github.com/e')
+         RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+
+    sqlx::query(
+        "INSERT INTO auth_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '1 day')",
+    )
+    .bind(user_id)
+    .bind(&token_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = db_state(pool);
+    let app = Router::new()
+        .route("/protected", get(protected_user_info))
+        .with_state(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/protected")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["user_id"], user_id);
+    assert_eq!(json["username"], "extractor-test");
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn auth_user_extractor_rejects_expired_token(pool: PgPool) {
+    let user_id: i64 = sqlx::query_scalar(
+        "INSERT INTO users (github_id, username, avatar_url, profile_url)
+         VALUES (998, 'expired-test', 'https://example.com/a.png', 'https://github.com/e')
+         RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+
+    sqlx::query(
+        "INSERT INTO auth_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, NOW() - INTERVAL '1 day')",
+    )
+    .bind(user_id)
+    .bind(&token_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = db_state(pool);
+    let app = Router::new()
+        .route("/protected", get(protected_ok))
+        .with_state(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/protected")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn auth_user_extractor_rejects_missing_header(pool: PgPool) {
+    let state = db_state(pool);
+    let app = Router::new()
+        .route("/protected", get(protected_ok))
+        .with_state(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/protected")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── Completed re-poll / idempotency test ────────────────────────────────────
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn completed_device_code_repoll_issues_new_token(pool: PgPool) {
+    let state = db_state_with_github(pool.clone(), Arc::new(SuccessGitHubClient));
+    let app = create_router(state);
+
+    // Step 1: Initiate device flow
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/device")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let device_resp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let device_code = device_resp["device_code"].as_str().unwrap().to_string();
+
+    // Step 2: First poll (success)
+    let poll_body = serde_json::json!({ "device_code": &device_code });
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::from(poll_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let first_token: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let first_access_token = first_token["access_token"].as_str().unwrap().to_string();
+
+    // Step 3: Re-poll — should get a new token, not an error
+    let poll_body = serde_json::json!({ "device_code": &device_code });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::from(poll_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let second_token: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(second_token["access_token"].is_string());
+    assert_ne!(
+        second_token["access_token"].as_str().unwrap(),
+        first_access_token,
+        "re-poll should generate a new token"
+    );
+}
+
+// ── NULL expires_at (never-expiring token) test ─────────────────────────────
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn auth_user_extractor_accepts_null_expires_at(pool: PgPool) {
+    let user_id: i64 = sqlx::query_scalar(
+        "INSERT INTO users (github_id, username, avatar_url, profile_url)
+         VALUES (997, 'null-expiry', 'https://example.com/a.png', 'https://github.com/n')
+         RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+
+    // Insert token with NULL expires_at (never expires)
+    sqlx::query(
+        "INSERT INTO auth_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, NULL)",
+    )
+    .bind(user_id)
+    .bind(&token_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = db_state(pool);
+    let app = Router::new()
+        .route("/protected", get(protected_user_info))
+        .with_state(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/protected")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["user_id"], user_id);
+}
+
+// ── Unknown GitHub error test ───────────────────────────────────────────────
+
+/// Mock GitHub client that returns an unknown error during polling.
+struct UnknownErrorGitHubClient;
+
+#[async_trait::async_trait]
+impl GitHubClient for UnknownErrorGitHubClient {
+    async fn request_device_code(&self, _client_id: &str) -> anyhow::Result<DeviceCodeResponse> {
+        Ok(DeviceCodeResponse {
+            device_code: format!("dc-{}", rand::random::<u32>()),
+            user_code: "ERR-1234".to_string(),
+            verification_uri: "https://github.com/login/device".to_string(),
+            expires_in: 900,
+            interval: 5,
+        })
+    }
+
+    async fn poll_access_token(
+        &self,
+        _client_id: &str,
+        _client_secret: &str,
+        _device_code: &str,
+    ) -> anyhow::Result<AccessTokenResponse> {
+        Ok(AccessTokenResponse::Pending {
+            error: "some_unknown_error".to_string(),
+            error_description: Some("An unexpected error occurred".to_string()),
+            interval: None,
+        })
+    }
+
+    async fn get_user(&self, _access_token: &str) -> anyhow::Result<GitHubUser> {
+        Ok(GitHubUser {
+            id: 1,
+            login: "mock".to_string(),
+            avatar_url: "https://example.com/a.png".to_string(),
+            html_url: "https://github.com/mock".to_string(),
+        })
+    }
+
+    async fn get_user_orgs(&self, _access_token: &str) -> anyhow::Result<Vec<GitHubOrg>> {
+        Ok(vec![])
+    }
+}
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn unknown_github_error_returns_500(pool: PgPool) {
+    let state = db_state_with_github(pool.clone(), Arc::new(UnknownErrorGitHubClient));
+    let app = create_router(state);
+
+    // Initiate device flow
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/device")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let device_resp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let device_code = device_resp["device_code"].as_str().unwrap();
+
+    // Poll — should get 500 for unknown error
+    let poll_body = serde_json::json!({ "device_code": device_code });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::from(poll_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+// ── Token response includes expires_in ──────────────────────────────────────
+
+#[ignore = "requires DATABASE_URL to be set"]
+#[sqlx::test(migrations = "./migrations")]
+async fn token_response_includes_expires_in(pool: PgPool) {
+    let state = db_state_with_github(pool.clone(), Arc::new(SuccessGitHubClient));
+    let app = create_router(state);
+
+    // Initiate
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/device")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let device_resp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let device_code = device_resp["device_code"].as_str().unwrap();
+
+    // Poll
+    let poll_body = serde_json::json!({ "device_code": device_code });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/auth/token")
+                .header("content-type", "application/json")
+                .body(Body::from(poll_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        json["expires_in"], 7_776_000,
+        "should be 90 days in seconds"
     );
 }
