@@ -150,7 +150,9 @@ pub struct FilterConfig {
     /// how to retrieve the full, unfiltered output from history.
     ///
     /// Example hint appended to output:
-    /// `Filtered - for full content call: \`tokf history show 42\``
+    /// ```text
+    /// Filtered - for full content call: `tokf history show 42`
+    /// ```
     ///
     /// This is useful for LLM consumers that need to know complete output is
     /// available even though tokf has compressed it.
