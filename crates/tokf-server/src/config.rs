@@ -37,12 +37,21 @@ impl Config {
     pub fn from_env() -> Self {
         // R12: warn when PORT is set but invalid so misconfiguration is visible.
         let port = std::env::var("PORT").ok().map_or(8080, |s| {
-            s.parse::<u16>().unwrap_or_else(|_| {
-                tracing::warn!(
-                    "PORT env var {s:?} is not a valid port number (1-65535), defaulting to 8080"
-                );
-                8080
-            })
+            match s.parse::<u16>() {
+                Ok(0) => {
+                    tracing::warn!(
+                        "PORT env var {s:?} is not a valid port number (1-65535), defaulting to 8080"
+                    );
+                    8080
+                }
+                Ok(port) => port,
+                Err(_) => {
+                    tracing::warn!(
+                        "PORT env var {s:?} is not a valid port number (1-65535), defaulting to 8080"
+                    );
+                    8080
+                }
+            }
         });
         Self {
             port,
