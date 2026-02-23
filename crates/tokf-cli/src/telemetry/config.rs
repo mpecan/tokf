@@ -127,6 +127,7 @@ pub fn load() -> TelemetryConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -224,7 +225,7 @@ service_name = "my-service"
             std::env::set_var(
                 "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "http://otel.example.com:4317",
-            )
+            );
         };
         let cfg = load();
         assert_eq!(cfg.endpoint, "http://otel.example.com:4317");

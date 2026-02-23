@@ -150,7 +150,7 @@ mod tests {
         assert!(NoopReporter.shutdown());
     }
 
-    /// When compiled without any otel feature, requesting OTel export falls back to NoopReporter.
+    /// When compiled without any otel feature, requesting `OTel` export falls back to `NoopReporter`.
     #[cfg(not(any(feature = "otel", feature = "otel-grpc")))]
     #[test]
     fn test_init_without_otel_feature_returns_noop() {
