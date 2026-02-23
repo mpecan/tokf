@@ -47,3 +47,11 @@ jobs:
 
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
+
+      - name: Verify crate packaging
+        run: |
+          cargo package -p tokf-common --no-verify
+          cargo package -p tokf-cli --no-verify
+          # Confirm skill files are included in the tokf-cli package
+          cargo package -p tokf-cli --list | grep -q "skills/tokf-filter/SKILL.md" || \
+            { echo "ERROR: skill files missing from tokf-cli package"; exit 1; }
