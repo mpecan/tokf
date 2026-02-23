@@ -1,5 +1,5 @@
 [package]
-name = "tokf-cli"
+name = "tokf"
 version = "0.2.5"
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,6 @@ homepage.workspace = true
 description = "Config-driven CLI tool that compresses command output before it reaches an LLM context"
 keywords = ["llm", "cli", "tokens", "ai", "context-window"]
 categories = ["command-line-utilities", "development-tools"]
-
-[lib]
-name = "tokf"
 
 [[bin]]
 name = "tokf"

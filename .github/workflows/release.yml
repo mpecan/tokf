@@ -40,7 +40,7 @@ jobs:
           done
 
       - name: Publish tokf-cli
-        run: cargo publish -p tokf-cli
+        run: cargo publish -p tokf
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -73,7 +73,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }} -p tokf-cli
+        run: cargo build --release --target ${{ matrix.target }} -p tokf
 
       - name: Package binary
         shell: bash
