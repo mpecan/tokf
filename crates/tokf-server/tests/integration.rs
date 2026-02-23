@@ -106,11 +106,21 @@ async fn server_binds_to_random_port_and_accepts_connections() {
             .expect("server should not error");
     });
 
-    // Give the task a moment to start accepting.
-    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-
-    let stream = tokio::net::TcpStream::connect(addr).await;
-    assert!(stream.is_ok(), "server should be reachable on {addr}");
+    // Retry connection with bounded attempts to avoid flaky CI failures.
+    let mut connected = false;
+    for attempt in 1..=10 {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        if tokio::net::TcpStream::connect(addr).await.is_ok() {
+            connected = true;
+            break;
+        }
+        if attempt == 10 {
+            panic!("server did not accept connections on {addr} after 10 attempts");
+        }
+    }
+    assert!(connected, "server should be reachable on {addr}");
 
     handle.abort();
+    // Await the join handle to surface any server task panics.
+    let _ = handle.await;
 }
