@@ -1,4 +1,6 @@
-use tokf_server::{config, db, routes, state};
+use std::sync::Arc;
+
+use tokf_server::{auth::github::RealGitHubClient, config, db, routes, state};
 
 use anyhow::Result;
 use tokio::net::TcpListener;
@@ -27,7 +29,20 @@ async fn main() -> Result<()> {
         tracing::info!("skipping migrations (RUN_MIGRATIONS=false)");
     }
 
-    let app_state = state::AppState { db: pool };
+    let github_client_id = cfg
+        .github_client_id
+        .ok_or_else(|| anyhow::anyhow!("GITHUB_CLIENT_ID environment variable is required"))?;
+    let github_client_secret = cfg
+        .github_client_secret
+        .ok_or_else(|| anyhow::anyhow!("GITHUB_CLIENT_SECRET environment variable is required"))?;
+
+    let app_state = state::AppState {
+        db: pool,
+        github: Arc::new(RealGitHubClient::new()?),
+        github_client_id,
+        github_client_secret,
+        trust_proxy: cfg.trust_proxy,
+    };
     let app = routes::create_router(app_state).layer(
         // R11: explicitly disable header capture to prevent accidental secret leakage
         // when auth headers are added in the future.

@@ -9,6 +9,12 @@ pub struct Config {
     pub r2_access_key_id: Option<String>,
     pub r2_secret_access_key: Option<String>,
     pub r2_endpoint: Option<String>,
+    pub github_client_id: Option<String>,
+    pub github_client_secret: Option<String>,
+    /// When `true`, the server trusts `X-Forwarded-For` headers for client IP
+    /// extraction (required behind a reverse proxy). When `false`, only the
+    /// TCP peer address is used.  Defaults to `false`.
+    pub trust_proxy: bool,
 }
 
 // R10: Custom Debug masks secrets so the struct is safe to log.
@@ -31,6 +37,12 @@ impl std::fmt::Debug for Config {
                 &self.r2_secret_access_key.as_deref().map(|_| "<redacted>"),
             )
             .field("r2_endpoint", &self.r2_endpoint)
+            .field("github_client_id", &self.github_client_id)
+            .field(
+                "github_client_secret",
+                &self.github_client_secret.as_deref().map(|_| "<redacted>"),
+            )
+            .field("trust_proxy", &self.trust_proxy)
             .finish()
     }
 }
@@ -66,6 +78,11 @@ impl Config {
             r2_access_key_id: std::env::var("R2_ACCESS_KEY_ID").ok(),
             r2_secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").ok(),
             r2_endpoint: std::env::var("R2_ENDPOINT").ok(),
+            github_client_id: std::env::var("GITHUB_CLIENT_ID").ok(),
+            github_client_secret: std::env::var("GITHUB_CLIENT_SECRET").ok(),
+            trust_proxy: std::env::var("TRUST_PROXY")
+                .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes"))
+                .unwrap_or(false),
         }
     }
 }
@@ -169,18 +186,23 @@ mod tests {
             port: 8080,
             database_url: Some("postgres://secret".to_string()),
             run_migrations: true,
+            trust_proxy: false,
             r2_bucket: Some("my-bucket".to_string()),
             r2_access_key_id: Some("key-id".to_string()),
             r2_secret_access_key: Some("super-secret".to_string()),
             r2_endpoint: Some("https://r2.example.com".to_string()),
+            github_client_id: Some("gh-client-id".to_string()),
+            github_client_secret: Some("gh-secret-value".to_string()),
         };
         let debug_str = format!("{cfg:?}");
         assert!(!debug_str.contains("postgres://secret"));
         assert!(!debug_str.contains("key-id"));
         assert!(!debug_str.contains("super-secret"));
+        assert!(!debug_str.contains("gh-secret-value"));
         assert!(debug_str.contains("<redacted>"));
         // Non-secret fields should be visible
         assert!(debug_str.contains("8080"));
         assert!(debug_str.contains("my-bucket"));
+        assert!(debug_str.contains("gh-client-id"));
     }
 }

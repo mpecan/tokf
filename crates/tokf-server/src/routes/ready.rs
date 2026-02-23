@@ -42,6 +42,9 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    use std::sync::Arc;
+
+    use crate::auth::mock::NoOpGitHubClient;
     use crate::state::AppState;
 
     /// Creates an `AppState` whose pool will always fail to acquire a connection.
@@ -52,7 +55,13 @@ mod tests {
             .acquire_timeout(std::time::Duration::from_millis(500))
             .connect_lazy("postgres://tokf:tokf@nonexistent-host.invalid:5432/tokf")
             .expect("lazy pool creation should not fail");
-        AppState { db: pool }
+        AppState {
+            db: pool,
+            github: Arc::new(NoOpGitHubClient),
+            github_client_id: "test-client-id".to_string(),
+            github_client_secret: "test-client-secret".to_string(),
+            trust_proxy: true,
+        }
     }
 
     #[tokio::test]

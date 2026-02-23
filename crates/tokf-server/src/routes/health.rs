@@ -29,6 +29,9 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    use std::sync::Arc;
+
+    use crate::auth::mock::NoOpGitHubClient;
     use crate::state::AppState;
 
     fn test_state() -> AppState {
@@ -37,7 +40,13 @@ mod tests {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .connect_lazy(&url)
             .expect("invalid DATABASE_URL");
-        AppState { db: pool }
+        AppState {
+            db: pool,
+            github: Arc::new(NoOpGitHubClient),
+            github_client_id: "test-client-id".to_string(),
+            github_client_secret: "test-client-secret".to_string(),
+            trust_proxy: true,
+        }
     }
 
     #[tokio::test]
