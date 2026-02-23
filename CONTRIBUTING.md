@@ -11,6 +11,7 @@ git clone https://github.com/mpecan/tokf
 cd tokf
 cargo build
 cargo test
+just install-hooks   # install the pre-commit hook (run once after cloning)
 ```
 
 The project requires a recent stable Rust toolchain. See `rust-toolchain.toml` for the pinned version.
@@ -47,7 +48,7 @@ Before opening a PR:
 
 ```sh
 cargo fmt
-cargo clippy -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test
 ```
 
