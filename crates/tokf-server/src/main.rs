@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use tokf_server::{auth::github::RealGitHubClient, config, db, routes, state};
+use tokf_server::{
+    auth::github::RealGitHubClient,
+    config, db, routes, state,
+    storage::{self, StorageClient},
+};
 
 use anyhow::Result;
 use tokio::net::TcpListener;
@@ -18,6 +22,8 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = config::Config::from_env();
+    let storage_client = build_storage_client(&cfg)?;
+
     let database_url = cfg
         .database_url
         .ok_or_else(|| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
@@ -39,6 +45,7 @@ async fn main() -> Result<()> {
     let app_state = state::AppState {
         db: pool,
         github: Arc::new(RealGitHubClient::new()?),
+        storage: storage_client,
         github_client_id,
         github_client_secret,
         trust_proxy: cfg.trust_proxy,
@@ -79,6 +86,21 @@ async fn main() -> Result<()> {
 
     tracing::info!("server stopped");
     Ok(())
+}
+
+fn build_storage_client(cfg: &config::Config) -> Result<Arc<dyn StorageClient>> {
+    if cfg.r2_bucket.is_some()
+        && cfg.r2_access_key_id.is_some()
+        && cfg.r2_secret_access_key.is_some()
+        && cfg.r2_endpoint_url().is_some()
+    {
+        Ok(Arc::new(storage::r2::R2StorageClient::new(cfg)?))
+    } else {
+        tracing::warn!(
+            "R2 storage not configured — using no-op storage (uploads will be discarded)"
+        );
+        Ok(Arc::new(storage::noop::NoOpStorageClient))
+    }
 }
 
 async fn shutdown_signal() {
