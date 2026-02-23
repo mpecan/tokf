@@ -469,3 +469,79 @@ fn hook_install_shows_info_on_stderr() {
         "expected settings path, got: {stderr}"
     );
 }
+
+// --- tokf hook install --tool opencode ---
+
+// R3: Verify OpenCode plugin file is created at the expected path.
+#[test]
+fn hook_install_opencode_creates_plugin_file() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--tool", "opencode"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hook install --tool opencode failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let plugin_file = dir.path().join(".opencode/plugins/tokf.ts");
+    assert!(
+        plugin_file.exists(),
+        ".opencode/plugins/tokf.ts should exist after install"
+    );
+}
+
+// R3: Running install twice produces exactly one file and no errors.
+#[test]
+fn hook_install_opencode_is_idempotent() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    for _ in 0..2 {
+        let output = tokf()
+            .args(["hook", "install", "--tool", "opencode"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "hook install --tool opencode failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let plugin_dir = dir.path().join(".opencode/plugins");
+    let entries: Vec<_> = std::fs::read_dir(&plugin_dir).unwrap().collect();
+    assert_eq!(
+        entries.len(),
+        1,
+        "should have exactly one plugin file after double install"
+    );
+}
+
+// R3: The generated plugin file must not contain the raw template placeholder.
+#[test]
+fn hook_install_opencode_embeds_tokf_path() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--tool", "opencode"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hook install --tool opencode failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let plugin_file = dir.path().join(".opencode/plugins/tokf.ts");
+    let content = std::fs::read_to_string(&plugin_file).unwrap();
+    assert!(
+        !content.contains("{{TOKF_PATH}}"),
+        "plugin file must not contain raw placeholder, got: {content}"
+    );
+}

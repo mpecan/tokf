@@ -106,6 +106,26 @@ tokf skill install          # project-local (.claude/skills/)
 tokf skill install --global # user-level (~/.claude/skills/)
 ```
 
+### OpenCode
+
+tokf integrates with [OpenCode](https://opencode.ai) via a plugin that applies filters in real-time before command execution.
+
+**Requirements:** OpenCode with Bun runtime installed.
+
+**Install (project-local):**
+```sh
+tokf hook install --tool opencode
+```
+
+**Install (global):**
+```sh
+tokf hook install --tool opencode --global
+```
+
+This writes `.opencode/plugins/tokf.ts` (or `~/.config/opencode/plugins/tokf.ts` for `--global`), which OpenCode auto-loads. The plugin uses OpenCode's `tool.execute.before` hook to intercept `bash` tool calls and rewrites the command in-place when a matching filter exists. **Restart OpenCode after installation for the plugin to take effect.**
+
+If tokf rewrite fails or no filter matches, the command passes through unmodified (fail-safe).
+
 ---
 
 ## Installation

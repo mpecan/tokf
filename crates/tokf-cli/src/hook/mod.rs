@@ -1,3 +1,4 @@
+pub mod opencode;
 pub mod types;
 
 use std::io::Read;
