@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.5](https://github.com/mpecan/tokf/compare/tokf-v0.2.4...tokf-v0.2.5) (2026-02-23)
+
+
+### Features
+
+* **hook:** add opencode plugin installer ([#136](https://github.com/mpecan/tokf/issues/136)) ([dee751d](https://github.com/mpecan/tokf/commit/dee751d3e2c88afde690c42d97502bb91726b0d0))
+* **server:** bootstrap axum server with /health, config, and CI ([#109](https://github.com/mpecan/tokf/issues/109)) ([#127](https://github.com/mpecan/tokf/issues/127)) ([90bcf72](https://github.com/mpecan/tokf/commit/90bcf724872a25038ac8eb37ba37409f4cf73181))
+
+
+### Bug Fixes
+
+* **skill:** move skill files into crate for cargo package compatibility ([#137](https://github.com/mpecan/tokf/issues/137)) ([da3b653](https://github.com/mpecan/tokf/commit/da3b6531e9d97134d263c305d9470e9102764b67))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.4 to 0.2.5
+
 ## [0.2.4](https://github.com/mpecan/tokf/compare/tokf-v0.2.3...tokf-v0.2.4) (2026-02-23)
 
 
