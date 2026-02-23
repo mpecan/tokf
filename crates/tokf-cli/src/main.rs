@@ -157,15 +157,27 @@ enum SkillAction {
     },
 }
 
+// R6: Rename Opencode → OpenCode; use #[value(name = "opencode")] to keep CLI arg as "opencode".
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+enum HookTool {
+    #[default]
+    ClaudeCode,
+    #[value(name = "opencode")]
+    OpenCode,
+}
+
 #[derive(Subcommand)]
 enum HookAction {
     /// Handle a `PreToolUse` hook invocation (reads JSON from stdin)
     Handle,
-    /// Install the hook into Claude Code settings
+    /// Install the hook into the target tool's settings
     Install {
-        /// Install globally (~/.config/tokf) instead of project-local (.tokf)
+        /// Install globally instead of project-local
         #[arg(long)]
         global: bool,
+        /// Target tool to install hook for (default: claude-code)
+        #[arg(long, value_enum, default_value_t = HookTool::ClaudeCode)]
+        tool: HookTool,
     },
 }
 
@@ -493,7 +505,7 @@ fn main() {
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
-            HookAction::Install { global } => cmd_hook_install(*global),
+            HookAction::Install { global, tool } => cmd_hook_install(*global, tool),
         },
         Commands::Skill { action } => match action {
             SkillAction::Install { global } => cmd_skill_install(*global),
@@ -593,11 +605,17 @@ fn cmd_hook_handle() -> i32 {
     0
 }
 
-fn cmd_hook_install(global: bool) -> i32 {
-    match hook::install(global) {
+fn cmd_hook_install(global: bool, tool: &HookTool) -> i32 {
+    let result = match tool {
+        HookTool::ClaudeCode => hook::install(global),
+        // R6: Updated variant name from Opencode to OpenCode.
+        HookTool::OpenCode => hook::opencode::install(global),
+    };
+    match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("[tokf] error: {e:#}");
+            // R5: Standardize eprintln prefix to [tokf].
+            eprintln!("[tokf] hook install failed: {e:#}");
             1
         }
     }
