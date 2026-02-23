@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.3](https://github.com/mpecan/tokf/compare/tokf-v0.2.2...tokf-v0.2.3) (2026-02-23)
+
+
+### Features
+
+* **filter:** canonical content hash for filter identity ([#126](https://github.com/mpecan/tokf/issues/126)) ([5abfaf8](https://github.com/mpecan/tokf/commit/5abfaf819833eb625eba47c35e947bbfe9540474))
+* **filter:** show history hint for filtered output ([#129](https://github.com/mpecan/tokf/issues/129)) ([9eca37c](https://github.com/mpecan/tokf/commit/9eca37ce1ec0ed1cb0dcbf2ac2b899b00db15883))
+
+
+### Documentation
+
+* document history hint, pipe stripping, and add docs requirement ([#130](https://github.com/mpecan/tokf/issues/130)) ([52c99be](https://github.com/mpecan/tokf/commit/52c99be6028f3e0d6f3b9d9e66ad90ac1a0c0a7a))
+
+
+### Code Refactoring
+
+* restructure repository as a Cargo workspace ([#124](https://github.com/mpecan/tokf/issues/124)) ([23396d5](https://github.com/mpecan/tokf/commit/23396d50271f0764619f89b302d84443bf1ab32d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.2 to 0.2.3
+
 ## [0.2.2](https://github.com/mpecan/tokf/compare/tokf-v0.2.1...tokf-v0.2.2) (2026-02-22)
 
 
@@ -72,7 +97,7 @@
 * **config:** basename matching + transparent global flag interception ([#55](https://github.com/mpecan/tokf/issues/55)) ([86ee7b5](https://github.com/mpecan/tokf/commit/86ee7b55fb50ad8bd539464ba06495357cfc1e9e))
 * **filter:** add docker build and compose filters ([#50](https://github.com/mpecan/tokf/issues/50)) ([44bffe8](https://github.com/mpecan/tokf/commit/44bffe811881548597a12f8f2598232ae5ada15f))
 * **filter:** add Gradle build/test/dependencies filters ([#54](https://github.com/mpecan/tokf/issues/54)) ([029cacb](https://github.com/mpecan/tokf/commit/029cacb1a6672fd4fdd71967e50b3bb31aa02c2a))
-* **filter:** output cleanup flags — strip_ansi, trim_lines, strip_empty_lines, collapse_empty_lines ([#46](https://github.com/mpecan/tokf/issues/46)) ([#47](https://github.com/mpecan/tokf/issues/47)) ([9bdf69b](https://github.com/mpecan/tokf/commit/9bdf69bd2896d6886bbebf46a09d725dd7239e1b))
+* **filter:** output cleanup flags — strip_ansi, trim_lines, strip_empty_lines, collapse_empty_lines ([#46](https://github.com/mpecan/tokf/issues/46)) ([#47](https://github.com/mpecan/tokf/issues/47)) ([9bdf69b](https://github.com/mpecan/tokf/commit/9bdf69bd2896d6886bbebf46a09d721dd7239e1b))
 * **history:** store raw and filtered outputs for debugging ([#52](https://github.com/mpecan/tokf/issues/52)) ([d193109](https://github.com/mpecan/tokf/commit/d193109a1515a98b50652fa499c67398a00fe393))
 
 ## [0.1.5](https://github.com/mpecan/tokf/compare/tokf-v0.1.4...tokf-v0.1.5) (2026-02-19)
@@ -106,7 +131,7 @@
 
 ### Documentation
 
-* credit rtk as inspiration in README ([#24](https://github.com/mpecan/tokf/issues/24)) ([99c7099](https://github.com/mpecan/tokf/commit/99c70997fe8944033528a09173664fda5ded34cb))
+* credit rtk as inspiration in README ([#24](https://github.com/mpecan/tokf/issues/24)) ([99c7099](https://github.com/mpecan/tokf/commit/99c70997fe8944033528a09173664f4da5ded34cb))
 
 ## [0.1.1](https://github.com/mpecan/tokf/compare/tokf-v0.1.0...tokf-v0.1.1) (2026-02-19)
 
