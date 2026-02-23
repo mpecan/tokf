@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.4...tokf-server-v0.2.5) (2026-02-23)
+
+
+### Features
+
+* **server:** bootstrap axum server with /health, config, and CI ([#109](https://github.com/mpecan/tokf/issues/109)) ([#127](https://github.com/mpecan/tokf/issues/127)) ([90bcf72](https://github.com/mpecan/tokf/commit/90bcf724872a25038ac8eb37ba37409f4cf73181))
+
 ## [0.2.4](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.3...tokf-server-v0.2.4) (2026-02-23)
 
 
