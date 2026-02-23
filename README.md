@@ -553,6 +553,60 @@ The hint is appended to stdout so it is visible to both humans and LLMs in the t
 
 ---
 
+## OpenTelemetry metrics export
+
+tokf can export token-compression metrics to any OTLP-compatible backend (Datadog,
+Grafana, Honeycomb, New Relic, Jaeger, etc.).  This requires building with
+`--features otel`:
+
+```sh
+cargo install tokf --features otel
+```
+
+Enable at runtime:
+
+```sh
+export TOKF_TELEMETRY_ENABLED=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+tokf run cargo build
+```
+
+Or pass `--otel-export` to force a one-shot export without changing env vars:
+
+```sh
+tokf --otel-export run cargo build
+```
+
+**Configuration** (env vars override `~/.config/tokf/config.toml`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOKF_TELEMETRY_ENABLED` | `false` | `true`, `1`, or `yes` to enable |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP collector endpoint |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http` | `http` or `grpc` (grpc needs `--features otel-grpc`) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | (none) | Comma-separated `key=value` auth headers |
+| `OTEL_RESOURCE_ATTRIBUTES` | (none) | Resource attrs; `service.name` is extracted |
+| `TOKF_OTEL_PIPELINE` | (none) | Pipeline label added to every metric (`tokf.pipeline`) |
+
+**Metrics emitted per `tokf run` invocation:**
+
+| Metric | Description |
+|--------|-------------|
+| `gen_ai.client.token.usage` | Estimated tokens (split by `gen_ai.token.type`: `input`/`output`) |
+| `tokf.filter.invocations` | Number of invocations |
+| `tokf.filter.input_lines` / `output_lines` / `lines_removed` | Line counts |
+| `tokf.compression.ratio` | output ÷ input lines |
+| `tokf.tokens.saved` | Estimated tokens saved |
+| `tokf.filter.duration` | Filter wall-clock time (seconds) |
+
+Token counts are **estimates** (`bytes ÷ 4`) — not exact tokenizer output.
+
+Export is **best-effort**: tokf waits at most 200 ms for the OTLP flush. Every
+invocation is also recorded to a local SQLite database; a future `tokf telemetry sync`
+command (#89) will replay any unsynced events.
+
+---
+
 ## Cache management
 
 tokf caches the filter discovery index for faster startup. The cache rebuilds automatically when filters change, but you can manage it manually:

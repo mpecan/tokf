@@ -6,4 +6,5 @@ pub mod hook;
 pub mod rewrite;
 pub mod runner;
 pub mod skill;
+pub mod telemetry;
 pub mod tracking;
