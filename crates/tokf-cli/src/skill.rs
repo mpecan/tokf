@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
 
-const SKILL_MD: &str = include_str!("../../../.claude/skills/tokf-filter/SKILL.md");
+const SKILL_MD: &str = include_str!("../.claude/skills/tokf-filter/SKILL.md");
 const STEP_REFERENCE_MD: &str =
-    include_str!("../../../.claude/skills/tokf-filter/references/step-reference.md");
-const EXAMPLES_TOML: &str =
-    include_str!("../../../.claude/skills/tokf-filter/references/examples.toml");
+    include_str!("../.claude/skills/tokf-filter/references/step-reference.md");
+const EXAMPLES_TOML: &str = include_str!("../.claude/skills/tokf-filter/references/examples.toml");
 
 struct SkillFile {
     rel_path: &'static str,
