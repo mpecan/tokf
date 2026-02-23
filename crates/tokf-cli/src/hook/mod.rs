@@ -266,6 +266,58 @@ mod tests {
         assert!(!result);
     }
 
+    #[test]
+    fn handle_json_rewrites_single_env_var_prefix() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("git-status.toml"),
+            "command = \"git status\"",
+        )
+        .unwrap();
+
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"DEBUG=1 git status"}}"#;
+        let config = RewriteConfig::default();
+        let result = handle_json_with_config(json, &config, &[dir.path().to_path_buf()]);
+        assert!(result, "expected rewrite for env-prefixed matching command");
+    }
+
+    #[test]
+    fn handle_json_rewrites_multiple_env_vars_prefix() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("cargo-test.toml"),
+            "command = \"cargo test\"",
+        )
+        .unwrap();
+
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"RUST_LOG=debug TERM=xterm cargo test"}}"#;
+        let config = RewriteConfig::default();
+        let result = handle_json_with_config(json, &config, &[dir.path().to_path_buf()]);
+        assert!(result, "expected rewrite for multiple env vars prefix");
+    }
+
+    #[test]
+    fn handle_json_rewrites_env_var_with_strippable_pipe() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("cargo-test.toml"),
+            "command = \"cargo test\"",
+        )
+        .unwrap();
+
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"RUST_LOG=debug cargo test | grep FAILED"}}"#;
+        let config = RewriteConfig::default();
+        let result = handle_json_with_config(json, &config, &[dir.path().to_path_buf()]);
+        assert!(result, "expected rewrite for env var + strippable pipe");
+    }
+
+    #[test]
+    fn handle_json_env_prefixed_tokf_command_not_rewritten() {
+        // DEBUG=1 tokf run ... must not be rewritten — same as tokf run ... passthrough.
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"DEBUG=1 tokf run git status"}}"#;
+        assert!(!handle_json(json));
+    }
+
     // --- patch_settings ---
 
     #[test]
