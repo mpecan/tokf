@@ -246,6 +246,35 @@ replace = "tokf run {0}"
 
 Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see how a command is being rewritten.
 
+### Environment variable prefixes
+
+Leading `KEY=VALUE` assignments are automatically stripped before matching, so env-prefixed commands are rewritten correctly:
+
+```sh
+# These ARE rewritten — env vars are preserved, the command is wrapped:
+DEBUG=1 git status              → DEBUG=1 tokf run git status
+RUST_LOG=debug cargo test       → RUST_LOG=debug tokf run cargo test
+A=1 B=2 cargo test | tail -5   → A=1 B=2 tokf run --baseline-pipe 'tail -5' cargo test
+```
+
+The env vars are passed through verbatim to the underlying command; tokf only rewrites the executable portion.
+
+#### Skip patterns and env var prefixes
+
+User-defined skip patterns in `.tokf/rewrites.toml` match against the **full** shell segment, including any leading env vars. A pattern `^cargo` will **not** skip `RUST_LOG=debug cargo test` because the segment doesn't start with `cargo`:
+
+```toml
+[skip]
+patterns = ["^cargo"]   # skips "cargo test" but NOT "RUST_LOG=debug cargo test"
+```
+
+To skip a command regardless of any env prefix, use a pattern that accounts for it:
+
+```toml
+[skip]
+patterns = ["(?:^|\\s)cargo\\s"]   # matches "cargo" anywhere after start or whitespace
+```
+
 ---
 
 ## Built-in filter library

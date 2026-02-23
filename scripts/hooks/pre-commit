@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Running pre-commit checks..."
+
+out=$(cargo fmt -- --check 2>&1) || {
+    echo "Formatting check failed. Run 'cargo fmt' to fix."
+    echo "$out"
+    exit 1
+}
+
+out=$(cargo clippy --workspace --all-targets -- -D warnings 2>&1) || {
+    echo "Clippy check failed. Fix the warnings above."
+    echo "$out"
+    exit 1
+}
+
+out=$(cargo test 2>&1) || {
+    echo "Tests failed."
+    echo "$out"
+    exit 1
+}
+
+out=$(bash scripts/check-file-sizes.sh 2>&1) || {
+    echo "File size check failed."
+    echo "$out"
+    exit 1
+}
+
+echo "All pre-commit checks passed."

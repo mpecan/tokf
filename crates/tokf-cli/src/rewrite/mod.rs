@@ -7,7 +7,7 @@ pub(crate) mod user_config;
 use std::path::PathBuf;
 
 use crate::config;
-use compound::{StrippedPipe, has_bare_pipe, split_compound, strip_simple_pipe};
+use compound::{StrippedPipe, has_bare_pipe, split_compound, strip_env_prefix, strip_simple_pipe};
 use rules::{apply_rules, should_skip};
 use types::{RewriteConfig, RewriteRule};
 
@@ -62,21 +62,32 @@ pub fn rewrite(command: &str, verbose: bool) -> String {
     )
 }
 
-/// Rewrite a single command segment, handling pipe stripping when appropriate.
+/// Rewrite a single command segment, handling pipe stripping and env var
+/// prefixes when appropriate.
 ///
-/// If the segment has a bare pipe to a simple target (tail, head, grep) and the
-/// base command matches a tokf filter, the pipe is stripped and `--baseline-pipe`
-/// is injected so `tokf run` can compute fair savings. Otherwise piped commands
-/// pass through unchanged.
+/// Leading `KEY=VALUE` assignments are stripped before matching so that
+/// `FOO=bar git status` rewrites to `FOO=bar tokf run git status` rather than
+/// passing through unchanged. The env prefix is preserved in the output and
+/// applied to the command that actually runs.
+///
+/// If the (env-stripped) segment has a bare pipe to a simple target (tail,
+/// head, grep) and the base command matches a tokf filter, the pipe is also
+/// stripped and `--baseline-pipe` is injected. Otherwise piped commands pass
+/// through unchanged.
 fn rewrite_segment(segment: &str, filter_rules: &[RewriteRule], verbose: bool) -> String {
-    if has_bare_pipe(segment) {
-        if let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(segment) {
+    let (env_prefix, cmd_owned) =
+        strip_env_prefix(segment).unwrap_or_else(|| (String::new(), segment.to_string()));
+    let cmd = cmd_owned.as_str();
+
+    if has_bare_pipe(cmd) {
+        if let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd) {
             let rewritten = apply_rules(filter_rules, &base);
             if rewritten != base {
                 if verbose {
                     eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
                 }
-                return inject_baseline_pipe(&rewritten, &suffix);
+                let injected = inject_baseline_pipe(&rewritten, &suffix);
+                return format!("{env_prefix}{injected}");
             }
         }
         if verbose {
@@ -84,7 +95,13 @@ fn rewrite_segment(segment: &str, filter_rules: &[RewriteRule], verbose: bool) -
         }
         return segment.to_string();
     }
-    apply_rules(filter_rules, segment)
+
+    let result = apply_rules(filter_rules, cmd);
+    if result == cmd {
+        segment.to_string()
+    } else {
+        format!("{env_prefix}{result}")
+    }
 }
 
 /// Insert `--baseline-pipe '<suffix>'` after `tokf run` in the rewritten command.
@@ -101,6 +118,22 @@ fn inject_baseline_pipe(rewritten: &str, suffix: &str) -> String {
     )
 }
 
+/// Check if a command should be skipped, considering both the raw form and the
+/// env-prefix-stripped form.
+///
+/// User-defined skip patterns operate on the full segment (env prefix included),
+/// giving users explicit control over what they skip. The built-in patterns
+/// (`^tokf `, `<<`) are also checked on the env-stripped command so that
+/// `DEBUG=1 tokf run git status` is correctly identified as already-rewritten
+/// and not double-wrapped.
+fn should_skip_effective(command: &str, user_patterns: &[String]) -> bool {
+    if should_skip(command, user_patterns) {
+        return true;
+    }
+    // Only built-in patterns (no user patterns) are checked on the stripped form.
+    strip_env_prefix(command).is_some_and(|(_, cmd)| should_skip(&cmd, &[]))
+}
+
 /// Testable version with explicit config and search dirs.
 pub(crate) fn rewrite_with_config(
     command: &str,
@@ -113,7 +146,7 @@ pub(crate) fn rewrite_with_config(
         .as_ref()
         .map_or(&[] as &[String], |s| &s.patterns);
 
-    if should_skip(command, user_skip_patterns) {
+    if should_skip_effective(command, user_skip_patterns) {
         return command.to_string();
     }
 
@@ -136,7 +169,8 @@ pub(crate) fn rewrite_with_config(
     let mut out = String::with_capacity(command.len() + segments.len() * 9);
     for (seg, sep) in &segments {
         let trimmed = seg.trim();
-        let rewritten = if trimmed.is_empty() || should_skip(trimmed, user_skip_patterns) {
+        let rewritten = if trimmed.is_empty() || should_skip_effective(trimmed, user_skip_patterns)
+        {
             trimmed.to_string()
         } else {
             let r = rewrite_segment(trimmed, &filter_rules, verbose);
@@ -153,3 +187,5 @@ pub(crate) fn rewrite_with_config(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_env;
