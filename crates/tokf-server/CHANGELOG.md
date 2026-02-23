@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.3...tokf-server-v0.2.4) (2026-02-23)
+
+
+### Bug Fixes
+
+* **config:** add missing publish metadata to crates ([#131](https://github.com/mpecan/tokf/issues/131)) ([c235072](https://github.com/mpecan/tokf/commit/c235072676673e7106018ef819edfb3fdcd32658))
+
 ## [0.2.3](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.2...tokf-server-v0.2.3) (2026-02-23)
 
 

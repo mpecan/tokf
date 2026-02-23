@@ -1,5 +1,5 @@
 {
-  "crates/tokf-common": "0.2.3",
-  "crates/tokf-cli": "0.2.3",
-  "crates/tokf-server": "0.2.3"
+  "crates/tokf-common": "0.2.4",
+  "crates/tokf-cli": "0.2.4",
+  "crates/tokf-server": "0.2.4"
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.4](https://github.com/mpecan/tokf/compare/tokf-v0.2.3...tokf-v0.2.4) (2026-02-23)
+
+
+### Miscellaneous
+
+* **tokf:** Synchronize workspace versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.3 to 0.2.4
+
 ## [0.2.3](https://github.com/mpecan/tokf/compare/tokf-v0.2.2...tokf-v0.2.3) (2026-02-23)
 
 
