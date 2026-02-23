@@ -4,6 +4,10 @@ version = "0.2.3"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Shared types and utilities for the tokf CLI tool"
+keywords = ["llm", "cli", "tokens", "ai", "context-window"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
