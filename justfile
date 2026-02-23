@@ -15,7 +15,7 @@ test:
 
 # Run clippy
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Check file sizes
 file-size:
@@ -28,3 +28,9 @@ install:
 # Install the CLI
 force-install:
     cargo install --force --path crates/tokf-cli
+
+# Install git hooks (run once after cloning)
+install-hooks:
+    chmod +x scripts/hooks/pre-commit
+    ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
+    @echo "Git hooks installed."
