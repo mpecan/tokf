@@ -29,6 +29,14 @@ install:
 force-install:
     cargo install --force --path crates/tokf-cli
 
+# Generate README.md from docs/
+readme:
+    bash scripts/generate-readme.sh
+
+# Verify README.md is up-to-date
+readme-check:
+    bash scripts/generate-readme.sh --check
+
 # Install git hooks (run once after cloning)
 install-hooks:
     chmod +x scripts/hooks/pre-commit
