@@ -1,0 +1,4 @@
+exclude_tests = true
+similarity_threshold = 0.9
+max_exact_duplicates = 19
+max_near_duplicates = 5
