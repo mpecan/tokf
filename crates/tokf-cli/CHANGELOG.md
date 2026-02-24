@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.8](https://github.com/mpecan/tokf/compare/tokf-v0.2.7...tokf-v0.2.8) (2026-02-24)
+
+
+### Features
+
+* **cli:** pipe stripping control, --prefer-less mode, and override tracking ([#154](https://github.com/mpecan/tokf/issues/154)) ([7f24f12](https://github.com/mpecan/tokf/commit/7f24f12deb3b6968a9a857b9a6f327c7796928aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.7 to 0.2.8
+
 ## [0.2.7](https://github.com/mpecan/tokf/compare/tokf-v0.2.6...tokf-v0.2.7) (2026-02-24)
 
 
