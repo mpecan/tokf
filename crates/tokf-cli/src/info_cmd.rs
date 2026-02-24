@@ -47,7 +47,7 @@ pub fn cmd_info(json: bool) -> i32 {
     let info = collect_info(&search_dirs);
 
     if json {
-        print_json(&info);
+        crate::output::print_json(&info);
     } else {
         print_human(&info);
     }
@@ -113,13 +113,6 @@ fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
         tracking_db,
         cache,
         filters,
-    }
-}
-
-fn print_json(info: &InfoOutput) {
-    match serde_json::to_string_pretty(info) {
-        Ok(json) => println!("{json}"),
-        Err(e) => eprintln!("[tokf] JSON serialization error: {e}"),
     }
 }
 

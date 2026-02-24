@@ -55,6 +55,9 @@ jobs:
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
 
+      - name: Check for code duplication
+        run: cargo install cargo-dupes && cargo dupes check
+
       - name: Check README is up-to-date
         run: bash scripts/generate-readme.sh --check
 

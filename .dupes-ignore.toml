@@ -1,0 +1,87 @@
+# Exact duplicates
+
+[[ignore]]
+fingerprint = "55b4a6e929693e66"
+reason = "Mock GitHubClient::get_user impls - minimal trait implementations on different test doubles"
+
+[[ignore]]
+fingerprint = "fb468cc9922b4dca"
+reason = "HTTP 405 integration tests - same structure but different methods/URIs; test clarity > DRY"
+
+[[ignore]]
+fingerprint = "0267d5a190c8e2c4"
+reason = "Verify scope test setup - intentionally different directory structures (project vs stdlib)"
+
+[[ignore]]
+fingerprint = "3f42cc900bd9cbbb"
+reason = "write_filter/write_fixture test helpers - 6-line helpers with semantic naming; clarity > DRY"
+
+[[ignore]]
+fingerprint = "52d2664fbc319cff"
+reason = "global_plugin_dir/global_skill_dir - 4-line functions with different paths for different tool integrations"
+
+[[ignore]]
+fingerprint = "579ed1983438b4dc"
+reason = "apply_skip/apply_keep - thin wrappers around shared filter_lines(); already deduplicated"
+
+[[ignore]]
+fingerprint = "5deba0b775ffb731"
+reason = "opencode::install/codex::install - structural similarity but different tool integrations with different paths"
+
+[[ignore]]
+fingerprint = "5f52dd1ad7d235fe"
+reason = "opencode::install_to/codex::install_to - different write functions, tool names, and file paths"
+
+[[ignore]]
+fingerprint = "62a585c2379af643"
+reason = "query_by_filter/query_daily - share map_aggregate_row and savings_pct; remaining similarity is different SQL + output structs"
+
+[[ignore]]
+fingerprint = "6f5a38f15ea3d0a4"
+reason = "tokf_with_db test helper - 5-line helper in separate integration test binaries; cannot share without utility crate"
+
+[[ignore]]
+fingerprint = "9fba02498a71ad47"
+reason = "cmd_gain_by_filter/cmd_gain_daily - JSON path already deduplicated via output::print_json; text formatting intentionally differs"
+
+[[ignore]]
+fingerprint = "a253987703af8e04"
+reason = "protected_user_info/protected_ok - false positive; different signatures and return data"
+
+[[ignore]]
+fingerprint = "a4d93f1c9066b71f"
+reason = "Mock GitHubClient::get_user_orgs - 3-line trait impl returning Ok(vec![]) on different types"
+
+[[ignore]]
+fingerprint = "aa08552ba8bdf54f"
+reason = "health_200/unknown_404 tests - different URIs and status codes; idiomatic HTTP test pattern"
+
+[[ignore]]
+fingerprint = "be8f94ecee873d93"
+reason = "temp_db_dir test helper - 3-line one-liner in separate integration test binaries"
+
+[[ignore]]
+fingerprint = "f64a77770eff8f8e"
+reason = "RealGitHubClient get_user/get_user_orgs - already deduplicated via authed_get; remaining similarity is the delegation"
+
+[[ignore]]
+fingerprint = "f6780e5462b7ecea"
+reason = "Mock request_device_code impls - minimal trait implementations with different test data on different mock types"
+
+# Near duplicates
+
+[[ignore]]
+fingerprint = "74e5891bbee906dd"
+reason = "auth_user_extractor tests - test code with different token values and assertions; clarity > DRY"
+
+[[ignore]]
+fingerprint = "15a0b85efc5c578b"
+reason = "result/make_result test helpers - identical CommandResult builders in separate test modules; cannot share across test boundaries"
+
+[[ignore]]
+fingerprint = "11e505bc334c6101"
+reason = "config_search_paths/default_search_dirs - structurally similar but serve different subsystems (rewrite config vs filter discovery)"
+
+[[ignore]]
+fingerprint = "c0692f8ae6555b2b"
+reason = "get_history_entry/most_recent_command - idiomatic rusqlite query pattern; different SQL, types, and row mapping"

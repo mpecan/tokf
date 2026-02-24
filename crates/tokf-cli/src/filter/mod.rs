@@ -11,10 +11,17 @@ pub mod section;
 mod skip;
 mod template;
 
+use regex::Regex;
+
 use crate::config::types::{FilterConfig, OutputBranch};
 use crate::runner::CommandResult;
 
 use self::section::SectionMap;
+
+/// Compile a list of regex pattern strings, silently dropping invalid ones.
+pub(crate) fn compile_patterns(patterns: &[String]) -> Vec<Regex> {
+    patterns.iter().filter_map(|p| Regex::new(p).ok()).collect()
+}
 
 /// The result of applying a filter to command output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,3 +233,6 @@ fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests_pipeline;

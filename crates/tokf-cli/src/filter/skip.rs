@@ -1,25 +1,30 @@
-use regex::Regex;
+use super::compile_patterns;
+
+/// Filter lines by regex patterns, keeping or removing matches.
+fn filter_lines<'a>(patterns: &[String], lines: &[&'a str], keep: bool) -> Vec<&'a str> {
+    if patterns.is_empty() {
+        return lines.to_vec();
+    }
+    let compiled = compile_patterns(patterns);
+    if compiled.is_empty() {
+        return lines.to_vec();
+    }
+    lines
+        .iter()
+        .filter(|line| {
+            let matches = compiled.iter().any(|re| re.is_match(line));
+            if keep { matches } else { !matches }
+        })
+        .copied()
+        .collect()
+}
 
 /// Remove lines matching any of the given patterns.
 ///
 /// Invalid regex patterns are silently dropped. An empty patterns list
 /// returns all lines unchanged (passthrough).
 pub fn apply_skip<'a>(patterns: &[String], lines: &[&'a str]) -> Vec<&'a str> {
-    if patterns.is_empty() {
-        return lines.to_vec();
-    }
-
-    let compiled: Vec<Regex> = patterns.iter().filter_map(|p| Regex::new(p).ok()).collect();
-
-    if compiled.is_empty() {
-        return lines.to_vec();
-    }
-
-    lines
-        .iter()
-        .filter(|line| !compiled.iter().any(|re| re.is_match(line)))
-        .copied()
-        .collect()
+    filter_lines(patterns, lines, false)
 }
 
 /// Retain only lines matching at least one of the given patterns.
@@ -27,21 +32,7 @@ pub fn apply_skip<'a>(patterns: &[String], lines: &[&'a str]) -> Vec<&'a str> {
 /// Invalid regex patterns are silently dropped. An empty patterns list
 /// returns all lines unchanged (passthrough).
 pub fn apply_keep<'a>(patterns: &[String], lines: &[&'a str]) -> Vec<&'a str> {
-    if patterns.is_empty() {
-        return lines.to_vec();
-    }
-
-    let compiled: Vec<Regex> = patterns.iter().filter_map(|p| Regex::new(p).ok()).collect();
-
-    if compiled.is_empty() {
-        return lines.to_vec();
-    }
-
-    lines
-        .iter()
-        .filter(|line| compiled.iter().any(|re| re.is_match(line)))
-        .copied()
-        .collect()
+    filter_lines(patterns, lines, true)
 }
 
 #[cfg(test)]
