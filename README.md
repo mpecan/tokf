@@ -622,6 +622,7 @@ tokf history list              # recent entries (current project)
 tokf history list -l 20        # show 20 entries
 tokf history list --all        # entries from all projects
 tokf history show 42           # full details for entry #42
+tokf history show --raw 42     # print only the raw captured output
 tokf history search "error"    # search by command or output content
 tokf history clear             # clear current project history
 tokf history clear --all       # clear all history (destructive)
@@ -645,7 +646,7 @@ output = "{branch} — {counts}"
 
 ```
 ✓ cargo test: 42 passed (2.31s)
-Filtered - for full content call: `tokf history show 99`
+Filtered - full output: `tokf history show --raw 99`
 ```
 
 The hint is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line.

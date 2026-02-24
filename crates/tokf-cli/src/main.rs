@@ -205,6 +205,9 @@ enum HistoryAction {
     Show {
         /// Entry ID to show
         id: i64,
+        /// Print only the raw captured output (no metadata, no filtered output)
+        #[arg(long)]
+        raw: bool,
     },
     /// Search history by command or output content (current project by default)
     Search {
@@ -367,7 +370,7 @@ fn cmd_run(
     }
 
     if show_hint && let Some(id) = history_id {
-        println!("Filtered - for full content call: `tokf history show {id}`");
+        println!("Filtered - full output: `tokf history show --raw {id}`");
     }
 
     if cli.no_mask_exit_code {
@@ -590,7 +593,7 @@ fn main() {
         } => verify_cmd::cmd_verify(filter.as_deref(), *list, *json, *require_all),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
-            HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),
+            HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),
             HistoryAction::Search { query, limit, all } => {
                 history_cmd::cmd_history_search(query, *limit, *all)
             }

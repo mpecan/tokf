@@ -31,7 +31,7 @@ pub fn cmd_history_list(limit: usize, all: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-pub fn cmd_history_show(id: i64) -> anyhow::Result<i32> {
+pub fn cmd_history_show(id: i64, raw: bool) -> anyhow::Result<i32> {
     let conn = open_history_conn()?;
 
     let entry = history::get_history_entry(&conn, id)?;
@@ -39,6 +39,11 @@ pub fn cmd_history_show(id: i64) -> anyhow::Result<i32> {
         eprintln!("[tokf] history entry {id} not found");
         return Ok(1);
     };
+
+    if raw {
+        print!("{}", entry.raw_output);
+        return Ok(0);
+    }
 
     println!("ID: {}", entry.id);
     println!("Timestamp: {}", entry.timestamp);
