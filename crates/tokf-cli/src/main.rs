@@ -173,13 +173,15 @@ enum HookTool {
     ClaudeCode,
     #[value(name = "opencode")]
     OpenCode,
+    #[value(name = "codex")]
+    Codex,
 }
 
 #[derive(Subcommand)]
 enum HookAction {
     /// Handle a `PreToolUse` hook invocation (reads JSON from stdin)
     Handle,
-    /// Install the hook into the target tool's settings
+    /// Install the integration for the target tool
     Install {
         /// Install globally instead of project-local
         #[arg(long)]
@@ -679,6 +681,7 @@ fn cmd_hook_install(global: bool, tool: &HookTool) -> i32 {
         HookTool::ClaudeCode => hook::install(global),
         // R6: Updated variant name from Opencode to OpenCode.
         HookTool::OpenCode => hook::opencode::install(global),
+        HookTool::Codex => hook::codex::install(global),
     };
     match result {
         Ok(()) => 0,

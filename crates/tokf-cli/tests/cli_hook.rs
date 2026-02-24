@@ -545,3 +545,98 @@ fn hook_install_opencode_embeds_tokf_path() {
         "plugin file must not contain raw placeholder, got: {content}"
     );
 }
+
+// --- tokf hook install --tool codex ---
+
+#[test]
+fn hook_install_codex_creates_skill_file() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--tool", "codex"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hook install --tool codex failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let skill_file = dir.path().join(".agents/skills/tokf-run/SKILL.md");
+    assert!(
+        skill_file.exists(),
+        ".agents/skills/tokf-run/SKILL.md should exist after install"
+    );
+}
+
+#[test]
+fn hook_install_codex_is_idempotent() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    for _ in 0..2 {
+        let output = tokf()
+            .args(["hook", "install", "--tool", "codex"])
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "hook install --tool codex failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let skill_dir = dir.path().join(".agents/skills/tokf-run");
+    let entries: Vec<_> = std::fs::read_dir(&skill_dir).unwrap().collect();
+    assert_eq!(
+        entries.len(),
+        1,
+        "should have exactly one skill file after double install"
+    );
+}
+
+#[test]
+fn hook_install_codex_has_frontmatter() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--tool", "codex"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let skill_file = dir.path().join(".agents/skills/tokf-run/SKILL.md");
+    let content = std::fs::read_to_string(&skill_file).unwrap();
+    assert!(
+        content.starts_with("---\n"),
+        "SKILL.md should start with YAML frontmatter"
+    );
+    assert!(
+        content.contains("name: tokf-run"),
+        "SKILL.md should contain name: tokf-run"
+    );
+}
+
+#[test]
+fn hook_install_codex_shows_info_on_stderr() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--tool", "codex"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Codex skill installed"),
+        "expected install confirmation, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("SKILL.md"),
+        "expected skill file path in output, got: {stderr}"
+    );
+}
