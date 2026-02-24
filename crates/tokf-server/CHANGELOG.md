@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.7](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.6...tokf-server-v0.2.7) (2026-02-24)
+
+
+### Features
+
+* **server:** add DB connection pooling, schema migrations, and health probes ([#140](https://github.com/mpecan/tokf/issues/140)) ([dc4c85a](https://github.com/mpecan/tokf/commit/dc4c85ab1076ea49559d3a1a83c30630e7290547))
+* **server:** add GitHub OAuth device flow endpoints ([#148](https://github.com/mpecan/tokf/issues/148)) ([2c6ad5f](https://github.com/mpecan/tokf/commit/2c6ad5fab019cc771f0159e97b978d6d9663d72d))
+
 ## [0.2.6](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.5...tokf-server-v0.2.6) (2026-02-23)
 
 

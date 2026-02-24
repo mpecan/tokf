@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.7](https://github.com/mpecan/tokf/compare/tokf-v0.2.6...tokf-v0.2.7) (2026-02-24)
+
+
+### Features
+
+* **cli:** exit-code masking and improved push filter ([#150](https://github.com/mpecan/tokf/issues/150)) ([1b97ce5](https://github.com/mpecan/tokf/commit/1b97ce5f97b1b9ed281f39844131cce8abebc2ec))
+* **server:** add DB connection pooling, schema migrations, and health probes ([#140](https://github.com/mpecan/tokf/issues/140)) ([dc4c85a](https://github.com/mpecan/tokf/commit/dc4c85ab1076ea49559d3a1a83c30630e7290547))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.6 to 0.2.7
+
 ## [0.2.6](https://github.com/mpecan/tokf/compare/tokf-v0.2.5...tokf-v0.2.6) (2026-02-23)
 
 
