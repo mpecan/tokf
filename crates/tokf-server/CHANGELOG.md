@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.7...tokf-server-v0.2.8) (2026-02-24)
+
+
+### Features
+
+* **server:** add Cloudflare R2 blob storage integration ([#149](https://github.com/mpecan/tokf/issues/149)) ([e4bef85](https://github.com/mpecan/tokf/commit/e4bef85153bc7e7070c2de618e92b71081c49f8d))
+
 ## [0.2.7](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.6...tokf-server-v0.2.7) (2026-02-24)
 
 
