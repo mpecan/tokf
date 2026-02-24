@@ -35,9 +35,7 @@ fn eject_to(filter: &str, target_base: &Path, no_cache: bool) -> anyhow::Result<
         config::cache::discover_with_cache(&search_dirs)?
     };
 
-    let found = resolved
-        .iter()
-        .find(|f| f.relative_path.with_extension("").to_string_lossy() == filter_name);
+    let found = resolved.iter().find(|f| f.matches_name(filter_name));
 
     let resolved_filter =
         found.ok_or_else(|| anyhow::anyhow!("filter not found: {filter_name}"))?;

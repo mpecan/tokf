@@ -26,13 +26,7 @@ fn cmd_gain_summary(conn: &rusqlite::Connection, json: bool) -> i32 {
     match tracking::query_summary(conn) {
         Ok(s) => {
             if json {
-                match serde_json::to_string_pretty(&s) {
-                    Ok(out) => println!("{out}"),
-                    Err(e) => {
-                        eprintln!("[tokf] error: {e}");
-                        return 1;
-                    }
-                }
+                crate::output::print_json(&s);
             } else {
                 println!("tokf gain summary");
                 println!("  total runs:     {}", s.total_commands);
@@ -69,13 +63,7 @@ fn cmd_gain_by_filter(conn: &rusqlite::Connection, json: bool) -> i32 {
     match tracking::query_by_filter(conn) {
         Ok(rows) => {
             if json {
-                match serde_json::to_string_pretty(&rows) {
-                    Ok(out) => println!("{out}"),
-                    Err(e) => {
-                        eprintln!("[tokf] error: {e}");
-                        return 1;
-                    }
-                }
+                crate::output::print_json(&rows);
             } else {
                 println!("tokf gain by filter");
                 for r in &rows {
@@ -106,13 +94,7 @@ fn cmd_gain_daily(conn: &rusqlite::Connection, json: bool) -> i32 {
     match tracking::query_daily(conn) {
         Ok(rows) => {
             if json {
-                match serde_json::to_string_pretty(&rows) {
-                    Ok(out) => println!("{out}"),
-                    Err(e) => {
-                        eprintln!("[tokf] error: {e}");
-                        return 1;
-                    }
-                }
+                crate::output::print_json(&rows);
             } else {
                 println!("tokf gain daily");
                 for r in &rows {

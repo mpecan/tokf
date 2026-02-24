@@ -265,6 +265,11 @@ impl ResolvedFilter {
             .unwrap_or(0)
     }
 
+    /// Check if this filter's display name (relative path without `.toml`) matches `name`.
+    pub fn matches_name(&self, name: &str) -> bool {
+        self.relative_path.with_extension("").to_string_lossy() == name
+    }
+
     /// Human-readable priority label.
     pub const fn priority_label(&self) -> &'static str {
         match self.priority {

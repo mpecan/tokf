@@ -10,9 +10,7 @@ pub fn cmd_show(filter: &str, hash: bool) -> i32 {
         return 1;
     };
 
-    let found = filters
-        .iter()
-        .find(|f| f.relative_path.with_extension("").to_string_lossy() == filter_name);
+    let found = filters.iter().find(|f| f.matches_name(filter_name));
 
     let Some(resolved) = found else {
         eprintln!("[tokf] filter not found: {filter}");

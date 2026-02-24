@@ -4,6 +4,7 @@ mod eject_cmd;
 mod gain;
 mod history_cmd;
 mod info_cmd;
+mod output;
 mod resolve;
 mod show_cmd;
 mod verify_cmd;

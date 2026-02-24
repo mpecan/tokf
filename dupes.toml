@@ -1,4 +1,15 @@
+# cargo-dupes configuration
+# Run: cargo dupes          (full report)
+#      cargo dupes stats     (statistics only)
+#      cargo dupes check     (CI gate - fails if thresholds exceeded)
+
+min_lines = 10
 exclude_tests = true
-similarity_threshold = 0.9
-max_exact_duplicates = 19
-max_near_duplicates = 5
+similarity_threshold = 0.90
+
+# Thresholds for `cargo dupes check`
+# Percentage-based: scales with codebase size
+# Baseline (Feb 2026): 0.0% exact, 0.0% near — all reviewed groups ignored via .dupes-ignore.toml
+# Any new duplication will immediately fail the check
+max_exact_percent = 0.5
+max_near_percent = 0.5

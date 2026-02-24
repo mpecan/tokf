@@ -135,7 +135,7 @@ pub fn resolve_output_variants(
 pub fn lookup_filter_by_name(name: &str, filters: &[ResolvedFilter]) -> Option<FilterConfig> {
     filters
         .iter()
-        .find(|f| f.relative_path.with_extension("").to_string_lossy() == name)
+        .find(|f| f.matches_name(name))
         .map(|f| f.config.clone())
 }
 

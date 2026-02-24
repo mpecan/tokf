@@ -76,6 +76,23 @@ impl RealGitHubClient {
             .build()?;
         Ok(Self { http })
     }
+
+    async fn authed_get<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        access_token: &str,
+    ) -> anyhow::Result<T> {
+        Ok(self
+            .http
+            .get(url)
+            .header("Accept", "application/json")
+            .bearer_auth(access_token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<T>()
+            .await?)
+    }
 }
 
 #[async_trait::async_trait]
@@ -119,31 +136,13 @@ impl GitHubClient for RealGitHubClient {
     }
 
     async fn get_user(&self, access_token: &str) -> anyhow::Result<GitHubUser> {
-        let user = self
-            .http
-            .get("https://api.github.com/user")
-            .header("Accept", "application/json")
-            .bearer_auth(access_token)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<GitHubUser>()
-            .await?;
-        Ok(user)
+        self.authed_get("https://api.github.com/user", access_token)
+            .await
     }
 
     async fn get_user_orgs(&self, access_token: &str) -> anyhow::Result<Vec<GitHubOrg>> {
-        let orgs = self
-            .http
-            .get("https://api.github.com/user/orgs")
-            .header("Accept", "application/json")
-            .bearer_auth(access_token)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<Vec<GitHubOrg>>()
-            .await?;
-        Ok(orgs)
+        self.authed_get("https://api.github.com/user/orgs", access_token)
+            .await
     }
 }
 

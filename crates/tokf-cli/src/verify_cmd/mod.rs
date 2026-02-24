@@ -120,13 +120,6 @@ fn print_results(results: &[SuiteResult]) {
     println!("{total_passed}/{total_cases} passed");
 }
 
-fn print_json(results: &[SuiteResult]) {
-    match serde_json::to_string_pretty(results) {
-        Ok(json) => println!("{json}"),
-        Err(e) => eprintln!("[tokf] JSON serialization error: {e}"),
-    }
-}
-
 // --- Entry point ---
 
 // cmd_verify orchestrates list, require-all, JSON, and run modes in a single
@@ -196,7 +189,7 @@ pub fn cmd_verify(
     let has_failure = results.iter().any(|s| s.cases.iter().any(|c| !c.passed));
 
     if json {
-        print_json(&results);
+        crate::output::print_json(&results);
     } else {
         print_results(&results);
     }

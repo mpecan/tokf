@@ -172,6 +172,31 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
     })
 }
 
+/// Row type returned by aggregate queries.
+type AggregateRow = (String, i64, i64, i64, i64, i64);
+
+/// Shared row mapper for aggregate queries. Returns `(label, commands, input, output, saved, pipe_overrides)`.
+fn map_aggregate_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AggregateRow> {
+    Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, i64>(1)?,
+        row.get::<_, i64>(2)?,
+        row.get::<_, i64>(3)?,
+        row.get::<_, i64>(4)?,
+        row.get::<_, i64>(5)?,
+    ))
+}
+
+/// Compute savings percentage from input tokens and tokens saved.
+#[allow(clippy::cast_precision_loss)]
+fn savings_pct(input_tokens: i64, tokens_saved: i64) -> f64 {
+    if input_tokens == 0 {
+        0.0
+    } else {
+        tokens_saved as f64 / input_tokens as f64 * 100.0
+    }
+}
+
 /// # Errors
 /// Returns an error if the SQL query fails.
 pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
@@ -185,36 +210,19 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
          ORDER BY SUM(input_tokens_est - output_tokens_est) DESC",
     )?;
 
-    let rows = stmt.query_map([], |row| {
-        let input_tokens: i64 = row.get(2)?;
-        let tokens_saved: i64 = row.get(4)?;
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            input_tokens,
-            row.get::<_, i64>(3)?,
-            tokens_saved,
-            row.get::<_, i64>(5)?,
-        ))
-    })?;
+    let rows = stmt.query_map([], map_aggregate_row)?;
 
     let mut result = Vec::new();
     for row in rows {
         let (filter_name, commands, input_tokens, output_tokens, tokens_saved, pipe_override_count) =
             row.context("read filter row")?;
-        #[allow(clippy::cast_precision_loss)]
-        let savings_pct = if input_tokens == 0 {
-            0.0
-        } else {
-            tokens_saved as f64 / input_tokens as f64 * 100.0
-        };
         result.push(FilterGain {
             filter_name,
             commands,
             input_tokens,
             output_tokens,
             tokens_saved,
-            savings_pct,
+            savings_pct: savings_pct(input_tokens, tokens_saved),
             pipe_override_count,
         });
     }
@@ -234,36 +242,19 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
          ORDER BY substr(timestamp, 1, 10) DESC",
     )?;
 
-    let rows = stmt.query_map([], |row| {
-        let input_tokens: i64 = row.get(2)?;
-        let tokens_saved: i64 = row.get(4)?;
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            input_tokens,
-            row.get::<_, i64>(3)?,
-            tokens_saved,
-            row.get::<_, i64>(5)?,
-        ))
-    })?;
+    let rows = stmt.query_map([], map_aggregate_row)?;
 
     let mut result = Vec::new();
     for row in rows {
         let (date, commands, input_tokens, output_tokens, tokens_saved, pipe_override_count) =
             row.context("read daily row")?;
-        #[allow(clippy::cast_precision_loss)]
-        let savings_pct = if input_tokens == 0 {
-            0.0
-        } else {
-            tokens_saved as f64 / input_tokens as f64 * 100.0
-        };
         result.push(DailyGain {
             date,
             commands,
             input_tokens,
             output_tokens,
             tokens_saved,
-            savings_pct,
+            savings_pct: savings_pct(input_tokens, tokens_saved),
             pipe_override_count,
         });
     }
