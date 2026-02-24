@@ -23,6 +23,8 @@ primary_region = "iad"
       protocol = "http"
       timeout = "5s"
 
+# Graceful shutdown: SIGTERM triggers drain (30s in main.rs), then SIGKILL after 35s.
+# The 35s kill_timeout provides a 5-second buffer beyond the 30s drain period.
 kill_signal = "SIGTERM"
 kill_timeout = 35
 
