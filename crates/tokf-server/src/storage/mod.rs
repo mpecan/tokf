@@ -48,6 +48,9 @@ pub async fn upload_test(
     filename: &str,
     test_bytes: Vec<u8>,
 ) -> anyhow::Result<String> {
+    if filename.trim().is_empty() {
+        anyhow::bail!("invalid test filename (empty or whitespace): {filename:?}");
+    }
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
         anyhow::bail!("invalid test filename: {filename:?}");
     }
