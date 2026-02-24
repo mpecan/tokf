@@ -200,7 +200,12 @@ fn run_case(cfg: &tokf::config::types::FilterConfig, case_path: &Path) -> CaseRe
         combined: fixture,
     };
 
-    let filtered = filter::apply(cfg, &cmd_result, &case.args);
+    let filtered = filter::apply(
+        cfg,
+        &cmd_result,
+        &case.args,
+        &filter::FilterOptions::default(),
+    );
 
     let mut failures = Vec::new();
     for expect in &case.expects {
