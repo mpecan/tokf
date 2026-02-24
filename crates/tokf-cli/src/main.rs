@@ -59,6 +59,9 @@ enum Commands {
         /// Pipe command for fair accounting (set by rewrite when stripping pipes)
         #[arg(long)]
         baseline_pipe: Option<String>,
+        /// Use whichever output is smaller: filtered or piped (no-op without --baseline-pipe)
+        #[arg(long)]
+        prefer_less: bool,
         #[arg(trailing_var_arg = true, required = true)]
         command_args: Vec<String>,
     },
@@ -226,7 +229,12 @@ enum HistoryAction {
 // and history recording. Splitting would require threading 5+ values through helpers.
 // Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
-fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> anyhow::Result<i32> {
+fn cmd_run(
+    command_args: &[String],
+    baseline_pipe: Option<&str>,
+    prefer_less: bool,
+    cli: &Cli,
+) -> anyhow::Result<i32> {
     let filter_match = if cli.no_filter {
         None
     } else {
@@ -247,6 +255,9 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         resolve::run_command(filter_cfg, words_consumed, command_args, &remaining_args)?;
 
     let Some(filter_match) = filter_match else {
+        if prefer_less && cli.verbose {
+            eprintln!("[tokf] --prefer-less has no effect: no matching filter found");
+        }
         let raw_len = cmd_result.combined.len();
         let input_bytes = match baseline_pipe {
             Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
@@ -270,6 +281,7 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
             raw_len,
             0,
             cmd_result.exit_code,
+            false,
         );
         if cli.no_mask_exit_code {
             return Ok(cmd_result.exit_code);
@@ -281,10 +293,18 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
     // filter list (no second discovery call needed).
     let cfg = resolve::resolve_phase_b(filter_match, &cmd_result.combined, cli.verbose);
 
-    let input_bytes = match baseline_pipe {
-        Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
-        None => cmd_result.combined.len(),
+    // Compute piped output once: when prefer_less is active we need the full text
+    // for comparison, otherwise just the byte count for tracking.
+    let (input_bytes, piped_text) = match baseline_pipe {
+        Some(pipe_cmd) if prefer_less => {
+            let text = baseline::compute_output(&cmd_result.combined, pipe_cmd);
+            let bytes = text.as_ref().map_or(cmd_result.combined.len(), String::len);
+            (bytes, text)
+        }
+        Some(pipe_cmd) => (baseline::compute(&cmd_result.combined, pipe_cmd), None),
+        None => (cmd_result.combined.len(), None),
     };
+
     let start = std::time::Instant::now();
     let filtered = filter::apply(&cfg, &cmd_result, &remaining_args);
     let elapsed = start.elapsed();
@@ -293,7 +313,23 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         eprintln!("[tokf] filter took {:.1}ms", elapsed.as_secs_f64() * 1000.0);
     }
 
-    let output_bytes = filtered.output.len();
+    // --prefer-less: compare filtered output with cached piped output, use whichever is smaller.
+    let (final_output, output_bytes, pipe_override) =
+        if let Some(piped) = piped_text.filter(|t| t.len() < filtered.output.len()) {
+            if cli.verbose {
+                eprintln!(
+                    "[tokf] prefer-less: pipe output ({} bytes) < filtered ({} bytes), using pipe",
+                    piped.len(),
+                    filtered.output.len()
+                );
+            }
+            let len = piped.len();
+            (piped, len, true)
+        } else {
+            let len = filtered.output.len();
+            (filtered.output, len, false)
+        };
+
     let filter_name = cfg.command.first();
     let command_str = command_args.join(" ");
 
@@ -304,6 +340,7 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         output_bytes,
         elapsed.as_millis(),
         cmd_result.exit_code,
+        pipe_override,
     );
 
     // Detect whether to show the history hint:
@@ -317,7 +354,7 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         &command_str,
         filter_name,
         &cmd_result.combined,
-        &filtered.output,
+        &final_output,
         cmd_result.exit_code,
     );
 
@@ -325,8 +362,8 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
     if mask {
         println!("Error: Exit code {}", cmd_result.exit_code);
     }
-    if !filtered.output.is_empty() {
-        println!("{}", filtered.output);
+    if !final_output.is_empty() {
+        println!("{final_output}");
     }
 
     if show_hint && let Some(id) = history_id {
@@ -509,7 +546,13 @@ fn main() {
         Commands::Run {
             command_args,
             baseline_pipe,
-        } => or_exit(cmd_run(command_args, baseline_pipe.as_deref(), &cli)),
+            prefer_less,
+        } => or_exit(cmd_run(
+            command_args,
+            baseline_pipe.as_deref(),
+            *prefer_less,
+            &cli,
+        )),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
         Commands::Test {
             filter_path,

@@ -150,7 +150,7 @@ fn gain_tokens_saved_positive_after_filtered_run() {
     use tokf::tracking;
     let path = db.clone();
     let conn = tracking::open_db(&path).expect("open");
-    let ev = tracking::build_event("git status", Some("git status"), 4000, 400, 5, 0);
+    let ev = tracking::build_event("git status", Some("git status"), 4000, 400, 5, 0, false);
     tracking::record_event(&conn, &ev).expect("record");
     drop(conn);
 

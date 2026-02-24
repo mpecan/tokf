@@ -20,6 +20,33 @@ fn last_event(db_path: &std::path::Path) -> (i64, i64) {
     .unwrap()
 }
 
+/// Helper: query the last event including `pipe_override`.
+fn last_event_full(db_path: &std::path::Path) -> (i64, i64, bool) {
+    let conn = rusqlite::Connection::open(db_path).unwrap();
+    conn.query_row(
+        "SELECT input_bytes, output_bytes, pipe_override FROM events ORDER BY rowid DESC LIMIT 1",
+        [],
+        |row| {
+            let po: i64 = row.get(2)?;
+            Ok((row.get(0)?, row.get(1)?, po != 0))
+        },
+    )
+    .unwrap()
+}
+
+/// Helper: set up a temp dir with a filter that matches `echo` and returns a fixed output.
+fn setup_filter_dir(filter_output: &str) -> tempfile::TempDir {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("echo.toml"),
+        format!("command = \"echo\"\n[on_success]\noutput = \"{filter_output}\""),
+    )
+    .unwrap();
+    dir
+}
+
 // --- Core baseline-pipe tracking ---
 
 /// With --baseline-pipe 'tail -3', `input_bytes` should reflect ~3 lines, not all 10.
@@ -303,5 +330,186 @@ fn baseline_pipe_head_records_first_lines() {
     assert!(
         input_bytes > 0 && input_bytes < 20,
         "input_bytes should reflect ~2 lines (~12 bytes), got {input_bytes}"
+    );
+}
+
+// --- prefer-less runtime tests ---
+
+/// When filtered output is smaller than piped output, prefer-less uses filtered.
+#[test]
+fn prefer_less_uses_filtered_when_smaller() {
+    // Filter produces "filtered" (8 bytes). Raw = "hello\n" (6 bytes).
+    // Pipe = tail -1 of "hello\n" ≈ 6 bytes. Filter (8) > pipe (6) → uses filter?
+    // Actually we need filtered < piped. Let's make raw output large:
+    //   echo produces many words → raw is large → tail -1 returns last line (small)
+    //   but filter returns "filtered" which is also small.
+    // Simpler: use a filter that returns very short output, a command that produces
+    // large output, and a pipe that returns most of it.
+    //
+    // echo "aaa...long..." → raw = long string → grep "a" → returns all of it (long)
+    // filter returns "filtered" (8 bytes) → 8 < long → uses filtered, pipe_override=false.
+    let dir = setup_filter_dir("filtered");
+    let db_path = dir.path().join("test-pl-filtered.db");
+
+    let output = tokf()
+        .args([
+            "run",
+            "--baseline-pipe",
+            "grep a",
+            "--prefer-less",
+            "echo",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .env("TOKF_DB_PATH", &db_path)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("filtered"),
+        "should print filtered output, got: {stdout}"
+    );
+
+    let (_, _, pipe_override) = last_event_full(&db_path);
+    assert!(!pipe_override, "pipe_override should be false");
+}
+
+/// When piped output is smaller than filtered output, prefer-less uses piped.
+#[test]
+fn prefer_less_uses_piped_when_smaller() {
+    // Filter returns a long string. Raw = 10 lines. tail -1 = 1 line (~7 bytes).
+    // Filter output > 7 bytes → uses piped, pipe_override=true.
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    // Filter that produces output much larger than `tail -1` of 10 lines.
+    let long_output = "x".repeat(200);
+    std::fs::write(
+        filters_dir.join("sh.toml"),
+        format!("command = \"sh\"\n[on_success]\noutput = \"{long_output}\""),
+    )
+    .unwrap();
+    let db_path = dir.path().join("test-pl-piped.db");
+
+    let output = tokf()
+        .args([
+            "run",
+            "--baseline-pipe",
+            "tail -1",
+            "--prefer-less",
+            "sh",
+            "-c",
+            TEN_LINE_CMD,
+        ])
+        .env("TOKF_DB_PATH", &db_path)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should print the piped output (tail -1 = "line10"), not the long filter output.
+    assert!(
+        stdout.contains("line10"),
+        "should print piped output (tail -1), got: {stdout}"
+    );
+    assert!(
+        !stdout.contains(&long_output),
+        "should NOT print filter output"
+    );
+
+    let (_, _, pipe_override) = last_event_full(&db_path);
+    assert!(pipe_override, "pipe_override should be true");
+}
+
+/// --prefer-less without --baseline-pipe is a no-op (runs normally).
+#[test]
+fn prefer_less_without_baseline_pipe_is_noop() {
+    let output = tokf()
+        .args(["run", "--prefer-less", "echo", "hello"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "should succeed as a no-op, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("hello"),
+        "should print normal output, got: {stdout}"
+    );
+}
+
+/// When `compute_output` returns `None` (disallowed command), prefer-less falls back to filtered.
+#[test]
+fn prefer_less_fallback_on_disallowed_pipe() {
+    let dir = setup_filter_dir("filtered-ok");
+    let db_path = dir.path().join("test-pl-fail.db");
+
+    // "wc" is not in the allowed commands whitelist, so compute_output returns None.
+    let output = tokf()
+        .args([
+            "run",
+            "--baseline-pipe",
+            "wc -l",
+            "--prefer-less",
+            "echo",
+            "hello",
+        ])
+        .env("TOKF_DB_PATH", &db_path)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "tokf should not crash, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("filtered-ok"),
+        "should fall back to filtered output, got: {stdout}"
+    );
+
+    let (_, _, pipe_override) = last_event_full(&db_path);
+    assert!(!pipe_override, "pipe_override should be false on failure");
+}
+
+/// When --prefer-less is used on the passthrough path (no filter), verbose warns.
+#[test]
+fn prefer_less_passthrough_verbose_warns() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // No filters set up — passthrough path.
+    let output = tokf()
+        .args([
+            "--verbose",
+            "run",
+            "--baseline-pipe",
+            "tail -1",
+            "--prefer-less",
+            "echo",
+            "hello",
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--prefer-less has no effect"),
+        "should warn about no effect, got: {stderr}"
     );
 }

@@ -38,10 +38,27 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             input_tokens_est  INTEGER NOT NULL,
             output_tokens_est INTEGER NOT NULL,
             filter_time_ms    INTEGER NOT NULL,
-            exit_code         INTEGER NOT NULL
+            exit_code         INTEGER NOT NULL,
+            pipe_override     INTEGER NOT NULL DEFAULT 0
         );",
     )
     .context("create events table")?;
+
+    // Migration: add pipe_override column when upgrading from a schema without it.
+    let has_pipe_override: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='pipe_override'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_pipe_override == 0 {
+        conn.execute_batch(
+            "ALTER TABLE events ADD COLUMN pipe_override INTEGER NOT NULL DEFAULT 0;",
+        )
+        .context("migrate events table: add pipe_override column")?;
+    }
+
     Ok(conn)
 }
 
@@ -54,6 +71,7 @@ pub fn build_event(
     output_bytes: usize,
     filter_time_ms: u128,
     exit_code: i32,
+    pipe_override: bool,
 ) -> TrackingEvent {
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     let input_tokens_est = (input_bytes / 4) as i64;
@@ -72,6 +90,7 @@ pub fn build_event(
         output_tokens_est,
         filter_time_ms: filter_time_ms_i64,
         exit_code,
+        pipe_override,
     }
 }
 
@@ -85,10 +104,10 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
             (timestamp, command, filter_name,
              input_bytes, output_bytes,
              input_tokens_est, output_tokens_est,
-             filter_time_ms, exit_code)
+             filter_time_ms, exit_code, pipe_override)
          VALUES
             (strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             event.command,
             event.filter_name,
@@ -98,6 +117,7 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
             event.output_tokens_est,
             event.filter_time_ms,
             event.exit_code,
+            i64::from(event.pipe_override),
         ],
     )
     .context("insert event")?;
@@ -111,7 +131,8 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(input_tokens_est),0),
                     COALESCE(SUM(output_tokens_est),0),
-                    COALESCE(SUM(input_tokens_est - output_tokens_est),0)
+                    COALESCE(SUM(input_tokens_est - output_tokens_est),0),
+                    COALESCE(SUM(pipe_override),0)
              FROM events",
             [],
             |row| {
@@ -120,12 +141,19 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     row.get::<_, i64>(1)?,
                     row.get::<_, i64>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             },
         )
         .context("query summary")?;
 
-    let (total_commands, total_input_tokens, total_output_tokens, tokens_saved) = row;
+    let (
+        total_commands,
+        total_input_tokens,
+        total_output_tokens,
+        tokens_saved,
+        pipe_override_count,
+    ) = row;
     let savings_pct = if total_input_tokens == 0 {
         0.0
     } else {
@@ -140,6 +168,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         total_output_tokens,
         tokens_saved,
         savings_pct,
+        pipe_override_count,
     })
 }
 
@@ -149,7 +178,8 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
     let mut stmt = conn.prepare(
         "SELECT COALESCE(filter_name, 'passthrough'), COUNT(*),
                 SUM(input_tokens_est), SUM(output_tokens_est),
-                SUM(input_tokens_est - output_tokens_est)
+                SUM(input_tokens_est - output_tokens_est),
+                COALESCE(SUM(pipe_override),0)
          FROM events
          GROUP BY filter_name
          ORDER BY SUM(input_tokens_est - output_tokens_est) DESC",
@@ -164,12 +194,13 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
             input_tokens,
             row.get::<_, i64>(3)?,
             tokens_saved,
+            row.get::<_, i64>(5)?,
         ))
     })?;
 
     let mut result = Vec::new();
     for row in rows {
-        let (filter_name, commands, input_tokens, output_tokens, tokens_saved) =
+        let (filter_name, commands, input_tokens, output_tokens, tokens_saved, pipe_override_count) =
             row.context("read filter row")?;
         #[allow(clippy::cast_precision_loss)]
         let savings_pct = if input_tokens == 0 {
@@ -184,6 +215,7 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
             output_tokens,
             tokens_saved,
             savings_pct,
+            pipe_override_count,
         });
     }
     Ok(result)
@@ -195,7 +227,8 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
     let mut stmt = conn.prepare(
         "SELECT substr(timestamp, 1, 10), COUNT(*),
                 SUM(input_tokens_est), SUM(output_tokens_est),
-                SUM(input_tokens_est - output_tokens_est)
+                SUM(input_tokens_est - output_tokens_est),
+                COALESCE(SUM(pipe_override),0)
          FROM events
          GROUP BY substr(timestamp, 1, 10)
          ORDER BY substr(timestamp, 1, 10) DESC",
@@ -210,12 +243,13 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
             input_tokens,
             row.get::<_, i64>(3)?,
             tokens_saved,
+            row.get::<_, i64>(5)?,
         ))
     })?;
 
     let mut result = Vec::new();
     for row in rows {
-        let (date, commands, input_tokens, output_tokens, tokens_saved) =
+        let (date, commands, input_tokens, output_tokens, tokens_saved, pipe_override_count) =
             row.context("read daily row")?;
         #[allow(clippy::cast_precision_loss)]
         let savings_pct = if input_tokens == 0 {
@@ -230,6 +264,7 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
             output_tokens,
             tokens_saved,
             savings_pct,
+            pipe_override_count,
         });
     }
     Ok(result)

@@ -54,7 +54,7 @@ fn open_db_idempotent() {
 #[test]
 fn record_event_inserts_row() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("echo hi", None, 100, 50, 5, 0);
+    let ev = build_event("echo hi", None, 100, 50, 5, 0, false);
     record_event(&conn, &ev).expect("record");
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
@@ -65,7 +65,7 @@ fn record_event_inserts_row() {
 #[test]
 fn record_event_all_fields_persisted() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("git status", Some("git status"), 400, 200, 10, 0);
+    let ev = build_event("git status", Some("git status"), 400, 200, 10, 0, false);
     record_event(&conn, &ev).expect("record");
     let (cmd, fname, ib, ob, it, ot, ft, ec): (
         String,
@@ -112,7 +112,7 @@ fn record_event_all_fields_persisted() {
 fn record_event_exit_code_and_filter_time_persisted() {
     let (_dir, conn) = temp_db();
     // exit_code = 42 (non-zero), filter_time_ms = 99
-    let ev = build_event("cargo test", Some("cargo test"), 800, 200, 99, 42);
+    let ev = build_event("cargo test", Some("cargo test"), 800, 200, 99, 42, false);
     record_event(&conn, &ev).expect("record");
     let (ft, ec): (i64, i32) = conn
         .query_row("SELECT filter_time_ms, exit_code FROM events", [], |r| {
@@ -126,7 +126,7 @@ fn record_event_exit_code_and_filter_time_persisted() {
 #[test]
 fn record_event_timestamp_iso8601() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("cmd", None, 0, 0, 0, 0);
+    let ev = build_event("cmd", None, 0, 0, 0, 0, false);
     record_event(&conn, &ev).expect("record");
     let ts: String = conn
         .query_row("SELECT timestamp FROM events", [], |r| r.get(0))
@@ -143,15 +143,15 @@ fn record_event_timestamp_iso8601() {
 
 #[test]
 fn build_event_token_estimation() {
-    let ev = build_event("x", None, 400, 0, 0, 0);
+    let ev = build_event("x", None, 400, 0, 0, 0, false);
     assert_eq!(ev.input_tokens_est, 100);
-    let ev2 = build_event("x", None, 399, 0, 0, 0);
+    let ev2 = build_event("x", None, 399, 0, 0, 0, false);
     assert_eq!(ev2.input_tokens_est, 99);
 }
 
 #[test]
 fn build_event_passthrough_filter_name_none() {
-    let ev = build_event("echo hi", None, 10, 10, 0, 0);
+    let ev = build_event("echo hi", None, 10, 10, 0, 0, false);
     assert!(ev.filter_name.is_none());
 }
 
@@ -166,13 +166,14 @@ fn query_summary_empty_db() {
     assert_eq!(s.total_output_tokens, 0);
     assert_eq!(s.tokens_saved, 0);
     assert!(s.savings_pct.abs() < f64::EPSILON);
+    assert_eq!(s.pipe_override_count, 0);
 }
 
 #[test]
 fn query_summary_with_events() {
     let (_dir, conn) = temp_db();
     // input_tokens 100, output_tokens 25 → saved 75
-    let ev = build_event("cmd", Some("f"), 400, 100, 5, 0);
+    let ev = build_event("cmd", Some("f"), 400, 100, 5, 0, false);
     record_event(&conn, &ev).expect("record");
     let s = query_summary(&conn).expect("summary");
     assert_eq!(s.total_commands, 1);
@@ -185,7 +186,7 @@ fn query_summary_with_events() {
 #[test]
 fn query_summary_zero_input_no_divide_by_zero() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("cmd", None, 0, 0, 0, 0);
+    let ev = build_event("cmd", None, 0, 0, 0, 0, false);
     record_event(&conn, &ev).expect("record");
     let s = query_summary(&conn).expect("summary");
     assert!(s.savings_pct.abs() < f64::EPSILON); // must not panic or NaN
@@ -200,9 +201,9 @@ fn query_summary_accumulates_multiple_events() {
     // ev3: 1200 in → 300 tokens,   0 out →  0 tokens, saved 300
     // totals: 3 commands, 600 input, 125 output, 475 saved ≈ 79.17%
     let events = [
-        build_event("cmd1", Some("f1"), 400, 100, 5, 0),
-        build_event("cmd2", Some("f2"), 800, 400, 10, 1),
-        build_event("cmd3", None, 1200, 0, 0, 0),
+        build_event("cmd1", Some("f1"), 400, 100, 5, 0, false),
+        build_event("cmd2", Some("f2"), 800, 400, 10, 1, false),
+        build_event("cmd3", None, 1200, 0, 0, 0, false),
     ];
     for ev in &events {
         record_event(&conn, ev).expect("record");
@@ -221,7 +222,7 @@ fn query_summary_accumulates_multiple_events() {
 fn query_by_filter_groups_correctly() {
     let (_dir, conn) = temp_db();
     for fname in &["alpha", "beta", "gamma"] {
-        let ev = build_event("cmd", Some(fname), 400, 100, 0, 0);
+        let ev = build_event("cmd", Some(fname), 400, 100, 0, 0, false);
         record_event(&conn, &ev).expect("record");
     }
     let rows = query_by_filter(&conn).expect("query");
@@ -232,7 +233,7 @@ fn query_by_filter_groups_correctly() {
 #[test]
 fn query_by_filter_null_shown_as_passthrough() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("echo hi", None, 200, 200, 0, 0);
+    let ev = build_event("echo hi", None, 200, 200, 0, 0, false);
     record_event(&conn, &ev).expect("record");
     let rows = query_by_filter(&conn).expect("query");
     assert_eq!(rows.len(), 1);
@@ -245,10 +246,10 @@ fn query_by_filter_mixed_null_and_named() {
     let (_dir, conn) = temp_db();
     record_event(
         &conn,
-        &build_event("git status", Some("git status"), 400, 100, 5, 0),
+        &build_event("git status", Some("git status"), 400, 100, 5, 0, false),
     )
     .expect("record");
-    record_event(&conn, &build_event("echo hi", None, 200, 200, 0, 0)).expect("record");
+    record_event(&conn, &build_event("echo hi", None, 200, 200, 0, 0, false)).expect("record");
     let rows = query_by_filter(&conn).expect("query");
     assert_eq!(rows.len(), 2);
     let names: Vec<&str> = rows.iter().map(|r| r.filter_name.as_str()).collect();
@@ -262,8 +263,12 @@ fn query_by_filter_ordered_by_savings_desc() {
     let (_dir, conn) = temp_db();
     // "small": 100 in → 25 tokens, 80 out → 20 tokens, saved 5
     // "big":   400 in → 100 tokens,  0 out →  0 tokens, saved 100
-    record_event(&conn, &build_event("cmd", Some("small"), 100, 80, 0, 0)).expect("record");
-    record_event(&conn, &build_event("cmd", Some("big"), 400, 0, 0, 0)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("small"), 100, 80, 0, 0, false),
+    )
+    .expect("record");
+    record_event(&conn, &build_event("cmd", Some("big"), 400, 0, 0, 0, false)).expect("record");
     let rows = query_by_filter(&conn).expect("query");
     assert_eq!(rows.len(), 2);
     assert_eq!(
@@ -279,10 +284,113 @@ fn query_by_filter_ordered_by_savings_desc() {
 fn query_daily_groups_by_date() {
     let (_dir, conn) = temp_db();
     for _ in 0..2 {
-        let ev = build_event("cmd", None, 400, 100, 0, 0);
+        let ev = build_event("cmd", None, 400, 100, 0, 0, false);
         record_event(&conn, &ev).expect("record");
     }
     let rows = query_daily(&conn).expect("query");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].commands, 2);
+}
+
+// --- pipe_override ---
+
+#[test]
+fn record_event_pipe_override_persisted() {
+    let (_dir, conn) = temp_db();
+    let ev = build_event("cargo test", Some("cargo test"), 400, 400, 5, 0, true);
+    record_event(&conn, &ev).expect("record");
+    let po: i64 = conn
+        .query_row("SELECT pipe_override FROM events", [], |r| r.get(0))
+        .expect("select");
+    assert_eq!(po, 1);
+}
+
+#[test]
+fn record_event_pipe_override_false_persisted() {
+    let (_dir, conn) = temp_db();
+    let ev = build_event("cargo test", Some("cargo test"), 400, 200, 5, 0, false);
+    record_event(&conn, &ev).expect("record");
+    let po: i64 = conn
+        .query_row("SELECT pipe_override FROM events", [], |r| r.get(0))
+        .expect("select");
+    assert_eq!(po, 0);
+}
+
+#[test]
+fn query_summary_pipe_override_count() {
+    let (_dir, conn) = temp_db();
+    record_event(&conn, &build_event("cmd1", Some("f"), 400, 400, 5, 0, true)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd2", Some("f"), 400, 200, 5, 0, false),
+    )
+    .expect("record");
+    record_event(&conn, &build_event("cmd3", Some("f"), 400, 400, 5, 0, true)).expect("record");
+    let s = query_summary(&conn).expect("summary");
+    assert_eq!(s.pipe_override_count, 2);
+}
+
+#[test]
+fn query_by_filter_pipe_override_count() {
+    let (_dir, conn) = temp_db();
+    record_event(&conn, &build_event("cmd", Some("f1"), 400, 400, 0, 0, true)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("f1"), 400, 200, 0, 0, false),
+    )
+    .expect("record");
+    record_event(&conn, &build_event("cmd", Some("f2"), 400, 400, 0, 0, true)).expect("record");
+    let rows = query_by_filter(&conn).expect("query");
+    let f1 = rows.iter().find(|r| r.filter_name == "f1").expect("f1");
+    let f2 = rows.iter().find(|r| r.filter_name == "f2").expect("f2");
+    assert_eq!(f1.pipe_override_count, 1);
+    assert_eq!(f2.pipe_override_count, 1);
+}
+
+#[test]
+fn query_daily_pipe_override_count() {
+    let (_dir, conn) = temp_db();
+    record_event(&conn, &build_event("cmd", Some("f"), 400, 400, 0, 0, true)).expect("record");
+    record_event(&conn, &build_event("cmd", Some("f"), 400, 200, 0, 0, false)).expect("record");
+    let rows = query_daily(&conn).expect("query");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].pipe_override_count, 1);
+}
+
+#[test]
+fn open_db_migrates_pipe_override_column() {
+    // Simulate old schema without pipe_override, then re-open.
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("tracking.db");
+    {
+        let conn = Connection::open(&path).expect("open");
+        conn.execute_batch(
+            "CREATE TABLE events (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp         TEXT    NOT NULL,
+                command           TEXT    NOT NULL,
+                filter_name       TEXT,
+                input_bytes       INTEGER NOT NULL,
+                output_bytes      INTEGER NOT NULL,
+                input_tokens_est  INTEGER NOT NULL,
+                output_tokens_est INTEGER NOT NULL,
+                filter_time_ms    INTEGER NOT NULL,
+                exit_code         INTEGER NOT NULL
+            );",
+        )
+        .expect("create old schema");
+        conn.execute(
+            "INSERT INTO events (timestamp, command, filter_name, input_bytes, output_bytes,
+             input_tokens_est, output_tokens_est, filter_time_ms, exit_code)
+             VALUES ('2024-01-01T00:00:00Z', 'git status', 'git status', 400, 200, 100, 50, 5, 0)",
+            [],
+        )
+        .expect("insert old row");
+    }
+    // Re-open with the migration
+    let conn = open_db(&path).expect("open_db with migration");
+    let po: i64 = conn
+        .query_row("SELECT pipe_override FROM events", [], |r| r.get(0))
+        .expect("select migrated column");
+    assert_eq!(po, 0, "migrated rows should default to 0");
 }
