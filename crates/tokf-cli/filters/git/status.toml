@@ -3,6 +3,7 @@
 # Filtered: branch name + grouped file counts
 
 command = "git status"
+show_history_hint = true
 
 # Override: use porcelain for reliable machine parsing
 run = "git status --porcelain -b"

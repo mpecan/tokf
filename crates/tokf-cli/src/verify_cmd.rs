@@ -8,6 +8,16 @@ use tokf::config;
 use tokf::filter;
 use tokf::runner::CommandResult;
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum VerifyScope {
+    /// Repo-local custom filters only (`.tokf/filters/`)
+    Project,
+    /// User-level custom filters only (`<config_dir>/tokf/filters/`)
+    Global,
+    /// Stdlib filters in CWD only (`filters/`, for repo development)
+    Stdlib,
+}
+
 // --- Types ---
 
 #[derive(Deserialize)]
@@ -119,24 +129,49 @@ fn discover_all_filters_with_coverage(
 
 // --- Search dirs for verify ---
 
-fn verify_search_dirs() -> Vec<PathBuf> {
-    // Priority order (highest first):
-    //   1. filters/ in CWD — catches the stdlib during repo development
-    //   2. .tokf/filters/ in CWD — repo-local custom filters
-    //   3. {config_dir}/tokf/filters/ — user-level custom filters
-    // When the same filter name appears in multiple dirs, the first wins.
-    let mut dirs = Vec::new();
-
-    if let Ok(cwd) = std::env::current_dir() {
-        dirs.push(cwd.join("filters"));
-        dirs.push(cwd.join(".tokf/filters"));
+// Intentionally different from `config::default_search_dirs()`: verify puts
+// `filters/` (stdlib) first so repo developers test the stdlib by default,
+// while the runtime puts `.tokf/filters/` (project overrides) first.
+fn verify_search_dirs(scope: Option<&VerifyScope>) -> Vec<PathBuf> {
+    match scope {
+        Some(VerifyScope::Project) => {
+            let mut dirs = Vec::new();
+            if let Ok(cwd) = std::env::current_dir() {
+                dirs.push(cwd.join(".tokf/filters"));
+            }
+            dirs
+        }
+        Some(VerifyScope::Global) => {
+            let mut dirs = Vec::new();
+            if let Some(config) = dirs::config_dir() {
+                dirs.push(config.join("tokf/filters"));
+            }
+            dirs
+        }
+        Some(VerifyScope::Stdlib) => {
+            let mut dirs = Vec::new();
+            if let Ok(cwd) = std::env::current_dir() {
+                dirs.push(cwd.join("filters"));
+            }
+            dirs
+        }
+        None => {
+            // Priority order (highest first):
+            //   1. filters/ in CWD — catches the stdlib during repo development
+            //   2. .tokf/filters/ in CWD — repo-local custom filters
+            //   3. {config_dir}/tokf/filters/ — user-level custom filters
+            // When the same filter name appears in multiple dirs, the first wins.
+            let mut dirs = Vec::new();
+            if let Ok(cwd) = std::env::current_dir() {
+                dirs.push(cwd.join("filters"));
+                dirs.push(cwd.join(".tokf/filters"));
+            }
+            if let Some(config) = dirs::config_dir() {
+                dirs.push(config.join("tokf/filters"));
+            }
+            dirs
+        }
     }
-
-    if let Some(config) = dirs::config_dir() {
-        dirs.push(config.join("tokf/filters"));
-    }
-
-    dirs
 }
 
 // --- Discovery ---
@@ -506,9 +541,19 @@ fn print_json(results: &[SuiteResult]) {
 
 // --- Entry point ---
 
-pub fn cmd_verify(filter: Option<&str>, list: bool, json: bool, require_all: bool) -> i32 {
+// cmd_verify orchestrates list, require-all, JSON, and run modes in a single
+// entry point. Splitting the modes into separate functions would force passing
+// the same 5 parameters and duplicating suite-discovery logic.
+#[allow(clippy::too_many_lines)]
+pub fn cmd_verify(
+    filter: Option<&str>,
+    list: bool,
+    json: bool,
+    require_all: bool,
+    scope: Option<&VerifyScope>,
+) -> i32 {
     // Exit codes: 0 = all pass, 1 = assertion failure, 2 = config/IO error.
-    let search_dirs = verify_search_dirs();
+    let search_dirs = verify_search_dirs(scope);
 
     if list && require_all {
         let all = discover_all_filters_with_coverage(&search_dirs, filter);
@@ -572,5 +617,70 @@ pub fn cmd_verify(filter: Option<&str>, list: bool, json: bool, require_all: boo
         2
     } else {
         i32::from(has_failure)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_search_dirs_none_returns_all() {
+        let dirs = verify_search_dirs(None);
+        // Should have at least stdlib (filters/) and project (.tokf/filters/)
+        assert!(
+            dirs.len() >= 2,
+            "expected at least 2 dirs, got {}",
+            dirs.len()
+        );
+        let joined: String = dirs
+            .iter()
+            .map(|d| d.display().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            joined.contains("filters"),
+            "expected 'filters' in paths: {joined}"
+        );
+    }
+
+    #[test]
+    fn verify_search_dirs_project_only_has_tokf() {
+        let dirs = verify_search_dirs(Some(&VerifyScope::Project));
+        assert_eq!(dirs.len(), 1, "project scope should return exactly 1 dir");
+        let path = dirs[0].display().to_string();
+        assert!(
+            path.contains(".tokf/filters"),
+            "expected .tokf/filters, got {path}"
+        );
+    }
+
+    #[test]
+    fn verify_search_dirs_stdlib_only_has_filters() {
+        let dirs = verify_search_dirs(Some(&VerifyScope::Stdlib));
+        assert_eq!(dirs.len(), 1, "stdlib scope should return exactly 1 dir");
+        let path = dirs[0].display().to_string();
+        assert!(
+            path.ends_with("filters"),
+            "expected path ending in 'filters', got {path}"
+        );
+        assert!(
+            !path.contains(".tokf"),
+            "stdlib should not contain .tokf: {path}"
+        );
+    }
+
+    #[test]
+    fn verify_search_dirs_global_only_has_config() {
+        let dirs = verify_search_dirs(Some(&VerifyScope::Global));
+        // May be 0 on systems without config_dir, but typically 1
+        assert!(dirs.len() <= 1, "global scope should return at most 1 dir");
+        if let Some(dir) = dirs.first() {
+            let path = dir.display().to_string();
+            assert!(
+                path.contains("tokf/filters"),
+                "expected tokf/filters in path: {path}"
+            );
+        }
     }
 }

@@ -75,6 +75,7 @@ Within `[on_success]` and `[on_failure]`, fields are processed as:
 | `[fallback]` | table | (absent) | Fallback when no branch matched. |
 | `strip_empty_lines` | bool | `false` | Remove all blank lines from the final output. |
 | `collapse_empty_lines` | bool | `false` | Collapse consecutive blank lines into one. |
+| `show_history_hint` | bool | `false` | Append a hint line after filtered output pointing to the full output in history. |
 | `[[variant]]` | array of tables | `[]` | Context-aware delegation to specialized child filters. |
 
 ---
@@ -185,6 +186,16 @@ else
 end
 '''
 ```
+
+Or load the script from an external file:
+
+```toml
+[lua_script]
+lang = "luau"
+file = "scripts/my-filter.luau"
+```
+
+The `file` path resolves relative to the current working directory. Exactly one of `source` or `file` must be set.
 
 **Globals available**:
 - `output` (string): the full output after skip/keep/dedup
