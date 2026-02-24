@@ -124,7 +124,7 @@ tests/
 - **Capture then process**, not streaming.
 - **First match wins** for config resolution. No merging, no inheritance.
 - **Passthrough on missing filter.** Never block a command because a filter doesn't exist.
-- **Exit code propagation.** tokf must return the same exit code as the underlying command.
+- **Exit code masking (default on).** tokf exits 0 and prepends `Error: Exit code N` on failure, to avoid output duplication in Claude Code. Use `--no-mask-exit-code` to propagate the real exit code.
 - **Variant delegation, not inheritance.** Parent filters delegate to child filters via `[[variant]]` — the child filter replaces the parent entirely, it doesn't inherit or merge fields.
 - **Two-phase variant detection.** File detection (pre-execution) takes priority; output-pattern matching (post-execution) is the fallback. Parent config applies when no variant matches.
 
