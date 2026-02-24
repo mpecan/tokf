@@ -231,7 +231,10 @@ end
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `lang` | string | yes | Must be `"luau"` |
-| `source` | string | yes | The Luau script source code |
+| `source` | string | one of `source`/`file` | Inline Luau script source code |
+| `file` | string | one of `source`/`file` | Path to a `.luau` file (resolved relative to CWD) |
+
+Exactly one of `source` or `file` must be set. Use `file` when the script is long or shared across filters.
 
 **Globals available inside the script**:
 
@@ -596,3 +599,35 @@ File detection takes priority because it happens before execution and avoids unn
 **TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields and tables (`skip`, `[on_success]`, `[on_failure]`, etc.) because TOML array-of-tables sections capture all subsequent keys into the array entries.
 
 **Debugging**: Use `tokf which "npm test" -v` to see variant resolution details.
+
+---
+
+## `show_history_hint`
+
+**Type**: `bool`
+**Required**: no
+**Default**: `false`
+
+When enabled, tokf appends a hint line after the filtered output telling the reader how to retrieve the full, unfiltered output from history.
+
+```toml
+command = "git status"
+show_history_hint = true
+
+[on_success]
+output = "{branch} — {counts}"
+```
+
+**Output example**:
+
+```
+main — modified: 3, untracked: 1
+Filtered - full output: `tokf history show --raw 42`
+```
+
+**Behavior**:
+- The hint line is appended to stdout so both humans and LLMs can see it
+- The history entry stores the clean filtered output without the hint line
+- tokf also auto-appends the hint when it detects the same command running twice in a row (repetition detection), regardless of this setting
+
+**When to use**: for filters that aggressively compress output (e.g. `git status` reducing 30 lines to 1 line), where the LLM consumer might need access to the full output for detailed analysis.
