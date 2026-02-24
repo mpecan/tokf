@@ -11,6 +11,7 @@ RUN mkdir -p crates/tokf-common/src \
              crates/tokf-cli/src \
              crates/tokf-server/src && \
     echo 'fn main(){}' > crates/tokf-server/src/main.rs && \
+    echo 'fn main(){}' > crates/tokf-cli/src/main.rs && \
     touch crates/tokf-common/src/lib.rs \
           crates/tokf-cli/src/lib.rs \
           crates/tokf-server/src/lib.rs && \
