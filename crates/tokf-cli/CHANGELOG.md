@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.9](https://github.com/mpecan/tokf/compare/tokf-v0.2.8...tokf-v0.2.9) (2026-02-24)
+
+
+### Features
+
+* **cli:** add --raw flag to history show ([#155](https://github.com/mpecan/tokf/issues/155)) ([a98c34d](https://github.com/mpecan/tokf/commit/a98c34d89c7ef09c3305720544beebbef1258fe9))
+* **cli:** add tokf info command and tokf verify --scope ([#158](https://github.com/mpecan/tokf/issues/158)) ([7263e30](https://github.com/mpecan/tokf/commit/7263e307441b70116a543d0fa27bdb0f276c1f88))
+* **hook:** add OpenAI Codex CLI integration ([#157](https://github.com/mpecan/tokf/issues/157)) ([a837661](https://github.com/mpecan/tokf/commit/a8376616fdf8e6ce59c0377170120a6abc4dafb5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.8 to 0.2.9
+
 ## [0.2.8](https://github.com/mpecan/tokf/compare/tokf-v0.2.7...tokf-v0.2.8) (2026-02-24)
 
 

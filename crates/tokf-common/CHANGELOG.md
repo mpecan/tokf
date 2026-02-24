@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.8...tokf-common-v0.2.9) (2026-02-24)
+
+
+### Features
+
+* **cli:** add --raw flag to history show ([#155](https://github.com/mpecan/tokf/issues/155)) ([a98c34d](https://github.com/mpecan/tokf/commit/a98c34d89c7ef09c3305720544beebbef1258fe9))
+
 ## [0.2.8](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.7...tokf-common-v0.2.8) (2026-02-24)
 
 
