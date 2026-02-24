@@ -2,7 +2,9 @@ mod cache_cmd;
 mod eject_cmd;
 mod gain;
 mod history_cmd;
+mod info_cmd;
 mod resolve;
+mod show_cmd;
 mod verify_cmd;
 
 use std::path::Path;
@@ -153,6 +155,15 @@ enum Commands {
         /// Fail if any filters have no test suite
         #[arg(long)]
         require_all: bool,
+        /// Restrict to a single filter scope (project, global, or stdlib)
+        #[arg(long, value_enum)]
+        scope: Option<verify_cmd::VerifyScope>,
+    },
+    /// Show system paths, database locations, and filter counts
+    Info {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -545,6 +556,9 @@ fn or_exit(r: anyhow::Result<i32>) -> i32 {
     })
 }
 
+// main() is pure subcommand dispatch; each arm is a one-liner delegation.
+// Splitting the match arms into a helper would add complexity without benefit.
+#[allow(clippy::too_many_lines)]
 fn main() {
     let cli = Cli::parse();
     let exit_code = match &cli.command {
@@ -572,7 +586,7 @@ fn main() {
         Commands::Ls => cmd_ls(cli.verbose),
         Commands::Rewrite { command } => cmd_rewrite(command, cli.verbose),
         Commands::Which { command } => cmd_which(command, cli.verbose),
-        Commands::Show { filter, hash } => cmd_show(filter, *hash),
+        Commands::Show { filter, hash } => show_cmd::cmd_show(filter, *hash),
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
@@ -592,7 +606,15 @@ fn main() {
             list,
             json,
             require_all,
-        } => verify_cmd::cmd_verify(filter.as_deref(), *list, *json, *require_all),
+            scope,
+        } => verify_cmd::cmd_verify(
+            filter.as_deref(),
+            *list,
+            *json,
+            *require_all,
+            scope.as_ref(),
+        ),
+        Commands::Info { json } => info_cmd::cmd_info(*json),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),
@@ -603,56 +625,6 @@ fn main() {
         }),
     };
     std::process::exit(exit_code);
-}
-
-fn cmd_show(filter: &str, hash: bool) -> i32 {
-    // Normalize: strip ".toml" suffix if present
-    let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
-
-    let Ok(filters) = resolve::discover_filters(false) else {
-        eprintln!("[tokf] error: failed to discover filters");
-        return 1;
-    };
-
-    let found = filters
-        .iter()
-        .find(|f| f.relative_path.with_extension("").to_string_lossy() == filter_name);
-
-    let Some(resolved) = found else {
-        eprintln!("[tokf] filter not found: {filter}");
-        return 1;
-    };
-
-    if hash {
-        match tokf_common::hash::canonical_hash(&resolved.config) {
-            Ok(h) => println!("{h}"),
-            Err(e) => {
-                eprintln!("[tokf] error computing hash: {e}");
-                return 1;
-            }
-        }
-        return 0;
-    }
-
-    let content = if resolved.priority == u8::MAX {
-        if let Some(c) = config::get_embedded_filter(&resolved.relative_path) {
-            c.to_string()
-        } else {
-            eprintln!("[tokf] error: embedded filter not readable");
-            return 1;
-        }
-    } else {
-        match std::fs::read_to_string(&resolved.source_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[tokf] error reading filter: {e}");
-                return 1;
-            }
-        }
-    };
-
-    print!("{content}");
-    0
 }
 
 fn cmd_rewrite(command: &str, verbose: bool) -> i32 {
