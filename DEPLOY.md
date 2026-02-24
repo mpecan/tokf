@@ -90,7 +90,7 @@ in the repository:
 
 ```sh
 # Create a deploy token scoped to the tokf-server app
-fly tokens create deploy -x 999999h
+fly tokens create deploy -x 87600h
 
 # Add to GitHub repo secrets as FLY_API_TOKEN
 ```
