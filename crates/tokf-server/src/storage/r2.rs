@@ -23,7 +23,7 @@ impl std::fmt::Debug for R2StorageClient {
 impl R2StorageClient {
     /// Build an R2 storage client from application config.
     ///
-    /// Requires `r2_bucket`, `r2_access_key_id`, `r2_secret_access_key`, and
+    /// Requires `r2_bucket_name`, `r2_access_key_id`, `r2_secret_access_key`, and
     /// either `r2_endpoint` or `r2_account_id` to be set.
     ///
     /// # Errors
@@ -31,9 +31,9 @@ impl R2StorageClient {
     /// Returns an error if required R2 config fields are missing.
     pub fn new(config: &Config) -> anyhow::Result<Self> {
         let bucket = config
-            .r2_bucket
+            .r2_bucket_name
             .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("R2_BUCKET is required for R2 storage"))?
+            .ok_or_else(|| anyhow::anyhow!("R2_BUCKET_NAME is required for R2 storage"))?
             .to_string();
 
         let endpoint_url = config
@@ -140,7 +140,7 @@ mod tests {
             database_url: None,
             run_migrations: true,
             trust_proxy: false,
-            r2_bucket: Some("test-bucket".to_string()),
+            r2_bucket_name: Some("test-bucket".to_string()),
             r2_access_key_id: Some("AKID".to_string()),
             r2_secret_access_key: Some("secret".to_string()),
             r2_endpoint: Some("https://r2.example.com".to_string()),
@@ -159,9 +159,9 @@ mod tests {
     #[test]
     fn new_fails_without_bucket() {
         let mut cfg = full_config();
-        cfg.r2_bucket = None;
+        cfg.r2_bucket_name = None;
         let err = R2StorageClient::new(&cfg).unwrap_err();
-        assert!(err.to_string().contains("R2_BUCKET"));
+        assert!(err.to_string().contains("R2_BUCKET_NAME"));
     }
 
     #[test]
