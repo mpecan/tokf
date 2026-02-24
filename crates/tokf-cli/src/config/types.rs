@@ -55,7 +55,7 @@ mod tests {
         assert_eq!(cfg.command.first(), "git push");
         assert_eq!(cfg.match_output.len(), 2);
         assert_eq!(cfg.match_output[0].contains, "Everything up-to-date");
-        assert_eq!(cfg.match_output[1].contains, "rejected");
+        assert_eq!(cfg.match_output[1].contains, "non-fast-forward");
 
         let success = cfg.on_success.unwrap();
         assert_eq!(success.skip.len(), 8);
@@ -66,6 +66,7 @@ mod tests {
         assert_eq!(extract.output, "ok \u{2713} {2}");
 
         let failure = cfg.on_failure.unwrap();
+        assert_eq!(failure.skip.len(), 4);
         assert_eq!(failure.tail, Some(10));
     }
 

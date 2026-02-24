@@ -215,6 +215,7 @@ This copies the filter TOML and its test suite to your config directory, where i
 | `--verbose` | Show which filter was matched (also explains skipped rewrites) |
 | `--no-filter` | Pass output through without filtering |
 | `--no-cache` | Bypass the filter discovery cache |
+| `--no-mask-exit-code` | Disable exit-code masking. By default tokf exits 0 and prepends `Error: Exit code N` on failure (works around [claude-code#27621](https://github.com/anthropics/claude-code/issues/27621)) |
 
 ### Piped commands
 
@@ -496,7 +497,7 @@ end
 '''
 ```
 
-Available globals: `output` (string), `exit_code` (integer), `args` (table).
+Available globals: `output` (string), `exit_code` (integer — the underlying command's real exit code, unaffected by `--no-mask-exit-code`), `args` (table).
 Return a string to replace output, or `nil` to fall through to the rest of the TOML pipeline.
 The sandbox blocks `io`, `os`, and `package` — no filesystem or network access from scripts.
 

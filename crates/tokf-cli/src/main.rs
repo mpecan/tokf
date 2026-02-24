@@ -42,6 +42,12 @@ struct Cli {
     #[arg(long, global = true)]
     no_cache: bool,
 
+    /// Disable exit-code masking. By default tokf exits 0 and prepends
+    /// "Error: Exit code N" to output when the underlying command fails.
+    /// This flag restores real exit-code propagation.
+    #[arg(long, global = true)]
+    no_mask_exit_code: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -246,6 +252,10 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
             Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
             None => raw_len,
         };
+        let mask = !cli.no_mask_exit_code && cmd_result.exit_code != 0;
+        if mask {
+            println!("Error: Exit code {}", cmd_result.exit_code);
+        }
         if !cmd_result.combined.is_empty() {
             println!("{}", cmd_result.combined);
         }
@@ -261,7 +271,10 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
             0,
             cmd_result.exit_code,
         );
-        return Ok(cmd_result.exit_code);
+        if cli.no_mask_exit_code {
+            return Ok(cmd_result.exit_code);
+        }
+        return Ok(0);
     };
 
     // Phase B: resolve deferred output-pattern variants using the already-discovered
@@ -308,6 +321,10 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         cmd_result.exit_code,
     );
 
+    let mask = !cli.no_mask_exit_code && cmd_result.exit_code != 0;
+    if mask {
+        println!("Error: Exit code {}", cmd_result.exit_code);
+    }
     if !filtered.output.is_empty() {
         println!("{}", filtered.output);
     }
@@ -316,7 +333,11 @@ fn cmd_run(command_args: &[String], baseline_pipe: Option<&str>, cli: &Cli) -> a
         println!("Filtered - for full content call: `tokf history show {id}`");
     }
 
-    Ok(cmd_result.exit_code)
+    if cli.no_mask_exit_code {
+        Ok(cmd_result.exit_code)
+    } else {
+        Ok(0)
+    }
 }
 
 fn cmd_check(filter_path: &Path) -> i32 {
@@ -368,6 +389,8 @@ fn cmd_test(
         eprintln!("[tokf] filter took {:.1}ms", elapsed.as_secs_f64() * 1000.0);
     }
 
+    // tokf test always writes to stdout — it's a debugging tool that always
+    // exits 0, not a hook-invoked path subject to the stderr-on-failure routing.
     if !filtered.output.is_empty() {
         println!("{}", filtered.output);
     }
