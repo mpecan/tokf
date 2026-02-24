@@ -5,7 +5,7 @@ pub struct Config {
     /// Set `RUN_MIGRATIONS=false` to manage migrations out-of-band (e.g. a
     /// dedicated migration job in Kubernetes).  Defaults to `true`.
     pub run_migrations: bool,
-    pub r2_bucket: Option<String>,
+    pub r2_bucket_name: Option<String>,
     pub r2_access_key_id: Option<String>,
     pub r2_secret_access_key: Option<String>,
     pub r2_endpoint: Option<String>,
@@ -28,7 +28,7 @@ impl std::fmt::Debug for Config {
                 &self.database_url.as_deref().map(|_| "<redacted>"),
             )
             .field("run_migrations", &self.run_migrations)
-            .field("r2_bucket", &self.r2_bucket)
+            .field("r2_bucket_name", &self.r2_bucket_name)
             .field(
                 "r2_access_key_id",
                 &self.r2_access_key_id.as_deref().map(|_| "<redacted>"),
@@ -94,7 +94,7 @@ impl Config {
             port,
             database_url: Self::env_non_empty("DATABASE_URL"),
             run_migrations,
-            r2_bucket: Self::env_non_empty("R2_BUCKET"),
+            r2_bucket_name: Self::env_non_empty("R2_BUCKET_NAME"),
             r2_access_key_id: Self::env_non_empty("R2_ACCESS_KEY_ID"),
             r2_secret_access_key: Self::env_non_empty("R2_SECRET_ACCESS_KEY"),
             r2_endpoint: Self::env_non_empty("R2_ENDPOINT"),
@@ -164,18 +164,18 @@ mod tests {
         // SAFETY: protected by ENV_LOCK; no concurrent env mutations
         unsafe {
             std::env::set_var("DATABASE_URL", "postgres://localhost/tokf");
-            std::env::set_var("R2_BUCKET", "my-bucket");
+            std::env::set_var("R2_BUCKET_NAME", "my-bucket");
         }
         let cfg = Config::from_env();
         unsafe {
             std::env::remove_var("DATABASE_URL");
-            std::env::remove_var("R2_BUCKET");
+            std::env::remove_var("R2_BUCKET_NAME");
         }
         assert_eq!(
             cfg.database_url.as_deref(),
             Some("postgres://localhost/tokf")
         );
-        assert_eq!(cfg.r2_bucket.as_deref(), Some("my-bucket"));
+        assert_eq!(cfg.r2_bucket_name.as_deref(), Some("my-bucket"));
     }
 
     #[test]
@@ -208,7 +208,7 @@ mod tests {
             database_url: Some("postgres://secret".to_string()),
             run_migrations: true,
             trust_proxy: false,
-            r2_bucket: Some("my-bucket".to_string()),
+            r2_bucket_name: Some("my-bucket".to_string()),
             r2_access_key_id: Some("key-id".to_string()),
             r2_secret_access_key: Some("super-secret".to_string()),
             r2_endpoint: Some("https://r2.example.com".to_string()),
@@ -236,7 +236,7 @@ mod tests {
             database_url: None,
             run_migrations: true,
             trust_proxy: false,
-            r2_bucket: None,
+            r2_bucket_name: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_endpoint: Some("https://custom.endpoint.com".to_string()),
@@ -257,7 +257,7 @@ mod tests {
             database_url: None,
             run_migrations: true,
             trust_proxy: false,
-            r2_bucket: None,
+            r2_bucket_name: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_endpoint: None,
@@ -278,7 +278,7 @@ mod tests {
             database_url: None,
             run_migrations: true,
             trust_proxy: false,
-            r2_bucket: None,
+            r2_bucket_name: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_endpoint: None,
@@ -296,15 +296,18 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         // SAFETY: protected by ENV_LOCK; no concurrent env mutations
         unsafe {
-            std::env::set_var("R2_BUCKET", "");
+            std::env::set_var("R2_BUCKET_NAME", "");
             std::env::set_var("DATABASE_URL", "");
         }
         let cfg = Config::from_env();
         unsafe {
-            std::env::remove_var("R2_BUCKET");
+            std::env::remove_var("R2_BUCKET_NAME");
             std::env::remove_var("DATABASE_URL");
         }
-        assert!(cfg.r2_bucket.is_none(), "empty R2_BUCKET should be None");
+        assert!(
+            cfg.r2_bucket_name.is_none(),
+            "empty R2_BUCKET_NAME should be None"
+        );
         assert!(
             cfg.database_url.is_none(),
             "empty DATABASE_URL should be None"
