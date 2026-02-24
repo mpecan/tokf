@@ -88,61 +88,6 @@ ok ✓ main
 
 ---
 
-## Claude Code hook
-
-tokf integrates with [Claude Code](https://claude.ai/code) as a `PreToolUse` hook that **automatically filters every `Bash` tool call** — no changes to your workflow required.
-
-```sh
-tokf hook install          # project-local (.tokf/)
-tokf hook install --global # user-level (~/.config/tokf/)
-```
-
-Once installed, every command Claude runs through the Bash tool is filtered transparently. Track cumulative savings with `tokf gain`.
-
-tokf also ships a filter-authoring skill that teaches Claude the complete filter schema:
-
-```sh
-tokf skill install          # project-local (.claude/skills/)
-tokf skill install --global # user-level (~/.claude/skills/)
-```
-
-### OpenCode
-
-tokf integrates with [OpenCode](https://opencode.ai) via a plugin that applies filters in real-time before command execution.
-
-**Requirements:** OpenCode with Bun runtime installed.
-
-**Install (project-local):**
-```sh
-tokf hook install --tool opencode
-```
-
-**Install (global):**
-```sh
-tokf hook install --tool opencode --global
-```
-
-This writes `.opencode/plugins/tokf.ts` (or `~/.config/opencode/plugins/tokf.ts` for `--global`), which OpenCode auto-loads. The plugin uses OpenCode's `tool.execute.before` hook to intercept `bash` tool calls and rewrites the command in-place when a matching filter exists. **Restart OpenCode after installation for the plugin to take effect.**
-
-If tokf rewrite fails or no filter matches, the command passes through unmodified (fail-safe).
-
-### OpenAI Codex CLI
-
-tokf integrates with [OpenAI Codex CLI](https://github.com/openai/codex) via a skill that instructs the agent to prefix supported commands with `tokf run`.
-
-**Install (project-local):**
-```sh
-tokf hook install --tool codex
-```
-
-**Install (global):**
-```sh
-tokf hook install --tool codex --global
-```
-
-This writes `.agents/skills/tokf-run/SKILL.md` (or `~/.agents/skills/tokf-run/SKILL.md` for `--global`), which Codex auto-discovers. Unlike the Claude Code hook (which intercepts commands at the tool level), the Codex integration is skill-based: it teaches the agent to use `tokf run` as a command prefix. If tokf is not installed, the agent falls back to running commands without the prefix (fail-safe).
-
----
 
 ## Installation
 
@@ -203,7 +148,7 @@ tokf verify git/push           # run a specific suite
 tokf verify --list             # list available suites and case counts
 tokf verify --json             # output results as JSON
 tokf verify --require-all      # fail if any filter has no test suite
-tokf verify --list --require-all  # show ✓/✗ coverage per filter
+tokf verify --list --require-all  # show coverage per filter
 tokf verify --scope project    # only project-local filters (.tokf/filters/)
 tokf verify --scope global     # only user-level filters (~/.config/tokf/filters/)
 tokf verify --scope stdlib     # only built-in stdlib (filters/ in CWD)
@@ -234,115 +179,9 @@ This copies the filter TOML and its test suite to your config directory, where i
 | `--verbose` | Show which filter was matched (also explains skipped rewrites) |
 | `--no-filter` | Pass output through without filtering |
 | `--no-cache` | Bypass the filter discovery cache |
-| `--no-mask-exit-code` | Disable exit-code masking. By default tokf exits 0 and prepends `Error: Exit code N` on failure (works around [claude-code#27621](https://github.com/anthropics/claude-code/issues/27621)) |
+| `--no-mask-exit-code` | Disable exit-code masking. By default tokf exits 0 and prepends `Error: Exit code N` on failure |
 | `--baseline-pipe` | Pipe command for fair baseline accounting (injected by rewrite) |
 | `--prefer-less` | Compare filtered vs piped output and use whichever is smaller (requires `--baseline-pipe`) |
-
-### Rewrite configuration (`rewrites.toml`)
-
-tokf looks for a `rewrites.toml` file in two locations (first found wins):
-
-1. **Project-local**: `.tokf/rewrites.toml` — scoped to the current repository
-2. **User-level**: `~/.config/tokf/rewrites.toml` — applies to all projects
-
-This file controls custom rewrite rules, skip patterns, and pipe handling. All `[pipe]`, `[skip]`, and `[[rewrite]]` sections documented below go in this file.
-
-### Piped commands
-
-When a command is piped to a simple output-shaping tool (`grep`, `tail`, or `head`), tokf **strips the pipe automatically** and uses its own structured filter output instead. The original pipe suffix is passed to `--baseline-pipe` so token savings are still calculated accurately.
-
-```sh
-# These ARE rewritten — pipe is stripped, tokf applies its filter:
-cargo test | grep FAILED
-cargo test | tail -20
-git diff HEAD | head -5
-```
-
-Multi-pipe chains, pipes to other commands, or pipe targets with unsupported flags are left unchanged:
-
-```sh
-# These are NOT rewritten — tokf leaves them alone:
-kubectl get pods | grep Running | wc -l   # multi-pipe chain
-cargo test | wc -l                        # wc not supported
-cargo test | tail -f                      # -f (follow) not supported
-```
-
-If you want tokf to wrap a piped command that wouldn't normally be rewritten, add an explicit rule to `.tokf/rewrites.toml`:
-
-```toml
-[[rewrite]]
-match = "^cargo test \\| tee"
-replace = "tokf run {0}"
-```
-
-Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see how a command is being rewritten.
-
-#### Disabling pipe stripping
-
-If you prefer tokf to never strip pipes (leaving piped commands unchanged), add a `[pipe]` section to `.tokf/rewrites.toml`:
-
-```toml
-[pipe]
-strip = false   # default: true
-```
-
-When `strip = false`, commands like `cargo test | tail -5` pass through the shell unchanged. Non-piped commands are still rewritten normally.
-
-#### Prefer less context mode
-
-Sometimes the piped output (e.g. `tail -5`) is actually smaller than the filtered output. The `prefer_less` option tells tokf to compare both at runtime and use whichever is smaller:
-
-```toml
-[pipe]
-prefer_less = true   # default: false
-```
-
-When a pipe is stripped, tokf injects `--prefer-less` alongside `--baseline-pipe`. At runtime:
-1. The filter runs normally
-2. The original pipe command also runs on the raw output
-3. tokf prints whichever result is smaller
-
-When the pipe output wins, the event is recorded with `pipe_override = 1` in the tracking DB. The `tokf gain` command shows how many times this happened:
-
-```
-tokf gain summary
-  total runs:     42
-  input tokens:   12,500 est.
-  output tokens:  3,200 est.
-  tokens saved:   9,300 est. (74.4%)
-  pipe preferred: 5 runs (pipe output was smaller than filter)
-```
-
-Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_less` has no effect.
-
-### Environment variable prefixes
-
-Leading `KEY=VALUE` assignments are automatically stripped before matching, so env-prefixed commands are rewritten correctly:
-
-```sh
-# These ARE rewritten — env vars are preserved, the command is wrapped:
-DEBUG=1 git status              → DEBUG=1 tokf run git status
-RUST_LOG=debug cargo test       → RUST_LOG=debug tokf run cargo test
-A=1 B=2 cargo test | tail -5   → A=1 B=2 tokf run --baseline-pipe 'tail -5' cargo test
-```
-
-The env vars are passed through verbatim to the underlying command; tokf only rewrites the executable portion.
-
-#### Skip patterns and env var prefixes
-
-User-defined skip patterns in `.tokf/rewrites.toml` match against the **full** shell segment, including any leading env vars. A pattern `^cargo` will **not** skip `RUST_LOG=debug cargo test` because the segment doesn't start with `cargo`:
-
-```toml
-[skip]
-patterns = ["^cargo"]   # skips "cargo test" but NOT "RUST_LOG=debug cargo test"
-```
-
-To skip a command regardless of any env prefix, use a pattern that accounts for it:
-
-```toml
-[skip]
-patterns = ["(?:^|\\s)cargo\\s"]   # matches "cargo" anywhere after start or whitespace
-```
 
 ---
 
@@ -378,30 +217,10 @@ patterns = ["(?:^|\\s)cargo\\s"]   # matches "cargo" anywhere after start or whi
 
 ---
 
-## Creating Filters with Claude
-
-tokf ships a Claude Code skill that teaches Claude the complete filter schema, processing order, step types, template pipes, and naming conventions.
-
-**Invoke automatically**: Claude will activate the skill whenever you ask to create or modify a filter — just describe what you want in natural language:
-
-> "Create a filter for `npm install` output that keeps only warnings and errors"
-> "Write a tokf filter for `pytest` that shows a summary on success and failure details on fail"
-
-**Invoke explicitly** with the `/tokf-filter` slash command:
-
-```
-/tokf-filter create a filter for docker build output
-```
-
-The skill is in `.claude/skills/tokf-filter/SKILL.md`. Reference material (exhaustive step docs and an annotated example TOML) lives in `.claude/skills/tokf-filter/references/`.
-
----
-
-## Writing a filter
 
 Filters are TOML files placed in `.tokf/filters/` (project-local) or `~/.config/tokf/filters/` (user-level). Project-local filters take priority over user-level, which take priority over the built-in library.
 
-### Minimal example
+## Minimal example
 
 ```toml
 command = "my-tool"
@@ -413,7 +232,7 @@ output = "ok ✓"
 tail = 10
 ```
 
-### Command matching
+## Command matching
 
 tokf matches commands against filter patterns using two built-in behaviours:
 
@@ -432,7 +251,7 @@ The skipped flags are preserved in the command that actually runs — they are o
 
 > **Note on `run` override and transparent flags:** If a filter sets a `run` field, transparent global flags are *not* included in `{args}`.  Only the arguments that appear after the matched pattern words are available as `{args}`.
 
-### Common fields
+## Common fields
 
 ```toml
 command = "git push"          # command pattern to match (supports wildcards and arrays)
@@ -468,15 +287,88 @@ output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 tail = 10                     # keep the last N lines
 ```
 
-### Writing test cases
+## Template pipes
+
+Output templates support pipe chains: `{var | pipe | pipe: "arg"}`.
+
+| Pipe | Input → Output | Description |
+|---|---|---|
+| `join: "sep"` | Collection → Str | Join items with separator |
+| `each: "tmpl"` | Collection → Collection | Map each item through a sub-template |
+| `truncate: N` | Str → Str | Truncate to N characters, appending `…` |
+| `lines` | Str → Collection | Split on newlines |
+| `keep: "re"` | Collection → Collection | Retain items matching the regex |
+| `where: "re"` | Collection → Collection | Alias for `keep:` |
+
+Example — filter a multi-line output variable to only error lines:
+
+```toml
+[on_failure]
+output = "{output | lines | keep: \"^error\" | join: \"\\n\"}"
+```
+
+Example — for each collected block, show only `>` (pointer) and `E` (assertion) lines:
+
+```toml
+[on_failure]
+output = "{failure_lines | each: \"{value | lines | keep: \\\"^[>E] \\\"}\" | join: \"\\n\"}"
+```
+
+## Filter variants
+
+Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:
+
+```toml
+command = ["npm test", "pnpm test", "yarn test"]
+
+strip_ansi = true
+skip = ["^> ", "^\\s*npm (warn|notice|WARN|verbose|info|timing|error|ERR)"]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 20
+
+[[variant]]
+name = "vitest"
+detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
+filter = "npm/test-vitest"
+
+[[variant]]
+name = "jest"
+detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
+filter = "npm/test-jest"
+```
+
+Detection is two-phase:
+
+1. **File detection** (before execution) — checks if config files exist in the current directory. First match wins.
+2. **Output pattern** (after execution) — regex-matches command output. Used as a fallback when no file was detected.
+
+When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback.
+
+The `filter` field references another filter by its discovery name (relative path without `.toml`). Use `tokf which "npm test" -v` to see variant resolution.
+
+> **TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields (`skip`, `[on_success]`, etc.) because TOML array-of-tables sections capture subsequent keys.
+
+## Filter resolution
+
+1. `.tokf/filters/` in the current directory (repo-local overrides)
+2. `~/.config/tokf/filters/` (user-level overrides)
+3. Built-in library (embedded in the binary)
+
+First match wins. Use `tokf which "git push"` to see which filter would activate.
+
+## Writing test cases
 
 Filter tests live in a `<stem>_test/` directory adjacent to the filter TOML:
 
 ```
 filters/
   git/
-    push.toml          ← filter config
-    push_test/         ← test suite
+    push.toml          <- filter config
+    push_test/         <- test suite
       success.toml
       rejected.toml
 ```
@@ -520,34 +412,6 @@ Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = co
 
 ---
 
-### Template pipes
-
-Output templates support pipe chains: `{var | pipe | pipe: "arg"}`.
-
-| Pipe | Input → Output | Description |
-|---|---|---|
-| `join: "sep"` | Collection → Str | Join items with separator |
-| `each: "tmpl"` | Collection → Collection | Map each item through a sub-template |
-| `truncate: N` | Str → Str | Truncate to N characters, appending `…` |
-| `lines` | Str → Collection | Split on newlines |
-| `keep: "re"` | Collection → Collection | Retain items matching the regex |
-| `where: "re"` | Collection → Collection | Alias for `keep:` |
-
-Example — filter a multi-line output variable to only error lines:
-
-```toml
-[on_failure]
-output = "{output | lines | keep: \"^error\" | join: \"\\n\"}"
-```
-
-Example — for each collected block, show only `>` (pointer) and `E` (assertion) lines:
-
-```toml
-[on_failure]
-output = "{failure_lines | each: \"{value | lines | keep: \\\"^[>E] \\\"}\" | join: \"\\n\"}"
-```
-
-### Lua escape hatch
 
 For logic that TOML can't express — numeric math, multi-line lookahead, conditional branching — embed a [Luau](https://luau.org/) script:
 
@@ -569,57 +433,8 @@ Available globals: `output` (string), `exit_code` (integer — the underlying co
 Return a string to replace output, or `nil` to fall through to the rest of the TOML pipeline.
 The sandbox blocks `io`, `os`, and `package` — no filesystem or network access from scripts.
 
-### Filter variants
-
-Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:
-
-```toml
-command = ["npm test", "pnpm test", "yarn test"]
-
-strip_ansi = true
-skip = ["^> ", "^\\s*npm (warn|notice|WARN|verbose|info|timing|error|ERR)"]
-
-[on_success]
-output = "{output}"
-
-[on_failure]
-tail = 20
-
-[[variant]]
-name = "vitest"
-detect.files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
-filter = "npm/test-vitest"
-
-[[variant]]
-name = "jest"
-detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
-filter = "npm/test-jest"
-```
-
-Detection is two-phase:
-
-1. **File detection** (before execution) — checks if config files exist in the current directory. First match wins.
-2. **Output pattern** (after execution) — regex-matches command output. Used as a fallback when no file was detected.
-
-When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback.
-
-The `filter` field references another filter by its discovery name (relative path without `.toml`). Use `tokf which "npm test" -v` to see variant resolution.
-
-> **TOML ordering**: `[[variant]]` entries must appear **after** all top-level fields (`skip`, `[on_success]`, etc.) because TOML array-of-tables sections capture subsequent keys.
-
 ---
 
-## Filter resolution
-
-1. `.tokf/filters/` in the current directory (repo-local overrides)
-2. `~/.config/tokf/filters/` (user-level overrides)
-3. Built-in library (embedded in the binary)
-
-First match wins. Use `tokf which "git push"` to see which filter would activate.
-
----
-
-## Token savings tracking
 
 tokf records input/output byte counts per run in a local SQLite database:
 
@@ -629,8 +444,6 @@ tokf gain --daily      # day-by-day breakdown
 tokf gain --by-filter  # breakdown by filter
 tokf gain --json       # machine-readable output
 ```
-
----
 
 ## Output history
 
@@ -647,7 +460,7 @@ tokf history clear             # clear current project history
 tokf history clear --all       # clear all history (destructive)
 ```
 
-### History hint
+## History hint
 
 When an LLM receives filtered output it may not realise the full output exists. Two mechanisms can automatically append a hint line pointing to the history entry:
 
@@ -672,18 +485,191 @@ The hint is appended to stdout so it is visible to both humans and LLMs in the t
 
 ---
 
-## Cache management
 
-tokf caches the filter discovery index for faster startup. The cache rebuilds automatically when filters change, but you can manage it manually:
+## Claude Code hook
+
+tokf integrates with [Claude Code](https://claude.ai/code) as a `PreToolUse` hook that **automatically filters every `Bash` tool call** — no changes to your workflow required.
 
 ```sh
-tokf cache info    # show cache location, size, and validity
-tokf cache clear   # delete the cache, forcing a rebuild on next run
+tokf hook install          # project-local (.tokf/)
+tokf hook install --global # user-level (~/.config/tokf/)
+```
+
+Once installed, every command Claude runs through the Bash tool is filtered transparently. Track cumulative savings with `tokf gain`.
+
+tokf also ships a filter-authoring skill that teaches Claude the complete filter schema:
+
+```sh
+tokf skill install          # project-local (.claude/skills/)
+tokf skill install --global # user-level (~/.claude/skills/)
+```
+
+## OpenCode
+
+tokf integrates with [OpenCode](https://opencode.ai) via a plugin that applies filters in real-time before command execution.
+
+**Requirements:** OpenCode with Bun runtime installed.
+
+**Install (project-local):**
+```sh
+tokf hook install --tool opencode
+```
+
+**Install (global):**
+```sh
+tokf hook install --tool opencode --global
+```
+
+This writes `.opencode/plugins/tokf.ts` (or `~/.config/opencode/plugins/tokf.ts` for `--global`), which OpenCode auto-loads. The plugin uses OpenCode's `tool.execute.before` hook to intercept `bash` tool calls and rewrites the command in-place when a matching filter exists. **Restart OpenCode after installation for the plugin to take effect.**
+
+If tokf rewrite fails or no filter matches, the command passes through unmodified (fail-safe).
+
+## OpenAI Codex CLI
+
+tokf integrates with [OpenAI Codex CLI](https://github.com/openai/codex) via a skill that instructs the agent to prefix supported commands with `tokf run`.
+
+**Install (project-local):**
+```sh
+tokf hook install --tool codex
+```
+
+**Install (global):**
+```sh
+tokf hook install --tool codex --global
+```
+
+This writes `.agents/skills/tokf-run/SKILL.md` (or `~/.agents/skills/tokf-run/SKILL.md` for `--global`), which Codex auto-discovers. Unlike the Claude Code hook (which intercepts commands at the tool level), the Codex integration is skill-based: it teaches the agent to use `tokf run` as a command prefix. If tokf is not installed, the agent falls back to running commands without the prefix (fail-safe).
+
+## Creating Filters with Claude
+
+tokf ships a Claude Code skill that teaches Claude the complete filter schema, processing order, step types, template pipes, and naming conventions.
+
+**Invoke automatically**: Claude will activate the skill whenever you ask to create or modify a filter — just describe what you want in natural language:
+
+> "Create a filter for `npm install` output that keeps only warnings and errors"
+> "Write a tokf filter for `pytest` that shows a summary on success and failure details on fail"
+
+**Invoke explicitly** with the `/tokf-filter` slash command:
+
+```
+/tokf-filter create a filter for docker build output
+```
+
+The skill is in `.claude/skills/tokf-filter/SKILL.md`. Reference material (exhaustive step docs and an annotated example TOML) lives in `.claude/skills/tokf-filter/references/`.
+
+---
+
+
+## Rewrite configuration (`rewrites.toml`)
+
+tokf looks for a `rewrites.toml` file in two locations (first found wins):
+
+1. **Project-local**: `.tokf/rewrites.toml` — scoped to the current repository
+2. **User-level**: `~/.config/tokf/rewrites.toml` — applies to all projects
+
+This file controls custom rewrite rules, skip patterns, and pipe handling. All `[pipe]`, `[skip]`, and `[[rewrite]]` sections documented below go in this file.
+
+## Piped commands
+
+When a command is piped to a simple output-shaping tool (`grep`, `tail`, or `head`), tokf **strips the pipe automatically** and uses its own structured filter output instead. The original pipe suffix is passed to `--baseline-pipe` so token savings are still calculated accurately.
+
+```sh
+# These ARE rewritten — pipe is stripped, tokf applies its filter:
+cargo test | grep FAILED
+cargo test | tail -20
+git diff HEAD | head -5
+```
+
+Multi-pipe chains, pipes to other commands, or pipe targets with unsupported flags are left unchanged:
+
+```sh
+# These are NOT rewritten — tokf leaves them alone:
+kubectl get pods | grep Running | wc -l   # multi-pipe chain
+cargo test | wc -l                        # wc not supported
+cargo test | tail -f                      # -f (follow) not supported
+```
+
+If you want tokf to wrap a piped command that wouldn't normally be rewritten, add an explicit rule to `.tokf/rewrites.toml`:
+
+```toml
+[[rewrite]]
+match = "^cargo test \\| tee"
+replace = "tokf run {0}"
+```
+
+Use `tokf rewrite --verbose "cargo test | grep FAILED"` to see how a command is being rewritten.
+
+### Disabling pipe stripping
+
+If you prefer tokf to never strip pipes (leaving piped commands unchanged), add a `[pipe]` section to `.tokf/rewrites.toml`:
+
+```toml
+[pipe]
+strip = false   # default: true
+```
+
+When `strip = false`, commands like `cargo test | tail -5` pass through the shell unchanged. Non-piped commands are still rewritten normally.
+
+### Prefer less context mode
+
+Sometimes the piped output (e.g. `tail -5`) is actually smaller than the filtered output. The `prefer_less` option tells tokf to compare both at runtime and use whichever is smaller:
+
+```toml
+[pipe]
+prefer_less = true   # default: false
+```
+
+When a pipe is stripped, tokf injects `--prefer-less` alongside `--baseline-pipe`. At runtime:
+1. The filter runs normally
+2. The original pipe command also runs on the raw output
+3. tokf prints whichever result is smaller
+
+When the pipe output wins, the event is recorded with `pipe_override = 1` in the tracking DB. The `tokf gain` command shows how many times this happened:
+
+```
+tokf gain summary
+  total runs:     42
+  input tokens:   12,500 est.
+  output tokens:  3,200 est.
+  tokens saved:   9,300 est. (74.4%)
+  pipe preferred: 5 runs (pipe output was smaller than filter)
+```
+
+Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_less` has no effect.
+
+## Environment variable prefixes
+
+Leading `KEY=VALUE` assignments are automatically stripped before matching, so env-prefixed commands are rewritten correctly:
+
+```sh
+# These ARE rewritten — env vars are preserved, the command is wrapped:
+DEBUG=1 git status              → DEBUG=1 tokf run git status
+RUST_LOG=debug cargo test       → RUST_LOG=debug tokf run cargo test
+A=1 B=2 cargo test | tail -5   → A=1 B=2 tokf run --baseline-pipe 'tail -5' cargo test
+```
+
+The env vars are passed through verbatim to the underlying command; tokf only rewrites the executable portion.
+
+### Skip patterns and env var prefixes
+
+User-defined skip patterns in `.tokf/rewrites.toml` match against the **full** shell segment, including any leading env vars. A pattern `^cargo` will **not** skip `RUST_LOG=debug cargo test` because the segment doesn't start with `cargo`:
+
+```toml
+[skip]
+patterns = ["^cargo"]   # skips "cargo test" but NOT "RUST_LOG=debug cargo test"
+```
+
+To skip a command regardless of any env prefix, use a pattern that accounts for it:
+
+```toml
+[skip]
+patterns = ["(?:^|\\s)cargo\\s"]   # matches "cargo" anywhere after start or whitespace
 ```
 
 ---
 
-## Diagnostics
+
+## tokf info
 
 `tokf info` prints a summary of all paths, database locations, and filter counts. Useful for debugging when filters aren't being found or to verify your setup:
 
@@ -720,6 +706,15 @@ Override the tracking database path with the `TOKF_DB_PATH` environment variable
 
 ```sh
 TOKF_DB_PATH=/tmp/my-tracking.db tokf info
+```
+
+## Cache management
+
+tokf caches the filter discovery index for faster startup. The cache rebuilds automatically when filters change, but you can manage it manually:
+
+```sh
+tokf cache info    # show cache location, size, and validity
+tokf cache clear   # delete the cache, forcing a rebuild on next run
 ```
 
 ---

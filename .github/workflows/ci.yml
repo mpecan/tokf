@@ -55,3 +55,6 @@ jobs:
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
 
+      - name: Check README is up-to-date
+        run: bash scripts/generate-readme.sh --check
+
