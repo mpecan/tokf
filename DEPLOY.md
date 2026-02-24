@@ -58,7 +58,8 @@ fly apps create tokf-server
 
 ```sh
 fly secrets set \
-  DATABASE_URL="postgresql://..." \
+  DATABASE_URL="postgresql://app_user:...@host:26257/defaultdb?sslmode=verify-full" \
+  MIGRATION_DATABASE_URL="postgresql://migration_user:...@host:26257/defaultdb?sslmode=verify-full" \
   R2_BUCKET_NAME="tokf-filters" \
   R2_ACCESS_KEY_ID="..." \
   R2_SECRET_ACCESS_KEY="..." \
@@ -66,6 +67,10 @@ fly secrets set \
   GITHUB_CLIENT_ID="..." \
   GITHUB_CLIENT_SECRET="..."
 ```
+
+`MIGRATION_DATABASE_URL` is optional — if omitted, migrations use `DATABASE_URL`.
+Setting it allows the migration user to have DDL privileges while the application
+user is restricted to DML.
 
 ### Custom domain
 
@@ -99,7 +104,8 @@ fly tokens create deploy -x 87600h
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
+| `DATABASE_URL` | Yes (`serve`) | — | PostgreSQL connection string (used by the application; `migrate` can use `MIGRATION_DATABASE_URL` alone) |
+| `MIGRATION_DATABASE_URL` | No | Falls back to `DATABASE_URL` | Separate connection string for running migrations (allows elevated DDL privileges) |
 | `PORT` | No | `8080` | HTTP listen port |
 | `RUN_MIGRATIONS` | No | `true` | Run migrations on startup (`false` in fly.toml — handled by release_command) |
 | `TRUST_PROXY` | No | `false` | Trust `X-Forwarded-For` headers (`true` in fly.toml) |
@@ -124,11 +130,13 @@ Create a separate Fly app for staging:
 fly apps create tokf-server-staging
 ```
 
-Set its own secrets (pointing to a separate CockroachDB database and R2 bucket):
+Set its own secrets (pointing to a separate CockroachDB database and R2 bucket).
+Include `MIGRATION_DATABASE_URL` if you use separate migration credentials:
 
 ```sh
 fly secrets set --app tokf-server-staging \
-  DATABASE_URL="postgresql://..." \
+  DATABASE_URL="postgresql://app_user:...@host:26257/defaultdb?sslmode=verify-full" \
+  MIGRATION_DATABASE_URL="postgresql://migration_user:...@host:26257/defaultdb?sslmode=verify-full" \
   GITHUB_CLIENT_ID="..." \
   GITHUB_CLIENT_SECRET="..."
 ```
@@ -173,9 +181,17 @@ version receives traffic:
 
 1. Fly builds the Docker image with the remote builder.
 2. Before swapping traffic, Fly runs `./tokf-server migrate`.
-3. If the migration fails, the deploy is aborted and the old version keeps
+3. The migrate subcommand uses `MIGRATION_DATABASE_URL` if set, otherwise
+   falls back to `DATABASE_URL`.
+4. If the migration fails, the deploy is aborted and the old version keeps
    running.
-4. On success, traffic switches to the new machines.
+5. On success, traffic switches to the new machines.
 
 The `RUN_MIGRATIONS` env var is set to `false` in `fly.toml` so the server
 process itself does not re-run migrations on startup.
+
+**Separate migration credentials:** Set `MIGRATION_DATABASE_URL` to a connection
+string with DDL privileges (`CREATE TABLE`, `ALTER TABLE`, etc.) and keep
+`DATABASE_URL` restricted to DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). This
+follows the principle of least privilege — the running application never has
+schema-altering permissions.

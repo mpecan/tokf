@@ -47,10 +47,10 @@ async fn main() -> Result<()> {
 
 async fn cmd_migrate() -> Result<()> {
     let cfg = config::Config::from_env();
-    let database_url = cfg
-        .database_url
-        .ok_or_else(|| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-    let pool = db::create_pool(&database_url).await?;
+    let database_url = cfg.resolve_migration_url().ok_or_else(|| {
+        anyhow::anyhow!("MIGRATION_DATABASE_URL or DATABASE_URL environment variable is required")
+    })?;
+    let pool = db::create_pool(database_url).await?;
     db::run_migrations(&pool).await?;
     tracing::info!("migrations complete");
     Ok(())
@@ -62,11 +62,15 @@ async fn cmd_serve() -> Result<()> {
 
     let database_url = cfg
         .database_url
+        .as_deref()
         .ok_or_else(|| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-    let pool = db::create_pool(&database_url).await?;
+    let pool = db::create_pool(database_url).await?;
 
     if cfg.run_migrations {
-        db::run_migrations(&pool).await?;
+        match cfg.migration_database_url.as_deref() {
+            Some(url) => db::run_migrations(&db::create_pool(url).await?).await?,
+            None => db::run_migrations(&pool).await?,
+        }
     } else {
         tracing::info!("skipping migrations (RUN_MIGRATIONS=false)");
     }
@@ -210,6 +214,7 @@ mod tests {
         config::Config {
             port: 8080,
             database_url: Some("postgres://localhost/test".to_string()),
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: Some("test-bucket".to_string()),
@@ -226,6 +231,7 @@ mod tests {
         config::Config {
             port: 8080,
             database_url: Some("postgres://localhost/test".to_string()),
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: None,
