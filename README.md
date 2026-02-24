@@ -126,6 +126,22 @@ This writes `.opencode/plugins/tokf.ts` (or `~/.config/opencode/plugins/tokf.ts`
 
 If tokf rewrite fails or no filter matches, the command passes through unmodified (fail-safe).
 
+### OpenAI Codex CLI
+
+tokf integrates with [OpenAI Codex CLI](https://github.com/openai/codex) via a skill that instructs the agent to prefix supported commands with `tokf run`.
+
+**Install (project-local):**
+```sh
+tokf hook install --tool codex
+```
+
+**Install (global):**
+```sh
+tokf hook install --tool codex --global
+```
+
+This writes `.agents/skills/tokf-run/SKILL.md` (or `~/.agents/skills/tokf-run/SKILL.md` for `--global`), which Codex auto-discovers. Unlike the Claude Code hook (which intercepts commands at the tool level), the Codex integration is skill-based: it teaches the agent to use `tokf run` as a command prefix. If tokf is not installed, the agent falls back to running commands without the prefix (fail-safe).
+
 ---
 
 ## Installation
