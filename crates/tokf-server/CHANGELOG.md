@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.8...tokf-server-v0.2.9) (2026-02-24)
+
+
+### Miscellaneous
+
+* **tokf-server:** Synchronize workspace versions
+
 ## [0.2.8](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.7...tokf-server-v0.2.8) (2026-02-24)
 
 
