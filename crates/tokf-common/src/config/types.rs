@@ -151,7 +151,7 @@ pub struct FilterConfig {
     ///
     /// Example hint appended to output:
     /// ```text
-    /// Filtered - for full content call: `tokf history show 42`
+    /// Filtered - full output: `tokf history show --raw 42`
     /// ```
     ///
     /// This is useful for LLM consumers that need to know complete output is
