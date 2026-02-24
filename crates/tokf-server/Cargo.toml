@@ -31,6 +31,7 @@ rand = "0.8"
 hex = "0.4"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

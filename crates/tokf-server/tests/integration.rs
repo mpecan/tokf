@@ -13,7 +13,10 @@ use axum::{
     http::{Method, Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use tokf_server::{auth::mock::NoOpGitHubClient, routes::create_router, state::AppState};
+use tokf_server::{
+    auth::mock::NoOpGitHubClient, routes::create_router, state::AppState,
+    storage::noop::NoOpStorageClient,
+};
 use tokio::net::TcpListener;
 use tower::ServiceExt;
 
@@ -31,6 +34,7 @@ fn test_state() -> AppState {
     AppState {
         db: pool,
         github: Arc::new(NoOpGitHubClient),
+        storage: Arc::new(NoOpStorageClient),
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
@@ -48,6 +52,7 @@ fn down_state() -> AppState {
     AppState {
         db: pool,
         github: Arc::new(NoOpGitHubClient),
+        storage: Arc::new(NoOpStorageClient),
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,

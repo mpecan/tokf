@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use tokf_server::{auth::github::RealGitHubClient, config, db, routes, state};
+use tokf_server::{
+    auth::github::RealGitHubClient,
+    config, db, routes, state,
+    storage::{self, StorageClient},
+};
 
 use anyhow::Result;
 use tokio::net::TcpListener;
@@ -18,6 +22,8 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = config::Config::from_env();
+    let storage_client = build_storage_client(&cfg)?;
+
     let database_url = cfg
         .database_url
         .ok_or_else(|| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
@@ -39,6 +45,7 @@ async fn main() -> Result<()> {
     let app_state = state::AppState {
         db: pool,
         github: Arc::new(RealGitHubClient::new()?),
+        storage: storage_client,
         github_client_id,
         github_client_secret,
         trust_proxy: cfg.trust_proxy,
@@ -81,6 +88,54 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn build_storage_client(cfg: &config::Config) -> Result<Arc<dyn StorageClient>> {
+    let r2_vars = [
+        ("R2_BUCKET_NAME", &cfg.r2_bucket_name),
+        ("R2_ACCESS_KEY_ID", &cfg.r2_access_key_id),
+        ("R2_SECRET_ACCESS_KEY", &cfg.r2_secret_access_key),
+    ];
+
+    // Check if endpoint is available (either explicit or derived from account_id)
+    let has_endpoint = cfg.r2_endpoint_url().is_some();
+
+    let set_vars: Vec<&str> = r2_vars
+        .iter()
+        .filter(|(_, val)| val.is_some())
+        .map(|(name, _)| *name)
+        .collect();
+
+    let missing_vars: Vec<&str> = r2_vars
+        .iter()
+        .filter(|(_, val)| val.is_none())
+        .map(|(name, _)| *name)
+        .collect();
+
+    let missing_endpoint =
+        !has_endpoint && cfg.r2_endpoint.is_none() && cfg.r2_account_id.is_none();
+
+    // All required vars present
+    if set_vars.len() == 3 && has_endpoint {
+        return Ok(Arc::new(storage::r2::R2StorageClient::new(cfg)?));
+    }
+
+    // Partial configuration is an error
+    if !set_vars.is_empty() || cfg.r2_endpoint.is_some() || cfg.r2_account_id.is_some() {
+        let mut all_missing = missing_vars.clone();
+        if missing_endpoint {
+            all_missing.push("R2_ENDPOINT or R2_ACCOUNT_ID");
+        }
+
+        anyhow::bail!(
+            "Partial R2 configuration detected. Either set all required R2 environment variables or none. Missing: {}",
+            all_missing.join(", ")
+        );
+    }
+
+    // No R2 configuration at all - use no-op storage
+    tracing::warn!("R2 storage not configured — using no-op storage (uploads will be discarded)");
+    Ok(Arc::new(storage::noop::NoOpStorageClient))
+}
+
 async fn shutdown_signal() {
     let ctrl_c = async {
         if let Err(e) = tokio::signal::ctrl_c().await {
@@ -107,4 +162,101 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("shutdown signal received");
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    fn full_r2_config() -> config::Config {
+        config::Config {
+            port: 8080,
+            database_url: Some("postgres://localhost/test".to_string()),
+            run_migrations: true,
+            trust_proxy: false,
+            r2_bucket_name: Some("test-bucket".to_string()),
+            r2_access_key_id: Some("AKID".to_string()),
+            r2_secret_access_key: Some("secret".to_string()),
+            r2_endpoint: Some("https://r2.example.com".to_string()),
+            r2_account_id: None,
+            github_client_id: Some("gh-client".to_string()),
+            github_client_secret: Some("gh-secret".to_string()),
+        }
+    }
+
+    fn empty_r2_config() -> config::Config {
+        config::Config {
+            port: 8080,
+            database_url: Some("postgres://localhost/test".to_string()),
+            run_migrations: true,
+            trust_proxy: false,
+            r2_bucket_name: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_endpoint: None,
+            r2_account_id: None,
+            github_client_id: Some("gh-client".to_string()),
+            github_client_secret: Some("gh-secret".to_string()),
+        }
+    }
+
+    #[test]
+    fn build_storage_client_succeeds_with_full_config() {
+        let cfg = full_r2_config();
+        assert!(build_storage_client(&cfg).is_ok());
+    }
+
+    #[test]
+    fn build_storage_client_succeeds_with_no_config() {
+        let cfg = empty_r2_config();
+        assert!(build_storage_client(&cfg).is_ok());
+    }
+
+    #[test]
+    fn build_storage_client_fails_with_partial_config_bucket_only() {
+        let mut cfg = empty_r2_config();
+        cfg.r2_bucket_name = Some("test-bucket".to_string());
+        let result = build_storage_client(&cfg);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(
+            err.to_string()
+                .contains("Partial R2 configuration detected")
+        );
+        assert!(err.to_string().contains("R2_ACCESS_KEY_ID"));
+        assert!(err.to_string().contains("R2_SECRET_ACCESS_KEY"));
+    }
+
+    #[test]
+    fn build_storage_client_fails_with_partial_config_missing_endpoint() {
+        let mut cfg = full_r2_config();
+        cfg.r2_endpoint = None;
+        cfg.r2_account_id = None;
+        let result = build_storage_client(&cfg);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(
+            err.to_string()
+                .contains("Partial R2 configuration detected")
+        );
+        assert!(err.to_string().contains("R2_ENDPOINT or R2_ACCOUNT_ID"));
+    }
+
+    #[test]
+    fn build_storage_client_fails_with_partial_config_missing_credentials() {
+        let mut cfg = full_r2_config();
+        cfg.r2_access_key_id = None;
+        cfg.r2_secret_access_key = None;
+        let result = build_storage_client(&cfg);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(
+            err.to_string()
+                .contains("Partial R2 configuration detected")
+        );
+        assert!(err.to_string().contains("R2_ACCESS_KEY_ID"));
+        assert!(err.to_string().contains("R2_SECRET_ACCESS_KEY"));
+    }
 }

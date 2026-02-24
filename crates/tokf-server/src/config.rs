@@ -5,10 +5,11 @@ pub struct Config {
     /// Set `RUN_MIGRATIONS=false` to manage migrations out-of-band (e.g. a
     /// dedicated migration job in Kubernetes).  Defaults to `true`.
     pub run_migrations: bool,
-    pub r2_bucket: Option<String>,
+    pub r2_bucket_name: Option<String>,
     pub r2_access_key_id: Option<String>,
     pub r2_secret_access_key: Option<String>,
     pub r2_endpoint: Option<String>,
+    pub r2_account_id: Option<String>,
     pub github_client_id: Option<String>,
     pub github_client_secret: Option<String>,
     /// When `true`, the server trusts `X-Forwarded-For` headers for client IP
@@ -27,7 +28,7 @@ impl std::fmt::Debug for Config {
                 &self.database_url.as_deref().map(|_| "<redacted>"),
             )
             .field("run_migrations", &self.run_migrations)
-            .field("r2_bucket", &self.r2_bucket)
+            .field("r2_bucket_name", &self.r2_bucket_name)
             .field(
                 "r2_access_key_id",
                 &self.r2_access_key_id.as_deref().map(|_| "<redacted>"),
@@ -37,6 +38,7 @@ impl std::fmt::Debug for Config {
                 &self.r2_secret_access_key.as_deref().map(|_| "<redacted>"),
             )
             .field("r2_endpoint", &self.r2_endpoint)
+            .field("r2_account_id", &self.r2_account_id)
             .field("github_client_id", &self.github_client_id)
             .field(
                 "github_client_secret",
@@ -48,6 +50,24 @@ impl std::fmt::Debug for Config {
 }
 
 impl Config {
+    /// Returns the R2/S3-compatible endpoint URL.
+    ///
+    /// Prefers `r2_endpoint` if set; otherwise derives from `r2_account_id`.
+    /// Returns `None` if neither is configured.
+    pub fn r2_endpoint_url(&self) -> Option<String> {
+        if let Some(ep) = &self.r2_endpoint {
+            return Some(ep.clone());
+        }
+        self.r2_account_id
+            .as_deref()
+            .map(|id| format!("https://{id}.r2.cloudflarestorage.com"))
+    }
+
+    /// Read an env var, treating empty strings as absent.
+    fn env_non_empty(key: &str) -> Option<String> {
+        std::env::var(key).ok().filter(|s| !s.is_empty())
+    }
+
     pub fn from_env() -> Self {
         // R12: warn when PORT is set but invalid so misconfiguration is visible.
         let port = std::env::var("PORT").ok().map_or(8080, |s| {
@@ -72,14 +92,15 @@ impl Config {
             .unwrap_or(true);
         Self {
             port,
-            database_url: std::env::var("DATABASE_URL").ok(),
+            database_url: Self::env_non_empty("DATABASE_URL"),
             run_migrations,
-            r2_bucket: std::env::var("R2_BUCKET").ok(),
-            r2_access_key_id: std::env::var("R2_ACCESS_KEY_ID").ok(),
-            r2_secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").ok(),
-            r2_endpoint: std::env::var("R2_ENDPOINT").ok(),
-            github_client_id: std::env::var("GITHUB_CLIENT_ID").ok(),
-            github_client_secret: std::env::var("GITHUB_CLIENT_SECRET").ok(),
+            r2_bucket_name: Self::env_non_empty("R2_BUCKET_NAME"),
+            r2_access_key_id: Self::env_non_empty("R2_ACCESS_KEY_ID"),
+            r2_secret_access_key: Self::env_non_empty("R2_SECRET_ACCESS_KEY"),
+            r2_endpoint: Self::env_non_empty("R2_ENDPOINT"),
+            r2_account_id: Self::env_non_empty("R2_ACCOUNT_ID"),
+            github_client_id: Self::env_non_empty("GITHUB_CLIENT_ID"),
+            github_client_secret: Self::env_non_empty("GITHUB_CLIENT_SECRET"),
             trust_proxy: std::env::var("TRUST_PROXY")
                 .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes"))
                 .unwrap_or(false),
@@ -143,18 +164,18 @@ mod tests {
         // SAFETY: protected by ENV_LOCK; no concurrent env mutations
         unsafe {
             std::env::set_var("DATABASE_URL", "postgres://localhost/tokf");
-            std::env::set_var("R2_BUCKET", "my-bucket");
+            std::env::set_var("R2_BUCKET_NAME", "my-bucket");
         }
         let cfg = Config::from_env();
         unsafe {
             std::env::remove_var("DATABASE_URL");
-            std::env::remove_var("R2_BUCKET");
+            std::env::remove_var("R2_BUCKET_NAME");
         }
         assert_eq!(
             cfg.database_url.as_deref(),
             Some("postgres://localhost/tokf")
         );
-        assert_eq!(cfg.r2_bucket.as_deref(), Some("my-bucket"));
+        assert_eq!(cfg.r2_bucket_name.as_deref(), Some("my-bucket"));
     }
 
     #[test]
@@ -187,10 +208,11 @@ mod tests {
             database_url: Some("postgres://secret".to_string()),
             run_migrations: true,
             trust_proxy: false,
-            r2_bucket: Some("my-bucket".to_string()),
+            r2_bucket_name: Some("my-bucket".to_string()),
             r2_access_key_id: Some("key-id".to_string()),
             r2_secret_access_key: Some("super-secret".to_string()),
             r2_endpoint: Some("https://r2.example.com".to_string()),
+            r2_account_id: Some("abc123".to_string()),
             github_client_id: Some("gh-client-id".to_string()),
             github_client_secret: Some("gh-secret-value".to_string()),
         };
@@ -204,5 +226,91 @@ mod tests {
         assert!(debug_str.contains("8080"));
         assert!(debug_str.contains("my-bucket"));
         assert!(debug_str.contains("gh-client-id"));
+        assert!(debug_str.contains("abc123"));
+    }
+
+    #[test]
+    fn r2_endpoint_url_prefers_explicit_endpoint() {
+        let cfg = Config {
+            port: 8080,
+            database_url: None,
+            run_migrations: true,
+            trust_proxy: false,
+            r2_bucket_name: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_endpoint: Some("https://custom.endpoint.com".to_string()),
+            r2_account_id: Some("account123".to_string()),
+            github_client_id: None,
+            github_client_secret: None,
+        };
+        assert_eq!(
+            cfg.r2_endpoint_url().as_deref(),
+            Some("https://custom.endpoint.com")
+        );
+    }
+
+    #[test]
+    fn r2_endpoint_url_derives_from_account_id() {
+        let cfg = Config {
+            port: 8080,
+            database_url: None,
+            run_migrations: true,
+            trust_proxy: false,
+            r2_bucket_name: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_endpoint: None,
+            r2_account_id: Some("myaccount".to_string()),
+            github_client_id: None,
+            github_client_secret: None,
+        };
+        assert_eq!(
+            cfg.r2_endpoint_url().as_deref(),
+            Some("https://myaccount.r2.cloudflarestorage.com")
+        );
+    }
+
+    #[test]
+    fn r2_endpoint_url_returns_none_when_neither_set() {
+        let cfg = Config {
+            port: 8080,
+            database_url: None,
+            run_migrations: true,
+            trust_proxy: false,
+            r2_bucket_name: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_endpoint: None,
+            r2_account_id: None,
+            github_client_id: None,
+            github_client_secret: None,
+        };
+        assert!(cfg.r2_endpoint_url().is_none());
+    }
+
+    #[test]
+    fn empty_env_vars_treated_as_none() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        unsafe {
+            std::env::set_var("R2_BUCKET_NAME", "");
+            std::env::set_var("DATABASE_URL", "");
+        }
+        let cfg = Config::from_env();
+        unsafe {
+            std::env::remove_var("R2_BUCKET_NAME");
+            std::env::remove_var("DATABASE_URL");
+        }
+        assert!(
+            cfg.r2_bucket_name.is_none(),
+            "empty R2_BUCKET_NAME should be None"
+        );
+        assert!(
+            cfg.database_url.is_none(),
+            "empty DATABASE_URL should be None"
+        );
     }
 }

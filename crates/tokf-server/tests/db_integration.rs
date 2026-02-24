@@ -32,6 +32,7 @@ use tokf_server::{
     },
     routes::create_router,
     state::AppState,
+    storage::noop::NoOpStorageClient,
 };
 use tower::ServiceExt;
 
@@ -52,6 +53,7 @@ fn db_state(pool: PgPool) -> AppState {
     AppState {
         db: pool,
         github: Arc::new(NoOpGitHubClient),
+        storage: Arc::new(NoOpStorageClient),
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
@@ -62,6 +64,7 @@ fn db_state_with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> AppState
     AppState {
         db: pool,
         github,
+        storage: Arc::new(NoOpStorageClient),
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,

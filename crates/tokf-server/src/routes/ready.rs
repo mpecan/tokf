@@ -46,6 +46,7 @@ mod tests {
 
     use crate::auth::mock::NoOpGitHubClient;
     use crate::state::AppState;
+    use crate::storage::noop::NoOpStorageClient;
 
     /// Creates an `AppState` whose pool will always fail to acquire a connection.
     /// Uses a non-resolvable hostname (RFC 2606 `.invalid` TLD) so DNS returns
@@ -58,6 +59,7 @@ mod tests {
         AppState {
             db: pool,
             github: Arc::new(NoOpGitHubClient),
+            storage: Arc::new(NoOpStorageClient),
             github_client_id: "test-client-id".to_string(),
             github_client_secret: "test-client-secret".to_string(),
             trust_proxy: true,
