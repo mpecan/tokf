@@ -153,7 +153,20 @@ Fly.io is configured to check `/ready` every 10 seconds (see `fly.toml`).
 This ensures traffic is only routed to machines with a working database
 connection.
 
-## 8. Migration Strategy
+## 8. Graceful Shutdown
+
+When Fly.io needs to stop a machine (during deploys, scaling, or restarts), it
+sends `SIGTERM` to the process. The server handles this signal by:
+
+1. Stopping the HTTP listener (no new connections accepted)
+2. Draining in-flight requests for up to 30 seconds
+3. Shutting down cleanly
+
+The `kill_timeout = 35` in `fly.toml` gives the server a 5-second buffer beyond
+the 30-second drain period before Fly sends `SIGKILL`. This ensures the server
+has enough time to complete graceful shutdown without being force-killed.
+
+## 9. Migration Strategy
 
 Migrations run automatically via Fly.io's `release_command` before the new
 version receives traffic:
