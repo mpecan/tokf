@@ -62,6 +62,22 @@ All three must pass clean. The CI runs the same checks.
 
 When a limit genuinely harms readability, it can be overridden with `#[allow(...)]` — but document the reason in a comment and get maintainer sign-off.
 
+### Duplication
+
+CI runs [cargo-dupes](https://crates.io/crates/cargo-dupes) to detect code duplication in production code (tests are excluded). Configuration lives in two files:
+
+- **`dupes.toml`** — analysis settings and percentage thresholds (0.5% exact, 0.5% near)
+- **`.dupes-ignore.toml`** — reviewed duplicates with documented reasons for each ignore
+
+If `cargo dupes check` fails on your PR, either extract the shared logic or add an entry to `.dupes-ignore.toml` with a reason explaining why the duplication is acceptable.
+
+```sh
+cargo install cargo-dupes
+cargo dupes              # full report
+cargo dupes stats        # statistics only
+cargo dupes check        # CI gate — fails if thresholds exceeded
+```
+
 ---
 
 ## Adding a built-in filter
