@@ -428,3 +428,7 @@ pub fn command_pattern_regexes(command: &CommandPattern) -> Vec<(String, String)
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_discovery;
+#[cfg(test)]
+mod tests_matching;

@@ -137,3 +137,7 @@ pub fn try_record(
 mod config_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_clear;
+#[cfg(test)]
+mod tests_search;

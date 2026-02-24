@@ -198,7 +198,11 @@ pub(crate) fn rewrite_with_config(
 }
 
 #[cfg(test)]
+mod compound_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_compound;
 #[cfg(test)]
 mod tests_env;
 #[cfg(test)]
