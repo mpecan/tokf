@@ -223,6 +223,7 @@ fn rewrite_user_rule_takes_priority() {
 
     let config = RewriteConfig {
         skip: None,
+        pipe: None,
         rewrite: vec![RewriteRule {
             match_pattern: "^git status".to_string(),
             replace: "custom-wrapper {0}".to_string(),
@@ -245,6 +246,7 @@ fn rewrite_user_skip_prevents_rewrite() {
         skip: Some(types::SkipConfig {
             patterns: vec!["^git status".to_string()],
         }),
+        pipe: None,
         rewrite: vec![],
     };
     let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
@@ -491,6 +493,7 @@ fn rewrite_user_rule_wraps_piped_command() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig {
         skip: None,
+        pipe: None,
         rewrite: vec![RewriteRule {
             match_pattern: "^cargo test".to_string(),
             replace: "my-wrapper {0}{rest}".to_string(),
@@ -514,6 +517,7 @@ fn rewrite_skip_pattern_wins_over_pipe_guard() {
         skip: Some(types::SkipConfig {
             patterns: vec!["^git".to_string()],
         }),
+        pipe: None,
         rewrite: vec![],
     };
     let r = rewrite_with_config(

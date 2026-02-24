@@ -116,6 +116,7 @@ pub fn record_run(
     output_bytes: usize,
     filter_time_ms: u128,
     exit_code: i32,
+    pipe_override: bool,
 ) {
     let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] tracking: cannot determine DB path");
@@ -136,6 +137,7 @@ pub fn record_run(
         output_bytes,
         filter_time_ms,
         exit_code,
+        pipe_override,
     );
     if let Err(e) = tracking::record_event(&conn, &event) {
         eprintln!("[tokf] tracking error (record): {e:#}");

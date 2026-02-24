@@ -72,21 +72,28 @@ pub fn rewrite(command: &str, verbose: bool) -> String {
 ///
 /// If the (env-stripped) segment has a bare pipe to a simple target (tail,
 /// head, grep) and the base command matches a tokf filter, the pipe is also
-/// stripped and `--baseline-pipe` is injected. Otherwise piped commands pass
-/// through unchanged.
-fn rewrite_segment(segment: &str, filter_rules: &[RewriteRule], verbose: bool) -> String {
+/// stripped and `--baseline-pipe` is injected — unless `strip_pipes` is false.
+/// When `prefer_less` is true, `--prefer-less` is also injected so that at
+/// runtime the smaller of filtered vs piped output is used.
+fn rewrite_segment(
+    segment: &str,
+    filter_rules: &[RewriteRule],
+    strip_pipes: bool,
+    prefer_less: bool,
+    verbose: bool,
+) -> String {
     let (env_prefix, cmd_owned) =
         strip_env_prefix(segment).unwrap_or_else(|| (String::new(), segment.to_string()));
     let cmd = cmd_owned.as_str();
 
     if has_bare_pipe(cmd) {
-        if let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd) {
+        if strip_pipes && let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd) {
             let rewritten = apply_rules(filter_rules, &base);
             if rewritten != base {
                 if verbose {
                     eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
                 }
-                let injected = inject_baseline_pipe(&rewritten, &suffix);
+                let injected = inject_pipe_flags(&rewritten, &suffix, prefer_less);
                 return format!("{env_prefix}{injected}");
             }
         }
@@ -104,16 +111,18 @@ fn rewrite_segment(segment: &str, filter_rules: &[RewriteRule], verbose: bool) -
     }
 }
 
-/// Insert `--baseline-pipe '<suffix>'` after `tokf run` in the rewritten command.
+/// Insert `--baseline-pipe '<suffix>'` (and optionally `--prefer-less`) after
+/// `tokf run` in the rewritten command.
 ///
 /// Single quotes in the suffix are escaped with the `'\''` idiom so the
 /// generated shell command remains valid (e.g. `grep -E 'fail|error'`).
-fn inject_baseline_pipe(rewritten: &str, suffix: &str) -> String {
+fn inject_pipe_flags(rewritten: &str, suffix: &str, prefer_less: bool) -> String {
     rewritten.strip_prefix("tokf run ").map_or_else(
         || rewritten.to_string(),
         |rest| {
             let escaped = suffix.replace('\'', "'\\''");
-            format!("tokf run --baseline-pipe '{escaped}' {rest}")
+            let prefer_flag = if prefer_less { " --prefer-less" } else { "" };
+            format!("tokf run --baseline-pipe '{escaped}'{prefer_flag} {rest}")
         },
     )
 }
@@ -146,6 +155,9 @@ pub(crate) fn rewrite_with_config(
         .as_ref()
         .map_or(&[] as &[String], |s| &s.patterns);
 
+    let strip_pipes = user_config.pipe.as_ref().is_none_or(|p| p.strip);
+    let prefer_less = user_config.pipe.as_ref().is_some_and(|p| p.prefer_less);
+
     if should_skip_effective(command, user_skip_patterns) {
         return command.to_string();
     }
@@ -160,7 +172,7 @@ pub(crate) fn rewrite_with_config(
     let segments = split_compound(command);
 
     if segments.len() == 1 {
-        return rewrite_segment(command, &filter_rules, verbose);
+        return rewrite_segment(command, &filter_rules, strip_pipes, prefer_less, verbose);
     }
 
     // Compound command: rewrite each segment independently so every sub-command
@@ -173,7 +185,7 @@ pub(crate) fn rewrite_with_config(
         {
             trimmed.to_string()
         } else {
-            let r = rewrite_segment(trimmed, &filter_rules, verbose);
+            let r = rewrite_segment(trimmed, &filter_rules, strip_pipes, prefer_less, verbose);
             if r != trimmed {
                 changed = true;
             }
@@ -189,3 +201,5 @@ pub(crate) fn rewrite_with_config(
 mod tests;
 #[cfg(test)]
 mod tests_env;
+#[cfg(test)]
+mod tests_pipe;

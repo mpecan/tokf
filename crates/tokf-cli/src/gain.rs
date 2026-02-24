@@ -49,6 +49,12 @@ fn cmd_gain_summary(conn: &rusqlite::Connection, json: bool) -> i32 {
                     format_num(s.tokens_saved),
                     s.savings_pct
                 );
+                if s.pipe_override_count > 0 {
+                    println!(
+                        "  pipe preferred: {} runs (pipe output was smaller than filter)",
+                        s.pipe_override_count
+                    );
+                }
             }
             0
         }
@@ -73,8 +79,13 @@ fn cmd_gain_by_filter(conn: &rusqlite::Connection, json: bool) -> i32 {
             } else {
                 println!("tokf gain by filter");
                 for r in &rows {
+                    let override_note = if r.pipe_override_count > 0 {
+                        format!("  pipe: {}", r.pipe_override_count)
+                    } else {
+                        String::new()
+                    };
                     println!(
-                        "  {:30}  runs: {:4}  saved: {} est. ({:.1}%)",
+                        "  {:30}  runs: {:4}  saved: {} est. ({:.1}%){override_note}",
                         r.filter_name,
                         r.commands,
                         format_num(r.tokens_saved),
@@ -105,8 +116,13 @@ fn cmd_gain_daily(conn: &rusqlite::Connection, json: bool) -> i32 {
             } else {
                 println!("tokf gain daily");
                 for r in &rows {
+                    let override_note = if r.pipe_override_count > 0 {
+                        format!("  pipe: {}", r.pipe_override_count)
+                    } else {
+                        String::new()
+                    };
                     println!(
-                        "  {}  runs: {:4}  saved: {} est. ({:.1}%)",
+                        "  {}  runs: {:4}  saved: {} est. ({:.1}%){override_note}",
                         r.date,
                         r.commands,
                         format_num(r.tokens_saved),
