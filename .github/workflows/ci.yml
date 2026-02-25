@@ -97,3 +97,12 @@ jobs:
       - name: Check README is up-to-date
         run: bash scripts/generate-readme.sh --check
 
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Docker image
+        run: docker build -t tokf-server .
+
