@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.9...tokf-server-v0.2.10) (2026-02-25)
+
+
+### Code Refactoring
+
+* split oversized files, reduce duplication, add cargo-dupes CI ([#161](https://github.com/mpecan/tokf/issues/161)) ([d269603](https://github.com/mpecan/tokf/commit/d2696039c71f9305e915cb18325650e7d465347e))
+
 ## [0.2.9](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.8...tokf-server-v0.2.9) (2026-02-24)
 
 
