@@ -47,7 +47,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace -- --include-ignored
+        run: cargo test --workspace
+
+      - name: Run DB integration tests
+        run: cargo test -p tokf-server -- --ignored
 
       - name: Verify filter test suites
         id: verify
