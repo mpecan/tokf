@@ -703,6 +703,7 @@ Example output:
 
 ```
 tokf 0.2.8
+TOKF_HOME: (not set)
 
 filter search directories:
   [local] /home/user/project/.tokf/filters (not found)
@@ -711,10 +712,10 @@ filter search directories:
 
 tracking database:
   TOKF_DB_PATH: (not set)
-  path: /home/user/.local/share/tokf/tracking.db (exists)
+  path: /home/user/.local/share/tokf/tracking.db (will be created)
 
 filter cache:
-  path: /home/user/.cache/tokf/manifest.bin (exists)
+  path: /home/user/.cache/tokf/manifest.bin (will be created)
 
 filters:
   local:    0
@@ -723,11 +724,25 @@ filters:
   total:    38
 ```
 
-Override the tracking database path with the `TOKF_DB_PATH` environment variable:
+### Environment variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `TOKF_HOME` | Redirect **all** user-level tokf paths (filters, cache, DB, hooks, auth) to a single directory | Platform config dir (e.g. `~/.config/tokf` on Linux) |
+| `TOKF_DB_PATH` | Override the tracking database path only (takes precedence over `TOKF_HOME`) | `$TOKF_HOME/tracking.db` |
+
+`TOKF_HOME` works like `CARGO_HOME` or `RUSTUP_HOME` — set it once to relocate everything:
 
 ```sh
+# Put all tokf data under /opt/tokf (useful on read-only home dirs or shared systems)
+TOKF_HOME=/opt/tokf tokf info
+
+# Override only the tracking database, leave everything else in the default location
 TOKF_DB_PATH=/tmp/my-tracking.db tokf info
 ```
+
+The `tokf info` output always shows the active `TOKF_HOME` value (or `(not set)`) at the top,
+so you can quickly verify which paths are in effect.
 
 ## Cache management
 
