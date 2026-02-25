@@ -30,7 +30,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 rkyv = { version = "0.8", features = ["bytecheck", "unaligned"] }
 mlua = { version = "0.11.6", features = ["luau", "vendored", "error-send"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# linux-native uses kernel keyutils (no libdbus-sys dependency).
+# sync-secret-service would need libdbus-1-dev on Linux CI/build hosts.
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 open = "5"
 
 [dev-dependencies]
