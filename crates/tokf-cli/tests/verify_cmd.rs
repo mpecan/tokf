@@ -10,8 +10,11 @@ fn tokf() -> Command {
 }
 
 // --- verify cargo/build ---
+// Covered by the dedicated `tokf verify` CI step; ignored to avoid running
+// stdlib filters twice. Run locally with `cargo test -- --ignored`.
 
 #[test]
+#[ignore = "covered by the dedicated `tokf verify` CI step"]
 fn verify_cargo_build_passes() {
     let output = tokf().args(["verify", "cargo/build"]).output().unwrap();
     assert_eq!(
@@ -29,8 +32,11 @@ fn verify_cargo_build_passes() {
 }
 
 // --- verify all stdlib suites ---
+// Covered by the dedicated `tokf verify` CI step; ignored to avoid running
+// stdlib filters twice. Run locally with `cargo test -- --ignored`.
 
 #[test]
+#[ignore = "covered by the dedicated `tokf verify` CI step"]
 fn verify_all_stdlib_suites_pass() {
     let output = tokf().args(["verify"]).output().unwrap();
     assert_eq!(
