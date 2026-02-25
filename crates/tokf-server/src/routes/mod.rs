@@ -1,5 +1,6 @@
 pub mod auth;
 mod health;
+mod machines;
 mod ready;
 
 use axum::{
@@ -15,5 +16,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/ready", get(ready::ready))
         .route("/api/auth/device", post(auth::initiate_device_flow))
         .route("/api/auth/token", post(auth::poll_token))
+        .route(
+            "/api/machines",
+            post(machines::register_machine).get(machines::list_machines),
+        )
         .with_state(state)
 }

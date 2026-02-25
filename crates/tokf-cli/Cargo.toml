@@ -34,6 +34,8 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # sync-secret-service would need libdbus-1-dev on Linux CI/build hosts.
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 open = "5"
+uuid = { version = "1", features = ["v4"] }
+gethostname = "1"
 
 [dev-dependencies]
 tempfile = "3"

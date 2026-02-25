@@ -6,6 +6,7 @@ pub enum AppError {
     Internal(String),
     BadRequest(String),
     NotFound(String),
+    Conflict(String),
     RateLimited,
     Unauthorized,
 }
@@ -16,6 +17,7 @@ impl std::fmt::Display for AppError {
             Self::Internal(msg) => write!(f, "internal error: {msg}"),
             Self::BadRequest(msg) => write!(f, "bad request: {msg}"),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
+            Self::Conflict(msg) => write!(f, "conflict: {msg}"),
             Self::RateLimited => write!(f, "rate limited"),
             Self::Unauthorized => write!(f, "unauthorized"),
         }
@@ -46,6 +48,9 @@ impl IntoResponse for AppError {
             }
             Self::NotFound(msg) => {
                 (StatusCode::NOT_FOUND, Json(json!({ "error": msg }))).into_response()
+            }
+            Self::Conflict(msg) => {
+                (StatusCode::CONFLICT, Json(json!({ "error": msg }))).into_response()
             }
             Self::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
@@ -92,6 +97,15 @@ mod tests {
     async fn not_found_returns_404() {
         let resp = AppError::NotFound("no such flow".to_string()).into_response();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn conflict_returns_409() {
+        let resp = AppError::Conflict("already exists".to_string()).into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "already exists");
     }
 
     #[tokio::test]
