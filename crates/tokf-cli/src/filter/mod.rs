@@ -23,6 +23,19 @@ pub(crate) fn compile_patterns(patterns: &[String]) -> Vec<Regex> {
     patterns.iter().filter_map(|p| Regex::new(p).ok()).collect()
 }
 
+/// Runtime options for the filter pipeline, passed from CLI flags.
+#[derive(Debug, Clone, Default)]
+pub struct FilterOptions {
+    /// Preserve ANSI color codes in filtered output. When true, tokf strips
+    /// ANSI internally for pattern matching (skip/keep/dedup) but restores
+    /// original colored lines in the final output.
+    ///
+    /// **Limitations:** color passthrough only applies to the skip/keep/dedup
+    /// pipeline (stages 2–2.5). The `match_output`, `parse`, and `lua_script`
+    /// stages operate on clean text and are unaffected by this flag.
+    pub preserve_color: bool,
+}
+
 /// The result of applying a filter to command output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilterResult {
@@ -46,25 +59,92 @@ pub struct FilterResult {
 /// 6.   apply branch  — render output or fallback
 /// 6.5. strip_empty_lines / collapse_empty_lines — post-process output
 /// ```
+/// Dual-track line storage for color passthrough mode.
+///
+/// When `--preserve-color` is active, `display` holds the original colored
+/// lines while `clean` holds ANSI-stripped lines for pattern matching. When
+/// color mode is off, only `clean` is populated (same as previous behavior).
+struct RawLines {
+    /// Lines for pattern matching (ANSI-stripped when color mode is active).
+    clean: Vec<String>,
+    /// Original display lines with ANSI codes preserved. `None` when color
+    /// passthrough is off.
+    display: Option<Vec<String>>,
+}
+
 /// Apply stage 1.5 + 1.6 pre-filter transforms (`replace`, `strip_ansi`, `trim_lines`).
 ///
-/// Returns an owned `Vec<String>` so lifetimes stay simple in `apply`.
-fn build_raw_lines(combined: &str, config: &FilterConfig) -> Vec<String> {
+/// When `preserve_color` is true, always strips ANSI for clean lines and keeps
+/// the original colored lines in `display` for final output restoration.
+fn build_raw_lines(combined: &str, config: &FilterConfig, opts: &FilterOptions) -> RawLines {
     let initial: Vec<&str> = combined.lines().collect();
     let after_replace = if config.replace.is_empty() {
         initial.iter().map(ToString::to_string).collect()
     } else {
         replace::apply_replace(&config.replace, &initial)
     };
-    if config.strip_ansi || config.trim_lines {
+
+    if opts.preserve_color {
+        let display = after_replace.clone();
+        let clean: Vec<String> = after_replace
+            .into_iter()
+            .map(|line| {
+                let stripped = cleanup::strip_ansi_from(&line);
+                if config.trim_lines {
+                    stripped.trim().to_string()
+                } else {
+                    stripped
+                }
+            })
+            .collect();
+        RawLines {
+            clean,
+            display: Some(display),
+        }
+    } else if config.strip_ansi || config.trim_lines {
         let refs: Vec<&str> = after_replace.iter().map(String::as_str).collect();
-        cleanup::apply_line_cleanup(config, &refs)
+        RawLines {
+            clean: cleanup::apply_line_cleanup(config, &refs),
+            display: None,
+        }
     } else {
-        after_replace
+        RawLines {
+            clean: after_replace,
+            display: None,
+        }
     }
 }
 
-pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> FilterResult {
+/// Map surviving clean-line references back to their display counterparts.
+///
+/// `survivors` are `&str` references into `clean` (via `as_str()`), preserved
+/// through skip/keep/dedup which only filter without reordering. We scan
+/// `clean` in order, matching by pointer identity, and collect the
+/// corresponding `display` line for each match.
+fn restore_display_lines(clean: &[String], display: &[String], survivors: &[&str]) -> String {
+    let mut result = Vec::with_capacity(survivors.len());
+    let mut si = 0;
+    for (i, c) in clean.iter().enumerate() {
+        if si >= survivors.len() {
+            break;
+        }
+        if std::ptr::eq(
+            std::ptr::from_ref::<str>(c.as_str()),
+            std::ptr::from_ref::<str>(survivors[si]),
+        ) {
+            result.push(display[i].as_str());
+            si += 1;
+        }
+    }
+    result.join("\n")
+}
+
+pub fn apply(
+    config: &FilterConfig,
+    result: &CommandResult,
+    args: &[String],
+    opts: &FilterOptions,
+) -> FilterResult {
     // 1. match_output short-circuit
     if let Some(rule) = match_output::find_matching_rule(&config.match_output, &result.combined) {
         let output = match_output::render_output(&rule.output, &rule.contains, &result.combined);
@@ -74,8 +154,8 @@ pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> 
     }
 
     // 1.5 + 1.6. Replace + per-line cleanup (strip_ansi, trim_lines)
-    let transformed = build_raw_lines(&result.combined, config);
-    let raw_lines: Vec<&str> = transformed.iter().map(String::as_str).collect();
+    let raw = build_raw_lines(&result.combined, config, opts);
+    let raw_lines: Vec<&str> = raw.clean.iter().map(String::as_str).collect();
 
     // 2. Top-level skip/keep pre-filtering
     let lines = skip::apply_skip(&config.skip, &raw_lines);
@@ -88,10 +168,10 @@ pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> 
         lines
     };
 
-    // 2b. Lua script escape hatch
+    // 2b. Lua script escape hatch (receives clean text)
     if let Some(ref script_cfg) = config.lua_script {
-        let pre_filtered = lines.join("\n");
-        match lua::run_lua_script(script_cfg, &pre_filtered, result.exit_code, args) {
+        let clean_text = lines.join("\n");
+        match lua::run_lua_script(script_cfg, &clean_text, result.exit_code, args) {
             Ok(Some(output)) => {
                 return FilterResult {
                     output: cleanup::post_process_output(config, output),
@@ -126,11 +206,15 @@ pub fn apply(config: &FilterConfig, result: &CommandResult, args: &[String]) -> 
         SectionMap::new()
     };
 
+    // Restore display lines for color mode, or join clean lines.
+    let pre_filtered = if let Some(ref display) = raw.display {
+        restore_display_lines(&raw.clean, display, &lines)
+    } else {
+        lines.join("\n")
+    };
+
     // 5. Select branch by exit code
     let branch = select_branch(config, result.exit_code);
-
-    // 6. Apply branch with sections, or fallback
-    let pre_filtered = lines.join("\n");
     let output = branch.map_or_else(
         || apply_fallback(config, &pre_filtered),
         |b| {
@@ -233,6 +317,9 @@ fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests_color;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_pipeline;

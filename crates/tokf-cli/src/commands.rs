@@ -100,7 +100,10 @@ pub fn cmd_run(
     };
 
     let start = std::time::Instant::now();
-    let filtered = filter::apply(&cfg, &cmd_result, &remaining_args);
+    let filter_opts = filter::FilterOptions {
+        preserve_color: cli.preserve_color,
+    };
+    let filtered = filter::apply(&cfg, &cmd_result, &remaining_args, &filter_opts);
     let elapsed = start.elapsed();
 
     if cli.timing {
@@ -213,7 +216,10 @@ pub fn cmd_test(
     };
 
     let start = std::time::Instant::now();
-    let filtered = filter::apply(&cfg, &cmd_result, &[]);
+    let filter_opts = filter::FilterOptions {
+        preserve_color: cli.preserve_color,
+    };
+    let filtered = filter::apply(&cfg, &cmd_result, &[], &filter_opts);
     let elapsed = start.elapsed();
 
     if cli.timing {

@@ -43,6 +43,13 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub no_mask_exit_code: bool,
 
+    /// Preserve ANSI color codes in filtered output. Internally strips ANSI
+    /// for pattern matching but restores original colored lines in the result.
+    /// Note: this is not `--color=always/never/auto` — it controls passthrough
+    /// of the child command's existing ANSI codes through the filter pipeline.
+    #[arg(long, global = true, env = "TOKF_PRESERVE_COLOR")]
+    pub preserve_color: bool,
+
     #[command(subcommand)]
     command: Commands,
 }

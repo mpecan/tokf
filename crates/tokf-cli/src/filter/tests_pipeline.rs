@@ -28,14 +28,20 @@ output = "should not reach"
     .unwrap();
 
     let result = make_result("some special output", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "found it");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "found it"
+    );
 }
 
 #[test]
 fn apply_passthrough_no_branch() {
     let config: FilterConfig = toml::from_str(r#"command = "test""#).unwrap();
     let result = make_result("raw output", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "raw output");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "raw output"
+    );
 }
 
 #[test]
@@ -50,7 +56,10 @@ output = "ok"
     .unwrap();
 
     let result = make_result("anything", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "ok");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "ok"
+    );
 }
 
 #[test]
@@ -65,7 +74,10 @@ tail = 2
     .unwrap();
 
     let result = make_result("a\nb\nc\nd", 1);
-    assert_eq!(apply(&config, &result, &[]).output, "c\nd");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "c\nd"
+    );
 }
 
 #[test]
@@ -82,7 +94,10 @@ extract = { pattern = '(\w+) -> (\w+)', output = "pushed {2}" }
     .unwrap();
 
     let result = make_result("noise line\nmain -> main\nnoise again", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "pushed main");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "pushed main"
+    );
 }
 
 // --- parse pipeline tests ---
@@ -103,7 +118,10 @@ output = "should not appear"
     .unwrap();
 
     let result = make_result("## main", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "main\n");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "main\n"
+    );
 }
 
 #[test]
@@ -122,7 +140,10 @@ output = "should not appear"
     .unwrap();
 
     let result = make_result("## develop", 1);
-    assert_eq!(apply(&config, &result, &[]).output, "develop\n");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "develop\n"
+    );
 }
 
 #[test]
@@ -141,7 +162,10 @@ branch = { line = 1, pattern = '## (\S+)', output = "{1}" }
     .unwrap();
 
     let result = make_result("fatal: something broke", 128);
-    assert_eq!(apply(&config, &result, &[]).output, "error!");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "error!"
+    );
 }
 
 #[test]
@@ -159,7 +183,10 @@ branch = { line = 1, pattern = '^(\S+)', output = "{1}" }
 
     // After skip removes "# comment", the first line becomes "M  file.rs"
     let result = make_result("# comment\nM  file.rs", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "M\n");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "M\n"
+    );
 }
 
 #[test]
@@ -173,7 +200,10 @@ keep = ["^keep"]
     .unwrap();
 
     let result = make_result("drop me\nkeep this\ndrop too\nkeep that", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "keep this\nkeep that");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "keep this\nkeep that"
+    );
 }
 
 #[test]
@@ -188,7 +218,10 @@ output = "{output}"
     .unwrap();
 
     let result = make_result("line1\nline2\nline3", 0);
-    assert_eq!(apply(&config, &result, &[]).output, "line1\nline2\nline3");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "line1\nline2\nline3"
+    );
 }
 
 #[test]
@@ -205,7 +238,10 @@ output = "{output}"
 
     let result = make_result("# comment\nreal line\n# another", 0);
     // {output} resolves to pre-filtered output (skip applied)
-    assert_eq!(apply(&config, &result, &[]).output, "real line");
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "real line"
+    );
 }
 
 #[test]
@@ -221,7 +257,7 @@ output = "FAILED:\n{output}"
 
     let result = make_result("error: something broke\ndetails here", 1);
     assert_eq!(
-        apply(&config, &result, &[]).output,
+        apply(&config, &result, &[], &FilterOptions::default()).output,
         "FAILED:\nerror: something broke\ndetails here"
     );
 }
@@ -245,7 +281,7 @@ output = "Found {items.count} items in:\n{output}"
 
     let input = "header\nitem: one\nitem: two\nfooter";
     let result = make_result(input, 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(
         filtered.output,
         "Found 2 items in:\nheader\nitem: one\nitem: two\nfooter"
@@ -268,7 +304,7 @@ skip = ["^warning"]
     )
     .unwrap();
     let result = make_result("\x1b[33mwarning\x1b[0m: overflow\ninfo: ok", 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "info: ok");
 }
 
@@ -285,7 +321,7 @@ keep = ["^OK"]
     )
     .unwrap();
     let result = make_result("   OK done   \n   FAIL   ", 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "OK done");
 }
 
@@ -303,7 +339,7 @@ output = "{output}"
     )
     .unwrap();
     let result = make_result("line1\n\nline2\n   \nline3", 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "line1\nline2\nline3");
 }
 
@@ -322,7 +358,7 @@ output = "header\n\nbody\n\nfooter"
     )
     .unwrap();
     let result = make_result("sentinel found", 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "header\nbody\nfooter");
 }
 
@@ -339,7 +375,7 @@ output = "{output}"
     )
     .unwrap();
     let result = make_result("a\n\n\n\nb", 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "a\n\nb");
 }
 
@@ -356,6 +392,6 @@ dedup = true
     )
     .unwrap();
     let result = make_result("\x1b[33ma\x1b[0m\n\x1b[33ma\x1b[0m\nb", 0);
-    let filtered = apply(&config, &result, &[]);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "a\nb");
 }
