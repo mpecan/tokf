@@ -166,3 +166,67 @@ equals = "this will never match"
         "expected failure detail in output, got:\n{stdout}"
     );
 }
+
+// --- empty fixture file rejection ---
+
+#[test]
+fn verify_rejects_empty_fixture_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let filters_dir = dir.path().join("filters").join("mytest");
+    fs::create_dir_all(&filters_dir).unwrap();
+    let suite_dir = dir.path().join("filters").join("mytest").join("cmd_test");
+    fs::create_dir_all(&suite_dir).unwrap();
+
+    // Write a minimal filter TOML
+    let filter_toml = filters_dir.join("cmd.toml");
+    fs::write(
+        &filter_toml,
+        r#"command = "mytest cmd"
+
+[on_success]
+output = "filtered output"
+"#,
+    )
+    .unwrap();
+
+    // Write an empty fixture file
+    let fixture_path = suite_dir.join("empty_input.txt");
+    fs::write(&fixture_path, "").unwrap();
+
+    // Write a test case referencing the empty fixture
+    let case_toml = suite_dir.join("empty_input.toml");
+    fs::write(
+        &case_toml,
+        r#"name = "case with empty fixture"
+fixture = "empty_input.txt"
+exit_code = 0
+
+[[expect]]
+equals = ""
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+        .args(["verify", "mytest/cmd"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "expected exit code 1 for empty fixture\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("fixture file is empty"),
+        "expected 'fixture file is empty' in output, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("inline"),
+        "expected hint about 'inline' in output, got:\n{stdout}"
+    );
+}
