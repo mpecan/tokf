@@ -1,0 +1,24 @@
+Running 5 tests using 2 workers
+
+  ✓ [1/5] auth.spec.ts:5:1 › should login successfully (2.1s)
+  ✗ [2/5] auth.spec.ts:15:1 › should logout (1.3s)
+  ✓ [3/5] payroll.spec.ts:8:1 › should display payroll table (3.2s)
+  ✓ [4/5] payroll.spec.ts:20:1 › should calculate totals (2.8s)
+  ✓ [5/5] dashboard.spec.ts:5:1 › should load dashboard (1.5s)
+
+  1) auth.spec.ts:15:1 › should logout ──────────────────────────────
+
+    Error: expect(received).toBeVisible()
+
+    Expected: visible
+    Received: hidden
+
+      14 |   test('should logout', async ({ page }) => {
+      15 |     await page.click('[data-testid="logout-btn"]');
+    > 16 |     await expect(page.locator('.login-form')).toBeVisible();
+         |                                                ^
+      17 |   });
+
+    at /tests/auth.spec.ts:16:48
+
+  4 passed, 1 failed (10.9s)

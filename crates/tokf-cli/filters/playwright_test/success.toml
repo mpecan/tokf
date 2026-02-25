@@ -1,0 +1,6 @@
+name = "all tests pass collapses to single line"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓ playwright: all tests passed"

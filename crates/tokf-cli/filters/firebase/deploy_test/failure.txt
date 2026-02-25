@@ -1,0 +1,4 @@
+i  deploying hosting
+i  hosting[ssp-erp]: beginning deploy...
+
+Error: HTTP Error: 403, Permission denied. You do not have permission to deploy to project ssp-erp.

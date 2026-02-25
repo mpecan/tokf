@@ -1,0 +1,13 @@
+command = "vue-tsc"
+
+match_output = [
+  { contains = "Found 0 errors", output = "✓ vue-tsc: no errors" },
+]
+
+keep = ["\\(\\d+,\\d+\\): (error|warning)"]
+
+[on_success]
+output = "✓ vue-tsc: ok"
+
+[on_failure]
+tail = 50

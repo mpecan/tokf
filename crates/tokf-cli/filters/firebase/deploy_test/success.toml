@@ -1,0 +1,9 @@
+name = "successful deploy shows hosting URL"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+contains = "Deploy complete!"
+
+[[expect]]
+contains = "Hosting URL"

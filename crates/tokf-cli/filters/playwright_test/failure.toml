@@ -1,0 +1,9 @@
+name = "failing tests show error details"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "should logout"
+
+[[expect]]
+contains = "toBeVisible"
