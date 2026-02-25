@@ -45,7 +45,7 @@ fn row_to_response((id, hostname, created_at, last_sync_at): MachineRow) -> Mach
 /// Maximum number of machines a single user may register.
 const MAX_MACHINES_PER_USER: i64 = 50;
 
-/// Maximum allowed hostname length (matches DNS label limit).
+/// Maximum allowed hostname length (matches FQDN length limit per RFC 1035).
 const MAX_HOSTNAME_LEN: usize = 253;
 
 fn validate_hostname(hostname: &str) -> Result<(), AppError> {
@@ -447,6 +447,56 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
+    async fn register_machine_enforces_per_user_limit(pool: PgPool) {
+        let (_, token) = insert_test_user(&pool, "alice_limit").await;
+
+        // Register MAX_MACHINES_PER_USER (50) machines
+        for i in 0..50_u8 {
+            // Manufacture 50 distinct UUIDs by varying the first byte
+            let machine_id = format!("{i:02x}0e8400-e29b-41d4-a716-446655440000");
+            let app = crate::routes::create_router(make_state(pool.clone()));
+            let resp = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/machines")
+                        .header("authorization", format!("Bearer {token}"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(format!(
+                            r#"{{"machine_id":"{machine_id}","hostname":"host-{i}"}}"#
+                        )))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::CREATED,
+                "machine {i} should be created"
+            );
+        }
+
+        // The 51st machine should be rejected with 429
+        let app = crate::routes::create_router(make_state(pool));
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/machines")
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"machine_id":"ff0e8400-e29b-41d4-a716-446655440000","hostname":"one-too-many"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]

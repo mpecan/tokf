@@ -229,7 +229,7 @@ enum AuthAction {
 enum RemoteAction {
     /// Register this machine with the tokf server for remote sync
     Setup,
-    /// Show remote sync registration state and pending event count
+    /// Show remote sync registration state
     Status,
 }
 
