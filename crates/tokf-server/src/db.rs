@@ -26,7 +26,12 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
 /// Returns an error if the migrations table cannot be created or a migration
 /// fails to apply.
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
-    sqlx::migrate!("./migrations")
+    let mut migrator = sqlx::migrate!("./migrations");
+    // CockroachDB does not support pg_advisory_lock(), so disable locking.
+    // Fly's release_command runs on a single machine, so there is no
+    // concurrency risk.
+    migrator.set_locking(false);
+    migrator
         .run(pool)
         .await
         .context("failed to apply database migrations")?;

@@ -138,6 +138,7 @@ mod tests {
         Config {
             port: 8080,
             database_url: None,
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: Some("test-bucket".to_string()),

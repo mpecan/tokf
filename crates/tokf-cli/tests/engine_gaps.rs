@@ -55,7 +55,7 @@ output = "{output}"
 "#,
     );
     let r = result("pkg  1.0  2.0\nother  a  b", 0);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "pkg: 1.0 → 2.0\nother: a → b");
 }
 
@@ -78,7 +78,7 @@ output = "{output}"
 "#,
     );
     let r = result("foo\nnoop", 0);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "baz\nnoop");
 }
 
@@ -97,7 +97,7 @@ output = "{output}"
 "#,
     );
     let r = result("hello world", 0);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "hello world");
 }
 
@@ -117,7 +117,7 @@ output = "{output}"
 "#,
     );
     let r = result("a\na\nb\nb", 0);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "a\nb");
 }
 
@@ -135,7 +135,7 @@ output = "{output}"
     );
     // "a" reappears within window of 3 → dropped
     let r = result("a\nb\na", 0);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "a\nb");
 }
 
@@ -154,7 +154,7 @@ output = "{output | lines | keep: \"^error\" | join: \"\\n\"}"
 "#,
     );
     let r = result("good line\nerror: bad\ngood again", 0);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "error: bad");
 }
 
@@ -172,7 +172,7 @@ output = "{output | lines | where: \"^WARN\" | join: \"\\n\"}"
         "INFO startup\nWARN: disk low\nINFO done\nWARN: high memory",
         0,
     );
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
     assert_eq!(out, "WARN: disk low\nWARN: high memory");
 }
 
@@ -185,7 +185,7 @@ fn pytest_gap5_filter_shows_only_assertion_lines() {
     let cfg = load_filter("filters/pytest.toml");
     let fixture = load_fixture("tests/fixtures/pytest/fail.txt");
     let r = result(&fixture, 1);
-    let out = filter::apply(&cfg, &r, &[]).output;
+    let out = filter::apply(&cfg, &r, &[], &filter::FilterOptions::default()).output;
 
     // The > (pointer) line must appear
     assert!(

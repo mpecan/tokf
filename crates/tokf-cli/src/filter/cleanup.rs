@@ -19,6 +19,11 @@ fn ansi_regex() -> &'static Regex {
     })
 }
 
+/// Strip ANSI escape sequences from a single string.
+pub fn strip_ansi_from(s: &str) -> String {
+    ansi_regex().replace_all(s, "").into_owned()
+}
+
 /// Per-line cleanup applied before skip/keep filtering.
 ///
 /// - `strip_ansi`: removes ANSI escape sequences from each line
