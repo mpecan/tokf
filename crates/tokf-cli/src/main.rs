@@ -6,6 +6,7 @@ mod gain;
 mod history_cmd;
 mod info_cmd;
 mod output;
+mod remote_cmd;
 mod resolve;
 mod show_cmd;
 mod verify_cmd;
@@ -171,6 +172,11 @@ enum Commands {
         #[command(subcommand)]
         action: AuthAction,
     },
+    /// Register this machine and manage remote sync settings
+    Remote {
+        #[command(subcommand)]
+        action: RemoteAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -216,6 +222,14 @@ enum AuthAction {
     /// Log out and remove stored credentials (keyring token + config metadata)
     Logout,
     /// Show current authentication status (username, server URL)
+    Status,
+}
+
+#[derive(Subcommand)]
+enum RemoteAction {
+    /// Register this machine with the tokf server for remote sync
+    Setup,
+    /// Show remote sync registration state
     Status,
 }
 
@@ -323,6 +337,10 @@ fn main() {
             AuthAction::Login => auth_cmd::cmd_auth_login(),
             AuthAction::Logout => auth_cmd::cmd_auth_logout(),
             AuthAction::Status => auth_cmd::cmd_auth_status(),
+        }),
+        Commands::Remote { action } => or_exit(match action {
+            RemoteAction::Setup => remote_cmd::cmd_remote_setup(),
+            RemoteAction::Status => remote_cmd::cmd_remote_status(),
         }),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
