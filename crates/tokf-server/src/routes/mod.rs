@@ -1,4 +1,5 @@
 pub mod auth;
+mod filters;
 mod health;
 mod machines;
 mod ready;
@@ -20,5 +21,6 @@ pub fn create_router(state: AppState) -> Router {
             "/api/machines",
             post(machines::register_machine).get(machines::list_machines),
         )
+        .route("/api/filters", post(filters::publish_filter))
         .with_state(state)
 }

@@ -50,7 +50,7 @@ fn eject_to(filter: &str, target_base: &Path, no_cache: bool) -> anyhow::Result<
     }
 
     // Copy the .toml file
-    let toml_content = if resolved_filter.priority == u8::MAX {
+    let toml_content = if resolved_filter.priority == tokf::config::STDLIB_PRIORITY {
         config::get_embedded_filter(&resolved_filter.relative_path)
             .ok_or_else(|| anyhow::anyhow!("embedded filter not readable"))?
             .to_string()
@@ -88,7 +88,7 @@ fn copy_test_suite(
         .unwrap_or_else(|| Path::new(""))
         .join(&test_dir_name);
 
-    let wrote = if resolved_filter.priority == u8::MAX {
+    let wrote = if resolved_filter.priority == tokf::config::STDLIB_PRIORITY {
         copy_embedded_test_dir(&test_dir_relative, target_base)?
     } else {
         let source_test_dir = resolved_filter

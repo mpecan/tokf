@@ -6,6 +6,7 @@ mod gain;
 mod history_cmd;
 mod info_cmd;
 mod output;
+mod publish_cmd;
 mod remote_cmd;
 mod resolve;
 mod show_cmd;
@@ -176,6 +177,14 @@ enum Commands {
     Remote {
         #[command(subcommand)]
         action: RemoteAction,
+    },
+    /// Publish a local filter to the community registry
+    Publish {
+        /// Filter name to publish (e.g. "git/my-filter")
+        filter: String,
+        /// Preview what would be published without uploading
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -350,6 +359,7 @@ fn main() {
             }
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
         }),
+        Commands::Publish { filter, dry_run } => publish_cmd::cmd_publish(filter, *dry_run),
     };
     std::process::exit(exit_code);
 }

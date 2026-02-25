@@ -36,6 +36,7 @@ use tokf_server::{
         mock::NoOpGitHubClient,
         token::{AuthUser, generate_token, hash_token},
     },
+    rate_limit::PublishRateLimiter,
     routes::create_router,
     state::AppState,
     storage::noop::NoOpStorageClient,
@@ -63,6 +64,8 @@ fn db_state(pool: PgPool) -> AppState {
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
+        public_url: "http://localhost:8080".to_string(),
+        publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
     }
 }
 
@@ -74,6 +77,8 @@ fn db_state_with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> AppState
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
+        public_url: "http://localhost:8080".to_string(),
+        publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
     }
 }
 

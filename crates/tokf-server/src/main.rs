@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokf_server::{
     auth::github::RealGitHubClient,
-    config, db, routes, state,
+    config, db, rate_limit, routes, state,
     storage::{self, StorageClient},
 };
 
@@ -89,6 +89,8 @@ async fn cmd_serve() -> Result<()> {
         github_client_id,
         github_client_secret,
         trust_proxy: cfg.trust_proxy,
+        public_url: cfg.public_url.clone(),
+        publish_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(20, 3600)),
     };
     let app = routes::create_router(app_state).layer(
         // R11: explicitly disable header capture to prevent accidental secret leakage
@@ -224,6 +226,7 @@ mod tests {
             r2_account_id: None,
             github_client_id: Some("gh-client".to_string()),
             github_client_secret: Some("gh-secret".to_string()),
+            public_url: "http://localhost:8080".to_string(),
         }
     }
 
@@ -241,6 +244,7 @@ mod tests {
             r2_account_id: None,
             github_client_id: Some("gh-client".to_string()),
             github_client_secret: Some("gh-secret".to_string()),
+            public_url: "http://localhost:8080".to_string(),
         }
     }
 
