@@ -1,3 +1,4 @@
+mod auth_cmd;
 mod cache_cmd;
 mod commands;
 mod eject_cmd;
@@ -165,6 +166,11 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Authenticate with the tokf server (credentials stored in OS keyring)
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -201,6 +207,16 @@ enum HookAction {
         #[arg(long, value_enum, default_value_t = HookTool::ClaudeCode)]
         tool: HookTool,
     },
+}
+
+#[derive(Subcommand)]
+enum AuthAction {
+    /// Log in via GitHub device flow (opens browser, stores token in OS keyring)
+    Login,
+    /// Log out and remove stored credentials (keyring token + config metadata)
+    Logout,
+    /// Show current authentication status (username, server URL)
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -303,6 +319,11 @@ fn main() {
             scope.as_ref(),
         ),
         Commands::Info { json } => info_cmd::cmd_info(*json),
+        Commands::Auth { action } => or_exit(match action {
+            AuthAction::Login => auth_cmd::cmd_auth_login(),
+            AuthAction::Logout => auth_cmd::cmd_auth_logout(),
+            AuthAction::Status => auth_cmd::cmd_auth_status(),
+        }),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),
