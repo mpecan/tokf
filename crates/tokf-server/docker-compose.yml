@@ -1,9 +1,14 @@
 # Works with both docker compose and podman compose.
+# CockroachDB single-node for local development (matches production).
 services:
   db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: tokf
-      POSTGRES_PASSWORD: tokf
-      POSTGRES_DB: tokf_dev
-    ports: ["5432:5432"]
+    image: cockroachdb/cockroach:latest-v24.3
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"  # SQL
+      - "8080:8080"    # Admin UI
+    volumes:
+      - crdb-data:/cockroach/cockroach-data
+
+volumes:
+  crdb-data:

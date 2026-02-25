@@ -1,16 +1,22 @@
 //! DB integration tests using `#[sqlx::test]`.
 //!
 //! Each test is marked `#[ignore]` so that `cargo test --workspace` passes
-//! without a running Postgres instance.  To run these tests locally, set
-//! `DATABASE_URL` and pass `--include-ignored`:
+//! without a running database.  To run these tests locally, start `CockroachDB`
+//! via docker-compose and set `DATABASE_URL`:
 //!
 //! ```sh
-//! DATABASE_URL=postgres://tokf:tokf@localhost:5432/tokf_dev \
+//! # Start `CockroachDB` (from crates/tokf-server/)
+//! docker compose up -d
+//!
+//! # Create the dev database
+//! cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS tokf_dev"
+//!
+//! DATABASE_URL=postgresql://root@localhost:26257/tokf_dev?sslmode=disable \
 //!     cargo test -p tokf-server -- --include-ignored
 //! ```
 //!
-//! In CI, the workflow runs `cargo test --workspace -- --include-ignored`
-//! with a live postgres service, so all tests execute there.
+//! In CI, the workflow runs `cargo test -p tokf-server -- --ignored`
+//! with a live `CockroachDB` service, so all tests execute there.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
