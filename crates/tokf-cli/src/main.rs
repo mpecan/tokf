@@ -166,7 +166,7 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Authenticate with the tokf server
+    /// Authenticate with the tokf server (credentials stored in OS keyring)
     Auth {
         #[command(subcommand)]
         action: AuthAction,
@@ -211,11 +211,11 @@ enum HookAction {
 
 #[derive(Subcommand)]
 enum AuthAction {
-    /// Log in via GitHub device flow
+    /// Log in via GitHub device flow (opens browser, stores token in OS keyring)
     Login,
-    /// Log out and remove stored credentials
+    /// Log out and remove stored credentials (keyring token + config metadata)
     Logout,
-    /// Show current authentication status
+    /// Show current authentication status (username, server URL)
     Status,
 }
 
