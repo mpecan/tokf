@@ -105,7 +105,7 @@ pub async fn initiate_device_flow(
         .map_err(|_| AppError::Internal("interval out of range".to_string()))?;
     sqlx::query(
         "INSERT INTO device_flows (device_code, user_code, verification_uri, interval_secs, ip_address, expires_at)
-         VALUES ($1, $2, $3, $4, $5, NOW() + make_interval(secs => $6))",
+         VALUES ($1, $2, $3, $4, $5, NOW() + $6 * INTERVAL '1 second')",
     )
     .bind(&gh_resp.device_code)
     .bind(&gh_resp.user_code)

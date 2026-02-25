@@ -15,21 +15,19 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     services:
-      postgres:
-        image: postgres:16
+      cockroach:
+        image: cockroachdb/cockroach:latest-v24.3
         env:
-          POSTGRES_USER: tokf
-          POSTGRES_PASSWORD: tokf
-          POSTGRES_DB: tokf_test
+          COCKROACH_ARGS: "start-single-node --insecure"
         ports:
-          - 5432:5432
+          - 26257:26257
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "curl -f http://localhost:8080/health?ready=1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
     env:
-      DATABASE_URL: postgres://tokf:tokf@localhost:5432/tokf_test
+      DATABASE_URL: postgresql://root@localhost:26257/tokf_test?sslmode=disable
     steps:
       - uses: actions/checkout@v6
 
@@ -45,6 +43,9 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Create CockroachDB test database
+        run: psql "$DATABASE_URL" -c "SELECT 1" 2>/dev/null || psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" -c "CREATE DATABASE IF NOT EXISTS tokf_test"
 
       - name: Run tests
         run: cargo test --workspace
