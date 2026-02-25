@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.10](https://github.com/mpecan/tokf/compare/tokf-v0.2.9...tokf-v0.2.10) (2026-02-25)
+
+
+### Features
+
+* **filter:** add --preserve-color flag for ANSI color passthrough ([#162](https://github.com/mpecan/tokf/issues/162)) ([4187493](https://github.com/mpecan/tokf/commit/4187493fbeabe423100ad7bd58fbce0b8726a8df))
+
+
+### Code Refactoring
+
+* split oversized files, reduce duplication, add cargo-dupes CI ([#161](https://github.com/mpecan/tokf/issues/161)) ([d269603](https://github.com/mpecan/tokf/commit/d2696039c71f9305e915cb18325650e7d465347e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.9 to 0.2.10
+
 ## [0.2.9](https://github.com/mpecan/tokf/compare/tokf-v0.2.8...tokf-v0.2.9) (2026-02-24)
 
 
