@@ -1,0 +1,12 @@
+command = "eslint"
+strip_ansi = true
+skip = [
+  "^\\s*$",
+  "^\\s*✖",
+]
+
+[on_success]
+output = "ok ✓ eslint: no issues"
+
+[on_failure]
+output = "{output}"

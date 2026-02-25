@@ -1,0 +1,6 @@
+name = "all files formatted shows ok"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓ ruff format: all files formatted"

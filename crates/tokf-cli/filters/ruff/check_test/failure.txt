@@ -1,0 +1,7 @@
+src/main.py:1:8: F401 [*] `os` imported but unused
+src/main.py:2:8: F401 `sys` imported but unused
+src/utils.py:10:89: E501 Line too long (100 > 88)
+src/api/handler.py:5:1: F401 [*] `json` imported but unused
+src/api/handler.py:12:5: E712 Comparison to `True` should be `cond is True` or `if cond:`
+Found 5 errors.
+[*] 2 fixable with the `--fix` option.

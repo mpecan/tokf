@@ -1,0 +1,18 @@
+name = "ruff errors show file paths and rule codes"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "F401"
+
+[[expect]]
+contains = "E501"
+
+[[expect]]
+contains = "src/main.py"
+
+[[expect]]
+contains = "Found 5 errors"
+
+[[expect]]
+contains = "fixable"

@@ -1,0 +1,6 @@
+name = "clean ruff check shows ok"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓ ruff check: no issues"

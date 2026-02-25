@@ -1,0 +1,12 @@
+command = "prettier --check"
+strip_ansi = true
+skip = [
+  "^Checking formatting",
+  "^\\s*$",
+]
+
+[on_success]
+output = "ok ✓ prettier: all files formatted"
+
+[on_failure]
+output = "{output}"

@@ -1,0 +1,15 @@
+name = "files needing format show reformat list"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "Would reformat"
+
+[[expect]]
+contains = "src/main.py"
+
+[[expect]]
+contains = "test_utils.py"
+
+[[expect]]
+contains = "2 files would be reformatted"
