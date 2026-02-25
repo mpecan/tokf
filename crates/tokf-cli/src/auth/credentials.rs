@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
+
+use crate::fs::write_config_file;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -87,27 +89,6 @@ pub fn save(
     };
     let content = toml::to_string_pretty(&meta)?;
     write_config_file(&path, &content)?;
-    Ok(())
-}
-
-/// Write a config file with restrictive permissions (0600 on Unix).
-fn write_config_file(path: &PathBuf, content: &str) -> anyhow::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
-        file.write_all(content.as_bytes())?;
-    }
-    #[cfg(not(unix))]
-    {
-        fs::write(path, content)?;
-    }
     Ok(())
 }
 

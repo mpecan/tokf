@@ -2,6 +2,7 @@ pub mod auth;
 pub mod baseline;
 pub mod config;
 pub mod filter;
+pub mod fs;
 pub mod history;
 pub mod hook;
 pub mod remote;
