@@ -31,6 +31,41 @@ fn db_path_env_override() {
 }
 
 #[test]
+#[serial]
+fn db_path_tokf_home_override() {
+    let dir = TempDir::new().expect("tempdir");
+    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
+    unsafe {
+        std::env::set_var("TOKF_HOME", dir.path().to_str().expect("str"));
+    }
+    let result = db_path();
+    unsafe {
+        std::env::remove_var("TOKF_HOME");
+    }
+    assert_eq!(result, Some(dir.path().join("tracking.db")));
+}
+
+/// `TOKF_DB_PATH` must take priority over `TOKF_HOME`.
+#[test]
+#[serial]
+fn db_path_tokf_db_path_wins_over_tokf_home() {
+    let dir = TempDir::new().expect("tempdir");
+    let custom = dir.path().join("custom.db");
+    let home_dir = TempDir::new().expect("tempdir");
+    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
+    unsafe {
+        std::env::set_var("TOKF_DB_PATH", custom.to_str().expect("str"));
+        std::env::set_var("TOKF_HOME", home_dir.path().to_str().expect("str"));
+    }
+    let result = db_path();
+    unsafe {
+        std::env::remove_var("TOKF_DB_PATH");
+        std::env::remove_var("TOKF_HOME");
+    }
+    assert_eq!(result, Some(custom));
+}
+
+#[test]
 fn open_db_creates_dir_and_schema() {
     let dir = TempDir::new().expect("tempdir");
     let path = dir.path().join("sub").join("tracking.db");
@@ -355,6 +390,30 @@ fn query_daily_pipe_override_count() {
     let rows = query_daily(&conn).expect("query");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].pipe_override_count, 1);
+}
+
+/// Pre-flight check: existing DB with no write permission fails with a clear, path-bearing error.
+#[test]
+#[cfg(unix)]
+fn open_db_readonly_file_reports_path() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("tracking.db");
+    // Create the DB first, then strip write permission.
+    open_db(&path).expect("initial open");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).expect("chmod");
+    let err = open_db(&path).unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("not writable"),
+        "error should mention 'not writable': {msg}"
+    );
+    assert!(
+        msg.contains(path.to_str().unwrap()),
+        "error should contain the file path: {msg}"
+    );
+    // Restore permissions so TempDir cleanup succeeds.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).ok();
 }
 
 #[test]

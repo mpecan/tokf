@@ -36,7 +36,7 @@ impl HistoryConfig {
     /// 2. `{config_dir}/tokf/config.toml` `[history] retention`  (e.g. `~/.config/tokf/config.toml`)
     /// 3. Default: 10
     pub fn load(project_root: Option<&std::path::Path>) -> Self {
-        let global = dirs::config_dir().map(|d| d.join("tokf").join("config.toml"));
+        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
         Self::load_from(project_root, global.as_deref())
     }
 

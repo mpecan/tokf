@@ -42,9 +42,9 @@ pub fn default_search_dirs() -> Vec<PathBuf> {
         dirs.push(cwd.join(".tokf/filters"));
     }
 
-    // 2. User-level config dir (platform-native)
-    if let Some(config) = dirs::config_dir() {
-        dirs.push(config.join("tokf/filters"));
+    // 2. User-level config dir (TOKF_HOME if set, else platform-native)
+    if let Some(user) = crate::paths::user_dir() {
+        dirs.push(user.join("filters"));
     }
 
     dirs

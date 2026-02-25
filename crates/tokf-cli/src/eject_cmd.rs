@@ -15,9 +15,9 @@ pub fn cmd_eject(filter: &str, global: bool, no_cache: bool) -> i32 {
 
 fn eject(filter: &str, global: bool, no_cache: bool) -> anyhow::Result<()> {
     let target_base = if global {
-        dirs::config_dir()
+        tokf::paths::user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?
-            .join("tokf/filters")
+            .join("filters")
     } else {
         std::env::current_dir()?.join(".tokf/filters")
     };

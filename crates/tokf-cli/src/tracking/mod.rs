@@ -6,12 +6,13 @@ use rusqlite::Connection;
 pub use tokf_common::tracking::types::{DailyGain, FilterGain, GainSummary, TrackingEvent};
 
 /// Returns the DB path: `TOKF_DB_PATH` env var overrides; else
+/// `TOKF_HOME/tracking.db` if `TOKF_HOME` is set; else
 /// `dirs::data_local_dir()/tokf/tracking.db`.
 pub fn db_path() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("TOKF_DB_PATH") {
         return Some(PathBuf::from(p));
     }
-    dirs::data_local_dir().map(|d| d.join("tokf").join("tracking.db"))
+    crate::paths::user_data_dir().map(|d| d.join("tracking.db"))
 }
 
 /// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS` for the
@@ -25,6 +26,14 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("create db dir {}", parent.display()))?;
+    }
+    // Pre-flight: SQLite opens read-only files silently but fails on the first write (INSERT/CREATE).
+    // Catch this early with a clear, actionable error that includes the path.
+    if path.exists() {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .with_context(|| format!("DB file {} is not writable", path.display()))?;
     }
     let conn = Connection::open(path).with_context(|| format!("open db at {}", path.display()))?;
     conn.execute_batch(

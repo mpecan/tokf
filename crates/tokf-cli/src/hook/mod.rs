@@ -80,9 +80,9 @@ pub(crate) fn handle_json_with_config(
 /// Returns an error if file I/O fails.
 pub fn install(global: bool) -> anyhow::Result<()> {
     let (hook_dir, settings_path) = if global {
-        let config = dirs::config_dir()
+        let user = crate::paths::user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
-        let hook_dir = config.join("tokf/hooks");
+        let hook_dir = user.join("hooks");
         let home = dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
         let settings_path = home.join(".claude/settings.json");
