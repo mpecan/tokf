@@ -1,47 +1,62 @@
 // Post/update a sticky PR comment with tokf verify results.
-// Called by actions/github-script in CI — receives `github`, `context`, `core`.
-module.exports = async ({ github, context, core }) => {
+// Called from the verify-comment workflow via actions/github-script.
+// Receives `github`, `context`, `core`, and `artifactDir` (path to
+// downloaded verify-results artifact).
+module.exports = async ({ github, context, core, artifactDir }) => {
   const fs = require('fs');
+  const path = require('path');
+
+  // Read PR number from artifact
+  const prNumber = parseInt(
+    fs.readFileSync(path.join(artifactDir, 'pr-number.txt'), 'utf8').trim(),
+    10
+  );
+  if (!prNumber) {
+    core.info('No PR number found in artifact, skipping comment');
+    return;
+  }
 
   // Read verify outputs
   let jsonResults = [];
   try {
-    jsonResults = JSON.parse(fs.readFileSync('/tmp/verify-results.json', 'utf8'));
-  } catch (e) {
+    jsonResults = JSON.parse(
+      fs.readFileSync(path.join(artifactDir, 'verify-results.json'), 'utf8')
+    );
+  } catch {
     core.info('No JSON results found, skipping comment');
     return;
   }
 
   let stderrText = '';
   try {
-    stderrText = fs.readFileSync('/tmp/verify-stderr.txt', 'utf8');
+    stderrText = fs.readFileSync(path.join(artifactDir, 'verify-stderr.txt'), 'utf8');
   } catch {
     // stderr file may not exist
   }
 
-  // Find changed filter files in this PR using payload SHAs (avoids relying
-  // on local refs like origin/<baseBranch> which may not be fetched).
+  // Detect changed filter files via the GitHub compare API (works without
+  // a local checkout of the PR branch).
   let changedFilters = [];
   try {
-    const { execFileSync } = require('child_process');
-    const pr = context.payload.pull_request;
-    const baseSha = pr.base.sha;
-    const headSha = pr.head.sha;
-    const diff = execFileSync(
-      'git',
-      ['diff', '--name-only', `${baseSha}...${headSha}`, '--', 'crates/tokf-cli/filters/'],
-      { encoding: 'utf8' }
-    ).trim();
-    if (diff) {
-      changedFilters = diff.split('\n')
-        .filter(f => f.endsWith('.toml') && !f.includes('_test/'))
-        .map(f => {
-          // crates/tokf-cli/filters/git/status.toml -> git/status
-          const match = f.match(/filters\/(.+)\.toml$/);
-          return match ? match[1] : null;
-        })
-        .filter(Boolean);
-    }
+    const { data: pr } = await github.rest.pulls.get({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: prNumber,
+    });
+    const { data: compare } = await github.rest.repos.compareCommits({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      base: pr.base.sha,
+      head: pr.head.sha,
+    });
+    changedFilters = (compare.files || [])
+      .map(f => f.filename)
+      .filter(f => f.startsWith('crates/tokf-cli/filters/') && f.endsWith('.toml') && !f.includes('_test/'))
+      .map(f => {
+        const match = f.match(/filters\/(.+)\.toml$/);
+        return match ? match[1] : null;
+      })
+      .filter(Boolean);
   } catch (e) {
     core.warning(`Could not determine changed filters: ${e.message}`);
   }
@@ -146,7 +161,7 @@ module.exports = async ({ github, context, core }) => {
       const { data } = await github.rest.issues.listComments({
         owner: context.repo.owner,
         repo: context.repo.repo,
-        issue_number: context.issue.number,
+        issue_number: prNumber,
         per_page: 100,
         page,
       });
@@ -168,7 +183,7 @@ module.exports = async ({ github, context, core }) => {
       await github.rest.issues.createComment({
         owner: context.repo.owner,
         repo: context.repo.repo,
-        issue_number: context.issue.number,
+        issue_number: prNumber,
         body,
       });
     }

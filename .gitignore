@@ -3,4 +3,6 @@
 .tokf/
 tarpaulin-report.html
 .idea/
+.claude/worktrees/
+.opencode/
 examples/
