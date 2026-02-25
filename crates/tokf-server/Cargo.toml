@@ -38,6 +38,7 @@ aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-ve
 tokio = { version = "1", features = ["full", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+crdb-test-macro = { path = "../crdb-test-macro" }
 
 [lints]
 workspace = true

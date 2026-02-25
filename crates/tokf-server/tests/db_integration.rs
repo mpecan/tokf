@@ -1,16 +1,22 @@
-//! DB integration tests using `#[sqlx::test]`.
+//! DB integration tests using `#[crdb_test]`.
 //!
 //! Each test is marked `#[ignore]` so that `cargo test --workspace` passes
-//! without a running Postgres instance.  To run these tests locally, set
-//! `DATABASE_URL` and pass `--include-ignored`:
+//! without a running database.  To run these tests locally, start `CockroachDB`
+//! via docker-compose and set `DATABASE_URL`:
 //!
 //! ```sh
-//! DATABASE_URL=postgres://tokf:tokf@localhost:5432/tokf_dev \
+//! # Start `CockroachDB` (from crates/tokf-server/)
+//! docker compose up -d
+//!
+//! # Create the dev database
+//! cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS tokf_dev"
+//!
+//! DATABASE_URL=postgresql://root@localhost:26257/tokf_dev?sslmode=disable \
 //!     cargo test -p tokf-server -- --include-ignored
 //! ```
 //!
-//! In CI, the workflow runs `cargo test --workspace -- --include-ignored`
-//! with a live postgres service, so all tests execute there.
+//! In CI, the workflow runs `cargo test -p tokf-server -- --ignored`
+//! with a live `CockroachDB` service, so all tests execute there.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -73,8 +79,7 @@ fn db_state_with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> AppState
 
 // ── Existing schema tests ───────────────────────────────────────────────────
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn migrations_apply_cleanly_and_all_tables_exist(pool: PgPool) {
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT table_name FROM information_schema.tables
@@ -104,8 +109,7 @@ async fn migrations_apply_cleanly_and_all_tables_exist(pool: PgPool) {
     }
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn health_returns_200_and_ok_status_with_real_db(pool: PgPool) {
     let state = db_state(pool);
     let app = create_router(state);
@@ -132,8 +136,7 @@ async fn health_returns_200_and_ok_status_with_real_db(pool: PgPool) {
     assert!(json["version"].is_string());
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn ready_returns_200_and_ok_status_with_real_db(pool: PgPool) {
     let state = db_state(pool);
     let app = create_router(state);
@@ -161,8 +164,7 @@ async fn ready_returns_200_and_ok_status_with_real_db(pool: PgPool) {
     assert!(json["version"].is_string());
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn users_unique_constraint_enforced(pool: PgPool) {
     sqlx::query(
         "INSERT INTO users (github_id, username, avatar_url, profile_url)
@@ -182,8 +184,7 @@ async fn users_unique_constraint_enforced(pool: PgPool) {
     assert!(result.is_err(), "duplicate github_id should be rejected");
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn machines_uuid_pk_auto_generated(pool: PgPool) {
     let user_id: i64 = sqlx::query_scalar(
         "INSERT INTO users (github_id, username, avatar_url, profile_url)
@@ -206,8 +207,7 @@ async fn machines_uuid_pk_auto_generated(pool: PgPool) {
 }
 
 /// T-5: Verify column defaults are applied correctly on insert.
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn users_column_defaults_are_applied(pool: PgPool) {
     let user_id: i64 = sqlx::query_scalar(
         "INSERT INTO users (github_id, username, avatar_url, profile_url)
@@ -243,8 +243,7 @@ async fn users_column_defaults_are_applied(pool: PgPool) {
 }
 
 /// T-2: Deleting a filter cascades to `filter_tests`, `usage_events`, and `filter_stats`.
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn filter_delete_cascades_to_related_tables(pool: PgPool) {
     // Insert a user (required for filters FK)
     let user_id: i64 = sqlx::query_scalar(
@@ -321,8 +320,7 @@ async fn filter_delete_cascades_to_related_tables(pool: PgPool) {
 }
 
 /// T-2: Inserting a `filter_test` with a non-existent `filter_hash` should fail.
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn filter_test_orphan_insert_fails(pool: PgPool) {
     let result = sqlx::query(
         "INSERT INTO filter_tests (filter_hash, r2_key)
@@ -338,8 +336,7 @@ async fn filter_test_orphan_insert_fails(pool: PgPool) {
 }
 
 /// T-2: `usage_events` CHECK constraints reject negative values.
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn usage_events_check_constraints_reject_negative_values(pool: PgPool) {
     let user_id: i64 = sqlx::query_scalar(
         "INSERT INTO users (github_id, username, avatar_url, profile_url)
@@ -383,8 +380,7 @@ async fn usage_events_check_constraints_reject_negative_values(pool: PgPool) {
 
 // ── Device flow DB tests ────────────────────────────────────────────────────
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn device_flow_table_exists_after_migration(pool: PgPool) {
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT table_name FROM information_schema.tables
@@ -442,8 +438,7 @@ impl GitHubClient for SuccessGitHubClient {
     }
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn full_device_flow_creates_user_and_token(pool: PgPool) {
     let state = db_state_with_github(pool.clone(), Arc::new(SuccessGitHubClient));
     let app = create_router(state);
@@ -487,7 +482,7 @@ async fn full_device_flow_creates_user_and_token(pool: PgPool) {
     assert!(token_resp["access_token"].is_string());
     assert_eq!(token_resp["token_type"], "bearer");
     assert_eq!(token_resp["user"]["username"], "testuser");
-    assert_eq!(token_resp["user"]["id"].as_i64().unwrap(), 1); // first user in DB
+    assert!(token_resp["user"]["id"].as_i64().unwrap() > 0); // CockroachDB BIGSERIAL uses unique_rowid(), not sequential 1,2,3
 
     // Verify user was created in DB
     let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE github_id = 12345")
@@ -517,8 +512,7 @@ async fn full_device_flow_creates_user_and_token(pool: PgPool) {
     assert_eq!(flow_status, "completed");
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn auth_token_with_unknown_device_code_returns_404(pool: PgPool) {
     let state = db_state(pool);
     let app = create_router(state);
@@ -539,8 +533,7 @@ async fn auth_token_with_unknown_device_code_returns_404(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn rate_limit_rejects_11th_device_flow(pool: PgPool) {
     // Insert 10 device flows for the same IP
     for i in 0..10 {
@@ -573,8 +566,7 @@ async fn rate_limit_rejects_11th_device_flow(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn expired_flows_are_cleaned_up_on_initiate(pool: PgPool) {
     // Insert an expired flow
     sqlx::query(
@@ -611,8 +603,7 @@ async fn expired_flows_are_cleaned_up_on_initiate(pool: PgPool) {
     assert_eq!(count, 0, "expired flow should have been cleaned up");
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn auth_user_extractor_with_valid_token(pool: PgPool) {
     // Create a user and token directly in the DB
     let user_id: i64 = sqlx::query_scalar(
@@ -660,8 +651,7 @@ async fn auth_user_extractor_with_valid_token(pool: PgPool) {
     assert_eq!(json["username"], "extractor-test");
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn auth_user_extractor_rejects_expired_token(pool: PgPool) {
     let user_id: i64 = sqlx::query_scalar(
         "INSERT INTO users (github_id, username, avatar_url, profile_url)
@@ -704,8 +694,7 @@ async fn auth_user_extractor_rejects_expired_token(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn auth_user_extractor_rejects_missing_header(pool: PgPool) {
     let state = db_state(pool);
     let app = Router::new()
@@ -727,8 +716,7 @@ async fn auth_user_extractor_rejects_missing_header(pool: PgPool) {
 
 // ── Completed re-poll / idempotency test ────────────────────────────────────
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn completed_device_code_repoll_issues_new_token(pool: PgPool) {
     let state = db_state_with_github(pool.clone(), Arc::new(SuccessGitHubClient));
     let app = create_router(state);
@@ -798,8 +786,7 @@ async fn completed_device_code_repoll_issues_new_token(pool: PgPool) {
 
 // ── NULL expires_at (never-expiring token) test ─────────────────────────────
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn auth_user_extractor_accepts_null_expires_at(pool: PgPool) {
     let user_id: i64 = sqlx::query_scalar(
         "INSERT INTO users (github_id, username, avatar_url, profile_url)
@@ -890,8 +877,7 @@ impl GitHubClient for UnknownErrorGitHubClient {
     }
 }
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn unknown_github_error_returns_500(pool: PgPool) {
     let state = db_state_with_github(pool.clone(), Arc::new(UnknownErrorGitHubClient));
     let app = create_router(state);
@@ -933,8 +919,7 @@ async fn unknown_github_error_returns_500(pool: PgPool) {
 
 // ── Token response includes expires_in ──────────────────────────────────────
 
-#[ignore = "requires DATABASE_URL to be set"]
-#[sqlx::test(migrations = "./migrations")]
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn token_response_includes_expires_in(pool: PgPool) {
     let state = db_state_with_github(pool.clone(), Arc::new(SuccessGitHubClient));
     let app = create_router(state);
