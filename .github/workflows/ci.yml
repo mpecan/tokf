@@ -50,7 +50,8 @@ jobs:
         run: cargo test --workspace -- --include-ignored
 
       - name: Verify filter test suites
-        run: ./target/debug/tokf verify --require-all
+        working-directory: ./crates/tokf-cli
+        run: ../../target/debug/tokf verify --require-all --scope stdlib
 
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
