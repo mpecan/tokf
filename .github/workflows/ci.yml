@@ -32,6 +32,8 @@ jobs:
       DATABASE_URL: postgres://tokf:tokf@localhost:5432/tokf_test
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -50,8 +52,40 @@ jobs:
         run: cargo test --workspace -- --include-ignored
 
       - name: Verify filter test suites
+        id: verify
         working-directory: ./crates/tokf-cli
-        run: ../../target/debug/tokf verify --require-all --scope stdlib
+        run: |
+          set +e
+          # JSON for structured parsing (no --require-all to avoid early exit)
+          ../../target/debug/tokf verify --scope stdlib --json > /tmp/verify-results.json
+          JSON_EXIT=$?
+          # Human-readable + require-all for coverage check
+          ../../target/debug/tokf verify --require-all --scope stdlib 2>/tmp/verify-stderr.txt
+          REQUIRE_EXIT=$?
+          set -e
+          EXIT=$(( JSON_EXIT > REQUIRE_EXIT ? JSON_EXIT : REQUIRE_EXIT ))
+          echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token
+        if: github.event_name == 'pull_request' && always()
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
+          private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
+
+      - name: Post filter verification PR comment
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const script = require('./.github/scripts/post-verify-comment.js');
+            await script({ github, context, core });
+
+      - name: Fail if verify failed
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit ${{ steps.verify.outputs.exit_code }}
 
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
