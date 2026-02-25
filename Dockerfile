@@ -11,6 +11,7 @@ RUN mkdir -p crates/tokf-common/src \
              crates/tokf-cli/src \
              crates/tokf-server/src && \
     echo 'fn main(){}' > crates/tokf-server/src/main.rs && \
+    echo 'fn main(){}' > crates/tokf-cli/src/main.rs && \
     touch crates/tokf-common/src/lib.rs \
           crates/tokf-cli/src/lib.rs \
           crates/tokf-server/src/lib.rs && \
@@ -20,8 +21,8 @@ RUN mkdir -p crates/tokf-common/src \
 # ── Stage 2: build real source ───────────────────────────────────────────────
 FROM deps AS builder
 COPY crates/ crates/
-# Touch to ensure Cargo detects the source change.
-RUN touch crates/tokf-server/src/main.rs && \
+# Touch all source files so Cargo detects changes vs the empty stubs.
+RUN find crates/ -name '*.rs' -exec touch {} + && \
     cargo build --release -p tokf-server
 
 # ── Stage 3: minimal runtime image ───────────────────────────────────────────

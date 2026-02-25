@@ -9,6 +9,17 @@ use super::{CaseResult, Expectation, SuiteResult, TestCase};
 
 // --- Fixture loading ---
 
+fn read_fixture_file(path: &Path, fixture_name: &str) -> anyhow::Result<String> {
+    let content = std::fs::read_to_string(path)?.trim_end().to_string();
+    if content.is_empty() {
+        anyhow::bail!(
+            "fixture file is empty: {fixture_name}\n\
+             Hint: use inline = \"\" to test empty/no-output scenarios"
+        );
+    }
+    Ok(content)
+}
+
 fn load_fixture(case: &TestCase, case_path: &Path) -> anyhow::Result<String> {
     if let Some(inline) = &case.inline {
         // Inline TOML strings already handle escape sequences (TOML spec)
@@ -20,15 +31,13 @@ fn load_fixture(case: &TestCase, case_path: &Path) -> anyhow::Result<String> {
         let case_dir = case_path.parent().unwrap_or_else(|| Path::new("."));
         let relative_to_case = case_dir.join(fixture);
         if relative_to_case.exists() {
-            return Ok(std::fs::read_to_string(relative_to_case)?
-                .trim_end()
-                .to_string());
+            return read_fixture_file(&relative_to_case, fixture);
         }
 
         // Try relative to CWD
         let path = Path::new(fixture);
         if path.exists() {
-            return Ok(std::fs::read_to_string(path)?.trim_end().to_string());
+            return read_fixture_file(path, fixture);
         }
 
         anyhow::bail!("fixture not found: {fixture}");
@@ -200,7 +209,12 @@ fn run_case(cfg: &tokf::config::types::FilterConfig, case_path: &Path) -> CaseRe
         combined: fixture,
     };
 
-    let filtered = filter::apply(cfg, &cmd_result, &case.args);
+    let filtered = filter::apply(
+        cfg,
+        &cmd_result,
+        &case.args,
+        &filter::FilterOptions::default(),
+    );
 
     let mut failures = Vec::new();
     for expect in &case.expects {

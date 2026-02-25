@@ -95,8 +95,29 @@ This copies the filter TOML and its test suite to your config directory, where i
 | `--no-filter` | Pass output through without filtering |
 | `--no-cache` | Bypass the filter discovery cache |
 | `--no-mask-exit-code` | Disable exit-code masking. By default tokf exits 0 and prepends `Error: Exit code N` on failure |
+| `--preserve-color` | Preserve ANSI color codes in filtered output (env: `TOKF_PRESERVE_COLOR=1`). See [Color passthrough](#color-passthrough) below |
 | `--baseline-pipe` | Pipe command for fair baseline accounting (injected by rewrite) |
 | `--prefer-less` | Compare filtered vs piped output and use whichever is smaller (requires `--baseline-pipe`) |
+
+### Color passthrough
+
+By default, filters with `strip_ansi = true` permanently remove ANSI escape codes. The `--preserve-color` flag changes this: tokf strips ANSI **internally** for pattern matching (skip, keep, dedup) but restores the original colored lines in the final output. When `--preserve-color` is active it overrides `strip_ansi = true` in the filter config.
+
+tokf does **not** force commands to emit color — you must ensure the child command outputs ANSI codes (e.g. via `FORCE_COLOR=1` or `--color=always`):
+
+```sh
+# Node.js / Vitest / Jest
+FORCE_COLOR=1 tokf run --preserve-color npm test
+
+# Cargo
+tokf run --preserve-color cargo test -- --color=always
+
+# Or set the env var once for all invocations
+export TOKF_PRESERVE_COLOR=1
+FORCE_COLOR=1 tokf run npm test
+```
+
+**Limitations:** color passthrough applies to the skip/keep/dedup pipeline (stages 2–2.5). The `match_output`, `parse`, and `lua_script` stages operate on clean text and are unaffected by this flag. `[[replace]]` rules run on the raw text before the color split, so when `--preserve-color` is enabled their patterns may need to account for ANSI escape codes, similar to branch-level `skip` patterns, which also match against the restored colored text.
 
 ---
 
