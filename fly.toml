@@ -1,5 +1,5 @@
 app = "tokf-server"
-primary_region = "iad"
+primary_region = "fra"
 
 [deploy]
   release_command = "./tokf-server migrate"
