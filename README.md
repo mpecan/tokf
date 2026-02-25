@@ -738,6 +738,20 @@ tokf cache info    # show cache location, size, and validity
 tokf cache clear   # delete the cache, forcing a rebuild on next run
 ```
 
+## Authentication
+
+Log in to the tokf server to sync filters and track usage across machines. Authentication uses the GitHub device flow — no secrets to copy-paste.
+
+```sh
+tokf auth login    # start GitHub device flow, open browser, wait for approval
+tokf auth status   # show current login state
+tokf auth logout   # remove stored credentials
+```
+
+`tokf auth login` displays a one-time code, opens your browser to GitHub's device authorization page, and polls until you approve. The bearer token is stored in your OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service); only your username and server URL are written to `~/.config/tokf/auth.toml`.
+
+Set `TOKF_SERVER_URL` to point at a different server (default: `https://api.tokf.net`).
+
 ---
 
 ## Server authentication API

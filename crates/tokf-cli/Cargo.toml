@@ -29,6 +29,9 @@ include_dir = { version = "0.7", features = ["glob"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 rkyv = { version = "0.8", features = ["bytecheck", "unaligned"] }
 mlua = { version = "0.11.6", features = ["luau", "vendored", "error-send"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+open = "5"
 
 [dev-dependencies]
 tempfile = "3"
