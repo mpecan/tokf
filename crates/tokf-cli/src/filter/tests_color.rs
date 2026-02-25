@@ -199,11 +199,11 @@ output = "{1}"
 "#,
     )
     .unwrap();
-    // Line 1: replace extracts "hello", which becomes both display and clean.
+    // Line 1: replace extracts the colored "hello", which becomes both display and clean.
     // Line 2: "noise..." is not matched by replace, then skip removes it.
-    let result = make_result("prefix: hello\nnoise: drop me", 0);
+    let result = make_result("prefix: \x1b[31mhello\x1b[0m\nnoise: drop me", 0);
     let filtered = apply(&config, &result, &[], &color_opts());
-    assert_eq!(filtered.output, "hello");
+    assert_eq!(filtered.output, "\x1b[31mhello\x1b[0m");
 }
 
 #[test]

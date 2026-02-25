@@ -117,7 +117,7 @@ export TOKF_PRESERVE_COLOR=1
 FORCE_COLOR=1 tokf run npm test
 ```
 
-**Limitations:** color passthrough applies to the skip/keep/dedup pipeline (stages 2–2.5). The `match_output`, `parse`, and `lua_script` stages operate on clean text and are unaffected by this flag. Branch-level `skip` patterns match against the restored colored text, so patterns may need to account for ANSI codes at the branch level.
+**Limitations:** color passthrough applies to the skip/keep/dedup pipeline (stages 2–2.5). The `match_output`, `parse`, and `lua_script` stages operate on clean text and are unaffected by this flag. `[[replace]]` rules run on the raw text before the color split, so when `--preserve-color` is enabled their patterns may need to account for ANSI escape codes, similar to branch-level `skip` patterns, which also match against the restored colored text.
 
 ---
 
