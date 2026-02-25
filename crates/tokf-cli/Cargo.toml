@@ -36,6 +36,7 @@ open = "5"
 [dev-dependencies]
 tempfile = "3"
 serial_test = "3"
+mockito = "1.7.2"
 
 [lints]
 workspace = true

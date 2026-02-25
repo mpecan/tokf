@@ -82,6 +82,7 @@ fn poll_for_token(
                     &token_resp.access_token,
                     &token_resp.user.username,
                     base_url,
+                    token_resp.expires_in,
                 )?;
                 eprintln!();
                 eprintln!("[tokf] Logged in as {}", token_resp.user.username);
@@ -151,6 +152,9 @@ pub fn cmd_auth_status() -> anyhow::Result<i32> {
         Some(auth) => {
             println!("Logged in as {}", auth.username);
             println!("Server: {}", auth.server_url);
+            if auth.is_expired() {
+                println!("Token: expired — run `tokf auth login` to re-authenticate");
+            }
         }
         None => {
             println!("Not logged in. Run `tokf auth login` to authenticate.");

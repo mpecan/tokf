@@ -60,6 +60,7 @@ pub struct PendingResponse {
 }
 
 /// Result of a single token poll attempt.
+#[derive(Debug)]
 pub enum PollResult {
     Success(TokenResponse),
     Pending { interval: i64 },
