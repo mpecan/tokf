@@ -7,9 +7,25 @@ use tokf_server::{
 };
 
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use tokio::net::TcpListener;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+#[derive(Parser)]
+#[command(name = "tokf-server", about = "tokf API server")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Start the HTTP server (default when no subcommand is given)
+    Serve,
+    /// Run database migrations and exit
+    Migrate,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,16 +37,40 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let cli = Cli::parse();
+
+    match cli.command.unwrap_or(Command::Serve) {
+        Command::Serve => cmd_serve().await,
+        Command::Migrate => cmd_migrate().await,
+    }
+}
+
+async fn cmd_migrate() -> Result<()> {
+    let cfg = config::Config::from_env();
+    let database_url = cfg.resolve_migration_url().ok_or_else(|| {
+        anyhow::anyhow!("MIGRATION_DATABASE_URL or DATABASE_URL environment variable is required")
+    })?;
+    let pool = db::create_pool(database_url).await?;
+    db::run_migrations(&pool).await?;
+    tracing::info!("migrations complete");
+    Ok(())
+}
+
+async fn cmd_serve() -> Result<()> {
     let cfg = config::Config::from_env();
     let storage_client = build_storage_client(&cfg)?;
 
     let database_url = cfg
         .database_url
+        .as_deref()
         .ok_or_else(|| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-    let pool = db::create_pool(&database_url).await?;
+    let pool = db::create_pool(database_url).await?;
 
     if cfg.run_migrations {
-        db::run_migrations(&pool).await?;
+        match cfg.migration_database_url.as_deref() {
+            Some(url) => db::run_migrations(&db::create_pool(url).await?).await?,
+            None => db::run_migrations(&pool).await?,
+        }
     } else {
         tracing::info!("skipping migrations (RUN_MIGRATIONS=false)");
     }
@@ -174,6 +214,7 @@ mod tests {
         config::Config {
             port: 8080,
             database_url: Some("postgres://localhost/test".to_string()),
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: Some("test-bucket".to_string()),
@@ -190,6 +231,7 @@ mod tests {
         config::Config {
             port: 8080,
             database_url: Some("postgres://localhost/test".to_string()),
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: None,

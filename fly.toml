@@ -1,6 +1,13 @@
 app = "tokf-server"
 primary_region = "iad"
 
+[deploy]
+  release_command = "./tokf-server migrate"
+
+[env]
+  RUN_MIGRATIONS = "false"
+  TRUST_PROXY = "true"
+
 [http_service]
   internal_port = 8080
   force_https = true
@@ -9,12 +16,17 @@ primary_region = "iad"
 
   [http_service.checks]
     [http_service.checks.health]
-      grace_period = "5s"
+      grace_period = "10s"
       interval = "10s"
       method = "GET"
-      path = "/health"
+      path = "/ready"
       protocol = "http"
       timeout = "5s"
+
+# Graceful shutdown: SIGTERM triggers drain (30s in main.rs), then SIGKILL after 35s.
+# The 35s kill_timeout provides a 5-second buffer beyond the 30s drain period.
+kill_signal = "SIGTERM"
+kill_timeout = 35
 
 [[vm]]
   memory = "256mb"

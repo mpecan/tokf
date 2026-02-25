@@ -1,6 +1,11 @@
 pub struct Config {
     pub port: u16,
     pub database_url: Option<String>,
+    /// Separate connection string for running migrations.  When set, the
+    /// `migrate` subcommand and startup migrations use this URL instead of
+    /// `DATABASE_URL`.  This allows the migration user to have elevated
+    /// privileges (DDL) while the application user is restricted to DML.
+    pub migration_database_url: Option<String>,
     /// When `false`, the server starts without applying migrations.
     /// Set `RUN_MIGRATIONS=false` to manage migrations out-of-band (e.g. a
     /// dedicated migration job in Kubernetes).  Defaults to `true`.
@@ -26,6 +31,10 @@ impl std::fmt::Debug for Config {
             .field(
                 "database_url",
                 &self.database_url.as_deref().map(|_| "<redacted>"),
+            )
+            .field(
+                "migration_database_url",
+                &self.migration_database_url.as_deref().map(|_| "<redacted>"),
             )
             .field("run_migrations", &self.run_migrations)
             .field("r2_bucket_name", &self.r2_bucket_name)
@@ -63,6 +72,16 @@ impl Config {
             .map(|id| format!("https://{id}.r2.cloudflarestorage.com"))
     }
 
+    /// Returns the database URL to use for migrations.
+    ///
+    /// Prefers `migration_database_url`; falls back to `database_url`.
+    /// Returns `None` when neither is set.
+    pub fn resolve_migration_url(&self) -> Option<&str> {
+        self.migration_database_url
+            .as_deref()
+            .or(self.database_url.as_deref())
+    }
+
     /// Read an env var, treating empty strings as absent.
     fn env_non_empty(key: &str) -> Option<String> {
         std::env::var(key).ok().filter(|s| !s.is_empty())
@@ -93,6 +112,7 @@ impl Config {
         Self {
             port,
             database_url: Self::env_non_empty("DATABASE_URL"),
+            migration_database_url: Self::env_non_empty("MIGRATION_DATABASE_URL"),
             run_migrations,
             r2_bucket_name: Self::env_non_empty("R2_BUCKET_NAME"),
             r2_access_key_id: Self::env_non_empty("R2_ACCESS_KEY_ID"),
@@ -179,6 +199,30 @@ mod tests {
     }
 
     #[test]
+    fn reads_migration_database_url_from_env() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        unsafe {
+            std::env::set_var(
+                "MIGRATION_DATABASE_URL",
+                "postgres://migrator@localhost/tokf",
+            );
+            std::env::remove_var("DATABASE_URL");
+        }
+        let cfg = Config::from_env();
+        unsafe {
+            std::env::remove_var("MIGRATION_DATABASE_URL");
+        }
+        assert_eq!(
+            cfg.migration_database_url.as_deref(),
+            Some("postgres://migrator@localhost/tokf")
+        );
+        assert!(cfg.database_url.is_none());
+    }
+
+    #[test]
     fn run_migrations_defaults_to_true() {
         let _g = ENV_LOCK
             .lock()
@@ -206,6 +250,7 @@ mod tests {
         let cfg = Config {
             port: 8080,
             database_url: Some("postgres://secret".to_string()),
+            migration_database_url: Some("postgres://migration-secret".to_string()),
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: Some("my-bucket".to_string()),
@@ -218,6 +263,7 @@ mod tests {
         };
         let debug_str = format!("{cfg:?}");
         assert!(!debug_str.contains("postgres://secret"));
+        assert!(!debug_str.contains("migration-secret"));
         assert!(!debug_str.contains("key-id"));
         assert!(!debug_str.contains("super-secret"));
         assert!(!debug_str.contains("gh-secret-value"));
@@ -234,6 +280,7 @@ mod tests {
         let cfg = Config {
             port: 8080,
             database_url: None,
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: None,
@@ -255,6 +302,7 @@ mod tests {
         let cfg = Config {
             port: 8080,
             database_url: None,
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: None,
@@ -276,6 +324,7 @@ mod tests {
         let cfg = Config {
             port: 8080,
             database_url: None,
+            migration_database_url: None,
             run_migrations: true,
             trust_proxy: false,
             r2_bucket_name: None,
@@ -298,11 +347,13 @@ mod tests {
         unsafe {
             std::env::set_var("R2_BUCKET_NAME", "");
             std::env::set_var("DATABASE_URL", "");
+            std::env::set_var("MIGRATION_DATABASE_URL", "");
         }
         let cfg = Config::from_env();
         unsafe {
             std::env::remove_var("R2_BUCKET_NAME");
             std::env::remove_var("DATABASE_URL");
+            std::env::remove_var("MIGRATION_DATABASE_URL");
         }
         assert!(
             cfg.r2_bucket_name.is_none(),
@@ -312,5 +363,76 @@ mod tests {
             cfg.database_url.is_none(),
             "empty DATABASE_URL should be None"
         );
+        assert!(
+            cfg.migration_database_url.is_none(),
+            "empty MIGRATION_DATABASE_URL should be None"
+        );
+    }
+
+    #[test]
+    fn resolve_migration_url_prefers_migration_url() {
+        let cfg = Config {
+            database_url: Some("postgres://app@localhost/tokf".to_string()),
+            migration_database_url: Some("postgres://migrator@localhost/tokf".to_string()),
+            ..default_config()
+        };
+        assert_eq!(
+            cfg.resolve_migration_url(),
+            Some("postgres://migrator@localhost/tokf")
+        );
+    }
+
+    #[test]
+    fn resolve_migration_url_falls_back_to_database_url() {
+        let cfg = Config {
+            database_url: Some("postgres://app@localhost/tokf".to_string()),
+            migration_database_url: None,
+            ..default_config()
+        };
+        assert_eq!(
+            cfg.resolve_migration_url(),
+            Some("postgres://app@localhost/tokf")
+        );
+    }
+
+    #[test]
+    fn resolve_migration_url_returns_none_when_neither_set() {
+        let cfg = Config {
+            database_url: None,
+            migration_database_url: None,
+            ..default_config()
+        };
+        assert!(cfg.resolve_migration_url().is_none());
+    }
+
+    #[test]
+    fn resolve_migration_url_works_with_only_migration_url() {
+        let cfg = Config {
+            database_url: None,
+            migration_database_url: Some("postgres://migrator@localhost/tokf".to_string()),
+            ..default_config()
+        };
+        assert_eq!(
+            cfg.resolve_migration_url(),
+            Some("postgres://migrator@localhost/tokf")
+        );
+    }
+
+    /// Baseline config with all optional fields unset, for use with `..default_config()`.
+    fn default_config() -> Config {
+        Config {
+            port: 8080,
+            database_url: None,
+            migration_database_url: None,
+            run_migrations: true,
+            trust_proxy: false,
+            r2_bucket_name: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_endpoint: None,
+            r2_account_id: None,
+            github_client_id: None,
+            github_client_secret: None,
+        }
     }
 }

@@ -2955,6 +2955,7 @@ dependencies = [
  "aws-sdk-s3",
  "axum",
  "chrono",
+ "clap",
  "hex",
  "http-body-util",
  "rand 0.8.5",
