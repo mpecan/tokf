@@ -1,4 +1,4 @@
-command = "vue-tsc"
+command = ["vue-tsc", "npx vue-tsc"]
 
 match_output = [
   { contains = "Found 0 errors", output = "✓ vue-tsc: no errors" },

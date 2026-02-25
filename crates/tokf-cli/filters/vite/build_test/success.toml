@@ -1,0 +1,6 @@
+name = "successful build collapses to summary"
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+equals = "✓ vite build: 4.41s"

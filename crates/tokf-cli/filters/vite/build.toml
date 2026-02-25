@@ -1,0 +1,19 @@
+command = "vite build"
+strip_ansi = true
+skip = [
+  "^\\s*$",
+  "^> ",
+  "^\\s*\\$\\s",
+  "^vite v",
+  "^transforming",
+  "^rendering chunks",
+  "^computing gzip",
+  "^dist/",
+  "^\\.\\.\\.",
+]
+
+[on_success]
+extract = { pattern = "built in (.+)", output = "✓ vite build: {1}" }
+
+[on_failure]
+tail = 30
