@@ -3,18 +3,21 @@
 FROM rust:slim AS deps
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-COPY crates/tokf-common/Cargo.toml crates/tokf-common/
-COPY crates/tokf-cli/Cargo.toml    crates/tokf-cli/
-COPY crates/tokf-server/Cargo.toml crates/tokf-server/
+COPY crates/tokf-common/Cargo.toml    crates/tokf-common/
+COPY crates/tokf-cli/Cargo.toml       crates/tokf-cli/
+COPY crates/tokf-server/Cargo.toml    crates/tokf-server/
+COPY crates/crdb-test-macro/Cargo.toml crates/crdb-test-macro/
 # Create empty source stubs so `cargo build` can resolve all dependencies.
 RUN mkdir -p crates/tokf-common/src \
              crates/tokf-cli/src \
-             crates/tokf-server/src && \
+             crates/tokf-server/src \
+             crates/crdb-test-macro/src && \
     echo 'fn main(){}' > crates/tokf-server/src/main.rs && \
     echo 'fn main(){}' > crates/tokf-cli/src/main.rs && \
     touch crates/tokf-common/src/lib.rs \
           crates/tokf-cli/src/lib.rs \
-          crates/tokf-server/src/lib.rs && \
+          crates/tokf-server/src/lib.rs \
+          crates/crdb-test-macro/src/lib.rs && \
     cargo build --release -p tokf-server && \
     rm -rf crates/*/src
 
