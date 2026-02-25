@@ -45,11 +45,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Create CockroachDB test database
-        run: |
-          curl --silent --retry 5 --retry-delay 2 \
-            "http://localhost:8080/api/v2/sql/" \
-            -H 'Content-Type: application/json' \
-            -d '{"statements": [{"sql": "CREATE DATABASE IF NOT EXISTS tokf_test"}]}'
+        run: psql "$DATABASE_URL" -c "SELECT 1" 2>/dev/null || psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" -c "CREATE DATABASE IF NOT EXISTS tokf_test"
 
       - name: Run tests
         run: cargo test --workspace
