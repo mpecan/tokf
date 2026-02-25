@@ -319,11 +319,11 @@ fn main() {
             scope.as_ref(),
         ),
         Commands::Info { json } => info_cmd::cmd_info(*json),
-        Commands::Auth { action } => match action {
+        Commands::Auth { action } => or_exit(match action {
             AuthAction::Login => auth_cmd::cmd_auth_login(),
             AuthAction::Logout => auth_cmd::cmd_auth_logout(),
             AuthAction::Status => auth_cmd::cmd_auth_status(),
-        },
+        }),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),

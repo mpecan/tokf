@@ -15,9 +15,11 @@ fn auth_status_not_logged_in() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // When no credentials are stored (or keyring unavailable), should say not logged in
+    // When no credentials are stored, should report not logged in.
+    // If the developer has logged in locally, the test still passes but checks
+    // the alternative output.
     assert!(
-        stdout.contains("Not logged in") || stdout.contains("Logged in"),
+        stdout.contains("Not logged in") || stdout.contains("Logged in as"),
         "expected auth status output, got: {stdout}"
     );
 }
@@ -31,9 +33,10 @@ fn auth_logout_when_not_logged_in() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // Should say either "Logged out" or "Not logged in, nothing to do."
     assert!(
-        stderr.contains("Logged out"),
-        "expected 'Logged out' message, got: {stderr}"
+        stderr.contains("Logged out") || stderr.contains("nothing to do"),
+        "expected logout message, got: {stderr}"
     );
 }
 

@@ -12,6 +12,13 @@ pub struct StoredAuth {
     pub server_url: String,
 }
 
+/// Loaded credentials: token (from keyring) + metadata (from TOML).
+pub struct LoadedAuth {
+    pub token: String,
+    pub username: String,
+    pub server_url: String,
+}
+
 pub fn auth_config_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("tokf").join("auth.toml"))
 }
@@ -40,11 +47,36 @@ pub fn save(token: &str, username: &str, server_url: &str) -> anyhow::Result<()>
         server_url: server_url.to_string(),
     };
     let content = toml::to_string_pretty(&meta)?;
-    fs::write(&path, content)?;
+    write_config_file(&path, &content)?;
     Ok(())
 }
 
-pub fn load() -> Option<(String, String, String)> {
+/// Write a config file with restrictive permissions (0600 on Unix).
+fn write_config_file(path: &PathBuf, content: &str) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.write_all(content.as_bytes())?;
+    }
+    #[cfg(not(unix))]
+    {
+        fs::write(path, content)?;
+    }
+    Ok(())
+}
+
+/// Load stored authentication credentials.
+///
+/// Returns `None` if no credentials are stored, the TOML file is missing
+/// or malformed, or the keyring entry is absent.
+pub fn load() -> Option<LoadedAuth> {
     let path = auth_config_path()?;
     let content = fs::read_to_string(&path).ok()?;
     let meta: StoredAuth = toml::from_str(&content).ok()?;
@@ -52,10 +84,20 @@ pub fn load() -> Option<(String, String, String)> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?;
     let token = entry.get_password().ok()?;
 
-    Some((token, meta.username, meta.server_url))
+    Some(LoadedAuth {
+        token,
+        username: meta.username,
+        server_url: meta.server_url,
+    })
 }
 
-pub fn remove() {
+/// Remove stored credentials (keyring entry and TOML file).
+///
+/// Silently ignores errors — the credentials may already be absent.
+/// Returns `true` if credentials were present before removal.
+pub fn remove() -> bool {
+    let had_credentials = load().is_some();
+
     // Remove keyring entry (ignore errors — may already be absent)
     if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         let _ = entry.delete_credential();
@@ -65,6 +107,8 @@ pub fn remove() {
     if let Some(path) = auth_config_path() {
         let _ = fs::remove_file(&path);
     }
+
+    had_credentials
 }
 
 #[cfg(test)]
@@ -99,11 +143,9 @@ mod tests {
 
     #[test]
     fn load_returns_none_when_no_file() {
-        // With no auth.toml written, load should return None gracefully
-        // (This test relies on a clean state or the TOML file not existing
-        // at the default path. It validates the None-on-missing-file path.)
-        // We can't guarantee the file doesn't exist in CI, but the function
-        // should never panic.
+        // This test validates graceful handling when no credentials exist.
+        // It may return Some if the developer has logged in locally, so we
+        // just verify it doesn't panic.
         let _ = load();
     }
 }
