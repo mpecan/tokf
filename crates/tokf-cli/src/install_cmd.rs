@@ -102,19 +102,18 @@ fn install(
     Ok(0)
 }
 
-/// Parse the filter TOML (stripping attribution comments) and return the
-/// first command pattern together with the parsed config.
+/// Parse the filter TOML and return the first command pattern together with
+/// the parsed config.
+///
+/// The `toml` crate natively ignores TOML comments, so stripping `#` lines
+/// is unnecessary and would corrupt multi-line strings (e.g. Lua source)
+/// that contain lines beginning with `#`.
 ///
 /// # Errors
 ///
 /// Returns an error if the TOML is invalid or has no command patterns.
 fn parse_filter_toml(toml_str: &str) -> anyhow::Result<(String, FilterConfig)> {
-    let stripped = toml_str
-        .lines()
-        .filter(|l| !l.starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let config: FilterConfig = toml::from_str(&stripped)
+    let config: FilterConfig = toml::from_str(toml_str)
         .map_err(|e| anyhow::anyhow!("could not parse filter TOML: {e}"))?;
     let pattern = config.command.first().to_string();
     if pattern.is_empty() {

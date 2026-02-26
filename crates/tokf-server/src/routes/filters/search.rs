@@ -72,14 +72,17 @@ fn filename_from_r2_key(r2_key: &str) -> String {
     r2_key.rsplit('/').next().unwrap_or(r2_key).to_string()
 }
 
-/// Escape `%` and `_` for use in a SQL ILIKE pattern.
+/// Escape `\`, `%`, and `_` for use in a SQL ILIKE pattern.
 ///
 /// Without escaping, user-supplied `%` or `_` characters would act as ILIKE
 /// wildcards, matching any character sequence or any single character
-/// respectively. This function neutralises them so only the explicitly added
-/// surrounding `%...%` wildcards take effect.
+/// respectively. Backslashes must be escaped first because the query uses
+/// `ESCAPE '\\'` — an unescaped `\` would modify the interpretation of the
+/// next character and produce unexpected matches.
 fn escape_ilike(s: &str) -> String {
-    s.replace('%', "\\%").replace('_', "\\_")
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 // ── GET /api/filters ──────────────────────────────────────────────────────────
@@ -139,7 +142,8 @@ pub async fn search_filters(
     .fetch_all(&state.db)
     .await?;
 
-    // P2.2: Propagate DB mapping errors for non-nullable columns instead of silently defaulting.
+    // Propagate DB mapping errors for all columns — COALESCE ensures they are
+    // non-null so unwrap_or would only hide real schema/type mismatches.
     let summaries: Vec<FilterSummary> = rows
         .iter()
         .map(|row| -> Result<FilterSummary, sqlx::Error> {
@@ -147,9 +151,9 @@ pub async fn search_filters(
                 content_hash: row.try_get("content_hash")?,
                 command_pattern: row.try_get("command_pattern")?,
                 author: row.try_get("author")?,
-                savings_pct: row.try_get("savings_pct").unwrap_or(0.0),
-                total_commands: row.try_get("total_commands").unwrap_or(0),
-                created_at: row.try_get("created_at").unwrap_or_default(),
+                savings_pct: row.try_get("savings_pct")?,
+                total_commands: row.try_get("total_commands")?,
+                created_at: row.try_get("created_at")?,
             })
         })
         .collect::<Result<Vec<_>, _>>()
@@ -168,10 +172,13 @@ pub async fn search_filters(
 /// - `404 Not Found` if no filter with the given hash exists.
 /// - `500 Internal Server Error` on database failures.
 pub async fn get_filter(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<Json<FilterDetails>, AppError> {
+    if !state.search_rate_limiter.check_and_increment(auth.user_id) {
+        return Err(AppError::RateLimited);
+    }
     let row = sqlx::query(
         "SELECT f.content_hash, f.command_pattern, u.username AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
@@ -189,29 +196,25 @@ pub async fn get_filter(
     .await?
     .ok_or_else(|| AppError::NotFound(format!("filter not found: {hash}")))?;
 
-    // P2.2: Propagate DB mapping errors for non-nullable columns.
-    let content_hash: String = row
-        .try_get("content_hash")
-        .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;
-    let command_pattern: String = row
-        .try_get("command_pattern")
-        .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;
-    let author: String = row
-        .try_get("author")
-        .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;
+    // Propagate DB mapping errors for all columns — COALESCE/casts ensure they
+    // are non-null so unwrap_or would only hide real schema/type mismatches.
+    let details = (|| -> Result<FilterDetails, sqlx::Error> {
+        let content_hash: String = row.try_get("content_hash")?;
+        let registry_url = format!("{}/filters/{}", state.public_url, content_hash);
+        Ok(FilterDetails {
+            content_hash,
+            command_pattern: row.try_get("command_pattern")?,
+            author: row.try_get("author")?,
+            savings_pct: row.try_get("savings_pct")?,
+            total_commands: row.try_get("total_commands")?,
+            created_at: row.try_get("created_at")?,
+            test_count: row.try_get("test_count")?,
+            registry_url,
+        })
+    })()
+    .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;
 
-    let registry_url = format!("{}/filters/{}", state.public_url, content_hash);
-
-    Ok(Json(FilterDetails {
-        content_hash,
-        command_pattern,
-        author,
-        savings_pct: row.try_get("savings_pct").unwrap_or(0.0),
-        total_commands: row.try_get("total_commands").unwrap_or(0),
-        created_at: row.try_get("created_at").unwrap_or_default(),
-        test_count: row.try_get("test_count").unwrap_or(0),
-        registry_url,
-    }))
+    Ok(Json(details))
 }
 
 // ── GET /api/filters/:hash/download ──────────────────────────────────────────
@@ -224,10 +227,13 @@ pub async fn get_filter(
 /// - `404 Not Found` if no filter with the given hash exists.
 /// - `500 Internal Server Error` on storage or database failures.
 pub async fn download_filter(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<Json<DownloadPayload>, AppError> {
+    if !state.search_rate_limiter.check_and_increment(auth.user_id) {
+        return Err(AppError::RateLimited);
+    }
     let r2_key: Option<String> =
         sqlx::query_scalar("SELECT r2_key FROM filters WHERE content_hash = $1")
             .bind(&hash)
