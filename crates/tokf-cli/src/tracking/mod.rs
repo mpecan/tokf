@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension as _};
 
 pub use tokf_common::tracking::types::{DailyGain, FilterGain, GainSummary, TrackingEvent};
 
@@ -67,6 +67,11 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
         )
         .context("migrate events table: add pipe_override column")?;
     }
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    )
+    .context("create sync_state table")?;
 
     Ok(conn)
 }
@@ -266,6 +271,70 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
             savings_pct: savings_pct(input_tokens, tokens_saved),
             pipe_override_count,
         });
+    }
+    Ok(result)
+}
+
+/// Returns the last successfully synced event ID (from `sync_state` table, default 0).
+///
+/// # Errors
+/// Returns an error if the SQL query fails.
+pub fn get_last_synced_id(conn: &Connection) -> anyhow::Result<i64> {
+    let id: Option<String> = conn
+        .query_row(
+            "SELECT value FROM sync_state WHERE key = 'last_synced_id'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .context("query last_synced_id")?;
+    Ok(id.and_then(|s| s.parse().ok()).unwrap_or(0))
+}
+
+/// Persist the last successfully synced event ID.
+///
+/// # Errors
+/// Returns an error if the SQL INSERT/UPDATE fails.
+pub fn set_last_synced_id(conn: &Connection, id: i64) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO sync_state (key, value) VALUES ('last_synced_id', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![id.to_string()],
+    )
+    .context("set last_synced_id")?;
+    Ok(())
+}
+
+/// An event ready to be shipped to the remote server.
+pub struct SyncableEvent {
+    pub id: i64,
+    pub filter_name: Option<String>,
+    pub input_tokens_est: i64,
+    pub output_tokens_est: i64,
+    pub timestamp: String,
+}
+
+/// Returns up to 500 events with `id > last_id`, ordered ascending.
+///
+/// # Errors
+/// Returns an error if the SQL query fails.
+pub fn get_events_since(conn: &Connection, last_id: i64) -> anyhow::Result<Vec<SyncableEvent>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, filter_name, input_tokens_est, output_tokens_est, timestamp
+         FROM events WHERE id > ?1 ORDER BY id ASC LIMIT 500",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![last_id], |row| {
+        Ok(SyncableEvent {
+            id: row.get(0)?,
+            filter_name: row.get(1)?,
+            input_tokens_est: row.get(2)?,
+            output_tokens_est: row.get(3)?,
+            timestamp: row.get(4)?,
+        })
+    })?;
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.context("read sync event")?);
     }
     Ok(result)
 }

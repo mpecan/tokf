@@ -271,6 +271,8 @@ enum RemoteAction {
     Setup,
     /// Show remote sync registration state
     Status,
+    /// Sync local usage events to the remote server
+    Sync,
 }
 
 #[derive(Subcommand)]
@@ -381,6 +383,7 @@ fn main() {
         Commands::Remote { action } => or_exit(match action {
             RemoteAction::Setup => remote_cmd::cmd_remote_setup(),
             RemoteAction::Status => remote_cmd::cmd_remote_status(),
+            RemoteAction::Sync => remote_cmd::cmd_remote_sync(),
         }),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),

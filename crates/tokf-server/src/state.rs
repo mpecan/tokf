@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::auth::github::GitHubClient;
-use crate::rate_limit::PublishRateLimiter;
+use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
 use crate::storage::StorageClient;
 
 #[derive(Clone)]
@@ -16,4 +16,5 @@ pub struct AppState {
     pub publish_rate_limiter: Arc<PublishRateLimiter>,
     /// Rate limiter for search/download endpoints (higher limit than publish).
     pub search_rate_limiter: Arc<PublishRateLimiter>,
+    pub sync_rate_limiter: Arc<SyncRateLimiter>,
 }

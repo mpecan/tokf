@@ -93,6 +93,7 @@ async fn cmd_serve() -> Result<()> {
         publish_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(20, 3600)),
         // Search/download is cheaper than publish — allow 300 requests per hour.
         search_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(300, 3600)),
+        sync_rate_limiter: Arc::new(rate_limit::SyncRateLimiter::new(60, 3600)),
     };
     let app = routes::create_router(app_state).layer(
         // R11: explicitly disable header capture to prevent accidental secret leakage

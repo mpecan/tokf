@@ -79,3 +79,72 @@ pub fn cmd_remote_status() -> anyhow::Result<i32> {
     }
     Ok(0)
 }
+
+/// Sync local usage events to the remote server.
+///
+/// # Errors
+///
+/// Returns an error if the user is not logged in, no machine is registered,
+/// or the server is unreachable.
+pub fn cmd_remote_sync() -> anyhow::Result<i32> {
+    use tokf::remote::sync_client::{SyncEvent, SyncRequest};
+    use tokf::tracking;
+
+    let auth = credentials::load()
+        .ok_or_else(|| anyhow::anyhow!("not logged in. Run `tokf auth login` first"))?;
+
+    if auth.is_expired() {
+        anyhow::bail!("token has expired. Run `tokf auth login` to re-authenticate");
+    }
+
+    let machine = machine::load()
+        .ok_or_else(|| anyhow::anyhow!("machine not registered. Run `tokf remote setup` first"))?;
+
+    let db_path =
+        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
+    let conn = tracking::open_db(&db_path)?;
+
+    let last_id = tracking::get_last_synced_id(&conn)?;
+    let events = tracking::get_events_since(&conn, last_id)?;
+
+    if events.is_empty() {
+        eprintln!("[tokf] Nothing to sync");
+        return Ok(0);
+    }
+
+    let sync_events: Vec<SyncEvent> = events
+        .iter()
+        .map(|e| SyncEvent {
+            id: e.id,
+            filter_name: e.filter_name.clone(),
+            filter_hash: None,
+            input_tokens: e.input_tokens_est,
+            output_tokens: e.output_tokens_est,
+            command_count: 1,
+            recorded_at: e.timestamp.clone(),
+        })
+        .collect();
+
+    let http_client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(5))
+        .user_agent(format!("tokf-cli/{}", env!("CARGO_PKG_VERSION")))
+        .build()?;
+
+    let req = SyncRequest {
+        machine_id: machine.machine_id,
+        last_event_id: last_id,
+        events: sync_events,
+    };
+
+    let response =
+        tokf::remote::sync_client::sync_events(&http_client, &auth.server_url, &auth.token, &req)?;
+
+    tracking::set_last_synced_id(&conn, response.cursor)?;
+    eprintln!(
+        "[tokf] Synced {} event(s). Cursor: {}.",
+        response.accepted, response.cursor
+    );
+
+    Ok(0)
+}

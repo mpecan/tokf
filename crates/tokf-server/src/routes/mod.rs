@@ -1,8 +1,13 @@
 pub mod auth;
 mod filters;
+mod gain;
 mod health;
 mod machines;
 mod ready;
+mod sync;
+
+#[cfg(test)]
+pub mod test_helpers;
 
 use axum::{
     Router,
@@ -30,5 +35,9 @@ pub fn create_router(state: AppState) -> Router {
             "/api/filters/{hash}/download",
             get(filters::download_filter),
         )
+        .route("/api/sync", post(sync::sync_usage))
+        .route("/api/gain", get(gain::get_gain))
+        .route("/api/gain/global", get(gain::get_global_gain))
+        .route("/api/gain/filter/{hash}", get(gain::get_filter_gain))
         .with_state(state)
 }
