@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.2.13](https://github.com/mpecan/tokf/compare/tokf-v0.2.12...tokf-v0.2.13) (2026-02-26)
+
+
+### Features
+
+* **ci:** sticky PR comment for filter verification + reject empty fixtures ([#173](https://github.com/mpecan/tokf/issues/173)) ([c66af9e](https://github.com/mpecan/tokf/commit/c66af9edd60fa4196fc9b2b4753ea1271ebd0b1e))
+* **cli,server:** filter publishing — tokf publish &lt;filter-name&gt; ([#117](https://github.com/mpecan/tokf/issues/117)) ([#181](https://github.com/mpecan/tokf/issues/181)) ([acf495f](https://github.com/mpecan/tokf/commit/acf495f08f35fb54c9ec8a488c6d4010c33a02d1))
+* **cli,server:** machine UUID registration for remote sync ([#113](https://github.com/mpecan/tokf/issues/113)) ([#179](https://github.com/mpecan/tokf/issues/179)) ([8535a85](https://github.com/mpecan/tokf/commit/8535a85eef08124e853e478965260811ddd1dec5))
+* **cli:** add --raw flag to history show ([#155](https://github.com/mpecan/tokf/issues/155)) ([a98c34d](https://github.com/mpecan/tokf/commit/a98c34d89c7ef09c3305720544beebbef1258fe9))
+* **cli:** add tokf auth login/logout/status commands ([#178](https://github.com/mpecan/tokf/issues/178)) ([92bcf6b](https://github.com/mpecan/tokf/commit/92bcf6b3cf60dc6f26adb7881c6d02ddf776c260))
+* **cli:** add tokf info command and tokf verify --scope ([#158](https://github.com/mpecan/tokf/issues/158)) ([7263e30](https://github.com/mpecan/tokf/commit/7263e307441b70116a543d0fa27bdb0f276c1f88))
+* **cli:** add TOKF_HOME env var and improve permission diagnostics ([#180](https://github.com/mpecan/tokf/issues/180)) ([10d4d37](https://github.com/mpecan/tokf/commit/10d4d377dd8512dbc78abe1b2ff6f055c5291551))
+* **cli:** exit-code masking and improved push filter ([#150](https://github.com/mpecan/tokf/issues/150)) ([1b97ce5](https://github.com/mpecan/tokf/commit/1b97ce5f97b1b9ed281f39844131cce8abebc2ec))
+* **cli:** pipe stripping control, --prefer-less mode, and override tracking ([#154](https://github.com/mpecan/tokf/issues/154)) ([7f24f12](https://github.com/mpecan/tokf/commit/7f24f12deb3b6968a9a857b9a6f327c7796928aa))
+* **filter:** add --preserve-color flag for ANSI color passthrough ([#162](https://github.com/mpecan/tokf/issues/162)) ([4187493](https://github.com/mpecan/tokf/commit/4187493fbeabe423100ad7bd58fbce0b8726a8df))
+* **filter:** canonical content hash for filter identity ([#126](https://github.com/mpecan/tokf/issues/126)) ([5abfaf8](https://github.com/mpecan/tokf/commit/5abfaf819833eb625eba47c35e947bbfe9540474))
+* **filter:** rewrite git/status and add cargo/fmt stdlib filters ([#184](https://github.com/mpecan/tokf/issues/184)) ([06d41c3](https://github.com/mpecan/tokf/commit/06d41c3f78acbd3e442b57764e48aa9461a2f4fe))
+* **filter:** show history hint for filtered output ([#129](https://github.com/mpecan/tokf/issues/129)) ([9eca37c](https://github.com/mpecan/tokf/commit/9eca37ce1ec0ed1cb0dcbf2ac2b899b00db15883))
+* **hook:** add OpenAI Codex CLI integration ([#157](https://github.com/mpecan/tokf/issues/157)) ([a837661](https://github.com/mpecan/tokf/commit/a8376616fdf8e6ce59c0377170120a6abc4dafb5))
+* **hook:** add opencode plugin installer ([#136](https://github.com/mpecan/tokf/issues/136)) ([dee751d](https://github.com/mpecan/tokf/commit/dee751d3e2c88afde690c42d97502bb91726b0d0))
+* **rewrite:** strip leading env var prefix before command matching ([#141](https://github.com/mpecan/tokf/issues/141)) ([4aca301](https://github.com/mpecan/tokf/commit/4aca30114d353bce8db611755c2e04a40df14dfb))
+* **server:** add DB connection pooling, schema migrations, and health probes ([#140](https://github.com/mpecan/tokf/issues/140)) ([dc4c85a](https://github.com/mpecan/tokf/commit/dc4c85ab1076ea49559d3a1a83c30630e7290547))
+* **server:** bootstrap axum server with /health, config, and CI ([#109](https://github.com/mpecan/tokf/issues/109)) ([#127](https://github.com/mpecan/tokf/issues/127)) ([90bcf72](https://github.com/mpecan/tokf/commit/90bcf724872a25038ac8eb37ba37409f4cf73181))
+
+
+### Bug Fixes
+
+* **ci:** stop running stdlib verify tests redundantly in cargo test ([#175](https://github.com/mpecan/tokf/issues/175)) ([52b4f9a](https://github.com/mpecan/tokf/commit/52b4f9aa847097cf186d06e94b9d7feced34047d))
+* **skill:** move skill files into crate for cargo package compatibility ([#137](https://github.com/mpecan/tokf/issues/137)) ([da3b653](https://github.com/mpecan/tokf/commit/da3b6531e9d97134d263c305d9470e9102764b67))
+
+
+### Code Refactoring
+
+* restructure repository as a Cargo workspace ([#124](https://github.com/mpecan/tokf/issues/124)) ([23396d5](https://github.com/mpecan/tokf/commit/23396d50271f0764619f89b302d84443bf1ab32d))
+* split oversized files, reduce duplication, add cargo-dupes CI ([#161](https://github.com/mpecan/tokf/issues/161)) ([d269603](https://github.com/mpecan/tokf/commit/d2696039c71f9305e915cb18325650e7d465347e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.12 to 0.2.13
+
 ## [0.2.12](https://github.com/mpecan/tokf/compare/tokf-v0.2.11...tokf-v0.2.12) (2026-02-26)
 
 
