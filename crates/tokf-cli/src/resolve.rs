@@ -6,6 +6,8 @@ use tokf::tracking;
 /// Result of filter resolution, including any deferred output-pattern variants.
 pub struct FilterMatch {
     pub config: FilterConfig,
+    /// Canonical hash of the Phase A resolved config.
+    pub hash: String,
     pub words_consumed: usize,
     pub output_variants: Vec<config::variant::DeferredVariant>,
     /// The full resolved filter list, kept for Phase B output-pattern resolution.
@@ -50,6 +52,7 @@ pub fn find_filter(
             if filter.config.variant.is_empty() {
                 return Ok(Some(FilterMatch {
                     config: filter.config.clone(),
+                    hash: filter.hash.clone(),
                     words_consumed: consumed,
                     output_variants: vec![],
                     resolved_filters: resolved,
@@ -58,8 +61,11 @@ pub fn find_filter(
 
             let resolution =
                 config::variant::resolve_variants(&filter.config, &resolved, &cwd, verbose);
+            let hash = tokf_common::hash::canonical_hash(&resolution.config)
+                .unwrap_or_else(|_| filter.hash.clone());
             return Ok(Some(FilterMatch {
                 config: resolution.config,
+                hash,
                 words_consumed: consumed,
                 output_variants: resolution.output_variants,
                 resolved_filters: resolved,
@@ -77,17 +83,27 @@ pub fn find_filter(
 }
 
 /// Resolve Phase B output-pattern variants using the already-discovered filter list.
-pub fn resolve_phase_b(filter_match: FilterMatch, output: &str, verbose: bool) -> FilterConfig {
+///
+/// Returns `(FilterConfig, hash)` where `hash` is recomputed from the final config
+/// when an output-pattern variant fires, or the Phase A hash otherwise.
+pub fn resolve_phase_b(
+    filter_match: FilterMatch,
+    output: &str,
+    verbose: bool,
+) -> (FilterConfig, String) {
     if filter_match.output_variants.is_empty() {
-        return filter_match.config;
+        return (filter_match.config, filter_match.hash);
     }
-    config::variant::resolve_output_variants(
+    let original_hash = filter_match.hash.clone();
+    let cfg = config::variant::resolve_output_variants(
         &filter_match.output_variants,
         output,
         &filter_match.resolved_filters,
         verbose,
     )
-    .unwrap_or(filter_match.config)
+    .unwrap_or(filter_match.config);
+    let hash = tokf_common::hash::canonical_hash(&cfg).unwrap_or(original_hash);
+    (cfg, hash)
 }
 
 pub fn run_command(
@@ -112,6 +128,7 @@ pub fn run_command(
 pub fn record_run(
     command_args: &[String],
     filter_name: Option<&str>,
+    filter_hash: Option<&str>,
     input_bytes: usize,
     output_bytes: usize,
     filter_time_ms: u128,
@@ -137,6 +154,7 @@ pub fn record_run(
     let event = tracking::build_event(
         &command,
         filter_name,
+        filter_hash,
         input_bytes,
         output_bytes,
         filter_time_ms,

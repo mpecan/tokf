@@ -193,8 +193,12 @@ mod tests {
         std::fs::write(test_dir.join("edge.toml"), b"name = \"edge\"").unwrap();
 
         // Build a minimal ResolvedFilter pointing to our temp file
+        let cfg: tokf_common::config::types::FilterConfig =
+            toml::from_str(r#"command = "my-cmd""#).unwrap();
+        let hash = tokf_common::hash::canonical_hash(&cfg).unwrap_or_default();
         let resolved = config::ResolvedFilter {
-            config: toml::from_str(r#"command = "my-cmd""#).unwrap(),
+            config: cfg,
+            hash,
             source_path: filter_path,
             relative_path: std::path::PathBuf::from("myns/my-filter.toml"),
             priority: 0,
@@ -213,8 +217,12 @@ mod tests {
         let filter_path = dir.path().join("my-filter.toml");
         std::fs::write(&filter_path, r#"command = "my-cmd""#).unwrap();
 
+        let cfg: tokf_common::config::types::FilterConfig =
+            toml::from_str(r#"command = "my-cmd""#).unwrap();
+        let hash = tokf_common::hash::canonical_hash(&cfg).unwrap_or_default();
         let resolved = config::ResolvedFilter {
-            config: toml::from_str(r#"command = "my-cmd""#).unwrap(),
+            config: cfg,
+            hash,
             source_path: filter_path,
             relative_path: std::path::PathBuf::from("my-filter.toml"),
             priority: 0,

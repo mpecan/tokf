@@ -238,6 +238,8 @@ fn collect_filter_files(dir: &Path, files: &mut Vec<PathBuf>) {
 /// A discovered filter with its config, source path, and priority level.
 pub struct ResolvedFilter {
     pub config: FilterConfig,
+    /// Canonical SHA-256 hash of the filter config (matches `tokf publish` hash).
+    pub hash: String,
     /// Absolute path to the filter file (or `<built-in>/…` for embedded filters).
     pub source_path: PathBuf,
     /// Path relative to its source search dir (for display).
@@ -307,9 +309,11 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
             };
 
             let relative_path = path.strip_prefix(dir).unwrap_or(&path).to_path_buf();
+            let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
 
             all_filters.push(ResolvedFilter {
                 config,
+                hash,
                 source_path: path,
                 relative_path,
                 priority: u8::try_from(priority).unwrap_or(u8::MAX),
@@ -327,8 +331,10 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
                     continue; // silently skip invalid embedded TOML
                 };
                 let rel = file.path().to_path_buf();
+                let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
                 all_filters.push(ResolvedFilter {
                     config,
+                    hash,
                     source_path: PathBuf::from("<built-in>").join(&rel),
                     relative_path: rel,
                     priority: STDLIB_PRIORITY,

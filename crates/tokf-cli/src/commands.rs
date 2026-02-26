@@ -71,6 +71,7 @@ pub fn cmd_run(
         resolve::record_run(
             command_args,
             None,
+            None,
             input_bytes,
             raw_len,
             0,
@@ -85,7 +86,8 @@ pub fn cmd_run(
 
     // Phase B: resolve deferred output-pattern variants using the already-discovered
     // filter list (no second discovery call needed).
-    let cfg = resolve::resolve_phase_b(filter_match, &cmd_result.combined, cli.verbose);
+    let (cfg, filter_hash) =
+        resolve::resolve_phase_b(filter_match, &cmd_result.combined, cli.verbose);
 
     // Compute piped output once: when prefer_less is active we need the full text
     // for comparison, otherwise just the byte count for tracking.
@@ -133,6 +135,7 @@ pub fn cmd_run(
     resolve::record_run(
         command_args,
         Some(filter_name),
+        Some(&filter_hash),
         input_bytes,
         output_bytes,
         elapsed.as_millis(),

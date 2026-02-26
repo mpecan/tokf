@@ -3,6 +3,7 @@ pub mod filter_client;
 pub mod http;
 pub mod machine;
 pub mod publish_client;
+pub mod sync_client;
 
 /// Consume a response and return it if the status is successful.
 ///

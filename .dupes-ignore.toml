@@ -68,6 +68,26 @@ reason = "RealGitHubClient get_user/get_user_orgs - already deduplicated via aut
 fingerprint = "f6780e5462b7ecea"
 reason = "Mock request_device_code impls - minimal trait implementations with different test data on different mock types"
 
+[[ignore]]
+fingerprint = "24df36df225e0a9f"
+reason = "gain.rs user fetch functions - different SQL queries, return types, and semantics; shared only sqlx query_as boilerplate"
+
+[[ignore]]
+fingerprint = "98c33dbe7ed89af8"
+reason = "gain.rs global fetch functions - different SQL queries, return types, and semantics; shared only sqlx query_as boilerplate"
+
+[[ignore]]
+fingerprint = "5dec7790d0b71f6e"
+reason = "gain.rs row-to-struct mappers - different tuple types mapped to different structs; abstracting needs macros for no readability gain"
+
+[[ignore]]
+fingerprint = "a6e830b3554cb8a5"
+reason = "db_state/make_state - integration tests cannot access pub(crate) test helpers; also intentionally differ (trust_proxy: true vs false)"
+
+[[ignore]]
+fingerprint = "3c8fb4c61f6efe4e"
+reason = "sync_tests validation rejection tests - each tests a different error case with different payloads; test clarity > DRY"
+
 # Near duplicates
 
 [[ignore]]
@@ -79,7 +99,7 @@ fingerprint = "15a0b85efc5c578b"
 reason = "result/make_result test helpers - identical CommandResult builders in separate test modules; cannot share across test boundaries"
 
 [[ignore]]
-fingerprint = "11e505bc334c6101"
+fingerprint = "b2e4fdf6934c190f"
 reason = "config_search_paths/default_search_dirs - structurally similar but serve different subsystems (rewrite config vs filter discovery)"
 
 [[ignore]]

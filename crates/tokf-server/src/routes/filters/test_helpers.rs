@@ -12,7 +12,7 @@ use tower::ServiceExt;
 
 use crate::auth::mock::NoOpGitHubClient;
 use crate::auth::token::{generate_token, hash_token};
-use crate::rate_limit::PublishRateLimiter;
+use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
 use crate::state::AppState;
 use crate::storage::mock::InMemoryStorageClient;
 
@@ -34,6 +34,7 @@ pub fn make_state_with_storage(pool: PgPool, storage: Arc<InMemoryStorageClient>
         public_url: "https://registry.tokf.net".to_string(),
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
+        sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
     }
 }
 

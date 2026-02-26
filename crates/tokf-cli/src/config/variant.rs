@@ -154,8 +154,11 @@ mod tests {
     }
 
     fn make_resolved(name: &str, command: &str) -> ResolvedFilter {
+        let config = make_filter_config(command);
+        let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
         ResolvedFilter {
-            config: make_filter_config(command),
+            config,
+            hash,
             source_path: PathBuf::from(format!("<built-in>/{name}.toml")),
             relative_path: PathBuf::from(format!("{name}.toml")),
             priority: crate::config::STDLIB_PRIORITY,
