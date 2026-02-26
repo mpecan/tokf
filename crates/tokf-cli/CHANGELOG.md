@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.11](https://github.com/mpecan/tokf/compare/tokf-v0.2.10...tokf-v0.2.11) (2026-02-26)
+
+
+### Features
+
+* **ci:** sticky PR comment for filter verification + reject empty fixtures ([#173](https://github.com/mpecan/tokf/issues/173)) ([c66af9e](https://github.com/mpecan/tokf/commit/c66af9edd60fa4196fc9b2b4753ea1271ebd0b1e))
+* **cli,server:** machine UUID registration for remote sync ([#113](https://github.com/mpecan/tokf/issues/113)) ([#179](https://github.com/mpecan/tokf/issues/179)) ([8535a85](https://github.com/mpecan/tokf/commit/8535a85eef08124e853e478965260811ddd1dec5))
+* **cli:** add tokf auth login/logout/status commands ([#178](https://github.com/mpecan/tokf/issues/178)) ([92bcf6b](https://github.com/mpecan/tokf/commit/92bcf6b3cf60dc6f26adb7881c6d02ddf776c260))
+* **cli:** add TOKF_HOME env var and improve permission diagnostics ([#180](https://github.com/mpecan/tokf/issues/180)) ([10d4d37](https://github.com/mpecan/tokf/commit/10d4d377dd8512dbc78abe1b2ff6f055c5291551))
+
+
+### Bug Fixes
+
+* **ci:** stop running stdlib verify tests redundantly in cargo test ([#175](https://github.com/mpecan/tokf/issues/175)) ([52b4f9a](https://github.com/mpecan/tokf/commit/52b4f9aa847097cf186d06e94b9d7feced34047d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.10 to 0.2.11
+
 ## [0.2.10](https://github.com/mpecan/tokf/compare/tokf-v0.2.9...tokf-v0.2.10) (2026-02-25)
 
 
