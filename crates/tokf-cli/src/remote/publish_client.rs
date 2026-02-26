@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use super::require_success;
+
 #[derive(Debug, Deserialize)]
 pub struct PublishResponse {
     pub content_hash: String,
@@ -52,20 +54,8 @@ pub fn publish_filter(
         .send()
         .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
 
-    let status = resp.status();
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        anyhow::bail!(
-            "server returned HTTP 401 Unauthorized — run `tokf auth login` to re-authenticate"
-        );
-    }
-    if !status.is_success() {
-        let text = resp
-            .text()
-            .unwrap_or_else(|_| "<unreadable body>".to_string());
-        anyhow::bail!("server returned HTTP {status}: {text}");
-    }
-
-    let is_new = status == reqwest::StatusCode::CREATED;
+    let is_new = resp.status() == reqwest::StatusCode::CREATED;
+    let resp = require_success(resp)?;
     let response = resp
         .json::<PublishResponse>()
         .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))?;

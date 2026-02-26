@@ -5,12 +5,15 @@ mod eject_cmd;
 mod gain;
 mod history_cmd;
 mod info_cmd;
+mod install_cmd;
 mod output;
 mod publish_cmd;
 mod remote_cmd;
 mod resolve;
+mod search_cmd;
 mod show_cmd;
-mod verify_cmd;
+// pub(crate): accessed by install_cmd::run_verify
+pub(crate) mod verify_cmd;
 
 use std::path::Path;
 
@@ -186,6 +189,34 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Search the community filter registry
+    Search {
+        /// Search query (matches command pattern)
+        query: String,
+        /// Maximum number of results to return
+        #[arg(long, short = 'n', default_value_t = 20)]
+        limit: usize,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install a filter from the community registry
+    Install {
+        /// Filter hash (64 hex chars) or command pattern to search for
+        filter: String,
+        /// Install to project-local .tokf/filters/ instead of global config
+        #[arg(long)]
+        local: bool,
+        /// Overwrite an existing filter at the same path
+        #[arg(long)]
+        force: bool,
+        /// Preview what would be installed without writing files
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation prompts (Lua filters still emit an audit warning)
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -360,6 +391,14 @@ fn main() {
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
         }),
         Commands::Publish { filter, dry_run } => publish_cmd::cmd_publish(filter, *dry_run),
+        Commands::Search { query, limit, json } => search_cmd::cmd_search(query, *limit, *json),
+        Commands::Install {
+            filter,
+            local,
+            force,
+            dry_run,
+            yes,
+        } => install_cmd::cmd_install(filter, *local, *force, *dry_run, *yes),
     };
     std::process::exit(exit_code);
 }

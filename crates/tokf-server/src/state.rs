@@ -14,4 +14,6 @@ pub struct AppState {
     pub trust_proxy: bool,
     pub public_url: String,
     pub publish_rate_limiter: Arc<PublishRateLimiter>,
+    /// Rate limiter for search/download endpoints (higher limit than publish).
+    pub search_rate_limiter: Arc<PublishRateLimiter>,
 }

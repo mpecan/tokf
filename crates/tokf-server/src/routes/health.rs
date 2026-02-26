@@ -51,6 +51,7 @@ mod tests {
             trust_proxy: true,
             public_url: "http://localhost:8080".to_string(),
             publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
+            search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         }
     }
 
