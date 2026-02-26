@@ -91,6 +91,8 @@ async fn cmd_serve() -> Result<()> {
         trust_proxy: cfg.trust_proxy,
         public_url: cfg.public_url.clone(),
         publish_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(20, 3600)),
+        // Search/download is cheaper than publish — allow 300 requests per hour.
+        search_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(300, 3600)),
     };
     let app = routes::create_router(app_state).layer(
         // R11: explicitly disable header capture to prevent accidental secret leakage

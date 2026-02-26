@@ -21,6 +21,14 @@ pub fn create_router(state: AppState) -> Router {
             "/api/machines",
             post(machines::register_machine).get(machines::list_machines),
         )
-        .route("/api/filters", post(filters::publish_filter))
+        .route(
+            "/api/filters",
+            post(filters::publish_filter).get(filters::search_filters),
+        )
+        .route("/api/filters/{hash}", get(filters::get_filter))
+        .route(
+            "/api/filters/{hash}/download",
+            get(filters::download_filter),
+        )
         .with_state(state)
 }

@@ -9,8 +9,8 @@ use crate::error::AppError;
 use crate::state::AppState;
 use crate::storage;
 
-const MAX_FILTER_SIZE: usize = 64 * 1_024;
-const MAX_TOTAL_SIZE: usize = 1_024 * 1_024;
+pub(super) const MAX_FILTER_SIZE: usize = 64 * 1_024;
+pub(super) const MAX_TOTAL_SIZE: usize = 1_024 * 1_024;
 
 // ── Response type ─────────────────────────────────────────────────────────────
 
@@ -292,117 +292,19 @@ mod tests {
         http::{Request, StatusCode},
     };
     use http_body_util::BodyExt;
-    use sqlx::PgPool;
     use tower::ServiceExt;
 
     use crate::auth::mock::NoOpGitHubClient;
-    use crate::auth::token::{generate_token, hash_token};
     use crate::rate_limit::PublishRateLimiter;
     use crate::state::AppState;
     use crate::storage::mock::InMemoryStorageClient;
 
+    use super::super::test_helpers::{
+        MIT_ACCEPT, insert_test_user, make_multipart, make_state, make_state_with_storage,
+        post_filter,
+    };
+
     const VALID_FILTER_TOML: &[u8] = b"command = \"my-tool\"\n";
-    const BOUNDARY: &str = "testboundary123";
-
-    fn make_state(pool: PgPool) -> AppState {
-        AppState {
-            db: pool,
-            github: Arc::new(NoOpGitHubClient),
-            storage: Arc::new(InMemoryStorageClient::new()),
-            github_client_id: "test-client-id".to_string(),
-            github_client_secret: "test-client-secret".to_string(),
-            trust_proxy: false,
-            public_url: "https://registry.tokf.net".to_string(),
-            publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
-        }
-    }
-
-    fn make_state_with_storage(pool: PgPool, storage: Arc<InMemoryStorageClient>) -> AppState {
-        AppState {
-            db: pool,
-            github: Arc::new(NoOpGitHubClient),
-            storage,
-            github_client_id: "test-client-id".to_string(),
-            github_client_secret: "test-client-secret".to_string(),
-            trust_proxy: false,
-            public_url: "https://registry.tokf.net".to_string(),
-            publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
-        }
-    }
-
-    async fn insert_test_user(pool: &PgPool, username: &str) -> (i64, String) {
-        let user_id: i64 = sqlx::query_scalar(
-            "INSERT INTO users (github_id, username, avatar_url, profile_url)
-             VALUES ($1, $2, $3, $4) RETURNING id",
-        )
-        .bind(rand_i64())
-        .bind(username)
-        .bind("https://avatars.example.com/test")
-        .bind("https://github.com/test")
-        .fetch_one(pool)
-        .await
-        .expect("failed to insert test user");
-
-        let token = generate_token();
-        let token_hash = hash_token(&token);
-        sqlx::query(
-            "INSERT INTO auth_tokens (user_id, token_hash, expires_at)
-             VALUES ($1, $2, NOW() + INTERVAL '1 hour')",
-        )
-        .bind(user_id)
-        .bind(&token_hash)
-        .execute(pool)
-        .await
-        .expect("failed to insert test token");
-
-        (user_id, token)
-    }
-
-    fn rand_i64() -> i64 {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        i64::from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .subsec_nanos(),
-        ) + i64::from(rand::random::<i32>())
-    }
-
-    fn make_multipart(fields: &[(&str, &[u8])]) -> (Vec<u8>, String) {
-        let mut body = Vec::new();
-        for (name, content) in fields {
-            let header =
-                format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n");
-            body.extend_from_slice(header.as_bytes());
-            body.extend_from_slice(content);
-            body.extend_from_slice(b"\r\n");
-        }
-        body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
-        let content_type = format!("multipart/form-data; boundary={BOUNDARY}");
-        (body, content_type)
-    }
-
-    /// Helper: POST /api/filters with the given multipart fields.
-    async fn post_filter(
-        app: axum::Router,
-        token: &str,
-        fields: &[(&str, &[u8])],
-    ) -> axum::response::Response {
-        let (body, content_type) = make_multipart(fields);
-        app.oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/filters")
-                .header("authorization", format!("Bearer {token}"))
-                .header("content-type", content_type)
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap()
-    }
-
-    const MIT_ACCEPT: (&str, &[u8]) = ("mit_license_accepted", b"true");
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn publish_filter_creates_record(pool: PgPool) {
@@ -649,6 +551,7 @@ mod tests {
             trust_proxy: false,
             public_url: "https://registry.tokf.net".to_string(),
             publish_rate_limiter: Arc::new(PublishRateLimiter::new(1, 3600)),
+            search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         };
 
         let app = crate::routes::create_router(state.clone());

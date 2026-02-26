@@ -66,6 +66,7 @@ fn db_state(pool: PgPool) -> AppState {
         trust_proxy: true,
         public_url: "http://localhost:8080".to_string(),
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
+        search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
     }
 }
 
@@ -79,6 +80,7 @@ fn db_state_with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> AppState
         trust_proxy: true,
         public_url: "http://localhost:8080".to_string(),
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
+        search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
     }
 }
 
