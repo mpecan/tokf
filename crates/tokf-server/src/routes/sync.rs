@@ -140,11 +140,11 @@ async fn update_filter_stats(
             (filter_hash, total_commands, total_input_tokens, total_output_tokens, savings_pct, last_updated)
          SELECT
             filter_hash,
-            SUM(command_count),
-            SUM(input_tokens),
-            SUM(output_tokens),
+            SUM(command_count)::INT8,
+            SUM(input_tokens)::INT8,
+            SUM(output_tokens)::INT8,
             CASE WHEN SUM(input_tokens) > 0
-                 THEN (SUM(input_tokens) - SUM(output_tokens))::FLOAT8 / SUM(input_tokens)
+                 THEN (SUM(input_tokens) - SUM(output_tokens))::FLOAT8 / SUM(input_tokens)::FLOAT8
                  ELSE 0.0 END,
             NOW()
          FROM usage_events WHERE filter_hash = $1

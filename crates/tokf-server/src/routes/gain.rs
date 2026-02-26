@@ -88,9 +88,9 @@ type FilterStatsRow = (
 
 async fn fetch_user_totals(pool: &PgPool, user_id: i64) -> Result<TotalsRow, AppError> {
     sqlx::query_as(
-        "SELECT COALESCE(SUM(ue.input_tokens), 0),
-                COALESCE(SUM(ue.output_tokens), 0),
-                COALESCE(SUM(ue.command_count), 0)
+        "SELECT COALESCE(SUM(ue.input_tokens)::INT8, 0),
+                COALESCE(SUM(ue.output_tokens)::INT8, 0),
+                COALESCE(SUM(ue.command_count)::INT8, 0)
          FROM usage_events ue
          JOIN machines m ON ue.machine_id = m.id
          WHERE m.user_id = $1",
@@ -104,14 +104,14 @@ async fn fetch_user_totals(pool: &PgPool, user_id: i64) -> Result<TotalsRow, App
 async fn fetch_user_by_machine(pool: &PgPool, user_id: i64) -> Result<Vec<MachineRow>, AppError> {
     sqlx::query_as(
         "SELECT m.id::TEXT, m.hostname,
-                COALESCE(SUM(ue.input_tokens), 0),
-                COALESCE(SUM(ue.output_tokens), 0),
-                COALESCE(SUM(ue.command_count), 0)
+                COALESCE(SUM(ue.input_tokens)::INT8, 0),
+                COALESCE(SUM(ue.output_tokens)::INT8, 0),
+                COALESCE(SUM(ue.command_count)::INT8, 0)
          FROM machines m
          LEFT JOIN usage_events ue ON ue.machine_id = m.id
          WHERE m.user_id = $1
          GROUP BY m.id, m.hostname
-         ORDER BY COALESCE(SUM(ue.input_tokens), 0) DESC",
+         ORDER BY COALESCE(SUM(ue.input_tokens)::INT8, 0) DESC",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -122,14 +122,14 @@ async fn fetch_user_by_machine(pool: &PgPool, user_id: i64) -> Result<Vec<Machin
 async fn fetch_user_by_filter(pool: &PgPool, user_id: i64) -> Result<Vec<FilterRow>, AppError> {
     sqlx::query_as(
         "SELECT ue.filter_name, ue.filter_hash,
-                COALESCE(SUM(ue.input_tokens), 0),
-                COALESCE(SUM(ue.output_tokens), 0),
-                COALESCE(SUM(ue.command_count), 0)
+                COALESCE(SUM(ue.input_tokens)::INT8, 0),
+                COALESCE(SUM(ue.output_tokens)::INT8, 0),
+                COALESCE(SUM(ue.command_count)::INT8, 0)
          FROM usage_events ue
          JOIN machines m ON ue.machine_id = m.id
          WHERE m.user_id = $1
          GROUP BY ue.filter_name, ue.filter_hash
-         ORDER BY COALESCE(SUM(ue.input_tokens), 0) DESC",
+         ORDER BY COALESCE(SUM(ue.input_tokens)::INT8, 0) DESC",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -139,9 +139,9 @@ async fn fetch_user_by_filter(pool: &PgPool, user_id: i64) -> Result<Vec<FilterR
 
 async fn fetch_global_totals(pool: &PgPool) -> Result<TotalsRow, AppError> {
     sqlx::query_as(
-        "SELECT COALESCE(SUM(input_tokens), 0),
-                COALESCE(SUM(output_tokens), 0),
-                COALESCE(SUM(command_count), 0)
+        "SELECT COALESCE(SUM(input_tokens)::INT8, 0),
+                COALESCE(SUM(output_tokens)::INT8, 0),
+                COALESCE(SUM(command_count)::INT8, 0)
          FROM usage_events",
     )
     .fetch_one(pool)
@@ -152,13 +152,13 @@ async fn fetch_global_totals(pool: &PgPool) -> Result<TotalsRow, AppError> {
 async fn fetch_global_by_machine(pool: &PgPool) -> Result<Vec<GlobalMachineRow>, AppError> {
     sqlx::query_as(
         "SELECT m.id::TEXT,
-                COALESCE(SUM(ue.input_tokens), 0),
-                COALESCE(SUM(ue.output_tokens), 0),
-                COALESCE(SUM(ue.command_count), 0)
+                COALESCE(SUM(ue.input_tokens)::INT8, 0),
+                COALESCE(SUM(ue.output_tokens)::INT8, 0),
+                COALESCE(SUM(ue.command_count)::INT8, 0)
          FROM machines m
          LEFT JOIN usage_events ue ON ue.machine_id = m.id
          GROUP BY m.id
-         ORDER BY COALESCE(SUM(ue.input_tokens), 0) DESC
+         ORDER BY COALESCE(SUM(ue.input_tokens)::INT8, 0) DESC
          LIMIT 100",
     )
     .fetch_all(pool)
@@ -169,12 +169,12 @@ async fn fetch_global_by_machine(pool: &PgPool) -> Result<Vec<GlobalMachineRow>,
 async fn fetch_global_by_filter(pool: &PgPool) -> Result<Vec<FilterRow>, AppError> {
     sqlx::query_as(
         "SELECT filter_name, filter_hash,
-                COALESCE(SUM(input_tokens), 0),
-                COALESCE(SUM(output_tokens), 0),
-                COALESCE(SUM(command_count), 0)
+                COALESCE(SUM(input_tokens)::INT8, 0),
+                COALESCE(SUM(output_tokens)::INT8, 0),
+                COALESCE(SUM(command_count)::INT8, 0)
          FROM usage_events
          GROUP BY filter_name, filter_hash
-         ORDER BY COALESCE(SUM(input_tokens), 0) DESC
+         ORDER BY COALESCE(SUM(input_tokens)::INT8, 0) DESC
          LIMIT 100",
     )
     .fetch_all(pool)
