@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.12](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.11...tokf-server-v0.2.12) (2026-02-26)
+
+
+### Features
+
+* **cli,server:** filter publishing — tokf publish &lt;filter-name&gt; ([#117](https://github.com/mpecan/tokf/issues/117)) ([#181](https://github.com/mpecan/tokf/issues/181)) ([acf495f](https://github.com/mpecan/tokf/commit/acf495f08f35fb54c9ec8a488c6d4010c33a02d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.10 to 0.2.12
+
 ## [0.2.11](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.10...tokf-server-v0.2.11) (2026-02-26)
 
 

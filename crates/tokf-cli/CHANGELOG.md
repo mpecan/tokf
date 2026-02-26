@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.12](https://github.com/mpecan/tokf/compare/tokf-v0.2.11...tokf-v0.2.12) (2026-02-26)
+
+
+### Features
+
+* **cli,server:** filter publishing — tokf publish &lt;filter-name&gt; ([#117](https://github.com/mpecan/tokf/issues/117)) ([#181](https://github.com/mpecan/tokf/issues/181)) ([acf495f](https://github.com/mpecan/tokf/commit/acf495f08f35fb54c9ec8a488c6d4010c33a02d1))
+* **filter:** rewrite git/status and add cargo/fmt stdlib filters ([#184](https://github.com/mpecan/tokf/issues/184)) ([06d41c3](https://github.com/mpecan/tokf/commit/06d41c3f78acbd3e442b57764e48aa9461a2f4fe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.11 to 0.2.12
+
 ## [0.2.11](https://github.com/mpecan/tokf/compare/tokf-v0.2.10...tokf-v0.2.11) (2026-02-26)
 
 

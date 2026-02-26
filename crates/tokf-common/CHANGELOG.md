@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.11...tokf-common-v0.2.12) (2026-02-26)
+
+
+### Features
+
+* **filter:** rewrite git/status and add cargo/fmt stdlib filters ([#184](https://github.com/mpecan/tokf/issues/184)) ([06d41c3](https://github.com/mpecan/tokf/commit/06d41c3f78acbd3e442b57764e48aa9461a2f4fe))
+
 ## [0.2.11](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.10...tokf-common-v0.2.11) (2026-02-26)
 
 
