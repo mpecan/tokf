@@ -191,7 +191,7 @@ fn hint_appears_with_show_history_hint_filter() {
 
     assert!(out.status.success());
     assert!(
-        stdout.contains("Filtered - full output: `tokf history show --raw"),
+        stdout.contains("[tokf] output filtered"),
         "expected hint in stdout, got: {stdout}"
     );
 }
@@ -211,7 +211,7 @@ fn hint_absent_without_show_history_hint() {
 
     assert!(out.status.success());
     assert!(
-        !stdout.contains("Filtered - full output:"),
+        !stdout.contains("[tokf] output filtered"),
         "hint should not appear, got: {stdout}"
     );
 }
@@ -231,10 +231,10 @@ fn hint_contains_valid_history_id() {
     assert!(run_out.status.success());
 
     // Extract the history ID from the hint line.
-    // Format: "Filtered - full output: `tokf history show --raw 1`"
+    // Format: "[tokf] output filtered — to see what was omitted: `tokf history show --raw 1`"
     let hint_line = stdout
         .lines()
-        .find(|l| l.contains("Filtered - full output:"))
+        .find(|l| l.contains("tokf history show --raw"))
         .expect("hint line not found");
     let id = hint_line
         .trim_end_matches('`')

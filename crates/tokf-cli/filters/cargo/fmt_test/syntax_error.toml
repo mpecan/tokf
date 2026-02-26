@@ -1,0 +1,12 @@
+name = "syntax error shows raw error output"
+fixture = "syntax_error.txt"
+exit_code = 1
+
+[[expect]]
+contains = "error"
+
+[[expect]]
+not_contains = "Diff in"
+
+[[expect]]
+not_contains = "formatting issues"

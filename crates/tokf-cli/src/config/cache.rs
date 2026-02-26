@@ -264,8 +264,11 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn cache_path_user_fallback() {
-        // A parent path that definitely doesn't exist on disk
+        // A parent path that definitely doesn't exist on disk.
+        // #[serial] required: reads TOKF_HOME via user_cache_dir() and must not
+        // race with tests that mutate that env var (e.g. cache_path_respects_tokf_home).
         let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
         let path = cache_path(&search_dirs);
 
