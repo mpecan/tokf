@@ -1,0 +1,6 @@
+name = "detached HEAD shows detached message"
+fixture = "detached.txt"
+exit_code = 0
+
+[[expect]]
+equals = "HEAD (detached)\nM  src/main.rs"

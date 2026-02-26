@@ -1,0 +1,15 @@
+name = "check failure shows file list and fix hint"
+fixture = "check_failure.txt"
+exit_code = 1
+
+[[expect]]
+starts_with = "✗ formatting issues"
+
+[[expect]]
+contains = "cargo fmt"
+
+[[expect]]
+contains = "Diff in "
+
+[[expect]]
+not_contains = "@@ "
