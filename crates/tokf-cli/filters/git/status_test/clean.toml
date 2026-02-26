@@ -1,9 +1,6 @@
-name = "clean repo shows branch and clean message"
+name = "clean repo shows only branch name"
 fixture = "clean.txt"
 exit_code = 0
 
 [[expect]]
-contains = "clean"
-
-[[expect]]
-starts_with = "main"
+equals = "main"

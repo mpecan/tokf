@@ -1,0 +1,6 @@
+name = "diverged branch shows ahead and behind counts"
+inline = "## main...origin/main [ahead 1, behind 2]\nM  src/foo.rs\n"
+exit_code = 0
+
+[[expect]]
+equals = "main [ahead 1, behind 2]\nM  src/foo.rs"

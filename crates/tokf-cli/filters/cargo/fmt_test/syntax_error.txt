@@ -1,0 +1,5 @@
+error: failed to parse src/broken.rs: expected expression, found `}`
+ --> src/broken.rs:5:1
+  |
+5 | fn broken( {
+  | ^^^^^^^^^^^^ expected one of `)`, `,`, `_`, `mut`, `ref`, pattern, or identifier

@@ -622,7 +622,7 @@ output = "{branch} — {counts}"
 
 ```
 main — modified: 3, untracked: 1
-Filtered - full output: `tokf history show --raw 42`
+[tokf] output filtered — to see what was omitted: `tokf history show --raw 42`
 ```
 
 **Behavior**:

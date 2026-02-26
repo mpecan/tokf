@@ -216,10 +216,11 @@ FORCE_COLOR=1 tokf run npm test
 | `git/log` | `git log` |
 | `git/push` | `git push` |
 | `git/show` | `git show` |
-| `git/status` | `git status` |
+| `git/status` | `git status` — runs `git status --porcelain -b`; shows branch name + one porcelain-format line per changed file (e.g. `M  src/main.rs`, `?? scratch.rs`) |
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
 | `cargo/clippy` | `cargo clippy` |
+| `cargo/fmt` | `cargo fmt` |
 | `cargo/install` | `cargo install *` |
 | `cargo/test` | `cargo test` |
 | `docker/*` | `docker build`, `docker compose`, `docker images`, `docker ps` |
@@ -499,7 +500,7 @@ output = "{branch} — {counts}"
 
 ```
 ✓ cargo test: 42 passed (2.31s)
-Filtered - full output: `tokf history show --raw 99`
+[tokf] output filtered — to see what was omitted: `tokf history show --raw 99`
 ```
 
 The hint is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line.
