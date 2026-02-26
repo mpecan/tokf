@@ -74,8 +74,8 @@ pub(super) fn verify_search_dirs(scope: Option<&super::VerifyScope>) -> Vec<Path
         }
         Some(super::VerifyScope::Global) => {
             let mut dirs = Vec::new();
-            if let Some(config) = dirs::config_dir() {
-                dirs.push(config.join("tokf/filters"));
+            if let Some(user) = tokf::paths::user_dir() {
+                dirs.push(user.join("filters"));
             }
             dirs
         }
@@ -97,8 +97,8 @@ pub(super) fn verify_search_dirs(scope: Option<&super::VerifyScope>) -> Vec<Path
                 dirs.push(cwd.join("filters"));
                 dirs.push(cwd.join(".tokf/filters"));
             }
-            if let Some(config) = dirs::config_dir() {
-                dirs.push(config.join("tokf/filters"));
+            if let Some(user) = tokf::paths::user_dir() {
+                dirs.push(user.join("filters"));
             }
             dirs
         }

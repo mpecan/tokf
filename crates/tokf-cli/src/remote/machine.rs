@@ -12,9 +12,10 @@ pub struct StoredMachine {
     pub hostname: String,
 }
 
-/// Returns the path to `~/.config/tokf/machine.toml`.
+/// Returns the path to the tokf machine config file.
+/// Uses `TOKF_HOME` if set, else the platform config directory.
 pub fn machine_config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("tokf").join("machine.toml"))
+    crate::paths::user_dir().map(|d| d.join("machine.toml"))
 }
 
 /// Load the stored machine registration.
