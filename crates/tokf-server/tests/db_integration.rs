@@ -251,7 +251,11 @@ async fn users_column_defaults_are_applied(pool: PgPool) {
     assert!(created_at_is_set, "created_at should be set by default");
 }
 
-/// T-2: Deleting a filter cascades to `filter_tests`, `usage_events`, and `filter_stats`.
+/// T-2: Deleting a filter cascades to `filter_tests`.
+/// `usage_events` and `filter_stats` are NOT cascade-deleted — the FK
+/// constraints on those tables were dropped by migration 20260226000002
+/// so that local/stdlib filters (which have no registry entry) can still
+/// have usage data recorded.
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn filter_delete_cascades_to_related_tables(pool: PgPool) {
     // Insert a user (required for filters FK)
@@ -300,7 +304,7 @@ async fn filter_delete_cascades_to_related_tables(pool: PgPool) {
         .await
         .expect("filter_stats insert failed");
 
-    // Delete the filter — should cascade to all related tables
+    // Delete the filter — should cascade to filter_tests only
     sqlx::query("DELETE FROM filters WHERE content_hash = 'abc123'")
         .execute(&pool)
         .await
@@ -313,19 +317,26 @@ async fn filter_delete_cascades_to_related_tables(pool: PgPool) {
             .expect("count failed");
     assert_eq!(test_count, 0, "filter_tests should be deleted via cascade");
 
+    // usage_events and filter_stats are NOT cascade-deleted (FK removed).
     let event_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM usage_events WHERE filter_hash = 'abc123'")
             .fetch_one(&pool)
             .await
             .expect("count failed");
-    assert_eq!(event_count, 0, "usage_events should be deleted via cascade");
+    assert_eq!(
+        event_count, 1,
+        "usage_events should be preserved after filter deletion"
+    );
 
     let stats_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM filter_stats WHERE filter_hash = 'abc123'")
             .fetch_one(&pool)
             .await
             .expect("count failed");
-    assert_eq!(stats_count, 0, "filter_stats should be deleted via cascade");
+    assert_eq!(
+        stats_count, 1,
+        "filter_stats should be preserved after filter deletion"
+    );
 }
 
 /// T-2: Inserting a `filter_test` with a non-existent `filter_hash` should fail.
