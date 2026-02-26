@@ -5,6 +5,7 @@ pub mod filter;
 pub mod fs;
 pub mod history;
 pub mod hook;
+pub mod paths;
 pub mod remote;
 pub mod rewrite;
 pub mod runner;

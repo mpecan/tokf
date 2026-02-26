@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.11](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.10...tokf-server-v0.2.11) (2026-02-26)
+
+
+### Features
+
+* **cli,server:** machine UUID registration for remote sync ([#113](https://github.com/mpecan/tokf/issues/113)) ([#179](https://github.com/mpecan/tokf/issues/179)) ([8535a85](https://github.com/mpecan/tokf/commit/8535a85eef08124e853e478965260811ddd1dec5))
+
+
+### Bug Fixes
+
+* **server:** CockroachDB compatibility — SQL fix, CI migration, test macro ([#176](https://github.com/mpecan/tokf/issues/176)) ([507cfd0](https://github.com/mpecan/tokf/commit/507cfd00eae7509687b338f62588fda80760bcdc))
+* **server:** disable pg_advisory_lock for CockroachDB compatibility ([#170](https://github.com/mpecan/tokf/issues/170)) ([d1eb68d](https://github.com/mpecan/tokf/commit/d1eb68d49e967aa4aaea34b4119e5f7cf1440dde))
+
 ## [0.2.10](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.9...tokf-server-v0.2.10) (2026-02-25)
 
 

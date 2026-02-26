@@ -47,7 +47,7 @@ impl LoadedAuth {
 }
 
 pub fn auth_config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("tokf").join("auth.toml"))
+    crate::paths::user_dir().map(|d| d.join("auth.toml"))
 }
 
 /// Store authentication credentials (token in keyring, metadata in TOML).
@@ -265,8 +265,8 @@ mod tests {
         assert!(path.is_some(), "expected auth config path to be Some");
         let path = path.unwrap();
         assert!(
-            path.ends_with("tokf/auth.toml"),
-            "expected path to end with tokf/auth.toml, got: {}",
+            path.ends_with("auth.toml"),
+            "expected path to end with auth.toml, got: {}",
             path.display()
         );
     }

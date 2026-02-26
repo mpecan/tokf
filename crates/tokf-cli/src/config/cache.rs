@@ -66,7 +66,7 @@ pub fn cache_path(search_dirs: &[PathBuf]) -> Option<PathBuf> {
     {
         return Some(tokf_dir.join("cache/manifest.bin"));
     }
-    dirs::cache_dir().map(|d| d.join("tokf/manifest.bin"))
+    crate::paths::user_cache_dir().map(|d| d.join("manifest.bin"))
 }
 
 /// Return the mtime of `path` as nanoseconds since the Unix epoch, or 0 on error.
@@ -171,7 +171,12 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
 
     let filters = discover_all_filters(search_dirs)?;
     if let Err(e) = write_manifest(&path, &filters, search_dirs) {
-        eprintln!("[tokf] cache write failed: {e:#}");
+        eprintln!("[tokf] cache write failed ({}): {e:#}", path.display());
+        eprintln!(
+            "[tokf] hint: check permissions on {}; use --no-cache to skip, \
+             or set TOKF_HOME to relocate all tokf data",
+            path.parent().unwrap_or(&path).display()
+        );
     }
     Ok(filters)
 }
@@ -264,11 +269,27 @@ mod tests {
         let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
         let path = cache_path(&search_dirs);
 
-        if let Some(user_cache) = dirs::cache_dir() {
-            assert_eq!(path, Some(user_cache.join("tokf/manifest.bin")));
+        if let Some(user_cache) = crate::paths::user_cache_dir() {
+            assert_eq!(path, Some(user_cache.join("manifest.bin")));
         } else {
             assert!(path.is_none());
         }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cache_path_respects_tokf_home() {
+        // SAFETY: test-only env mutation; #[serial] prevents races.
+        unsafe { std::env::set_var("TOKF_HOME", "/custom/tokf_home") };
+        let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
+        let path = cache_path(&search_dirs);
+        unsafe { std::env::remove_var("TOKF_HOME") };
+
+        assert_eq!(
+            path,
+            Some(PathBuf::from("/custom/tokf_home/manifest.bin")),
+            "cache path should be under TOKF_HOME when set"
+        );
     }
 
     #[test]

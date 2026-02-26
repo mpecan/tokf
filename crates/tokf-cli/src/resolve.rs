@@ -126,6 +126,10 @@ pub fn record_run(
         Ok(c) => c,
         Err(e) => {
             eprintln!("[tokf] tracking error (db open): {e:#}");
+            eprintln!(
+                "[tokf] hint: set TOKF_DB_PATH to choose a different DB path, \
+                 or TOKF_HOME to relocate all tokf data"
+            );
             return;
         }
     };
@@ -140,6 +144,9 @@ pub fn record_run(
         pipe_override,
     );
     if let Err(e) = tracking::record_event(&conn, &event) {
-        eprintln!("[tokf] tracking error (record): {e:#}");
+        eprintln!(
+            "[tokf] tracking error (record) at {}: {e:#}",
+            path.display()
+        );
     }
 }
