@@ -1,6 +1,6 @@
 # git-status.toml — compact file listing with native git status codes
-# Raw: 30+ lines of verbose git status with hints
-# Filtered: branch name + one porcelain-format line per changed file
+# Runs: git status --porcelain -b (branch header + XY status lines)
+# Filtered: branch header transformed to name [±N]; file lines passed through unchanged
 
 command = "git status"
 
