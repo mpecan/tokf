@@ -516,6 +516,7 @@ async fn sync_rate_limits_machine(pool: PgPool) {
         trust_proxy: false,
         public_url: "http://localhost:8080".to_string(),
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
+        search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(1, 3600)),
     };
     let app = Router::new()

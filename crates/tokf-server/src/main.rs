@@ -56,6 +56,8 @@ async fn cmd_migrate() -> Result<()> {
     Ok(())
 }
 
+// One line over the 60-line guideline due to the merge of publish/search + sync rate limiters.
+#[allow(clippy::too_many_lines)]
 async fn cmd_serve() -> Result<()> {
     let cfg = config::Config::from_env();
     let storage_client = build_storage_client(&cfg)?;

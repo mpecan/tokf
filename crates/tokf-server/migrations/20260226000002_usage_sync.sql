@@ -12,5 +12,5 @@ ALTER TABLE filter_stats DROP CONSTRAINT filter_stats_filter_hash_fkey;
 -- Add human-readable label for display in /api/gain breakdowns.
 ALTER TABLE usage_events ADD COLUMN filter_name TEXT;
 
--- Add savings_pct to filter_stats (missing from initial schema; needed by search ranking + /api/gain/filter/:hash).
-ALTER TABLE filter_stats ADD COLUMN savings_pct FLOAT8 NOT NULL DEFAULT 0.0;
+-- NOTE: savings_pct was added to filter_stats by 20260226000000_add_savings_pct.sql (search feature).
+-- No duplicate ALTER needed here.
