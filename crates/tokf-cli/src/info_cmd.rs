@@ -35,23 +35,31 @@ impl WriteAccess {
 
 /// Returns `true` if the current process can write to `path`.
 /// For directories, briefly creates and removes a probe file to test access accurately.
+///
 /// Uses `create_new(true)` to avoid following a pre-existing symlink (TOCTOU mitigation).
+/// A PID-suffixed probe name with up to 5 attempts handles the rare case where a previous
+/// probe file with the same name already exists, avoiding false negatives.
 fn is_writable(path: &Path) -> bool {
     if path.is_file() {
         std::fs::OpenOptions::new().write(true).open(path).is_ok()
     } else if path.is_dir() {
-        let probe = path.join(".tokf_write_check");
-        // create_new(true) fails atomically if the path already exists, preventing
-        // a symlink from being followed to an attacker-controlled target.
-        let ok = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&probe)
-            .is_ok();
-        if ok {
-            let _ = std::fs::remove_file(&probe);
+        let pid = std::process::id();
+        for attempt in 0..5u32 {
+            let probe = path.join(format!(".tokf_write_check_{pid}_{attempt}"));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&probe)
+            {
+                Ok(_) => {
+                    let _ = std::fs::remove_file(&probe);
+                    return true;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(_) => return false,
+            }
         }
-        ok
+        false
     } else {
         false
     }
@@ -188,7 +196,11 @@ fn collect_filter_counts(search_dirs: &[PathBuf]) -> Option<FilterCounts> {
 fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
     let dirs = collect_search_dirs(search_dirs);
 
-    let home_override = std::env::var("TOKF_HOME").ok();
+    // Normalise to None when empty/whitespace-only, matching paths::resolve_user_path() behaviour.
+    let home_override = std::env::var("TOKF_HOME")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let env_override = std::env::var("TOKF_DB_PATH").ok();
     let db_path = tracking::db_path();
     let db_exists = db_path.as_ref().is_some_and(|p| p.exists());

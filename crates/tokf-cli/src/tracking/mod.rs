@@ -33,7 +33,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
         std::fs::OpenOptions::new()
             .write(true)
             .open(path)
-            .with_context(|| format!("DB file {} is not writable", path.display()))?;
+            .with_context(|| format!("cannot open DB file {} for writing", path.display()))?;
     }
     let conn = Connection::open(path).with_context(|| format!("open db at {}", path.display()))?;
     conn.execute_batch(

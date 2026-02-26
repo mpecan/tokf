@@ -405,8 +405,8 @@ fn open_db_readonly_file_reports_path() {
     let err = open_db(&path).unwrap_err();
     let msg = format!("{err:#}");
     assert!(
-        msg.contains("not writable"),
-        "error should mention 'not writable': {msg}"
+        msg.contains("cannot open"),
+        "error should mention 'cannot open': {msg}"
     );
     assert!(
         msg.contains(path.to_str().unwrap()),

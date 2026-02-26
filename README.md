@@ -729,7 +729,7 @@ filters:
 | Variable | Description | Default |
 |---|---|---|
 | `TOKF_HOME` | Redirect **all** user-level tokf paths (filters, cache, DB, hooks, auth) to a single directory | Platform config dir (e.g. `~/.config/tokf` on Linux) |
-| `TOKF_DB_PATH` | Override the tracking database path only (takes precedence over `TOKF_HOME`) | `$TOKF_HOME/tracking.db` |
+| `TOKF_DB_PATH` | Override the tracking database path only (takes precedence over `TOKF_HOME`) | Platform data dir (e.g. `~/.local/share/tokf/tracking.db`); or `$TOKF_HOME/tracking.db` when `TOKF_HOME` is set |
 
 `TOKF_HOME` works like `CARGO_HOME` or `RUSTUP_HOME` — set it once to relocate everything:
 
