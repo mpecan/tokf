@@ -1,5 +1,5 @@
 name = "clean eslint run shows ok"
-fixture = "success.txt"
+inline = ""
 exit_code = 0
 
 [[expect]]
