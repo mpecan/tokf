@@ -164,7 +164,9 @@ pub fn cmd_run(
     }
 
     if show_hint && let Some(id) = history_id {
-        println!("Filtered - full output: `tokf history show --raw {id}`");
+        println!(
+            "[tokf] output filtered — to see what was omitted: `tokf history show --raw {id}`"
+        );
     }
 
     if cli.no_mask_exit_code {
