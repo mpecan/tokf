@@ -2,6 +2,7 @@
 pub struct TrackingEvent {
     pub command: String,
     pub filter_name: Option<String>,
+    pub filter_hash: Option<String>,
     pub input_bytes: i64,
     pub output_bytes: i64,
     pub input_tokens_est: i64,

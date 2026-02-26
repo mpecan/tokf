@@ -89,7 +89,7 @@ fn open_db_idempotent() {
 #[test]
 fn record_event_inserts_row() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("echo hi", None, 100, 50, 5, 0, false);
+    let ev = build_event("echo hi", None, None, 100, 50, 5, 0, false);
     record_event(&conn, &ev).expect("record");
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
@@ -100,7 +100,16 @@ fn record_event_inserts_row() {
 #[test]
 fn record_event_all_fields_persisted() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("git status", Some("git status"), 400, 200, 10, 0, false);
+    let ev = build_event(
+        "git status",
+        Some("git status"),
+        None,
+        400,
+        200,
+        10,
+        0,
+        false,
+    );
     record_event(&conn, &ev).expect("record");
     let (cmd, fname, ib, ob, it, ot, ft, ec): (
         String,
@@ -147,7 +156,16 @@ fn record_event_all_fields_persisted() {
 fn record_event_exit_code_and_filter_time_persisted() {
     let (_dir, conn) = temp_db();
     // exit_code = 42 (non-zero), filter_time_ms = 99
-    let ev = build_event("cargo test", Some("cargo test"), 800, 200, 99, 42, false);
+    let ev = build_event(
+        "cargo test",
+        Some("cargo test"),
+        None,
+        800,
+        200,
+        99,
+        42,
+        false,
+    );
     record_event(&conn, &ev).expect("record");
     let (ft, ec): (i64, i32) = conn
         .query_row("SELECT filter_time_ms, exit_code FROM events", [], |r| {
@@ -161,7 +179,7 @@ fn record_event_exit_code_and_filter_time_persisted() {
 #[test]
 fn record_event_timestamp_iso8601() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("cmd", None, 0, 0, 0, 0, false);
+    let ev = build_event("cmd", None, None, 0, 0, 0, 0, false);
     record_event(&conn, &ev).expect("record");
     let ts: String = conn
         .query_row("SELECT timestamp FROM events", [], |r| r.get(0))
@@ -178,15 +196,15 @@ fn record_event_timestamp_iso8601() {
 
 #[test]
 fn build_event_token_estimation() {
-    let ev = build_event("x", None, 400, 0, 0, 0, false);
+    let ev = build_event("x", None, None, 400, 0, 0, 0, false);
     assert_eq!(ev.input_tokens_est, 100);
-    let ev2 = build_event("x", None, 399, 0, 0, 0, false);
+    let ev2 = build_event("x", None, None, 399, 0, 0, 0, false);
     assert_eq!(ev2.input_tokens_est, 99);
 }
 
 #[test]
 fn build_event_passthrough_filter_name_none() {
-    let ev = build_event("echo hi", None, 10, 10, 0, 0, false);
+    let ev = build_event("echo hi", None, None, 10, 10, 0, 0, false);
     assert!(ev.filter_name.is_none());
 }
 
@@ -208,7 +226,7 @@ fn query_summary_empty_db() {
 fn query_summary_with_events() {
     let (_dir, conn) = temp_db();
     // input_tokens 100, output_tokens 25 → saved 75
-    let ev = build_event("cmd", Some("f"), 400, 100, 5, 0, false);
+    let ev = build_event("cmd", Some("f"), None, 400, 100, 5, 0, false);
     record_event(&conn, &ev).expect("record");
     let s = query_summary(&conn).expect("summary");
     assert_eq!(s.total_commands, 1);
@@ -221,7 +239,7 @@ fn query_summary_with_events() {
 #[test]
 fn query_summary_zero_input_no_divide_by_zero() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("cmd", None, 0, 0, 0, 0, false);
+    let ev = build_event("cmd", None, None, 0, 0, 0, 0, false);
     record_event(&conn, &ev).expect("record");
     let s = query_summary(&conn).expect("summary");
     assert!(s.savings_pct.abs() < f64::EPSILON); // must not panic or NaN
@@ -236,9 +254,9 @@ fn query_summary_accumulates_multiple_events() {
     // ev3: 1200 in → 300 tokens,   0 out →  0 tokens, saved 300
     // totals: 3 commands, 600 input, 125 output, 475 saved ≈ 79.17%
     let events = [
-        build_event("cmd1", Some("f1"), 400, 100, 5, 0, false),
-        build_event("cmd2", Some("f2"), 800, 400, 10, 1, false),
-        build_event("cmd3", None, 1200, 0, 0, 0, false),
+        build_event("cmd1", Some("f1"), None, 400, 100, 5, 0, false),
+        build_event("cmd2", Some("f2"), None, 800, 400, 10, 1, false),
+        build_event("cmd3", None, None, 1200, 0, 0, 0, false),
     ];
     for ev in &events {
         record_event(&conn, ev).expect("record");
@@ -257,7 +275,7 @@ fn query_summary_accumulates_multiple_events() {
 fn query_by_filter_groups_correctly() {
     let (_dir, conn) = temp_db();
     for fname in &["alpha", "beta", "gamma"] {
-        let ev = build_event("cmd", Some(fname), 400, 100, 0, 0, false);
+        let ev = build_event("cmd", Some(fname), None, 400, 100, 0, 0, false);
         record_event(&conn, &ev).expect("record");
     }
     let rows = query_by_filter(&conn).expect("query");
@@ -268,7 +286,7 @@ fn query_by_filter_groups_correctly() {
 #[test]
 fn query_by_filter_null_shown_as_passthrough() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("echo hi", None, 200, 200, 0, 0, false);
+    let ev = build_event("echo hi", None, None, 200, 200, 0, 0, false);
     record_event(&conn, &ev).expect("record");
     let rows = query_by_filter(&conn).expect("query");
     assert_eq!(rows.len(), 1);
@@ -281,10 +299,23 @@ fn query_by_filter_mixed_null_and_named() {
     let (_dir, conn) = temp_db();
     record_event(
         &conn,
-        &build_event("git status", Some("git status"), 400, 100, 5, 0, false),
+        &build_event(
+            "git status",
+            Some("git status"),
+            None,
+            400,
+            100,
+            5,
+            0,
+            false,
+        ),
     )
     .expect("record");
-    record_event(&conn, &build_event("echo hi", None, 200, 200, 0, 0, false)).expect("record");
+    record_event(
+        &conn,
+        &build_event("echo hi", None, None, 200, 200, 0, 0, false),
+    )
+    .expect("record");
     let rows = query_by_filter(&conn).expect("query");
     assert_eq!(rows.len(), 2);
     let names: Vec<&str> = rows.iter().map(|r| r.filter_name.as_str()).collect();
@@ -300,10 +331,14 @@ fn query_by_filter_ordered_by_savings_desc() {
     // "big":   400 in → 100 tokens,  0 out →  0 tokens, saved 100
     record_event(
         &conn,
-        &build_event("cmd", Some("small"), 100, 80, 0, 0, false),
+        &build_event("cmd", Some("small"), None, 100, 80, 0, 0, false),
     )
     .expect("record");
-    record_event(&conn, &build_event("cmd", Some("big"), 400, 0, 0, 0, false)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("big"), None, 400, 0, 0, 0, false),
+    )
+    .expect("record");
     let rows = query_by_filter(&conn).expect("query");
     assert_eq!(rows.len(), 2);
     assert_eq!(
@@ -319,7 +354,7 @@ fn query_by_filter_ordered_by_savings_desc() {
 fn query_daily_groups_by_date() {
     let (_dir, conn) = temp_db();
     for _ in 0..2 {
-        let ev = build_event("cmd", None, 400, 100, 0, 0, false);
+        let ev = build_event("cmd", None, None, 400, 100, 0, 0, false);
         record_event(&conn, &ev).expect("record");
     }
     let rows = query_daily(&conn).expect("query");
@@ -332,7 +367,7 @@ fn query_daily_groups_by_date() {
 #[test]
 fn record_event_pipe_override_persisted() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("cargo test", Some("cargo test"), 400, 400, 5, 0, true);
+    let ev = build_event("cargo test", Some("cargo test"), None, 400, 400, 5, 0, true);
     record_event(&conn, &ev).expect("record");
     let po: i64 = conn
         .query_row("SELECT pipe_override FROM events", [], |r| r.get(0))
@@ -343,7 +378,16 @@ fn record_event_pipe_override_persisted() {
 #[test]
 fn record_event_pipe_override_false_persisted() {
     let (_dir, conn) = temp_db();
-    let ev = build_event("cargo test", Some("cargo test"), 400, 200, 5, 0, false);
+    let ev = build_event(
+        "cargo test",
+        Some("cargo test"),
+        None,
+        400,
+        200,
+        5,
+        0,
+        false,
+    );
     record_event(&conn, &ev).expect("record");
     let po: i64 = conn
         .query_row("SELECT pipe_override FROM events", [], |r| r.get(0))
@@ -354,13 +398,21 @@ fn record_event_pipe_override_false_persisted() {
 #[test]
 fn query_summary_pipe_override_count() {
     let (_dir, conn) = temp_db();
-    record_event(&conn, &build_event("cmd1", Some("f"), 400, 400, 5, 0, true)).expect("record");
     record_event(
         &conn,
-        &build_event("cmd2", Some("f"), 400, 200, 5, 0, false),
+        &build_event("cmd1", Some("f"), None, 400, 400, 5, 0, true),
     )
     .expect("record");
-    record_event(&conn, &build_event("cmd3", Some("f"), 400, 400, 5, 0, true)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd2", Some("f"), None, 400, 200, 5, 0, false),
+    )
+    .expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd3", Some("f"), None, 400, 400, 5, 0, true),
+    )
+    .expect("record");
     let s = query_summary(&conn).expect("summary");
     assert_eq!(s.pipe_override_count, 2);
 }
@@ -368,13 +420,21 @@ fn query_summary_pipe_override_count() {
 #[test]
 fn query_by_filter_pipe_override_count() {
     let (_dir, conn) = temp_db();
-    record_event(&conn, &build_event("cmd", Some("f1"), 400, 400, 0, 0, true)).expect("record");
     record_event(
         &conn,
-        &build_event("cmd", Some("f1"), 400, 200, 0, 0, false),
+        &build_event("cmd", Some("f1"), None, 400, 400, 0, 0, true),
     )
     .expect("record");
-    record_event(&conn, &build_event("cmd", Some("f2"), 400, 400, 0, 0, true)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("f1"), None, 400, 200, 0, 0, false),
+    )
+    .expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("f2"), None, 400, 400, 0, 0, true),
+    )
+    .expect("record");
     let rows = query_by_filter(&conn).expect("query");
     let f1 = rows.iter().find(|r| r.filter_name == "f1").expect("f1");
     let f2 = rows.iter().find(|r| r.filter_name == "f2").expect("f2");
@@ -385,8 +445,16 @@ fn query_by_filter_pipe_override_count() {
 #[test]
 fn query_daily_pipe_override_count() {
     let (_dir, conn) = temp_db();
-    record_event(&conn, &build_event("cmd", Some("f"), 400, 400, 0, 0, true)).expect("record");
-    record_event(&conn, &build_event("cmd", Some("f"), 400, 200, 0, 0, false)).expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("f"), None, 400, 400, 0, 0, true),
+    )
+    .expect("record");
+    record_event(
+        &conn,
+        &build_event("cmd", Some("f"), None, 400, 200, 0, 0, false),
+    )
+    .expect("record");
     let rows = query_daily(&conn).expect("query");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].pipe_override_count, 1);
@@ -560,5 +628,48 @@ fn get_events_since_includes_null_filter_names() {
     assert_eq!(
         events[0].filter_name, None,
         "NULL filter_name should deserialise as None"
+    );
+}
+
+// --- filter_hash ---
+
+#[test]
+fn filter_hash_stored_and_retrieved() {
+    let (_dir, conn) = temp_db();
+    let hash = "a".repeat(64); // simulate a 64-char hex hash
+    let ev = build_event(
+        "git status",
+        Some("git status"),
+        Some(&hash),
+        400,
+        200,
+        10,
+        0,
+        false,
+    );
+    assert_eq!(ev.filter_hash.as_deref(), Some(hash.as_str()));
+    record_event(&conn, &ev).expect("record");
+
+    let events = get_events_since(&conn, 0).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].filter_hash.as_deref(),
+        Some(hash.as_str()),
+        "filter_hash must survive the roundtrip through the DB"
+    );
+}
+
+#[test]
+fn filter_hash_none_stored_as_null() {
+    let (_dir, conn) = temp_db();
+    let ev = build_event("echo hi", None, None, 100, 50, 5, 0, false);
+    assert!(ev.filter_hash.is_none());
+    record_event(&conn, &ev).expect("record");
+
+    let events = get_events_since(&conn, 0).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].filter_hash, None,
+        "None filter_hash should be stored as NULL and round-trip as None"
     );
 }

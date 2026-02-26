@@ -117,7 +117,7 @@ pub fn cmd_remote_sync() -> anyhow::Result<i32> {
         .map(|e| SyncEvent {
             id: e.id,
             filter_name: e.filter_name.clone(),
-            filter_hash: None,
+            filter_hash: e.filter_hash.clone(),
             input_tokens: e.input_tokens_est,
             output_tokens: e.output_tokens_est,
             command_count: 1,
@@ -145,6 +145,44 @@ pub fn cmd_remote_sync() -> anyhow::Result<i32> {
         "[tokf] Synced {} event(s). Cursor: {}.",
         response.accepted, response.cursor
     );
+
+    Ok(0)
+}
+
+/// Backfill `filter_hash` for past events that have a filter name but no hash.
+///
+/// Discovers all currently-installed filters, then updates every event row in the
+/// local DB where `filter_hash IS NULL` but `filter_name` is known. Events for
+/// filters that have been removed or renamed are reported but left unchanged.
+///
+/// # Errors
+/// Returns an error if filter discovery or DB access fails.
+pub fn cmd_remote_backfill(no_cache: bool) -> anyhow::Result<i32> {
+    use tokf::tracking;
+
+    let filters = crate::resolve::discover_filters(no_cache)?;
+
+    let db_path =
+        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
+    let conn = tracking::open_db(&db_path)?;
+
+    let (updated, not_found) = tracking::backfill_filter_hashes(&conn, &filters)?;
+
+    if updated == 0 && not_found.is_empty() {
+        eprintln!("[tokf] Nothing to backfill — all events already have hashes.");
+        return Ok(0);
+    }
+
+    if updated > 0 {
+        eprintln!("[tokf] Backfilled hash for {updated} event(s).");
+    }
+    if !not_found.is_empty() {
+        eprintln!(
+            "[tokf] {} filter(s) not found (removed or renamed): {}",
+            not_found.len(),
+            not_found.join(", ")
+        );
+    }
 
     Ok(0)
 }

@@ -42,6 +42,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             timestamp         TEXT    NOT NULL,
             command           TEXT    NOT NULL,
             filter_name       TEXT,
+            filter_hash       TEXT,
             input_bytes       INTEGER NOT NULL,
             output_bytes      INTEGER NOT NULL,
             input_tokens_est  INTEGER NOT NULL,
@@ -68,6 +69,19 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
         .context("migrate events table: add pipe_override column")?;
     }
 
+    // Migration: add filter_hash column when upgrading from a schema without it.
+    let has_filter_hash: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='filter_hash'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_filter_hash == 0 {
+        conn.execute_batch("ALTER TABLE events ADD COLUMN filter_hash TEXT;")
+            .context("migrate events table: add filter_hash column")?;
+    }
+
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     )
@@ -81,6 +95,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
 pub fn build_event(
     command: &str,
     filter_name: Option<&str>,
+    filter_hash: Option<&str>,
     input_bytes: usize,
     output_bytes: usize,
     filter_time_ms: u128,
@@ -96,6 +111,7 @@ pub fn build_event(
     TrackingEvent {
         command: command.to_owned(),
         filter_name: filter_name.map(ToOwned::to_owned),
+        filter_hash: filter_hash.map(ToOwned::to_owned),
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         input_bytes: input_bytes as i64,
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
@@ -115,16 +131,17 @@ pub fn build_event(
 pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<()> {
     conn.execute(
         "INSERT INTO events
-            (timestamp, command, filter_name,
+            (timestamp, command, filter_name, filter_hash,
              input_bytes, output_bytes,
              input_tokens_est, output_tokens_est,
              filter_time_ms, exit_code, pipe_override)
          VALUES
             (strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
             event.command,
             event.filter_name,
+            event.filter_hash,
             event.input_bytes,
             event.output_bytes,
             event.input_tokens_est,
@@ -309,9 +326,52 @@ pub fn set_last_synced_id(conn: &Connection, id: i64) -> anyhow::Result<()> {
 pub struct SyncableEvent {
     pub id: i64,
     pub filter_name: Option<String>,
+    pub filter_hash: Option<String>,
     pub input_tokens_est: i64,
     pub output_tokens_est: i64,
     pub timestamp: String,
+}
+
+/// Backfill `filter_hash` for existing events that have a `filter_name` but no hash.
+///
+/// For each distinct `filter_name` in the DB where `filter_hash IS NULL`, looks up the
+/// current hash from the provided filter list and updates all matching rows.
+///
+/// Returns `(updated_rows, not_found_names)` where `not_found_names` lists filter names
+/// that no longer resolve to any discovered filter (removed or renamed).
+///
+/// # Errors
+/// Returns an error if the DB query or update fails.
+pub fn backfill_filter_hashes(
+    conn: &Connection,
+    filters: &[crate::config::ResolvedFilter],
+) -> anyhow::Result<(usize, Vec<String>)> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT filter_name FROM events \
+         WHERE filter_hash IS NULL AND filter_name IS NOT NULL",
+    )?;
+    let names: Vec<String> = stmt
+        .query_map([], |r| r.get(0))?
+        .filter_map(std::result::Result::ok)
+        .collect();
+
+    let mut updated = 0usize;
+    let mut not_found = Vec::new();
+
+    for name in &names {
+        if let Some(rf) = filters.iter().find(|f| f.matches_name(name)) {
+            let rows = conn.execute(
+                "UPDATE events SET filter_hash = ?1 \
+                 WHERE filter_name = ?2 AND filter_hash IS NULL",
+                rusqlite::params![rf.hash, name],
+            )?;
+            updated += rows;
+        } else {
+            not_found.push(name.clone());
+        }
+    }
+
+    Ok((updated, not_found))
 }
 
 /// Returns up to 500 events with `id > last_id`, ordered ascending.
@@ -320,16 +380,17 @@ pub struct SyncableEvent {
 /// Returns an error if the SQL query fails.
 pub fn get_events_since(conn: &Connection, last_id: i64) -> anyhow::Result<Vec<SyncableEvent>> {
     let mut stmt = conn.prepare(
-        "SELECT id, filter_name, input_tokens_est, output_tokens_est, timestamp
+        "SELECT id, filter_name, filter_hash, input_tokens_est, output_tokens_est, timestamp
          FROM events WHERE id > ?1 ORDER BY id ASC LIMIT 500",
     )?;
     let rows = stmt.query_map(rusqlite::params![last_id], |row| {
         Ok(SyncableEvent {
             id: row.get(0)?,
             filter_name: row.get(1)?,
-            input_tokens_est: row.get(2)?,
-            output_tokens_est: row.get(3)?,
-            timestamp: row.get(4)?,
+            filter_hash: row.get(2)?,
+            input_tokens_est: row.get(3)?,
+            output_tokens_est: row.get(4)?,
+            timestamp: row.get(5)?,
         })
     })?;
     let mut result = Vec::new();
@@ -341,3 +402,6 @@ pub fn get_events_since(conn: &Connection, last_id: i64) -> anyhow::Result<Vec<S
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tests_backfill;

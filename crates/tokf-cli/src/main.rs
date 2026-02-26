@@ -273,6 +273,8 @@ enum RemoteAction {
     Status,
     /// Sync local usage events to the remote server
     Sync,
+    /// Backfill filter hashes for past events recorded before hash tracking was added
+    Backfill,
 }
 
 #[derive(Subcommand)]
@@ -384,6 +386,7 @@ fn main() {
             RemoteAction::Setup => remote_cmd::cmd_remote_setup(),
             RemoteAction::Status => remote_cmd::cmd_remote_status(),
             RemoteAction::Sync => remote_cmd::cmd_remote_sync(),
+            RemoteAction::Backfill => remote_cmd::cmd_remote_backfill(cli.no_cache),
         }),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
