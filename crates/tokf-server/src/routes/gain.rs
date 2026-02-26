@@ -366,6 +366,7 @@ mod tests {
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn get_gain_returns_user_events_only(pool: PgPool) {
+        init_test_tracing();
         let (user_id, token) = create_user_and_token(&pool).await;
         let (other_user_id, _) = create_user_and_token(&pool).await;
         let machine = create_machine(&pool, user_id).await;
@@ -384,8 +385,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let bytes = assert_status(resp, StatusCode::OK).await;
         let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(result["total_input_tokens"], 1000);
         assert_eq!(result["total_output_tokens"], 200);
@@ -393,6 +393,7 @@ mod tests {
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn global_gain_returns_all_events(pool: PgPool) {
+        init_test_tracing();
         let (user1_id, _) = create_user_and_token(&pool).await;
         let (user2_id, _) = create_user_and_token(&pool).await;
         let m1 = create_machine(&pool, user1_id).await;
@@ -410,8 +411,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let bytes = assert_status(resp, StatusCode::OK).await;
         let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(result["total_input_tokens"], 3000);
         assert_eq!(result["total_output_tokens"], 500);
@@ -419,6 +419,7 @@ mod tests {
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn filter_gain_returns_404_for_unknown(pool: PgPool) {
+        init_test_tracing();
         let resp = app(pool)
             .oneshot(
                 Request::builder()
@@ -429,11 +430,12 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_status(resp, StatusCode::NOT_FOUND).await;
     }
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn get_gain_empty_database_returns_zeros(pool: PgPool) {
+        init_test_tracing();
         let (_, token) = create_user_and_token(&pool).await;
         let resp = app(pool)
             .oneshot(
@@ -446,8 +448,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let bytes = assert_status(resp, StatusCode::OK).await;
         let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(result["total_input_tokens"], 0);
         assert_eq!(result["total_output_tokens"], 0);
@@ -458,6 +459,7 @@ mod tests {
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn global_gain_empty_database_returns_zeros(pool: PgPool) {
+        init_test_tracing();
         let resp = app(pool)
             .oneshot(
                 Request::builder()
@@ -468,8 +470,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let bytes = assert_status(resp, StatusCode::OK).await;
         let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(result["total_input_tokens"], 0);
         assert_eq!(result["total_output_tokens"], 0);
@@ -478,6 +479,7 @@ mod tests {
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn global_gain_does_not_expose_hostnames(pool: PgPool) {
+        init_test_tracing();
         let (user_id, _) = create_user_and_token(&pool).await;
         let machine = create_machine(&pool, user_id).await;
         insert_usage_event(&pool, machine, 500, 100).await;
@@ -492,8 +494,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let bytes = assert_status(resp, StatusCode::OK).await;
         let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
         // by_machine entries must not contain a "hostname" field

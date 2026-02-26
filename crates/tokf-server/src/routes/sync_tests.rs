@@ -307,6 +307,7 @@ async fn sync_null_filter_hash_does_not_create_filter_stats(pool: PgPool) {
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn sync_updates_filter_stats_for_known_hash(pool: PgPool) {
+    init_test_tracing();
     let (user_id, token) = create_user_and_token(&pool).await;
     let machine_id = create_machine(&pool, user_id).await;
     let hash = "abcdef1234567890";
@@ -346,7 +347,7 @@ async fn sync_updates_filter_stats_for_known_hash(pool: PgPool) {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_status(resp, StatusCode::OK).await;
 
     let (total_commands, total_input, total_output, savings_pct): (i64, i64, i64, f64) =
         sqlx::query_as(
