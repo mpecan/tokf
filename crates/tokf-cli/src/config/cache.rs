@@ -341,7 +341,10 @@ mod tests {
 
         // First run: populates cache
         let filters1 = discover_with_cache(&search_dirs).unwrap();
-        let count1 = filters1.iter().filter(|f| f.priority < u8::MAX).count();
+        let count1 = filters1
+            .iter()
+            .filter(|f| f.priority < crate::config::STDLIB_PRIORITY)
+            .count();
         assert_eq!(count1, 1);
 
         // Brief pause then add a new filter (updates dir mtime)
@@ -350,7 +353,10 @@ mod tests {
 
         // Second run: cache is stale, rebuilds with both filters
         let filters2 = discover_with_cache(&search_dirs).unwrap();
-        let count2 = filters2.iter().filter(|f| f.priority < u8::MAX).count();
+        let count2 = filters2
+            .iter()
+            .filter(|f| f.priority < crate::config::STDLIB_PRIORITY)
+            .count();
         assert_eq!(count2, 2);
     }
 }

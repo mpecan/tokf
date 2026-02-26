@@ -148,6 +148,7 @@ mod tests {
             r2_account_id: None,
             github_client_id: None,
             github_client_secret: None,
+            public_url: "http://localhost:8080".to_string(),
         }
     }
 

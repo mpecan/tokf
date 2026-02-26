@@ -158,7 +158,7 @@ mod tests {
             config: make_filter_config(command),
             source_path: PathBuf::from(format!("<built-in>/{name}.toml")),
             relative_path: PathBuf::from(format!("{name}.toml")),
-            priority: u8::MAX,
+            priority: crate::config::STDLIB_PRIORITY,
         }
     }
 

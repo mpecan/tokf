@@ -187,6 +187,7 @@ mod tests {
 
     use crate::auth::mock::NoOpGitHubClient;
     use crate::auth::token::{generate_token, hash_token};
+    use crate::rate_limit::PublishRateLimiter;
     use crate::state::AppState;
     use crate::storage::noop::NoOpStorageClient;
 
@@ -198,6 +199,8 @@ mod tests {
             github_client_id: "test-client-id".to_string(),
             github_client_secret: "test-client-secret".to_string(),
             trust_proxy: false,
+            public_url: "http://localhost:8080".to_string(),
+            publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         }
     }
 

@@ -28,6 +28,7 @@ fn stored_auth_toml_format() {
         username: "testuser".to_string(),
         server_url: "https://api.tokf.net".to_string(),
         expires_at: 1_700_000_000,
+        mit_license_accepted: None,
     };
     let toml_str = toml::to_string_pretty(&meta).unwrap();
     assert!(toml_str.contains("username = \"testuser\""));
@@ -42,6 +43,7 @@ fn loaded_auth_has_named_fields() {
         username: "bob".to_string(),
         server_url: "https://example.com".to_string(),
         expires_at: 0,
+        mit_license_accepted: None,
     };
     assert_eq!(auth.token, "tok_123");
     assert_eq!(auth.username, "bob");
@@ -57,6 +59,7 @@ fn loaded_auth_expired_detection() {
         username: "bob".to_string(),
         server_url: "https://example.com".to_string(),
         expires_at: 1, // epoch + 1 second = definitely expired
+        mit_license_accepted: None,
     };
     assert!(auth.is_expired());
 }

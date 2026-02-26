@@ -21,6 +21,10 @@ pub struct Config {
     /// extraction (required behind a reverse proxy). When `false`, only the
     /// TCP peer address is used.  Defaults to `false`.
     pub trust_proxy: bool,
+    /// The public base URL of this server instance (e.g. `https://registry.tokf.net`).
+    /// Used to generate fully-qualified URLs in API responses.
+    /// Defaults to `http://localhost:8080` when `PUBLIC_URL` is not set.
+    pub public_url: String,
 }
 
 // R10: Custom Debug masks secrets so the struct is safe to log.
@@ -54,6 +58,7 @@ impl std::fmt::Debug for Config {
                 &self.github_client_secret.as_deref().map(|_| "<redacted>"),
             )
             .field("trust_proxy", &self.trust_proxy)
+            .field("public_url", &self.public_url)
             .finish()
     }
 }
@@ -124,6 +129,8 @@ impl Config {
             trust_proxy: std::env::var("TRUST_PROXY")
                 .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes"))
                 .unwrap_or(false),
+            public_url: Self::env_non_empty("PUBLIC_URL")
+                .unwrap_or_else(|| "http://localhost:8080".to_string()),
         }
     }
 }
@@ -260,6 +267,7 @@ mod tests {
             r2_account_id: Some("abc123".to_string()),
             github_client_id: Some("gh-client-id".to_string()),
             github_client_secret: Some("gh-secret-value".to_string()),
+            public_url: "http://localhost:8080".to_string(),
         };
         let debug_str = format!("{cfg:?}");
         assert!(!debug_str.contains("postgres://secret"));
@@ -290,6 +298,7 @@ mod tests {
             r2_account_id: Some("account123".to_string()),
             github_client_id: None,
             github_client_secret: None,
+            public_url: "http://localhost:8080".to_string(),
         };
         assert_eq!(
             cfg.r2_endpoint_url().as_deref(),
@@ -312,6 +321,7 @@ mod tests {
             r2_account_id: Some("myaccount".to_string()),
             github_client_id: None,
             github_client_secret: None,
+            public_url: "http://localhost:8080".to_string(),
         };
         assert_eq!(
             cfg.r2_endpoint_url().as_deref(),
@@ -334,6 +344,7 @@ mod tests {
             r2_account_id: None,
             github_client_id: None,
             github_client_secret: None,
+            public_url: "http://localhost:8080".to_string(),
         };
         assert!(cfg.r2_endpoint_url().is_none());
     }
@@ -433,6 +444,7 @@ mod tests {
             r2_account_id: None,
             github_client_id: None,
             github_client_secret: None,
+            public_url: "http://localhost:8080".to_string(),
         }
     }
 }

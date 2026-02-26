@@ -14,8 +14,8 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use tokf_server::{
-    auth::mock::NoOpGitHubClient, routes::create_router, state::AppState,
-    storage::noop::NoOpStorageClient,
+    auth::mock::NoOpGitHubClient, rate_limit::PublishRateLimiter, routes::create_router,
+    state::AppState, storage::noop::NoOpStorageClient,
 };
 use tokio::net::TcpListener;
 use tower::ServiceExt;
@@ -38,6 +38,8 @@ fn test_state() -> AppState {
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
+        public_url: "http://localhost:8080".to_string(),
+        publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
     }
 }
 
@@ -56,6 +58,8 @@ fn down_state() -> AppState {
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
+        public_url: "http://localhost:8080".to_string(),
+        publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
     }
 }
 

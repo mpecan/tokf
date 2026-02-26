@@ -11,6 +11,9 @@ use types::{CommandPattern, FilterConfig};
 
 static STDLIB: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/filters");
 
+/// Priority assigned to embedded stdlib filters — always lower than any user-installed filter.
+pub const STDLIB_PRIORITY: u8 = u8::MAX;
+
 /// Returns the embedded TOML content for a filter, if it exists.
 /// `relative_path` should be like `git/push.toml`.
 pub fn get_embedded_filter(relative_path: &Path) -> Option<&'static str> {
@@ -239,7 +242,7 @@ pub struct ResolvedFilter {
     pub source_path: PathBuf,
     /// Path relative to its source search dir (for display).
     pub relative_path: PathBuf,
-    /// 0 = repo-local, 1 = user-level, `u8::MAX` = built-in.
+    /// 0 = repo-local, 1 = user-level, [`STDLIB_PRIORITY`] = built-in.
     pub priority: u8,
 }
 
@@ -283,7 +286,7 @@ impl ResolvedFilter {
 /// Discover all filters across `search_dirs` plus the embedded stdlib,
 /// sorted by `(priority ASC, specificity DESC)`.
 ///
-/// Embedded stdlib entries are appended at priority `u8::MAX`,
+/// Embedded stdlib entries are appended at priority [`STDLIB_PRIORITY`],
 /// so local (0) and user (1) filters always shadow built-in ones.
 ///
 /// Deduplication: first occurrence of each command pattern (by `first()` string) wins.
@@ -314,9 +317,8 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
         }
     }
 
-    // Append embedded stdlib at the lowest priority (u8::MAX ensures it always
-    // sorts after local/user dirs regardless of how many dirs are in the slice).
-    let stdlib_priority = u8::MAX;
+    // Append embedded stdlib at the lowest priority (STDLIB_PRIORITY ensures it
+    // always sorts after local/user dirs regardless of how many dirs are in the slice).
     if let Ok(entries) = STDLIB.find("**/*.toml") {
         for entry in entries {
             if let DirEntry::File(file) = entry {
@@ -329,7 +331,7 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
                     config,
                     source_path: PathBuf::from("<built-in>").join(&rel),
                     relative_path: rel,
-                    priority: stdlib_priority,
+                    priority: STDLIB_PRIORITY,
                 });
             }
         }
