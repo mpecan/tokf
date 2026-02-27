@@ -1,0 +1,6 @@
+name = "test-all aggregates unit + DB + e2e suites"
+fixture = "combined.txt"
+exit_code = 0
+
+[[expect]]
+equals = "✓ cargo test: 173 passed (7 suites)"

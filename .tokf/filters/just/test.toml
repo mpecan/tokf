@@ -1,0 +1,51 @@
+# just-test.toml — Reuses cargo test filter logic (Level 3)
+# Matches all just test commands: test, test-db, test-e2e, test-all
+
+command = ["just test", "just test-db", "just test-e2e", "just test-all"]
+
+skip = [
+  "^cargo test",
+  "^\\s*Compiling ",
+  "^\\s*Downloading ",
+  "^\\s*Downloaded ",
+  "^\\s*Finished ",
+  "^\\s*Locking ",
+  "^running \\d+ tests?$",
+  "^test .+ \\.\\.\\. ok$",
+  "^\\s*$",
+  "^\\s*Doc-tests ",
+]
+
+[[section]]
+name = "failures"
+enter = "^failures:$"
+exit = "^failures:$"
+split_on = "^\\s*$"
+collect_as = "failure_blocks"
+
+[[section]]
+name = "failure_names"
+enter = "^failures:$"
+exit = "^\\s*$"
+match = "^\\s+\\S+"
+collect_as = "failure_list"
+
+[[section]]
+name = "summary"
+match = "^test result:"
+collect_as = "summary_lines"
+
+[on_success]
+aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "passed", count_as = "suites" }
+output = "✓ cargo test: {passed} passed ({suites} suites)"
+
+[on_failure]
+output = """
+FAILURES ({failure_blocks.count}):
+═══════════════════════════════════════
+{failure_blocks | each: "{index}. {value | truncate: 200}" | join: "\n"}
+
+{summary_lines | join: "\n"}"""
+
+[fallback]
+tail = 5

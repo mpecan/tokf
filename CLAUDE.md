@@ -137,6 +137,35 @@ cargo clippy --workspace --all-targets -- -D warnings  # Lint
 cargo fmt -- --check     # Format check
 ```
 
+### Database & end-to-end tests
+
+`tokf-server` uses CockroachDB. DB integration tests and end-to-end tests are `#[ignore]`d by default — they require `DATABASE_URL` and the `--ignored` flag.
+
+Copy `.env.example` → `.env` to configure `CONTAINER_RUNTIME` (`podman` or `docker`) and `DATABASE_URL`.
+
+```sh
+just db-start                  # start CockroachDB
+just db-status                 # check if running
+just db-setup                  # create tokf_test database
+just test-db                   # tokf-server integration tests
+just test-e2e                  # end-to-end tests
+just test-all                  # unit + DB + e2e
+just db-reset                  # wipe and restart fresh
+```
+
+Or manually:
+
+```sh
+podman compose -f crates/tokf-server/docker-compose.yml up -d
+export DATABASE_URL="postgresql://root@localhost:26257/tokf_test?sslmode=disable"
+psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" \
+  -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+cargo test -p tokf-server -- --ignored
+cargo test -p e2e-tests -- --ignored
+```
+
+Each `#[crdb_test]` creates an isolated database per test with fresh migrations — no manual migration step needed.
+
 ## Documentation
 
 **Every user-facing feature or behaviour change must be documented in the same PR.**

@@ -88,6 +88,10 @@ reason = "db_state/make_state - integration tests cannot access pub(crate) test 
 fingerprint = "3c8fb4c61f6efe4e"
 reason = "sync_tests validation rejection tests - each tests a different error case with different payloads; test clarity > DRY"
 
+[[ignore]]
+fingerprint = "e7c7421228f41810"
+reason = "TestHarness::blocking_get_filter/blocking_download_filter - spawn_blocking test boilerplate; test clarity > DRY"
+
 # Near duplicates
 
 [[ignore]]
@@ -105,3 +109,11 @@ reason = "config_search_paths/default_search_dirs - structurally similar but ser
 [[ignore]]
 fingerprint = "c0692f8ae6555b2b"
 reason = "get_history_entry/most_recent_command - idiomatic rusqlite query pattern; different SQL, types, and row mapping"
+
+[[ignore]]
+fingerprint = "4ad9184ca8858560"
+reason = "TestHarness::blocking_update_tests/blocking_search_filters - spawn_blocking test boilerplate; test clarity > DRY"
+
+[[ignore]]
+fingerprint = "9fc57c07628e198e"
+reason = "TestHarness::blocking_gain/blocking_list_machines - spawn_blocking test boilerplate; test clarity > DRY"

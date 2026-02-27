@@ -413,7 +413,7 @@ mod tests {
             &token,
             b"command = \"git push\"\n",
             &[(
-                "test/basic.toml",
+                "test:basic.toml",
                 b"name = \"basic\"\n\n[[expect]]\ncontains = \"ok\"\n",
             )],
         )
@@ -487,11 +487,11 @@ mod tests {
             b"command = \"git push\"\n",
             &[
                 (
-                    "test/basic.toml",
+                    "test:basic.toml",
                     b"name = \"basic\"\n\n[[expect]]\ncontains = \"ok\"\n",
                 ),
                 (
-                    "test/edge.toml",
+                    "test:edge.toml",
                     b"name = \"edge\"\n\n[[expect]]\ncontains = \"ok\"\n",
                 ),
             ],

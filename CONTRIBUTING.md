@@ -114,6 +114,61 @@ See the [README](README.md#lua-escape-hatch) for the full API and the built-in f
 
 ---
 
+## Database & end-to-end tests
+
+`tokf-server` uses CockroachDB. The DB integration tests and end-to-end tests are `#[ignore]`d by default — they only run when `DATABASE_URL` is set and you pass `--ignored`.
+
+### Quick start with just
+
+Copy `.env.example` to `.env` and adjust if needed (e.g. change `CONTAINER_RUNTIME` from `podman` to `docker`):
+
+```sh
+cp .env.example .env          # edit to choose podman or docker
+just db-start                  # start CockroachDB
+just db-status                 # verify it's running
+just db-setup                  # create the test database
+just test-db                   # run DB integration tests
+just test-e2e                  # run end-to-end tests
+just test-all                  # unit + DB + e2e tests
+```
+
+### Manual setup
+
+Use Podman (or Docker) with the bundled compose file:
+
+```sh
+podman compose -f crates/tokf-server/docker-compose.yml up -d
+```
+
+This starts a single-node CockroachDB on port `26257` (SQL) and `8080` (admin UI).
+
+```sh
+export DATABASE_URL="postgresql://root@localhost:26257/tokf_test?sslmode=disable"
+psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" \
+  -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+
+# Unit tests (no database required)
+cargo test --workspace
+
+# DB integration tests (requires DATABASE_URL)
+cargo test -p tokf-server -- --ignored
+
+# End-to-end tests (requires DATABASE_URL)
+cargo test -p e2e-tests -- --ignored
+```
+
+Each `#[crdb_test]` test creates its own isolated database, runs migrations, and cleans up afterwards. Tests can run in parallel without interfering with each other.
+
+### Resetting the database
+
+```sh
+just db-reset                  # or manually:
+podman compose -f crates/tokf-server/docker-compose.yml down -v
+podman compose -f crates/tokf-server/docker-compose.yml up -d
+```
+
+---
+
 ## Pull requests
 
 - Target the `main` branch

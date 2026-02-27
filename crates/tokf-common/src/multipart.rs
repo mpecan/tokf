@@ -29,7 +29,7 @@ mod tests {
         let (body, content_type) = build_body(&[
             ("filter", b"command = \"test\"\n"),
             ("mit_license_accepted", b"true"),
-            ("test/basic.toml", b"name = \"basic\"\n"),
+            ("test:basic.toml", b"name = \"basic\"\n"),
         ]);
         assert!(content_type.contains("boundary="));
         let body_str = String::from_utf8(body).unwrap();
@@ -41,7 +41,7 @@ mod tests {
         );
         assert!(body_str.contains("name=\"filter\""));
         assert!(body_str.contains("name=\"mit_license_accepted\""));
-        assert!(body_str.contains("name=\"test/basic.toml\""));
+        assert!(body_str.contains("name=\"test:basic.toml\""));
     }
 
     #[test]
