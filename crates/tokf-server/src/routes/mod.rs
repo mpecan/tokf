@@ -6,7 +6,7 @@ mod machines;
 mod ready;
 mod sync;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-helpers"))]
 pub mod test_helpers;
 
 use axum::{
