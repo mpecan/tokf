@@ -3250,6 +3250,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "tokf-common",
+ "tokf-server",
  "tokio",
  "toml",
  "tower",
