@@ -58,15 +58,7 @@ pub fn get_gain(
     token: &str,
 ) -> anyhow::Result<GainResponse> {
     let url = format!("{base_url}/api/gain");
-    let resp = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
-
-    let resp = require_success(resp)?;
-    resp.json::<GainResponse>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+    super::http::authed_get(client, &url, token)
 }
 
 /// Fetch global (all-users) token savings from the remote server (public, no auth).

@@ -16,8 +16,9 @@ use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
 use crate::state::AppState;
 use crate::storage::mock::InMemoryStorageClient;
 
-pub const BOUNDARY: &str = "tokftestboundary";
 pub const MIT_ACCEPT: (&str, &[u8]) = ("mit_license_accepted", b"true");
+
+pub use tokf_common::multipart::build_body as make_multipart;
 
 pub fn make_state(pool: PgPool) -> AppState {
     make_state_with_storage(pool, Arc::new(InMemoryStorageClient::new()))
@@ -74,20 +75,6 @@ pub fn rand_i64() -> i64 {
             .unwrap()
             .subsec_nanos(),
     ) + i64::from(rand::random::<i32>())
-}
-
-pub fn make_multipart(fields: &[(&str, &[u8])]) -> (Vec<u8>, String) {
-    let mut body = Vec::new();
-    for (name, content) in fields {
-        let header =
-            format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n");
-        body.extend_from_slice(header.as_bytes());
-        body.extend_from_slice(content);
-        body.extend_from_slice(b"\r\n");
-    }
-    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
-    let content_type = format!("multipart/form-data; boundary={BOUNDARY}");
-    (body, content_type)
 }
 
 /// POST `/api/filters` and assert success; returns the `content_hash`.

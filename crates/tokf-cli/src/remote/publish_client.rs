@@ -2,27 +2,6 @@ use serde::Deserialize;
 
 use super::require_success;
 
-const BOUNDARY: &str = "tokf-publish-boundary";
-
-/// Build a multipart/form-data body manually.
-///
-/// reqwest's streaming multipart body gets truncated when sent via the
-/// blocking client (parts beyond the first two are silently dropped).
-/// Building a byte buffer with known `Content-Length` avoids this issue.
-fn build_multipart(fields: &[(&str, &[u8])]) -> (Vec<u8>, String) {
-    let mut body = Vec::new();
-    for (name, content) in fields {
-        let header =
-            format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n");
-        body.extend_from_slice(header.as_bytes());
-        body.extend_from_slice(content);
-        body.extend_from_slice(b"\r\n");
-    }
-    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
-    let content_type = format!("multipart/form-data; boundary={BOUNDARY}");
-    (body, content_type)
-}
-
 #[derive(Debug, Deserialize)]
 pub struct PublishResponse {
     pub content_hash: String,
@@ -61,7 +40,7 @@ pub fn publish_filter(
     for (i, (_, bytes)) in test_files.iter().enumerate() {
         fields.push((&owned_names[i], bytes));
     }
-    let (body, content_type) = build_multipart(&fields);
+    let (body, content_type) = tokf_common::multipart::build_body(&fields);
 
     let resp = client
         .post(&url)
@@ -116,7 +95,7 @@ pub fn update_tests(
         .enumerate()
         .map(|(i, (_, bytes))| (owned_names[i].as_str(), bytes.as_slice()))
         .collect();
-    let (body, content_type) = build_multipart(&fields);
+    let (body, content_type) = tokf_common::multipart::build_body(&fields);
 
     let resp = client
         .put(&url)
@@ -190,25 +169,5 @@ mod tests {
         let resp: PublishResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.author, "bob");
         assert_eq!(resp.registry_url, "filters/deadbeef/filter.toml");
-    }
-
-    #[test]
-    fn build_multipart_produces_valid_body() {
-        let (body, content_type) = build_multipart(&[
-            ("filter", b"command = \"test\"\n"),
-            ("mit_license_accepted", b"true"),
-            ("test/basic.toml", b"name = \"basic\"\n"),
-        ]);
-        assert!(content_type.contains("boundary="));
-        let body_str = String::from_utf8(body).unwrap();
-        // 3 parts + closing boundary = 4 boundary markers
-        assert_eq!(
-            body_str.matches(&format!("--{BOUNDARY}")).count(),
-            4,
-            "expected 4 boundary markers (3 parts + closing)"
-        );
-        assert!(body_str.contains("name=\"filter\""));
-        assert!(body_str.contains("name=\"mit_license_accepted\""));
-        assert!(body_str.contains("name=\"test/basic.toml\""));
     }
 }

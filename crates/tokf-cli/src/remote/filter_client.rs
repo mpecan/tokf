@@ -1,23 +1,6 @@
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 
 use super::require_success;
-
-/// Perform an authenticated GET and deserialize the JSON response.
-fn authed_get<T: DeserializeOwned>(
-    client: &reqwest::blocking::Client,
-    url: &str,
-    token: &str,
-) -> anyhow::Result<T> {
-    let resp = client
-        .get(url)
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
-
-    let resp = require_success(resp)?;
-    resp.json::<T>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FilterSummary {
@@ -95,7 +78,7 @@ pub fn get_filter(
     token: &str,
     hash: &str,
 ) -> anyhow::Result<FilterDetails> {
-    authed_get(client, &format!("{base_url}/api/filters/{hash}"), token)
+    super::http::authed_get(client, &format!("{base_url}/api/filters/{hash}"), token)
 }
 
 /// Download a filter's TOML and test files by content hash.
@@ -110,7 +93,7 @@ pub fn download_filter(
     token: &str,
     hash: &str,
 ) -> anyhow::Result<DownloadedFilter> {
-    authed_get(
+    super::http::authed_get(
         client,
         &format!("{base_url}/api/filters/{hash}/download"),
         token,

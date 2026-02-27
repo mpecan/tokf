@@ -32,3 +32,24 @@ pub fn build_client(timeout_secs: u64) -> anyhow::Result<reqwest::blocking::Clie
         .build()
         .map_err(|e| anyhow::anyhow!("could not build HTTP client: {e}"))
 }
+
+/// Perform an authenticated GET and deserialize the JSON response.
+///
+/// # Errors
+///
+/// Returns an error if the server is unreachable, returns a non-success
+/// status, or the response body cannot be deserialized.
+pub fn authed_get<T: serde::de::DeserializeOwned>(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    token: &str,
+) -> anyhow::Result<T> {
+    let resp = client
+        .get(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
+    let resp = super::require_success(resp)?;
+    resp.json::<T>()
+        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+}
