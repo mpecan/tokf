@@ -1,10 +1,11 @@
 mod discovery;
 mod runner;
 
-use serde::Deserialize;
 use serde::Serialize;
 
 use self::discovery::DiscoveredSuite;
+
+pub use tokf_common::test_case::{Expectation, TestCase};
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum VerifyScope {
@@ -14,43 +15,6 @@ pub enum VerifyScope {
     Global,
     /// Stdlib filters in CWD only (`filters/`, for repo development)
     Stdlib,
-}
-
-// --- Types ---
-
-#[derive(Deserialize)]
-pub struct TestCase {
-    pub name: String,
-    #[serde(default)]
-    pub fixture: Option<String>,
-    #[serde(default)]
-    pub inline: Option<String>,
-    #[serde(default)]
-    pub exit_code: i32,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(rename = "expect", default)]
-    pub expects: Vec<Expectation>,
-}
-
-#[derive(Deserialize)]
-pub struct Expectation {
-    #[serde(default)]
-    pub contains: Option<String>,
-    #[serde(default)]
-    pub not_contains: Option<String>,
-    #[serde(default)]
-    pub equals: Option<String>,
-    #[serde(default)]
-    pub starts_with: Option<String>,
-    #[serde(default)]
-    pub ends_with: Option<String>,
-    #[serde(default)]
-    pub line_count: Option<usize>,
-    #[serde(default)]
-    pub matches: Option<String>,
-    #[serde(default)]
-    pub not_matches: Option<String>,
 }
 
 #[derive(Serialize)]

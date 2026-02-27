@@ -33,7 +33,7 @@ hex = "0.4"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
-tokf-common = { path = "../tokf-common", version = "0.2.12" }
+tokf-common = { path = "../tokf-common", version = "0.2.12", features = ["validation"] }
 toml = "1.0"
 bytes = "1"
 

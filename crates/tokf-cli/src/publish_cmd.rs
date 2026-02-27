@@ -6,8 +6,13 @@ use tokf::config;
 use tokf::remote::publish_client;
 
 /// Entry point for the `tokf publish` subcommand.
-pub fn cmd_publish(filter_name: &str, dry_run: bool) -> i32 {
-    match publish(filter_name, dry_run) {
+pub fn cmd_publish(filter_name: &str, dry_run: bool, update_tests: bool) -> i32 {
+    let result = if update_tests {
+        publish_update_tests(filter_name, dry_run)
+    } else {
+        publish(filter_name, dry_run)
+    };
+    match result {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -16,13 +21,14 @@ pub fn cmd_publish(filter_name: &str, dry_run: bool) -> i32 {
     }
 }
 
-fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
-    let filter_name = filter_name.strip_suffix(".toml").unwrap_or(filter_name);
+// ── Shared helpers ──────────────────────────────────────────────────────────
 
+/// Resolve a local filter by name, rejecting stdlib filters.
+fn resolve_local_filter(filter_name: &str) -> anyhow::Result<config::ResolvedFilter> {
     let search_dirs = config::default_search_dirs();
     let resolved = config::discover_all_filters(&search_dirs)?;
     let resolved_filter = resolved
-        .iter()
+        .into_iter()
         .find(|f| f.matches_name(filter_name))
         .ok_or_else(|| anyhow::anyhow!("filter not found: {filter_name}"))?;
 
@@ -33,21 +39,22 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
         );
     }
 
-    let filter_bytes = std::fs::read(&resolved_filter.source_path)?;
-    let (content_hash, command_pattern) = hash_filter(&filter_bytes)?;
-    let test_files = collect_test_files(resolved_filter)?;
+    Ok(resolved_filter)
+}
 
-    eprintln!("[tokf] publishing filter: {filter_name}");
-    eprintln!("  Command: {command_pattern}");
-    eprintln!("  Hash:    {content_hash}");
-    eprintln!("  Tests:   {} file(s)", test_files.len());
-
-    if dry_run {
-        eprintln!("[tokf] dry-run: no files uploaded");
-        return Ok(0);
+/// Load credentials and build an authenticated HTTP client.
+fn authed_client() -> anyhow::Result<(reqwest::blocking::Client, credentials::LoadedAuth)> {
+    let auth = credentials::load()
+        .ok_or_else(|| anyhow::anyhow!("not logged in — run `tokf auth login` first"))?;
+    if auth.is_expired() {
+        anyhow::bail!("token has expired — run `tokf auth login` to re-authenticate");
     }
-
-    upload_to_registry(filter_name, filter_bytes, test_files)
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| anyhow::anyhow!("could not build HTTP client: {e}"))?;
+    Ok((client, auth))
 }
 
 /// Parse filter bytes and return `(content_hash, command_pattern)`.
@@ -61,25 +68,28 @@ fn hash_filter(filter_bytes: &[u8]) -> anyhow::Result<(String, String)> {
     Ok((hash, cfg.command.first().to_string()))
 }
 
-/// Prompt for license, load auth, and upload to the registry.
-fn upload_to_registry(
-    filter_name: &str,
-    filter_bytes: Vec<u8>,
-    test_files: Vec<(String, Vec<u8>)>,
-) -> anyhow::Result<i32> {
-    ensure_license_accepted()?;
+// ── Publish flow ────────────────────────────────────────────────────────────
 
-    let auth = credentials::load()
-        .ok_or_else(|| anyhow::anyhow!("not logged in — run `tokf auth login` first"))?;
-    if auth.is_expired() {
-        anyhow::bail!("token has expired — run `tokf auth login` to re-authenticate");
+fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
+    let filter_name = filter_name.strip_suffix(".toml").unwrap_or(filter_name);
+    let resolved_filter = resolve_local_filter(filter_name)?;
+
+    let filter_bytes = std::fs::read(&resolved_filter.source_path)?;
+    let (content_hash, command_pattern) = hash_filter(&filter_bytes)?;
+    let test_files = collect_test_files(&resolved_filter)?;
+
+    eprintln!("[tokf] publishing filter: {filter_name}");
+    eprintln!("  Command: {command_pattern}");
+    eprintln!("  Hash:    {content_hash}");
+    eprintln!("  Tests:   {} file(s)", test_files.len());
+
+    if dry_run {
+        eprintln!("[tokf] dry-run: no files uploaded");
+        return Ok(0);
     }
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| anyhow::anyhow!("could not build HTTP client: {e}"))?;
+    ensure_license_accepted()?;
+    let (client, auth) = authed_client()?;
 
     let (is_new, resp) = publish_client::publish_filter(
         &client,
@@ -97,6 +107,55 @@ fn upload_to_registry(
     eprintln!("Hash:    {}", resp.content_hash);
     eprintln!("Author:  {}", resp.author);
     eprintln!("URL:     {}", resp.registry_url);
+    Ok(0)
+}
+
+// ── Update-tests flow ───────────────────────────────────────────────────────
+
+fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
+    let filter_name = filter_name.strip_suffix(".toml").unwrap_or(filter_name);
+    let resolved_filter = resolve_local_filter(filter_name)?;
+
+    let filter_bytes = std::fs::read(&resolved_filter.source_path)?;
+    let (content_hash, _) = hash_filter(&filter_bytes)?;
+    let test_files = collect_test_files(&resolved_filter)?;
+
+    if test_files.is_empty() {
+        anyhow::bail!("no test files found for {filter_name}");
+    }
+
+    // Validate test files locally before uploading
+    for (filename, bytes) in &test_files {
+        tokf_common::test_case::validate(bytes).map_err(|e| anyhow::anyhow!("{filename}: {e}"))?;
+    }
+
+    eprintln!("[tokf] updating test suite for: {filter_name}");
+    eprintln!("  Hash:  {content_hash}");
+    eprintln!("  Tests: {} file(s)", test_files.len());
+
+    if dry_run {
+        for (name, _) in &test_files {
+            eprintln!("  - {name}");
+        }
+        eprintln!("[tokf] dry-run: no files uploaded");
+        return Ok(0);
+    }
+
+    let (client, auth) = authed_client()?;
+
+    let resp = publish_client::update_tests(
+        &client,
+        &auth.server_url,
+        &auth.token,
+        &content_hash,
+        test_files,
+    )?;
+
+    eprintln!(
+        "[tokf] updated test suite for {filter_name} ({} file(s))",
+        resp.test_count
+    );
+    eprintln!("URL: {}", resp.registry_url);
     Ok(0)
 }
 

@@ -17,13 +17,16 @@ use tokio::task::JoinHandle;
 
 use tokf::auth::credentials::LoadedAuth;
 use tokf::remote::client::{MachineInfo, RegisteredMachine};
+use tokf::remote::filter_client::{self, DownloadedFilter, FilterDetails, FilterSummary};
 use tokf::remote::gain_client::{GainResponse, GlobalGainResponse};
 use tokf::remote::machine::StoredMachine;
+use tokf::remote::publish_client::{self, PublishResponse, UpdateTestsResponse};
 use tokf::remote::sync_client::{self, SyncEvent, SyncRequest, SyncResponse};
 use tokf::tracking;
 use tokf_server::auth::github::GitHubClient;
 use tokf_server::auth::mock::{NoOpGitHubClient, SuccessGitHubClient};
 use tokf_server::routes::{create_router, test_helpers};
+use tokf_server::storage::mock::InMemoryStorageClient;
 
 /// Reusable test harness that spins up an in-process axum server
 /// backed by a real `CockroachDB` pool and provides helpers for
@@ -35,6 +38,7 @@ pub struct TestHarness {
     pub user_id: i64,
     pub machine_id: uuid::Uuid,
     pub sqlite_path: PathBuf,
+    pub pool: PgPool,
     _temp_dir: tempfile::TempDir,
     server_handle: JoinHandle<()>,
 }
@@ -52,6 +56,17 @@ impl TestHarness {
         Self::with_github(pool, Arc::new(NoOpGitHubClient)).await
     }
 
+    /// Create a harness with `InMemoryStorageClient` so filter publish/download
+    /// operations actually persist bytes in memory (unlike `NoOpStorageClient`).
+    pub async fn with_storage(pool: PgPool) -> Self {
+        Self::with_github_and_storage(
+            pool,
+            Arc::new(NoOpGitHubClient),
+            Arc::new(InMemoryStorageClient::new()),
+        )
+        .await
+    }
+
     /// Create a harness with `SuccessGitHubClient` (device flow completes
     /// immediately, useful for auth E2E tests).
     pub async fn with_github_mock(pool: PgPool) -> Self {
@@ -59,13 +74,27 @@ impl TestHarness {
     }
 
     async fn with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> Self {
+        Self::with_github_and_storage(
+            pool,
+            github,
+            Arc::new(tokf_server::storage::noop::NoOpStorageClient),
+        )
+        .await
+    }
+
+    async fn with_github_and_storage(
+        pool: PgPool,
+        github: Arc<dyn GitHubClient>,
+        storage: Arc<dyn tokf_server::storage::StorageClient>,
+    ) -> Self {
         // Create user, token, and machine in DB
         let (user_id, token) = test_helpers::create_user_and_token(&pool).await;
         let machine_id = test_helpers::create_machine(&pool, user_id).await;
 
-        // Build state — override the github client
-        let mut state = test_helpers::make_state(pool);
+        // Build state — override the github client and storage
+        let mut state = test_helpers::make_state(pool.clone());
         state.github = github;
+        state.storage = storage;
 
         let app = create_router(state);
 
@@ -109,9 +138,16 @@ impl TestHarness {
             user_id,
             machine_id,
             sqlite_path,
+            pool,
             _temp_dir: temp_dir,
             server_handle,
         }
+    }
+
+    /// Create a second user+token pair (for testing authorization).
+    pub async fn create_other_user_token(&self) -> String {
+        let (_, token) = test_helpers::create_user_and_token(&self.pool).await;
+        token
     }
 
     /// Open (or create) the `SQLite` tracking database.
@@ -306,6 +342,132 @@ impl TestHarness {
         tokio::task::spawn_blocking(move || {
             let client = Self::http_client();
             tokf::remote::gain_client::get_gain(&client, &base_url, &token).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    // ── Filter helpers ──────────────────────────────────────────
+
+    /// Try to publish a filter (returns Result for error-path tests).
+    pub async fn try_publish(
+        &self,
+        filter_bytes: Vec<u8>,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> anyhow::Result<(bool, PublishResponse)> {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            publish_client::publish_filter(&client, &base_url, &token, filter_bytes, test_files)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Publish a filter with optional test files. Returns `(is_new, response)`.
+    pub async fn blocking_publish(
+        &self,
+        filter_bytes: Vec<u8>,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> (bool, PublishResponse) {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            publish_client::publish_filter(&client, &base_url, &token, filter_bytes, test_files)
+                .unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Update the test suite for a published filter.
+    pub async fn blocking_update_tests(
+        &self,
+        hash: &str,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> UpdateTestsResponse {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        let hash = hash.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            publish_client::update_tests(&client, &base_url, &token, &hash, test_files).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Try to update tests (returns Result for error-path tests).
+    pub async fn try_update_tests(
+        &self,
+        hash: &str,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> anyhow::Result<UpdateTestsResponse> {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        let hash = hash.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            publish_client::update_tests(&client, &base_url, &token, &hash, test_files)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Try to update tests with a custom token (for auth tests).
+    pub async fn try_update_tests_with_token(
+        &self,
+        hash: &str,
+        test_files: Vec<(String, Vec<u8>)>,
+        token: &str,
+    ) -> anyhow::Result<UpdateTestsResponse> {
+        let base_url = self.base_url.clone();
+        let token = token.to_string();
+        let hash = hash.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            publish_client::update_tests(&client, &base_url, &token, &hash, test_files)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Search the filter registry.
+    pub async fn blocking_search_filters(&self, query: &str, limit: usize) -> Vec<FilterSummary> {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        let query = query.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            filter_client::search_filters(&client, &base_url, &token, &query, limit).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Get filter details by hash.
+    pub async fn blocking_get_filter(&self, hash: &str) -> FilterDetails {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        let hash = hash.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            filter_client::get_filter(&client, &base_url, &token, &hash).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Download filter TOML + test files by hash.
+    pub async fn blocking_download_filter(&self, hash: &str) -> DownloadedFilter {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        let hash = hash.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            filter_client::download_filter(&client, &base_url, &token, &hash).unwrap()
         })
         .await
         .unwrap()

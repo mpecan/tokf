@@ -13,6 +13,9 @@ pub trait StorageClient: Send + Sync {
 
     /// Check whether a key exists.
     async fn exists(&self, key: &str) -> anyhow::Result<bool>;
+
+    /// Delete a key from storage. No-op if the key doesn't exist.
+    async fn delete(&self, key: &str) -> anyhow::Result<()>;
 }
 
 /// Upload a filter TOML if not already stored. Returns the R2 key.
@@ -59,6 +62,21 @@ pub async fn upload_test(
         return Ok(key);
     }
     storage.put(&key, test_bytes).await
+}
+
+/// Delete a list of R2 keys (test files) for a given filter hash.
+///
+/// # Errors
+///
+/// Returns an error if any storage delete call fails.
+pub async fn delete_tests_for_hash(
+    storage: &dyn StorageClient,
+    r2_keys: &[String],
+) -> anyhow::Result<()> {
+    for key in r2_keys {
+        storage.delete(key).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -139,6 +157,45 @@ mod tests {
         assert!(!storage.exists("key").await.unwrap());
         storage.put("key", b"data".to_vec()).await.unwrap();
         assert!(storage.exists("key").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_removes_existing_key() {
+        let storage = InMemoryStorageClient::new();
+        storage.put("key", b"data".to_vec()).await.unwrap();
+        assert!(storage.exists("key").await.unwrap());
+
+        storage.delete("key").await.unwrap();
+        assert!(!storage.exists("key").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_nonexistent_key_is_ok() {
+        let storage = InMemoryStorageClient::new();
+        storage.delete("nonexistent").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_tests_for_hash_removes_all() {
+        let storage = InMemoryStorageClient::new();
+        let keys = vec![
+            "filters/abc/tests/a.toml".to_string(),
+            "filters/abc/tests/b.toml".to_string(),
+        ];
+        for key in &keys {
+            storage.put(key, b"data".to_vec()).await.unwrap();
+        }
+        delete_tests_for_hash(&storage, &keys).await.unwrap();
+        for key in &keys {
+            assert!(!storage.exists(key).await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_tests_for_hash_empty_slice_is_noop() {
+        let storage = InMemoryStorageClient::new();
+        delete_tests_for_hash(&storage, &[]).await.unwrap();
+        assert_eq!(storage.delete_count(), 0);
     }
 
     #[tokio::test]

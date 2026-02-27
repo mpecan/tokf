@@ -105,6 +105,16 @@ impl StorageClient for R2StorageClient {
         }
     }
 
+    async fn delete(&self, key: &str) -> anyhow::Result<()> {
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await?;
+        Ok(())
+    }
+
     async fn exists(&self, key: &str) -> anyhow::Result<bool> {
         match self
             .client

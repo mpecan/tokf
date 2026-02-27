@@ -156,6 +156,31 @@ pub async fn post_filter(
     .unwrap()
 }
 
+/// PUT `/api/filters/{hash}/tests` helper that returns the full response.
+pub async fn put_tests(
+    app: axum::Router,
+    token: &str,
+    hash: &str,
+    test_files: &[(&str, &[u8])],
+) -> axum::response::Response {
+    let mut fields: Vec<(&str, &[u8])> = Vec::new();
+    for (name, content) in test_files {
+        fields.push((name, content));
+    }
+    let (body, content_type) = make_multipart(&fields);
+    app.oneshot(
+        Request::builder()
+            .method("PUT")
+            .uri(format!("/api/filters/{hash}/tests"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", content_type)
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
 pub fn assert_status(resp: &axum::response::Response, expected: StatusCode) {
     assert_eq!(
         resp.status(),

@@ -3223,6 +3223,7 @@ dependencies = [
 name = "tokf-common"
 version = "0.2.12"
 dependencies = [
+ "regex",
  "serde",
  "serde_json",
  "sha2",

@@ -62,6 +62,61 @@ pub fn publish_filter(
     Ok((is_new, response))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateTestsResponse {
+    pub content_hash: String,
+    pub command_pattern: String,
+    pub author: String,
+    pub test_count: usize,
+    pub registry_url: String,
+}
+
+/// Update the test suite for an already-published filter.
+///
+/// Sends a PUT request with multipart `test/<filename>` fields only.
+/// Only the original author is allowed to update tests.
+///
+/// # Errors
+///
+/// Returns an error if the server is unreachable, returns a non-success
+/// status (403 = not author, 404 = filter not found), or the response
+/// body cannot be deserialized.
+pub fn update_tests(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    token: &str,
+    content_hash: &str,
+    test_files: Vec<(String, Vec<u8>)>,
+) -> anyhow::Result<UpdateTestsResponse> {
+    let url = format!("{base_url}/api/filters/{content_hash}/tests");
+
+    let mut form = reqwest::blocking::multipart::Form::new();
+    for (name, bytes) in test_files {
+        let part = reqwest::blocking::multipart::Part::bytes(bytes)
+            .mime_str("application/toml")
+            .map_err(|e| anyhow::anyhow!("invalid MIME type for {name}: {e}"))?;
+        form = form.part(format!("test/{name}"), part);
+    }
+
+    let resp = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::FORBIDDEN {
+        anyhow::bail!("you are not the author of this filter");
+    }
+    if status == reqwest::StatusCode::NOT_FOUND {
+        anyhow::bail!("filter not found in registry (hash: {content_hash})");
+    }
+    let resp = require_success(resp)?;
+    resp.json::<UpdateTestsResponse>()
+        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -80,6 +135,26 @@ mod tests {
         assert_eq!(resp.command_pattern, "git push");
         assert_eq!(resp.author, "alice");
         assert_eq!(resp.registry_url, "filters/abc123def456/filter.toml");
+    }
+
+    #[test]
+    fn deserialize_update_tests_response() {
+        let json = r#"{
+            "content_hash": "abc123def456",
+            "command_pattern": "git push",
+            "author": "alice",
+            "test_count": 3,
+            "registry_url": "https://registry.tokf.net/filters/abc123def456"
+        }"#;
+        let resp: UpdateTestsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.content_hash, "abc123def456");
+        assert_eq!(resp.command_pattern, "git push");
+        assert_eq!(resp.author, "alice");
+        assert_eq!(resp.test_count, 3);
+        assert_eq!(
+            resp.registry_url,
+            "https://registry.tokf.net/filters/abc123def456"
+        );
     }
 
     #[test]

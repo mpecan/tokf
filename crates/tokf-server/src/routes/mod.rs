@@ -11,7 +11,7 @@ pub mod test_helpers;
 
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 
 use crate::state::AppState;
@@ -35,6 +35,7 @@ pub fn create_router(state: AppState) -> Router {
             "/api/filters/{hash}/download",
             get(filters::download_filter),
         )
+        .route("/api/filters/{hash}/tests", put(filters::update_tests))
         .route("/api/sync", post(sync::sync_usage))
         .route("/api/gain", get(gain::get_gain))
         .route("/api/gain/global", get(gain::get_global_gain))

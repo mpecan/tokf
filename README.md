@@ -854,6 +854,39 @@ Test filenames are validated to prevent path traversal attacks.
 
 ---
 
+## Updating Test Suites
+
+After publishing a filter, the filter TOML itself is immutable (same content = same hash), but you
+can replace the bundled test suite at any time:
+
+```sh
+tokf publish --update-tests <filter-name>
+```
+
+This replaces the **entire** test suite in the registry with the current local `_test/` directory
+contents. Only the original author can update tests.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview which test files would be uploaded without making changes |
+
+### Examples
+
+```sh
+tokf publish --update-tests git/push            # replace test suite for git/push
+tokf publish --update-tests git/push --dry-run  # preview only
+```
+
+### Notes
+
+- The filter's identity (content hash) does not change.
+- The old test suite is deleted and fully replaced by the new one.
+- You must be the original author of the filter.
+
+---
+
 ## Publishing a Filter
 
 See [Publishing Filters](./publishing-filters.md) for how to share your own filters.

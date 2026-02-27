@@ -14,7 +14,7 @@ name = "tokf"
 path = "src/main.rs"
 
 [dependencies]
-tokf-common = { path = "../tokf-common", version = "0.2.12" }
+tokf-common = { path = "../tokf-common", version = "0.2.12", features = ["validation"] }
 clap = { version = "4", features = ["derive", "env"] }
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
