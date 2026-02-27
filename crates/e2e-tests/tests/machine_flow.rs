@@ -6,24 +6,13 @@
 
 mod harness;
 
-use tokf::remote::client;
-
 /// Register a machine via the CLI client function → verify response.
 #[crdb_test_macro::crdb_test(migrations = "../tokf-server/migrations")]
 async fn register_machine_via_client(pool: PgPool) {
     let h = harness::TestHarness::new(pool).await;
-    let base_url = h.base_url.clone();
-    let token = h.token.clone();
     let machine_id = uuid::Uuid::new_v4().to_string();
-    let mid = machine_id.clone();
 
-    let registered = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        client::register_machine(&http, &base_url, &token, &mid, "e2e-laptop")
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let registered = h.blocking_register_machine(&machine_id, "e2e-laptop").await;
 
     assert_eq!(registered.machine_id, machine_id);
     assert_eq!(registered.hostname, "e2e-laptop");
@@ -34,35 +23,20 @@ async fn register_machine_via_client(pool: PgPool) {
 #[crdb_test_macro::crdb_test(migrations = "../tokf-server/migrations")]
 async fn list_machines_returns_registered(pool: PgPool) {
     let h = harness::TestHarness::new(pool).await;
-    let base_url = h.base_url.clone();
-    let token = h.token.clone();
     let machine_id = uuid::Uuid::new_v4().to_string();
-    let mid = machine_id.clone();
 
     // Register
-    let register_url = base_url.clone();
-    let register_token = token.clone();
-    tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        client::register_machine(&http, &register_url, &register_token, &mid, "e2e-desktop")
-            .unwrap();
-    })
-    .await
-    .unwrap();
+    h.blocking_register_machine(&machine_id, "e2e-desktop")
+        .await;
 
     // List
-    let machines = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        client::list_machines(&http, &base_url, &token)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let machines = h.blocking_list_machines().await;
 
     // The harness already creates one machine, plus we registered another
-    assert!(
-        machines.len() >= 2,
-        "expected at least 2 machines, got {}",
+    assert_eq!(
+        machines.len(),
+        2,
+        "expected exactly 2 machines, got {}",
         machines.len()
     );
 

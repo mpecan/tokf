@@ -16,8 +16,10 @@ use sqlx::PgPool;
 use tokio::task::JoinHandle;
 
 use tokf::auth::credentials::LoadedAuth;
+use tokf::remote::client::{MachineInfo, RegisteredMachine};
+use tokf::remote::gain_client::{GainResponse, GlobalGainResponse};
 use tokf::remote::machine::StoredMachine;
-use tokf::remote::sync_client::{SyncEvent, SyncRequest};
+use tokf::remote::sync_client::{self, SyncEvent, SyncRequest, SyncResponse};
 use tokf::tracking;
 use tokf_server::auth::github::GitHubClient;
 use tokf_server::auth::mock::{NoOpGitHubClient, SuccessGitHubClient};
@@ -34,7 +36,13 @@ pub struct TestHarness {
     pub machine_id: uuid::Uuid,
     pub sqlite_path: PathBuf,
     _temp_dir: tempfile::TempDir,
-    _server_handle: JoinHandle<()>,
+    server_handle: JoinHandle<()>,
+}
+
+impl Drop for TestHarness {
+    fn drop(&mut self) {
+        self.server_handle.abort();
+    }
 }
 
 impl TestHarness {
@@ -75,6 +83,7 @@ impl TestHarness {
 
         // Wait for server readiness
         let client = reqwest::Client::new();
+        let mut server_ready = false;
         for _ in 0..40 {
             if client
                 .get(format!("{base_url}/health"))
@@ -82,10 +91,12 @@ impl TestHarness {
                 .await
                 .is_ok()
             {
+                server_ready = true;
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
+        assert!(server_ready, "server did not become ready within 200ms");
 
         // Set up `SQLite` tracking DB in a temp directory
         let temp_dir = tempfile::TempDir::new().unwrap();
@@ -99,7 +110,7 @@ impl TestHarness {
             machine_id,
             sqlite_path,
             _temp_dir: temp_dir,
-            _server_handle: server_handle,
+            server_handle,
         }
     }
 
@@ -138,7 +149,8 @@ impl TestHarness {
             token: self.token.clone(),
             username: "testuser".to_string(),
             server_url: self.base_url.clone(),
-            expires_at: 0,
+            // Far-future expiry (year ~2554) so the token is always valid.
+            expires_at: 18_446_744_073,
             mit_license_accepted: None,
         }
     }
@@ -160,8 +172,20 @@ impl TestHarness {
             .unwrap()
     }
 
-    /// Build a `SyncRequest` from local `SQLite` events.
+    // ── Sync request builders ───────────────────────────────────
+
+    /// Build a `SyncRequest` from local `SQLite` events using the harness's machine ID.
     pub fn build_sync_request(&self, conn: &rusqlite::Connection) -> SyncRequest {
+        self.build_sync_request_for_machine(conn, &self.machine_id.to_string())
+    }
+
+    /// Build a `SyncRequest` from local `SQLite` events using a custom machine ID.
+    #[allow(clippy::unused_self)]
+    pub fn build_sync_request_for_machine(
+        &self,
+        conn: &rusqlite::Connection,
+        machine_id: &str,
+    ) -> SyncRequest {
         let last_id = tracking::get_last_synced_id(conn).unwrap();
         let events = tracking::get_events_since(conn, last_id).unwrap();
         let sync_events: Vec<SyncEvent> = events
@@ -177,9 +201,113 @@ impl TestHarness {
             })
             .collect();
         SyncRequest {
-            machine_id: self.machine_id.to_string(),
+            machine_id: machine_id.to_string(),
             last_event_id: last_id,
             events: sync_events,
         }
+    }
+
+    // ── Blocking helpers (wrap spawn_blocking boilerplate) ───────
+
+    /// Sync a pre-built request to the remote server.
+    pub async fn blocking_sync_request(&self, req: &SyncRequest) -> SyncResponse {
+        let req = req.clone();
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            sync_client::sync_events(&client, &base_url, &token, &req).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Attempt sync and return the `Result` (for error-path tests).
+    pub async fn try_sync_with_token(
+        &self,
+        req: &SyncRequest,
+        token: &str,
+    ) -> anyhow::Result<SyncResponse> {
+        let req = req.clone();
+        let base_url = self.base_url.clone();
+        let token = token.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            sync_client::sync_events(&client, &base_url, &token, &req)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Fetch the authenticated user's gain summary.
+    pub async fn blocking_gain(&self) -> GainResponse {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            tokf::remote::gain_client::get_gain(&client, &base_url, &token).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Fetch the global (unauthenticated) gain summary.
+    pub async fn blocking_global_gain(&self) -> GlobalGainResponse {
+        let base_url = self.base_url.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            tokf::remote::gain_client::get_global_gain(&client, &base_url).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Register a machine via the CLI client function.
+    pub async fn blocking_register_machine(
+        &self,
+        machine_id: &str,
+        hostname: &str,
+    ) -> RegisteredMachine {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        let machine_id = machine_id.to_string();
+        let hostname = hostname.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            tokf::remote::client::register_machine(
+                &client,
+                &base_url,
+                &token,
+                &machine_id,
+                &hostname,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// List machines for the authenticated user.
+    pub async fn blocking_list_machines(&self) -> Vec<MachineInfo> {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            tokf::remote::client::list_machines(&client, &base_url, &token).unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Fetch gain using a specific token (for auth-flow tests).
+    pub async fn blocking_gain_with_token(&self, token: &str) -> GainResponse {
+        let base_url = self.base_url.clone();
+        let token = token.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            tokf::remote::gain_client::get_gain(&client, &base_url, &token).unwrap()
+        })
+        .await
+        .unwrap()
     }
 }

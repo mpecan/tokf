@@ -7,8 +7,7 @@
 mod harness;
 
 use tokf::auth::client::{self, PollResult};
-use tokf::remote::{client as machine_client, sync_client};
-use tokf::tracking;
+use tokf::remote::client as machine_client;
 
 /// Full device flow: initiate → poll → receive token → verify it works.
 #[crdb_test_macro::crdb_test(migrations = "../tokf-server/migrations")]
@@ -50,15 +49,7 @@ async fn device_flow_creates_token(pool: PgPool) {
     assert_eq!(token_resp.user.username, "testuser");
 
     // Step 3: Verify the returned token works for authenticated requests
-    let verify_url = base_url;
-    let new_token = token_resp.access_token;
-    let gain = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        tokf::remote::gain_client::get_gain(&http, &verify_url, &new_token)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    let gain = h.blocking_gain_with_token(&token_resp.access_token).await;
 
     // New user, no events yet
     assert_eq!(gain.total_commands, 0);
@@ -131,31 +122,13 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
         1000,
     );
 
-    let last_id = tracking::get_last_synced_id(&conn).unwrap();
-    let events = tracking::get_events_since(&conn, last_id).unwrap();
-    let sync_events: Vec<_> = events
-        .iter()
-        .map(|e| sync_client::SyncEvent {
-            id: e.id,
-            filter_name: e.filter_name.clone(),
-            filter_hash: e.filter_hash.clone(),
-            input_tokens: e.input_tokens_est,
-            output_tokens: e.output_tokens_est,
-            command_count: 1,
-            recorded_at: e.timestamp.clone(),
-        })
-        .collect();
-    let req = sync_client::SyncRequest {
-        machine_id: machine_id.clone(),
-        last_event_id: last_id,
-        events: sync_events,
-    };
+    let req = h.build_sync_request_for_machine(&conn, &machine_id);
 
     let sync_url = base_url.clone();
     let sync_token = token.clone();
     let resp = tokio::task::spawn_blocking(move || {
         let http = harness::TestHarness::http_client();
-        sync_client::sync_events(&http, &sync_url, &sync_token, &req)
+        tokf::remote::sync_client::sync_events(&http, &sync_url, &sync_token, &req)
     })
     .await
     .unwrap()
@@ -163,16 +136,8 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
 
     assert_eq!(resp.accepted, 2);
 
-    // Step 4: Verify gain
-    let gain_url = base_url;
-    let gain_token = token;
-    let gain = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        tokf::remote::gain_client::get_gain(&http, &gain_url, &gain_token)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    // Step 4: Verify gain (using the device-flow token, not the harness token)
+    let gain = h.blocking_gain_with_token(&token).await;
 
     assert_eq!(gain.total_commands, 2);
     assert_eq!(gain.total_input_tokens, 3000); // 1000 + 2000
