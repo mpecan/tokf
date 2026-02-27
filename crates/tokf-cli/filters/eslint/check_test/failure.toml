@@ -1,0 +1,15 @@
+name = "eslint errors show file paths and summary"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "src/utils.ts"
+
+[[expect]]
+contains = "prefer-const"
+
+[[expect]]
+contains = "no-unused-vars"
+
+[[expect]]
+contains = "7 problems"

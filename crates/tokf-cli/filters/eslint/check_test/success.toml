@@ -1,0 +1,6 @@
+name = "clean eslint run shows ok"
+inline = ""
+exit_code = 0
+
+[[expect]]
+equals = "ok ✓ eslint: no issues"

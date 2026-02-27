@@ -1,0 +1,18 @@
+name = "unformatted files show warn lines"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "button.tsx"
+
+[[expect]]
+contains = "session.ts"
+
+[[expect]]
+contains = "dashboard.tsx"
+
+[[expect]]
+contains = "Forgot to run Prettier"
+
+[[expect]]
+not_contains = "Checking formatting"
