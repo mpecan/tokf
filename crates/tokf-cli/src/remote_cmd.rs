@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use tokf::auth::client::is_secure_url;
-use tokf::auth::credentials;
-use tokf::remote::{client, machine};
+use tokf::remote::{client, http, machine};
 use uuid::Uuid;
 
 /// Register this machine with the tokf server.
@@ -16,12 +15,7 @@ use uuid::Uuid;
 /// Returns an error if the user is not logged in, the token is expired, or
 /// the server is unreachable.
 pub fn cmd_remote_setup() -> anyhow::Result<i32> {
-    let auth = credentials::load()
-        .ok_or_else(|| anyhow::anyhow!("not logged in. Run `tokf auth login` first"))?;
-
-    if auth.is_expired() {
-        anyhow::bail!("token has expired. Run `tokf auth login` to re-authenticate");
-    }
+    let auth = http::load_auth()?;
 
     if !is_secure_url(&auth.server_url) {
         eprintln!(
@@ -89,12 +83,7 @@ pub fn cmd_remote_status() -> anyhow::Result<i32> {
 pub fn cmd_remote_sync() -> anyhow::Result<i32> {
     use tokf::tracking;
 
-    let auth = credentials::load()
-        .ok_or_else(|| anyhow::anyhow!("not logged in. Run `tokf auth login` first"))?;
-
-    if auth.is_expired() {
-        anyhow::bail!("token has expired. Run `tokf auth login` to re-authenticate");
-    }
+    let auth = http::load_auth()?;
 
     let machine = machine::load()
         .ok_or_else(|| anyhow::anyhow!("machine not registered. Run `tokf remote setup` first"))?;
