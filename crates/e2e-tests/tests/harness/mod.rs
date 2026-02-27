@@ -359,7 +359,7 @@ impl TestHarness {
         let token = self.token.clone();
         tokio::task::spawn_blocking(move || {
             let client = Self::http_client();
-            publish_client::publish_filter(&client, &base_url, &token, filter_bytes, test_files)
+            publish_client::publish_filter(&client, &base_url, &token, &filter_bytes, &test_files)
         })
         .await
         .unwrap()
@@ -375,7 +375,7 @@ impl TestHarness {
         let token = self.token.clone();
         tokio::task::spawn_blocking(move || {
             let client = Self::http_client();
-            publish_client::publish_filter(&client, &base_url, &token, filter_bytes, test_files)
+            publish_client::publish_filter(&client, &base_url, &token, &filter_bytes, &test_files)
                 .unwrap()
         })
         .await
@@ -393,7 +393,7 @@ impl TestHarness {
         let hash = hash.to_string();
         tokio::task::spawn_blocking(move || {
             let client = Self::http_client();
-            publish_client::update_tests(&client, &base_url, &token, &hash, test_files).unwrap()
+            publish_client::update_tests(&client, &base_url, &token, &hash, &test_files).unwrap()
         })
         .await
         .unwrap()
@@ -410,7 +410,7 @@ impl TestHarness {
         let hash = hash.to_string();
         tokio::task::spawn_blocking(move || {
             let client = Self::http_client();
-            publish_client::update_tests(&client, &base_url, &token, &hash, test_files)
+            publish_client::update_tests(&client, &base_url, &token, &hash, &test_files)
         })
         .await
         .unwrap()
@@ -428,7 +428,7 @@ impl TestHarness {
         let hash = hash.to_string();
         tokio::task::spawn_blocking(move || {
             let client = Self::http_client();
-            publish_client::update_tests(&client, &base_url, &token, &hash, test_files)
+            publish_client::update_tests(&client, &base_url, &token, &hash, &test_files)
         })
         .await
         .unwrap()

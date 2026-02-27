@@ -95,8 +95,8 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
         &client,
         &auth.server_url,
         &auth.token,
-        filter_bytes,
-        test_files,
+        &filter_bytes,
+        &test_files,
     )?;
 
     if is_new {
@@ -148,7 +148,7 @@ fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32>
         &auth.server_url,
         &auth.token,
         &content_hash,
-        test_files,
+        &test_files,
     )?;
 
     eprintln!(
