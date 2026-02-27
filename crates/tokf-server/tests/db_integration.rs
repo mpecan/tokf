@@ -33,7 +33,7 @@ use sqlx::PgPool;
 use tokf_server::{
     auth::{
         github::{AccessTokenResponse, DeviceCodeResponse, GitHubClient, GitHubOrg, GitHubUser},
-        mock::NoOpGitHubClient,
+        mock::{NoOpGitHubClient, SuccessGitHubClient},
         token::{AuthUser, generate_token, hash_token},
     },
     rate_limit::{PublishRateLimiter, SyncRateLimiter},
@@ -412,50 +412,6 @@ async fn device_flow_table_exists_after_migration(pool: PgPool) {
 
     assert_eq!(tables.len(), 1);
     assert_eq!(tables[0], "device_flows");
-}
-
-/// Mock GitHub client that returns a successful access token and user profile.
-struct SuccessGitHubClient;
-
-#[async_trait::async_trait]
-impl GitHubClient for SuccessGitHubClient {
-    async fn request_device_code(&self, _client_id: &str) -> anyhow::Result<DeviceCodeResponse> {
-        Ok(DeviceCodeResponse {
-            device_code: format!("dc-{}", rand::random::<u32>()),
-            user_code: "TEST-1234".to_string(),
-            verification_uri: "https://github.com/login/device".to_string(),
-            expires_in: 900,
-            interval: 5,
-        })
-    }
-
-    async fn poll_access_token(
-        &self,
-        _client_id: &str,
-        _client_secret: &str,
-        _device_code: &str,
-    ) -> anyhow::Result<AccessTokenResponse> {
-        Ok(AccessTokenResponse::Success {
-            access_token: "gho_test_token".to_string(),
-            token_type: "bearer".to_string(),
-            scope: "read:user,read:org".to_string(),
-        })
-    }
-
-    async fn get_user(&self, _access_token: &str) -> anyhow::Result<GitHubUser> {
-        Ok(GitHubUser {
-            id: 12345,
-            login: "testuser".to_string(),
-            avatar_url: "https://avatars.githubusercontent.com/u/12345".to_string(),
-            html_url: "https://github.com/testuser".to_string(),
-        })
-    }
-
-    async fn get_user_orgs(&self, _access_token: &str) -> anyhow::Result<Vec<GitHubOrg>> {
-        Ok(vec![GitHubOrg {
-            login: "test-org".to_string(),
-        }])
-    }
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]

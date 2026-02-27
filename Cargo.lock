@@ -865,6 +865,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "e2e-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "crdb-test-macro",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tokf",
+ "tokf-common",
+ "tokf-server",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/tokf-cli", "crates/tokf-common", "crates/tokf-server", "crates/crdb-test-macro"]
+members = ["crates/tokf-cli", "crates/tokf-common", "crates/tokf-server", "crates/crdb-test-macro", "crates/e2e-tests"]
 resolver = "2"
 
 [workspace.package]
