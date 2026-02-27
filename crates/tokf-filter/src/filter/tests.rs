@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::types::ExtractRule;
+use tokf_common::config::types::ExtractRule;
 
 fn minimal_config() -> FilterConfig {
     toml::from_str(r#"command = "test""#).unwrap()

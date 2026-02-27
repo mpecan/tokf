@@ -3,6 +3,15 @@ use serde::Deserialize;
 
 use super::require_success;
 
+/// Extract the error message from a JSON response body `{"error": "..."}`.
+/// Falls back to the raw body text if JSON parsing fails.
+fn extract_error_message(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v["error"].as_str().map(String::from))
+        .unwrap_or_else(|| body.to_string())
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PublishResponse {
     pub content_hash: String,
@@ -47,6 +56,23 @@ pub fn publish_filter(
         .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
 
     let is_new = resp.status() == reqwest::StatusCode::CREATED;
+    let status = resp.status();
+
+    // Extract test failure details from 400 responses before the generic handler
+    if status == reqwest::StatusCode::BAD_REQUEST {
+        let body = resp
+            .text()
+            .map_err(|e| anyhow::anyhow!("could not read response body: {e}"))?;
+        let msg = extract_error_message(&body);
+        if msg.contains("tests failed") {
+            anyhow::bail!(
+                "server-side test verification failed:\n\n{msg}\n\n\
+                 Hint: run `tokf verify` locally to debug test failures"
+            );
+        }
+        anyhow::bail!("server returned HTTP {status}: {msg}");
+    }
+
     let resp = require_success(resp)?;
     let response = resp
         .json::<PublishResponse>()
@@ -100,6 +126,19 @@ pub fn update_tests(
     }
     if status == reqwest::StatusCode::NOT_FOUND {
         anyhow::bail!("filter not found in registry (hash: {content_hash})");
+    }
+    if status == reqwest::StatusCode::BAD_REQUEST {
+        let body = resp
+            .text()
+            .map_err(|e| anyhow::anyhow!("could not read response body: {e}"))?;
+        let msg = extract_error_message(&body);
+        if msg.contains("tests failed") {
+            anyhow::bail!(
+                "server-side test verification failed:\n\n{msg}\n\n\
+                 Hint: run `tokf verify` locally to debug test failures"
+            );
+        }
+        anyhow::bail!("server returned HTTP {status}: {msg}");
     }
     let resp = require_success(resp)?;
     resp.json::<UpdateTestsResponse>()

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
-use crate::config::types::{OutputConfig, ParseConfig};
+use tokf_common::config::types::{OutputConfig, ParseConfig};
 
 use super::extract::interpolate;
 use super::group::{self, GroupCount};
@@ -82,7 +82,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::config::types::{ExtractRule, GroupConfig, LineExtract};
+    use tokf_common::config::types::{ExtractRule, GroupConfig, LineExtract};
 
     fn git_status_parse_config() -> ParseConfig {
         let mut labels = BTreeMap::new();

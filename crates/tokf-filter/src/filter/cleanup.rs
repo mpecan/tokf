@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
-use crate::config::types::FilterConfig;
+use tokf_common::config::types::FilterConfig;
 
 fn ansi_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -90,7 +90,7 @@ pub fn post_process_output(config: &FilterConfig, output: String) -> String {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::config::types::FilterConfig;
+    use tokf_common::config::types::FilterConfig;
 
     fn minimal_config() -> FilterConfig {
         toml::from_str(r#"command = "echo""#).unwrap()

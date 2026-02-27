@@ -1,6 +1,6 @@
 use regex::Regex;
 
-use crate::config::types::ReplaceRule;
+use tokf_common::config::types::ReplaceRule;
 
 /// Apply `[[replace]]` rules to each line, in order.
 ///

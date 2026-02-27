@@ -1,5 +1,5 @@
 use super::*;
-use crate::runner::CommandResult;
+use crate::CommandResult;
 
 fn make_result(combined: &str, exit_code: i32) -> CommandResult {
     CommandResult {

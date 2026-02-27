@@ -6,6 +6,7 @@ on:
     paths:
       - "crates/tokf-server/**"
       - "crates/tokf-common/**"
+      - "crates/tokf-filter/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"

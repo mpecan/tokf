@@ -3203,7 +3203,6 @@ dependencies = [
  "gethostname",
  "include_dir",
  "keyring",
- "mlua",
  "mockito",
  "open",
  "regex",
@@ -3215,6 +3214,7 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tokf-common",
+ "tokf-filter",
  "toml",
  "uuid",
 ]
@@ -3227,6 +3227,18 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "toml",
+]
+
+[[package]]
+name = "tokf-filter"
+version = "0.2.12"
+dependencies = [
+ "anyhow",
+ "mlua",
+ "regex",
+ "serde",
+ "tokf-common",
  "toml",
 ]
 
@@ -3251,6 +3263,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "tokf-common",
+ "tokf-filter",
  "tokf-server",
  "tokio",
  "toml",

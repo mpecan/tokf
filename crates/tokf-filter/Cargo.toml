@@ -1,0 +1,27 @@
+[package]
+name = "tokf-filter"
+version = "0.2.12"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Pure filter engine for tokf — config-driven output compression"
+keywords = ["llm", "cli", "tokens", "ai", "context-window"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+tokf-common = { path = "../tokf-common", version = "0.2.12" }
+regex = "1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+mlua = { version = "0.11.6", features = ["luau", "vendored", "error-send"], optional = true }
+
+[features]
+default = ["lua"]
+lua = ["mlua"]
+
+[dev-dependencies]
+toml = "1.0"
+
+[lints]
+workspace = true

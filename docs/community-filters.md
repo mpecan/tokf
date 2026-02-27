@@ -136,4 +136,4 @@ tokf publish --update-tests git/push --dry-run  # preview only
 
 ## Publishing a Filter
 
-See [Publishing Filters](./publishing-filters.md) for how to share your own filters.
+See [Publishing Filters](./publishing-filters.md) for how to share your own filters with the community registry.

@@ -1,11 +1,8 @@
 use std::process::Command;
 
-pub struct CommandResult {
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: i32,
-    pub combined: String,
-}
+/// Re-export `CommandResult` from tokf-filter so existing code that
+/// references `crate::runner::CommandResult` continues to work.
+pub type CommandResult = tokf_filter::CommandResult;
 
 fn build_result(output: &std::process::Output) -> CommandResult {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();

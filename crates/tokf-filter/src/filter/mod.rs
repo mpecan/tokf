@@ -3,7 +3,8 @@ mod cleanup;
 mod dedup;
 mod extract;
 mod group;
-mod lua;
+#[cfg(feature = "lua")]
+pub mod lua;
 mod match_output;
 mod parse;
 mod replace;
@@ -13,8 +14,9 @@ mod template;
 
 use regex::Regex;
 
-use crate::config::types::{FilterConfig, OutputBranch};
-use crate::runner::CommandResult;
+use tokf_common::config::types::{FilterConfig, OutputBranch};
+
+use crate::CommandResult;
 
 use self::section::SectionMap;
 
@@ -139,11 +141,75 @@ fn restore_display_lines(clean: &[String], display: &[String], survivors: &[&str
     result.join("\n")
 }
 
+/// Load and run a Lua script with the given sandbox limits.
+///
+/// Returns `Some(output)` when the script replaces output, `None` for
+/// passthrough or on error (errors are printed to stderr).
+#[cfg(feature = "lua")]
+fn run_lua(
+    script_cfg: &tokf_common::config::types::ScriptConfig,
+    text: &str,
+    exit_code: i32,
+    args: &[String],
+    limits: &lua::SandboxLimits,
+) -> Option<String> {
+    match lua::load_source(script_cfg) {
+        Ok(source) => match lua::run_lua_script_sandboxed(&source, text, exit_code, args, limits) {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("[tokf] lua script error: {e:#}");
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("[tokf] lua script error: {e:#}");
+            None
+        }
+    }
+}
+
 pub fn apply(
     config: &FilterConfig,
     result: &CommandResult,
     args: &[String],
     opts: &FilterOptions,
+) -> FilterResult {
+    #[cfg(feature = "lua")]
+    let lua_limits = lua::SandboxLimits::default();
+    #[cfg(feature = "lua")]
+    return apply_internal(config, result, args, opts, &lua_limits);
+    #[cfg(not(feature = "lua"))]
+    apply_internal(config, result, args, opts)
+}
+
+/// Apply a filter with explicit Lua sandbox limits.
+///
+/// Identical to [`apply`] except the caller provides `SandboxLimits` instead
+/// of using the defaults. Use this for server-side validation or when
+/// processing untrusted filter configs.
+#[cfg(feature = "lua")]
+pub fn apply_sandboxed(
+    config: &FilterConfig,
+    result: &CommandResult,
+    args: &[String],
+    opts: &FilterOptions,
+    lua_limits: &lua::SandboxLimits,
+) -> FilterResult {
+    apply_internal(config, result, args, opts, lua_limits)
+}
+
+/// Shared filter pipeline implementation.
+///
+/// All filter stages run through this single function. The optional
+/// `lua_limits` parameter controls Lua sandbox constraints; `apply()`
+/// passes defaults while `apply_sandboxed()` passes caller-provided limits.
+#[allow(clippy::too_many_lines)]
+fn apply_internal(
+    config: &FilterConfig,
+    result: &CommandResult,
+    args: &[String],
+    opts: &FilterOptions,
+    #[cfg(feature = "lua")] lua_limits: &lua::SandboxLimits,
 ) -> FilterResult {
     // 1. match_output short-circuit
     if let Some(rule) = match_output::find_matching_rule(&config.match_output, &result.combined) {
@@ -168,17 +234,14 @@ pub fn apply(
         lines
     };
 
-    // 2b. Lua script escape hatch (receives clean text)
+    // 2b. Lua script escape hatch (sandboxed)
+    #[cfg(feature = "lua")]
     if let Some(ref script_cfg) = config.lua_script {
         let clean_text = lines.join("\n");
-        match lua::run_lua_script(script_cfg, &clean_text, result.exit_code, args) {
-            Ok(Some(output)) => {
-                return FilterResult {
-                    output: cleanup::post_process_output(config, output),
-                };
-            }
-            Ok(None) => {} // passthrough → continue normal pipeline
-            Err(e) => eprintln!("[tokf] lua script error: {e:#}"),
+        if let Some(output) = run_lua(script_cfg, &clean_text, result.exit_code, args, lua_limits) {
+            return FilterResult {
+                output: cleanup::post_process_output(config, output),
+            };
         }
     }
 

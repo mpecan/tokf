@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use regex::Regex;
 
 use super::section::SectionMap;
-use crate::config::types::AggregateRule;
+use tokf_common::config::types::AggregateRule;
 
 /// Run an aggregation rule against collected sections.
 ///
