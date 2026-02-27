@@ -6,6 +6,7 @@ pub enum AppError {
     Internal(String),
     BadRequest(String),
     NotFound(String),
+    Forbidden(String),
     Conflict(String),
     RateLimited,
     Unauthorized,
@@ -17,6 +18,7 @@ impl std::fmt::Display for AppError {
             Self::Internal(msg) => write!(f, "internal error: {msg}"),
             Self::BadRequest(msg) => write!(f, "bad request: {msg}"),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
+            Self::Forbidden(msg) => write!(f, "forbidden: {msg}"),
             Self::Conflict(msg) => write!(f, "conflict: {msg}"),
             Self::RateLimited => write!(f, "rate limited"),
             Self::Unauthorized => write!(f, "unauthorized"),
@@ -48,6 +50,9 @@ impl IntoResponse for AppError {
             }
             Self::NotFound(msg) => {
                 (StatusCode::NOT_FOUND, Json(json!({ "error": msg }))).into_response()
+            }
+            Self::Forbidden(msg) => {
+                (StatusCode::FORBIDDEN, Json(json!({ "error": msg }))).into_response()
             }
             Self::Conflict(msg) => {
                 (StatusCode::CONFLICT, Json(json!({ "error": msg }))).into_response()
@@ -118,6 +123,15 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("3600")
         );
+    }
+
+    #[tokio::test]
+    async fn forbidden_returns_403() {
+        let resp = AppError::Forbidden("not the author".to_string()).into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "not the author");
     }
 
     #[tokio::test]

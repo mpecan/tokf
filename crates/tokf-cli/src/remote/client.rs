@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use super::require_success;
+
 #[derive(Debug, Deserialize)]
 pub struct RegisteredMachine {
     pub machine_id: String,
@@ -14,8 +16,6 @@ pub struct MachineInfo {
     pub created_at: String,
     pub last_sync_at: Option<String>,
 }
-
-use super::require_success;
 
 /// Register this machine with the tokf server via `POST /api/machines`.
 ///
@@ -61,15 +61,7 @@ pub fn list_machines(
     token: &str,
 ) -> anyhow::Result<Vec<MachineInfo>> {
     let url = format!("{base_url}/api/machines");
-    let resp = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
-
-    let resp = require_success(resp)?;
-    resp.json::<Vec<MachineInfo>>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+    super::http::authed_get(client, &url, token)
 }
 
 #[cfg(test)]

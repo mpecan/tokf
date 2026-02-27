@@ -14,7 +14,7 @@ name = "tokf"
 path = "src/main.rs"
 
 [dependencies]
-tokf-common = { path = "../tokf-common", version = "0.2.12" }
+tokf-common = { path = "../tokf-common", version = "0.2.12", features = ["validation"] }
 clap = { version = "4", features = ["derive", "env"] }
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
@@ -29,7 +29,7 @@ include_dir = { version = "0.7", features = ["glob"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 rkyv = { version = "0.8", features = ["bytecheck", "unaligned"] }
 mlua = { version = "0.11.6", features = ["luau", "vendored", "error-send"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
 # linux-native uses kernel keyutils (no libdbus-sys dependency).
 # sync-secret-service would need libdbus-1-dev on Linux CI/build hosts.
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }

@@ -5,11 +5,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use super::StorageClient;
 
 /// In-memory storage client for unit tests.
-/// Tracks `put` call count for dedup assertions.
+/// Tracks `put` and `delete` call counts for assertions.
 #[allow(clippy::expect_used)]
 pub struct InMemoryStorageClient {
     data: Mutex<HashMap<String, Vec<u8>>>,
     put_calls: AtomicUsize,
+    delete_calls: AtomicUsize,
 }
 
 impl Default for InMemoryStorageClient {
@@ -23,11 +24,16 @@ impl InMemoryStorageClient {
         Self {
             data: Mutex::new(HashMap::new()),
             put_calls: AtomicUsize::new(0),
+            delete_calls: AtomicUsize::new(0),
         }
     }
 
     pub fn put_count(&self) -> usize {
         self.put_calls.load(Ordering::Relaxed)
+    }
+
+    pub fn delete_count(&self) -> usize {
+        self.delete_calls.load(Ordering::Relaxed)
     }
 }
 
@@ -49,5 +55,11 @@ impl StorageClient for InMemoryStorageClient {
 
     async fn exists(&self, key: &str) -> anyhow::Result<bool> {
         Ok(self.data.lock().expect("lock poisoned").contains_key(key))
+    }
+
+    async fn delete(&self, key: &str) -> anyhow::Result<()> {
+        self.delete_calls.fetch_add(1, Ordering::Relaxed);
+        self.data.lock().expect("lock poisoned").remove(key);
+        Ok(())
     }
 }

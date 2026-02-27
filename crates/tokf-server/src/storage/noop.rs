@@ -17,4 +17,8 @@ impl StorageClient for NoOpStorageClient {
     async fn exists(&self, _key: &str) -> anyhow::Result<bool> {
         Ok(false)
     }
+
+    async fn delete(&self, _key: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
 }

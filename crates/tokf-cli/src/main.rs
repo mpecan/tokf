@@ -192,6 +192,9 @@ enum Commands {
         /// Preview what would be published without uploading
         #[arg(long)]
         dry_run: bool,
+        /// Replace the test suite for an already-published filter (author-only)
+        #[arg(long)]
+        update_tests: bool,
     },
     /// Search the community filter registry
     Search {
@@ -414,7 +417,11 @@ fn main() {
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
         }),
         Commands::Sync { status } => or_exit(sync_cmd::cmd_sync(*status)),
-        Commands::Publish { filter, dry_run } => publish_cmd::cmd_publish(filter, *dry_run),
+        Commands::Publish {
+            filter,
+            dry_run,
+            update_tests,
+        } => publish_cmd::cmd_publish(filter, *dry_run, *update_tests),
         Commands::Search { query, limit, json } => search_cmd::cmd_search(query, *limit, *json),
         Commands::Install {
             filter,

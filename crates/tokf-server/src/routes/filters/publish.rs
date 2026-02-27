@@ -132,7 +132,7 @@ async fn upsert_filter_record(
     Ok((author_username.to_string(), true))
 }
 
-async fn upload_tests(
+pub(super) async fn upload_tests(
     state: &AppState,
     content_hash: &str,
     test_files: Vec<(String, Vec<u8>)>,
@@ -147,8 +147,8 @@ async fn upload_tests(
     Ok(keys)
 }
 
-async fn insert_filter_tests(
-    state: &AppState,
+pub(super) async fn insert_filter_tests(
+    pool: &sqlx::PgPool,
     content_hash: &str,
     test_r2_keys: &[String],
 ) -> Result<(), AppError> {
@@ -156,7 +156,7 @@ async fn insert_filter_tests(
         sqlx::query("INSERT INTO filter_tests (filter_hash, r2_key) VALUES ($1, $2)")
             .bind(content_hash)
             .bind(key)
-            .execute(&state.db)
+            .execute(pool)
             .await?;
     }
     Ok(())
@@ -193,6 +193,12 @@ fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
         .next()
         .unwrap_or(&command_pattern)
         .to_string();
+    // Validate test files
+    for (filename, bytes) in &fields.test_files {
+        tokf_common::test_case::validate(bytes)
+            .map_err(|e| AppError::BadRequest(format!("{filename}: {e}")))?;
+    }
+
     let content_hash =
         canonical_hash(&config).map_err(|e| AppError::Internal(format!("hash error: {e}")))?;
     Ok(PreparedFilter {
@@ -260,7 +266,7 @@ pub async fn publish_filter(
     let (author, is_new) = upsert_filter_record(&state, &insert, &auth.username).await?;
 
     if is_new {
-        insert_filter_tests(&state, &prepared.content_hash, &test_r2_keys).await?;
+        insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;
     }
 
     let registry_url = format!("{}/filters/{}", state.public_url, prepared.content_hash);
@@ -344,8 +350,14 @@ mod tests {
             &[
                 ("filter", VALID_FILTER_TOML),
                 MIT_ACCEPT,
-                ("test/basic.toml", b"name = \"basic\"\n"),
-                ("test/advanced.toml", b"name = \"advanced\"\n"),
+                (
+                    "test/basic.toml",
+                    b"name = \"basic\"\n\n[[expect]]\ncontains = \"ok\"\n",
+                ),
+                (
+                    "test/advanced.toml",
+                    b"name = \"advanced\"\n\n[[expect]]\ncontains = \"ok\"\n",
+                ),
             ],
         )
         .await;
