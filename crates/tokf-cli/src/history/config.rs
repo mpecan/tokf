@@ -16,6 +16,7 @@ impl Default for HistoryConfig {
 #[derive(serde::Deserialize, Default)]
 struct TokfProjectConfig {
     history: Option<TokfHistorySection>,
+    sync: Option<TokfSyncSection>,
 }
 
 #[derive(serde::Deserialize)]
@@ -23,11 +24,23 @@ struct TokfHistorySection {
     retention: Option<u32>,
 }
 
+#[derive(serde::Deserialize)]
+struct TokfSyncSection {
+    auto_sync_threshold: Option<u32>,
+}
+
 /// Read `[history] retention` from a TOML config file path. Returns `None` on any error.
 fn read_retention_from_config(path: &std::path::Path) -> Option<u32> {
     let content = std::fs::read_to_string(path).ok()?;
     let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
     cfg.history?.retention
+}
+
+/// Read `[sync] auto_sync_threshold` from a TOML config file path. Returns `None` on any error.
+fn read_sync_threshold_from_config(path: &std::path::Path) -> Option<u32> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
+    cfg.sync?.auto_sync_threshold
 }
 
 impl HistoryConfig {
@@ -51,6 +64,47 @@ impl HistoryConfig {
         let from_global = global_config.and_then(read_retention_from_config);
         let retention_count = from_project.or(from_global).unwrap_or(10);
         Self { retention_count }
+    }
+}
+
+/// Configuration for auto-sync behavior
+#[derive(Debug, Clone)]
+pub struct SyncConfig {
+    pub auto_sync_threshold: u32,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            auto_sync_threshold: 50,
+        }
+    }
+}
+
+impl SyncConfig {
+    /// Load sync config using auto-detected paths. Priority:
+    /// 1. `{project_root}/.tokf/config.toml` `[sync] auto_sync_threshold`
+    /// 2. `{config_dir}/tokf/config.toml` `[sync] auto_sync_threshold`
+    /// 3. Default: 50
+    pub fn load(project_root: Option<&std::path::Path>) -> Self {
+        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+        Self::load_from(project_root, global.as_deref())
+    }
+
+    /// Load sync config from explicit paths. Useful for testing.
+    /// Priority: project config → global config → default 50.
+    pub fn load_from(
+        project_root: Option<&std::path::Path>,
+        global_config: Option<&std::path::Path>,
+    ) -> Self {
+        let from_project = project_root.and_then(|root| {
+            read_sync_threshold_from_config(&root.join(".tokf").join("config.toml"))
+        });
+        let from_global = global_config.and_then(read_sync_threshold_from_config);
+        let auto_sync_threshold = from_project.or(from_global).unwrap_or(50);
+        Self {
+            auto_sync_threshold,
+        }
     }
 }
 

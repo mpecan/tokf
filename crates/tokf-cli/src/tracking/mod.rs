@@ -322,6 +322,48 @@ pub fn set_last_synced_id(conn: &Connection, id: i64) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Returns the timestamp of the last successful sync (from `sync_state` table).
+///
+/// # Errors
+/// Returns an error if the SQL query fails.
+pub fn get_last_synced_at(conn: &Connection) -> anyhow::Result<Option<String>> {
+    conn.query_row(
+        "SELECT value FROM sync_state WHERE key = 'last_synced_at'",
+        [],
+        |r| r.get(0),
+    )
+    .optional()
+    .context("query last_synced_at")
+}
+
+/// Persist the timestamp of the last successful sync.
+///
+/// # Errors
+/// Returns an error if the SQL INSERT/UPDATE fails.
+pub fn set_last_synced_at(conn: &Connection, timestamp: &str) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO sync_state (key, value) VALUES ('last_synced_at', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![timestamp],
+    )
+    .context("set last_synced_at")?;
+    Ok(())
+}
+
+/// Returns the count of events that have not yet been synced.
+///
+/// # Errors
+/// Returns an error if the SQL query fails.
+pub fn get_pending_count(conn: &Connection) -> anyhow::Result<i64> {
+    let last_id = get_last_synced_id(conn)?;
+    conn.query_row(
+        "SELECT COUNT(*) FROM events WHERE id > ?1",
+        rusqlite::params![last_id],
+        |r| r.get(0),
+    )
+    .context("query pending count")
+}
+
 /// An event ready to be shipped to the remote server.
 pub struct SyncableEvent {
     pub id: i64,
@@ -405,3 +447,6 @@ mod tests;
 
 #[cfg(test)]
 mod tests_backfill;
+
+#[cfg(test)]
+mod tests_sync_state;

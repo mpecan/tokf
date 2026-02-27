@@ -10,4 +10,5 @@ pub mod remote;
 pub mod rewrite;
 pub mod runner;
 pub mod skill;
+pub mod sync_core;
 pub mod tracking;

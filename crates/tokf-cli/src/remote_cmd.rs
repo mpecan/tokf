@@ -87,7 +87,6 @@ pub fn cmd_remote_status() -> anyhow::Result<i32> {
 /// Returns an error if the user is not logged in, no machine is registered,
 /// or the server is unreachable.
 pub fn cmd_remote_sync() -> anyhow::Result<i32> {
-    use tokf::remote::sync_client::{SyncEvent, SyncRequest};
     use tokf::tracking;
 
     let auth = credentials::load()
@@ -104,46 +103,16 @@ pub fn cmd_remote_sync() -> anyhow::Result<i32> {
         tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
     let conn = tracking::open_db(&db_path)?;
 
-    let last_id = tracking::get_last_synced_id(&conn)?;
-    let events = tracking::get_events_since(&conn, last_id)?;
-
-    if events.is_empty() {
+    let pending = tracking::get_pending_count(&conn)?;
+    if pending == 0 {
         eprintln!("[tokf] Nothing to sync");
         return Ok(0);
     }
 
-    let sync_events: Vec<SyncEvent> = events
-        .iter()
-        .map(|e| SyncEvent {
-            id: e.id,
-            filter_name: e.filter_name.clone(),
-            filter_hash: e.filter_hash.clone(),
-            input_tokens: e.input_tokens_est,
-            output_tokens: e.output_tokens_est,
-            command_count: 1,
-            recorded_at: e.timestamp.clone(),
-        })
-        .collect();
-
-    let http_client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(5))
-        .user_agent(format!("tokf-cli/{}", env!("CARGO_PKG_VERSION")))
-        .build()?;
-
-    let req = SyncRequest {
-        machine_id: machine.machine_id,
-        last_event_id: last_id,
-        events: sync_events,
-    };
-
-    let response =
-        tokf::remote::sync_client::sync_events(&http_client, &auth.server_url, &auth.token, &req)?;
-
-    tracking::set_last_synced_id(&conn, response.cursor)?;
+    let result = tokf::sync_core::perform_sync(&auth, &machine, &conn)?;
     eprintln!(
         "[tokf] Synced {} event(s). Cursor: {}.",
-        response.accepted, response.cursor
+        result.synced_count, result.cursor
     );
 
     Ok(0)

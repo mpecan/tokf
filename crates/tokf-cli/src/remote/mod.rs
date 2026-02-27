@@ -1,5 +1,6 @@
 pub mod client;
 pub mod filter_client;
+pub mod gain_client;
 pub mod http;
 pub mod machine;
 pub mod publish_client;

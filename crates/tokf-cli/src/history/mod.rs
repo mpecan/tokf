@@ -5,7 +5,7 @@ mod config;
 mod queries;
 mod types;
 
-pub use config::{HistoryConfig, current_project, project_root_for};
+pub use config::{HistoryConfig, SyncConfig, current_project, project_root_for};
 pub use queries::{clear_history, get_history_entry, list_history, record_history, search_history};
 pub use types::{HistoryEntry, HistoryRecord};
 
