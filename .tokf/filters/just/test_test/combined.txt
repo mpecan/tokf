@@ -1,0 +1,56 @@
+cargo test
+   Compiling tokf v0.2.12 (/Users/dev/tokf/crates/tokf-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.34s
+     Running unittests src/lib.rs (target/debug/deps/tokf-abc123)
+
+running 50 tests
+test config::tests::test_minimal_config ... ok
+test filter::tests::branch_fixed_output ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/debug/deps/tokf-def456)
+
+running 20 tests
+test cli::tests::test_parse_args ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+cargo test -p tokf-server -- --ignored
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.75s
+     Running unittests src/lib.rs (target/debug/deps/tokf_server-31ca3b4b)
+
+running 65 tests
+test routes::filters::publish::tests::publish_filter_creates_record ... ok
+
+test result: ok. 65 passed; 0 failed; 0 ignored; 0 measured; 67 filtered out; finished in 19.32s
+
+     Running tests/db_integration.rs (target/debug/deps/db_integration-b43559fc)
+
+running 21 tests
+test migrations_apply_cleanly_and_all_tables_exist ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.54s
+
+cargo test -p e2e-tests -- --ignored
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.30s
+     Running tests/auth_flow.rs (target/debug/deps/auth_flow-390d1d5a)
+
+running 2 tests
+test device_flow_creates_token ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.86s
+
+     Running tests/publish_flow.rs (target/debug/deps/publish_flow-5f1e7900)
+
+running 10 tests
+test publish_filter_returns_hash ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.05s
+
+     Running tests/sync_flow.rs (target/debug/deps/sync_flow-263aa495)
+
+running 5 tests
+test sync_records_and_uploads_events ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.79s

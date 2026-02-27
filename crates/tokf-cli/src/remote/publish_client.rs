@@ -1,3 +1,4 @@
+use reqwest::blocking::multipart::{Form, Part};
 use serde::Deserialize;
 
 use super::require_success;
@@ -31,22 +32,17 @@ pub fn publish_filter(
 ) -> anyhow::Result<(bool, PublishResponse)> {
     let url = format!("{base_url}/api/filters");
 
-    let mut fields: Vec<(&str, &[u8])> =
-        vec![("filter", filter_bytes), ("mit_license_accepted", b"true")];
-    let owned_names: Vec<String> = test_files
-        .iter()
-        .map(|(n, _)| format!("test/{n}"))
-        .collect();
-    for (i, (_, bytes)) in test_files.iter().enumerate() {
-        fields.push((&owned_names[i], bytes));
+    let mut form = Form::new()
+        .part("filter", Part::bytes(filter_bytes.to_vec()))
+        .part("mit_license_accepted", Part::text("true"));
+    for (name, bytes) in test_files {
+        form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
     }
-    let (body, content_type) = tokf_common::multipart::build_body(&fields);
 
     let resp = client
         .post(&url)
         .header("Authorization", format!("Bearer {token}"))
-        .header("Content-Type", content_type)
-        .body(body)
+        .multipart(form)
         .send()
         .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
 
@@ -69,7 +65,7 @@ pub struct UpdateTestsResponse {
 
 /// Update the test suite for an already-published filter.
 ///
-/// Sends a PUT request with multipart `test/<filename>` fields only.
+/// Sends a PUT request with multipart `test:<filename>` fields only.
 /// Only the original author is allowed to update tests.
 ///
 /// # Errors
@@ -86,22 +82,15 @@ pub fn update_tests(
 ) -> anyhow::Result<UpdateTestsResponse> {
     let url = format!("{base_url}/api/filters/{content_hash}/tests");
 
-    let owned_names: Vec<String> = test_files
-        .iter()
-        .map(|(n, _)| format!("test/{n}"))
-        .collect();
-    let fields: Vec<(&str, &[u8])> = test_files
-        .iter()
-        .enumerate()
-        .map(|(i, (_, bytes))| (owned_names[i].as_str(), bytes.as_slice()))
-        .collect();
-    let (body, content_type) = tokf_common::multipart::build_body(&fields);
+    let mut form = Form::new();
+    for (name, bytes) in test_files {
+        form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
+    }
 
     let resp = client
         .put(&url)
         .header("Authorization", format!("Bearer {token}"))
-        .header("Content-Type", content_type)
-        .body(body)
+        .multipart(form)
         .send()
         .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
 

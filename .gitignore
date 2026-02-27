@@ -1,6 +1,8 @@
 /target
 .DS_Store
-.tokf/
+.env
+.tokf/*
+!.tokf/filters/
 tarpaulin-report.html
 .idea/
 .claude/worktrees/

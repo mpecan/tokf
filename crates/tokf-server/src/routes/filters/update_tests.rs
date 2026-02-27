@@ -50,7 +50,7 @@ async fn parse_test_multipart(
                 "upload exceeds 1 MB total size limit".to_string(),
             ));
         }
-        if let Some(filename) = name.strip_prefix("test/")
+        if let Some(filename) = name.strip_prefix("test:")
             && !filename.is_empty()
         {
             test_files.push((filename.to_string(), bytes.to_vec()));
@@ -156,7 +156,7 @@ async fn swap_test_rows(
 /// Only the original author can update tests. The filter TOML itself is
 /// immutable — identical content hash means identical filter identity.
 ///
-/// Accepts a multipart form with `test/<filename>` fields only (total ≤ 1 MB).
+/// Accepts a multipart form with `test:<filename>` fields only (total ≤ 1 MB).
 ///
 /// # Errors
 ///
@@ -249,7 +249,7 @@ mod tests {
             app,
             &token,
             VALID_FILTER_TOML,
-            &[("test/old.toml", &valid_test("old"))],
+            &[("test:old.toml", &valid_test("old"))],
         )
         .await;
 
@@ -272,8 +272,8 @@ mod tests {
             &token,
             &hash,
             &[
-                ("test/new1.toml", &valid_test("new1")),
-                ("test/new2.toml", &valid_test("new2")),
+                ("test:new1.toml", &valid_test("new1")),
+                ("test:new2.toml", &valid_test("new2")),
             ],
         )
         .await;
@@ -324,7 +324,7 @@ mod tests {
             app,
             &bob_token,
             &hash,
-            &[("test/new.toml", &valid_test("new"))],
+            &[("test:new.toml", &valid_test("new"))],
         )
         .await;
 
@@ -345,7 +345,7 @@ mod tests {
             app,
             &token,
             &fake_hash,
-            &[("test/new.toml", &valid_test("new"))],
+            &[("test:new.toml", &valid_test("new"))],
         )
         .await;
 
@@ -403,7 +403,7 @@ mod tests {
             app,
             &token,
             &hash,
-            &[("test/bad.toml", b"not valid toml [[[")],
+            &[("test:bad.toml", b"not valid toml [[[")],
         )
         .await;
 
@@ -426,7 +426,7 @@ mod tests {
             pool.clone(),
             Arc::clone(&storage),
         ));
-        let (body, content_type) = make_multipart(&[("test/basic.toml", &valid_test("basic"))]);
+        let (body, content_type) = make_multipart(&[("test:basic.toml", &valid_test("basic"))]);
         let resp = app
             .oneshot(
                 Request::builder()
@@ -462,9 +462,9 @@ mod tests {
             &token,
             &hash,
             &[
-                ("test/a.toml", &valid_test("a")),
-                ("test/b.toml", &valid_test("b")),
-                ("test/c.toml", &valid_test("c")),
+                ("test:a.toml", &valid_test("a")),
+                ("test:b.toml", &valid_test("b")),
+                ("test:c.toml", &valid_test("c")),
             ],
         )
         .await;
@@ -496,7 +496,7 @@ mod tests {
             app,
             &token,
             "abc123",
-            &[("test/new.toml", &valid_test("new"))],
+            &[("test:new.toml", &valid_test("new"))],
         )
         .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -510,7 +510,7 @@ mod tests {
             app,
             &token,
             &format!("{}zzzz", "0".repeat(60)),
-            &[("test/new.toml", &valid_test("new"))],
+            &[("test:new.toml", &valid_test("new"))],
         )
         .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -536,7 +536,7 @@ mod tests {
             app,
             &token,
             &hash,
-            &[("test/no_expect.toml", b"name = \"no expects\"")],
+            &[("test:no_expect.toml", b"name = \"no expects\"")],
         )
         .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -573,8 +573,8 @@ mod tests {
             &token,
             &hash,
             &[
-                ("test/a.toml", &valid_test("a")),
-                ("test/b.toml", &valid_test("b")),
+                ("test:a.toml", &valid_test("a")),
+                ("test:b.toml", &valid_test("b")),
             ],
         )
         .await;
@@ -603,7 +603,7 @@ mod tests {
             app,
             &token,
             VALID_FILTER_TOML,
-            &[("test/v1.toml", &valid_test("v1"))],
+            &[("test:v1.toml", &valid_test("v1"))],
         )
         .await;
 
@@ -617,8 +617,8 @@ mod tests {
             &token,
             &hash,
             &[
-                ("test/v2a.toml", &valid_test("v2a")),
-                ("test/v2b.toml", &valid_test("v2b")),
+                ("test:v2a.toml", &valid_test("v2a")),
+                ("test:v2b.toml", &valid_test("v2b")),
             ],
         )
         .await;
@@ -629,7 +629,7 @@ mod tests {
             pool.clone(),
             Arc::clone(&storage),
         ));
-        let resp = put_tests(app, &token, &hash, &[("test/v3.toml", &valid_test("v3"))]).await;
+        let resp = put_tests(app, &token, &hash, &[("test:v3.toml", &valid_test("v3"))]).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Verify only 1 test remains
@@ -673,8 +673,8 @@ mod tests {
             &token,
             VALID_FILTER_TOML,
             &[
-                ("test/old1.toml", &valid_test("old1")),
-                ("test/old2.toml", &valid_test("old2")),
+                ("test:old1.toml", &valid_test("old1")),
+                ("test:old2.toml", &valid_test("old2")),
             ],
         )
         .await;
@@ -686,7 +686,7 @@ mod tests {
             pool.clone(),
             Arc::clone(&storage),
         ));
-        let resp = put_tests(app, &token, &hash, &[("test/new.toml", &valid_test("new"))]).await;
+        let resp = put_tests(app, &token, &hash, &[("test:new.toml", &valid_test("new"))]).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
         // 2 old tests should have been deleted from storage

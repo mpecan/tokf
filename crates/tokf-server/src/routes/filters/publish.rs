@@ -67,7 +67,7 @@ async fn parse_multipart(
             filter_bytes = Some(bytes.to_vec());
         } else if name == "mit_license_accepted" {
             mit_license_accepted = bytes.as_ref() == b"true";
-        } else if let Some(filename) = name.strip_prefix("test/")
+        } else if let Some(filename) = name.strip_prefix("test:")
             && !filename.is_empty()
         {
             test_files.push((filename.to_string(), bytes.to_vec()));
@@ -217,7 +217,7 @@ fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
 /// Accepts a multipart form with:
 /// - `filter` — filter TOML bytes (required, ≤ 64 KB)
 /// - `mit_license_accepted` — must be `"true"` to acknowledge MIT license (required)
-/// - `test/<filename>` — individual test TOML files (optional, total upload ≤ 1 MB)
+/// - `test:<filename>` — individual test TOML files (optional, total upload ≤ 1 MB)
 ///
 /// The server computes the content hash from the uploaded bytes; clients never
 /// supply a hash. This prevents hash forgery.
@@ -351,11 +351,11 @@ mod tests {
                 ("filter", VALID_FILTER_TOML),
                 MIT_ACCEPT,
                 (
-                    "test/basic.toml",
+                    "test:basic.toml",
                     b"name = \"basic\"\n\n[[expect]]\ncontains = \"ok\"\n",
                 ),
                 (
-                    "test/advanced.toml",
+                    "test:advanced.toml",
                     b"name = \"advanced\"\n\n[[expect]]\ncontains = \"ok\"\n",
                 ),
             ],
@@ -438,7 +438,7 @@ mod tests {
             &[
                 ("filter", VALID_FILTER_TOML),
                 MIT_ACCEPT,
-                ("test/big.toml", &big_test),
+                ("test:big.toml", &big_test),
             ],
         )
         .await;
