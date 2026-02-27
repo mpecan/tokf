@@ -101,6 +101,102 @@ fn history_config_load_malformed_global_config_falls_back_to_default() {
     assert_eq!(config.retention_count, 10);
 }
 
+// --- SyncConfig ---
+
+#[test]
+fn sync_config_default() {
+    let config = SyncConfig::default();
+    assert_eq!(config.auto_sync_threshold, 50);
+}
+
+#[test]
+fn sync_config_from_toml() {
+    let dir = TempDir::new().expect("tempdir");
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nauto_sync_threshold = 100\n",
+    )
+    .expect("write config");
+
+    let config = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(config.auto_sync_threshold, 100);
+}
+
+#[test]
+fn sync_config_from_global() {
+    let global_dir = TempDir::new().expect("tempdir");
+    let global_config = global_dir.path().join("config.toml");
+    std::fs::write(&global_config, "[sync]\nauto_sync_threshold = 200\n")
+        .expect("write global config");
+
+    let config = SyncConfig::load_from(None, Some(&global_config));
+    assert_eq!(config.auto_sync_threshold, 200);
+}
+
+#[test]
+fn sync_config_project_overrides_global() {
+    let project_dir = TempDir::new().expect("tempdir");
+    let tokf_dir = project_dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nauto_sync_threshold = 25\n",
+    )
+    .expect("write project config");
+
+    let global_dir = TempDir::new().expect("tempdir");
+    let global_config = global_dir.path().join("config.toml");
+    std::fs::write(&global_config, "[sync]\nauto_sync_threshold = 300\n")
+        .expect("write global config");
+
+    let config = SyncConfig::load_from(Some(project_dir.path()), Some(&global_config));
+    assert_eq!(
+        config.auto_sync_threshold, 25,
+        "project config should take priority over global"
+    );
+}
+
+#[test]
+fn sync_config_falls_back_to_default() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(config.auto_sync_threshold, 50);
+}
+
+#[test]
+fn sync_config_zero_disables_auto_sync() {
+    let dir = TempDir::new().expect("tempdir");
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nauto_sync_threshold = 0\n",
+    )
+    .expect("write config");
+
+    let config = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(config.auto_sync_threshold, 0);
+}
+
+#[test]
+fn mixed_history_and_sync_config() {
+    let dir = TempDir::new().expect("tempdir");
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[history]\nretention = 20\n\n[sync]\nauto_sync_threshold = 75\n",
+    )
+    .expect("write config");
+
+    let history = HistoryConfig::load_from(Some(dir.path()), None);
+    let sync = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(history.retention_count, 20);
+    assert_eq!(sync.auto_sync_threshold, 75);
+}
+
 // --- current_project ---
 
 #[test]

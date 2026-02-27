@@ -41,6 +41,7 @@ gethostname = "1"
 tempfile = "3"
 serial_test = "3"
 mockito = "1.7.2"
+filetime = "0.2"
 
 [lints]
 workspace = true

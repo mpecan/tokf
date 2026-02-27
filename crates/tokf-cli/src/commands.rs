@@ -78,6 +78,7 @@ pub fn cmd_run(
             cmd_result.exit_code,
             false,
         );
+        resolve::try_auto_sync();
         if cli.no_mask_exit_code {
             return Ok(cmd_result.exit_code);
         }
@@ -142,6 +143,7 @@ pub fn cmd_run(
         cmd_result.exit_code,
         pipe_override,
     );
+    resolve::try_auto_sync();
 
     // Detect whether to show the history hint:
     //   - filter author opted in via `show_history_hint = true`, or

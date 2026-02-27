@@ -53,6 +53,9 @@ jobs:
       - name: Run DB integration tests
         run: cargo test -p tokf-server -- --ignored
 
+      - name: Run E2E integration tests
+        run: cargo test -p e2e-tests -- --ignored
+
       - name: Verify filter test suites
         id: verify
         working-directory: ./crates/tokf-cli

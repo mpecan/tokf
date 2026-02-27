@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SyncEvent {
     pub id: i64,
     pub filter_name: Option<String>,
@@ -11,7 +11,7 @@ pub struct SyncEvent {
     pub recorded_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SyncRequest {
     pub machine_id: String,
     pub last_event_id: i64,

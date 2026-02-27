@@ -124,6 +124,61 @@ pub fn run_command(
     }
 }
 
+/// Attempt a background auto-sync if the pending event count exceeds the configured threshold.
+///
+/// All checks are cheap (no network I/O) — only spawns a detached `tokf sync` process
+/// when all preconditions are met.
+pub fn try_auto_sync() {
+    use std::process::{Command, Stdio};
+    use tokf::auth::credentials;
+    use tokf::history::SyncConfig;
+    use tokf::remote::machine;
+
+    // Pass None for project dir: auto-sync runs in the hot path after every command,
+    // so we only check the global config to avoid a filesystem scan for .tokf/config.toml.
+    let config = SyncConfig::load(None);
+    if config.auto_sync_threshold == 0 {
+        return;
+    }
+
+    if credentials::load().is_none() {
+        return;
+    }
+    if machine::load().is_none() {
+        return;
+    }
+
+    let Some(db_path) = tracking::db_path() else {
+        return;
+    };
+    let Ok(conn) = tracking::open_db(&db_path) else {
+        return;
+    };
+    let Ok(pending) = tracking::get_pending_count(&conn) else {
+        return;
+    };
+
+    if pending < i64::from(config.auto_sync_threshold) {
+        return;
+    }
+
+    let exe = std::env::current_exe().unwrap_or_else(|_| "tokf".into());
+    match Command::new(exe)
+        .args(["sync"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(_) => {}
+        Err(e) => {
+            if std::env::var_os("TOKF_DEBUG").is_some() {
+                eprintln!("[tokf] auto-sync spawn failed: {e}");
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn record_run(
     command_args: &[String],

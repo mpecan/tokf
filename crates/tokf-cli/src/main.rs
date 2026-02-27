@@ -12,6 +12,7 @@ mod remote_cmd;
 mod resolve;
 mod search_cmd;
 mod show_cmd;
+mod sync_cmd;
 // pub(crate): accessed by install_cmd::run_verify
 pub(crate) mod verify_cmd;
 
@@ -142,6 +143,9 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Query remote server stats instead of local database
+        #[arg(long)]
+        remote: bool,
     },
     /// Manage filtered output history
     History {
@@ -199,6 +203,12 @@ enum Commands {
         /// Output results as JSON
         #[arg(long)]
         json: bool,
+    },
+    /// Sync local usage data to the remote server
+    Sync {
+        /// Show last sync time and count of pending events
+        #[arg(long)]
+        status: bool,
     },
     /// Install a filter from the community registry
     Install {
@@ -362,7 +372,14 @@ fn main() {
             daily,
             by_filter,
             json,
-        } => gain::cmd_gain(*daily, *by_filter, *json),
+            remote,
+        } => {
+            if *remote {
+                gain::cmd_gain_remote(*daily, *by_filter, *json)
+            } else {
+                gain::cmd_gain(*daily, *by_filter, *json)
+            }
+        }
         Commands::Verify {
             filter,
             list,
@@ -396,6 +413,7 @@ fn main() {
             }
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
         }),
+        Commands::Sync { status } => or_exit(sync_cmd::cmd_sync(*status)),
         Commands::Publish { filter, dry_run } => publish_cmd::cmd_publish(filter, *dry_run),
         Commands::Search { query, limit, json } => search_cmd::cmd_search(query, *limit, *json),
         Commands::Install {
