@@ -10,6 +10,7 @@ pub struct NoOpGitHubClient;
 ///
 /// Useful for integration tests that need the full device flow to complete
 /// without hitting real GitHub APIs.
+#[cfg(any(test, feature = "test-helpers"))]
 pub struct SuccessGitHubClient;
 
 #[async_trait::async_trait]
@@ -51,6 +52,7 @@ impl GitHubClient for NoOpGitHubClient {
     }
 }
 
+#[cfg(any(test, feature = "test-helpers"))]
 #[async_trait::async_trait]
 impl GitHubClient for SuccessGitHubClient {
     async fn request_device_code(&self, _client_id: &str) -> anyhow::Result<DeviceCodeResponse> {

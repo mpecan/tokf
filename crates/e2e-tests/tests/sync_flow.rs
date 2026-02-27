@@ -194,24 +194,17 @@ async fn sync_replay_is_idempotent(pool: PgPool) {
     assert_eq!(resp1.accepted, 1);
     assert_eq!(resp1.cursor, 1);
 
-    // Replay the same request (same last_event_id=0)
-    let _resp2 = h.blocking_sync_request(&req).await;
+    // Replay the same request (same events, same last_event_id=0).
+    // The server deduplicates via its cursor — events with id <= cursor are skipped.
+    let resp2 = h.blocking_sync_request(&req).await;
+    assert_eq!(
+        resp2.accepted, 0,
+        "replay should accept 0 (cursor-based dedup)"
+    );
+    assert_eq!(resp2.cursor, 1, "cursor should remain at 1");
 
-    // Server should accept the events again (idempotent from client perspective)
-    // but gain should not double-count
+    // Gain should reflect exactly the original sync — no double-counting.
     let gain = h.blocking_gain().await;
-
-    // Verify commands are not duplicated — the server may re-accept but should
-    // upsert or the cursor logic prevents double-counting in practice.
-    // At minimum, the first sync's data should be present.
-    assert!(
-        gain.total_commands >= 1,
-        "expected at least 1 command, got {}",
-        gain.total_commands
-    );
-    assert!(
-        gain.total_input_tokens >= 1000,
-        "expected at least 1000 input tokens, got {}",
-        gain.total_input_tokens
-    );
+    assert_eq!(gain.total_commands, 1);
+    assert_eq!(gain.total_input_tokens, 1000); // 4000 bytes / 4
 }
