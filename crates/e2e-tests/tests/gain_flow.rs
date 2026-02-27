@@ -17,11 +17,11 @@ async fn gain_with_no_events_returns_zeros(pool: PgPool) {
     assert_eq!(gain.total_output_tokens, 0);
     assert_eq!(gain.total_commands, 0);
     assert!(gain.by_filter.is_empty());
-    assert!(
-        gain.by_machine.is_empty(),
-        "expected empty by_machine for fresh user, got {} entries",
-        gain.by_machine.len()
-    );
+    // The harness pre-creates a machine, so by_machine has 1 entry with zero totals.
+    assert_eq!(gain.by_machine.len(), 1);
+    assert_eq!(gain.by_machine[0].total_commands, 0);
+    assert_eq!(gain.by_machine[0].total_input_tokens, 0);
+    assert_eq!(gain.by_machine[0].total_output_tokens, 0);
 }
 
 /// Sync events with different filter names → verify `by_filter` breakdown.
