@@ -49,7 +49,9 @@ http-body-util = "0.1"
 crdb-test-macro = { path = "../crdb-test-macro" }
 # Self-dependency to enable test-helpers feature for integration tests
 # (cfg(test) is only set for unit tests, not integration tests)
-tokf-server = { path = ".", features = ["test-helpers"] }
+# Renamed key to work around release-please cargo-workspace plugin cycle detection
+# (googleapis/release-please#1662) — `package` preserves the real crate identity.
+tokf-server-test = { package = "tokf-server", path = ".", features = ["test-helpers"] }
 
 [lints]
 workspace = true
