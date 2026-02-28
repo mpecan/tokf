@@ -117,3 +117,11 @@ reason = "TestHarness::blocking_update_tests/blocking_search_filters - spawn_blo
 [[ignore]]
 fingerprint = "9fc57c07628e198e"
 reason = "TestHarness::blocking_gain/blocking_list_machines - spawn_blocking test boilerplate; test clarity > DRY"
+
+[[ignore]]
+fingerprint = "ccbacfce8575cd81"
+reason = "publish_filter_rejects_missing_* tests - same post+assert+check-error pattern with different payloads and error messages; test clarity > DRY"
+
+[[ignore]]
+fingerprint = "91e815e8a2c7146b"
+reason = "publish_filter_rejects_oversized/failing tests - same post+assert+check-error pattern with different inputs and assertions; test clarity > DRY"

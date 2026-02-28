@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
-use crate::config::types::Section;
+use tokf_common::config::types::Section;
 
 /// Collected data for a single named section.
 pub type SectionMap = HashMap<String, SectionData>;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
-use crate::config::types::GroupConfig;
+use tokf_common::config::types::GroupConfig;
 
 use super::extract::interpolate;
 
@@ -70,7 +70,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::config::types::ExtractRule;
+    use tokf_common::config::types::ExtractRule;
 
     fn git_status_group_config() -> GroupConfig {
         let mut labels = BTreeMap::new();

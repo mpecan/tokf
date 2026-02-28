@@ -62,6 +62,12 @@ collapse_empty_lines = true   # collapse consecutive blank lines into one
 
 show_history_hint = true      # append a hint line pointing to the full output in history
 
+# Lua escape hatch — for logic TOML can't express (see Lua Escape Hatch section)
+[lua_script]
+lang = "luau"
+source = 'return output:upper()'    # inline script
+# file = "transform.luau"           # or reference a local file (auto-inlined on publish)
+
 match_output = [              # whole-output substring checks, short-circuit the pipeline
   { contains = "rejected", output = "push rejected" },
 ]

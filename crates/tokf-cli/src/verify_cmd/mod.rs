@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use self::discovery::DiscoveredSuite;
 
-pub use tokf_common::test_case::{Expectation, TestCase};
+pub use tokf_common::test_case::TestCase;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum VerifyScope {

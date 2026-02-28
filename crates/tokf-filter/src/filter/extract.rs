@@ -1,6 +1,6 @@
 use regex::Regex;
 
-use crate::config::types::ExtractRule;
+use tokf_common::config::types::ExtractRule;
 
 /// Apply an extract rule across lines — first match wins.
 ///

@@ -5,7 +5,10 @@ use tokf::filter;
 use tokf::runner::CommandResult;
 
 use super::discovery::DiscoveredSuite;
-use super::{CaseResult, Expectation, SuiteResult, TestCase};
+use super::{CaseResult, SuiteResult, TestCase};
+
+// Delegate assertion evaluation to tokf-filter's verify module.
+use tokf_filter::verify::evaluate;
 
 // --- Fixture loading ---
 
@@ -44,75 +47,6 @@ fn load_fixture(case: &TestCase, case_path: &Path) -> anyhow::Result<String> {
     }
 
     anyhow::bail!("test case must specify either 'fixture' or 'inline'")
-}
-
-// --- Assertions ---
-
-// This function handles all 8 assertion types in a single pass. The length is
-// justified by the straightforward pattern repetition; splitting would obscure
-// the symmetry between assertion kinds.
-#[allow(clippy::too_many_lines)]
-pub(super) fn evaluate(expect: &Expectation, output: &str) -> Option<String> {
-    if let Some(s) = &expect.contains
-        && !output.contains(s.as_str())
-    {
-        return Some(format!("expected output to contain {s:?}\ngot:\n{output}"));
-    }
-    if let Some(s) = &expect.not_contains
-        && output.contains(s.as_str())
-    {
-        return Some(format!(
-            "expected output NOT to contain {s:?}\ngot:\n{output}"
-        ));
-    }
-    if let Some(s) = &expect.equals
-        && output != s.as_str()
-    {
-        return Some(format!("expected output to equal {s:?}\ngot:\n{output}"));
-    }
-    if let Some(s) = &expect.starts_with
-        && !output.starts_with(s.as_str())
-    {
-        return Some(format!(
-            "expected output to start with {s:?}\ngot:\n{output}"
-        ));
-    }
-    if let Some(s) = &expect.ends_with
-        && !output.ends_with(s.as_str())
-    {
-        return Some(format!("expected output to end with {s:?}\ngot:\n{output}"));
-    }
-    if let Some(n) = expect.line_count {
-        let count = output.lines().filter(|l| !l.trim().is_empty()).count();
-        if count != n {
-            return Some(format!(
-                "expected {n} non-empty lines, got {count}\noutput:\n{output}"
-            ));
-        }
-    }
-    if let Some(pattern) = &expect.matches {
-        let re = match regex::Regex::new(pattern) {
-            Ok(r) => r,
-            Err(e) => return Some(format!("invalid regex {pattern:?}: {e}")),
-        };
-        if !re.is_match(output) {
-            return Some(format!(
-                "expected output to match regex {pattern:?}\ngot:\n{output}"
-            ));
-        }
-    }
-    if let Some(pattern) = &expect.not_matches {
-        let re = match regex::Regex::new(pattern) {
-            Ok(r) => r,
-            Err(e) => return Some(format!("invalid regex {pattern:?}: {e}")),
-        };
-        if re.is_match(output) {
-            return Some(format!(
-                "expected output NOT to match regex {pattern:?}\ngot:\n{output}"
-            ));
-        }
-    }
-    None
 }
 
 // --- Suite execution ---

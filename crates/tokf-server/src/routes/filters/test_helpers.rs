@@ -18,6 +18,12 @@ use crate::storage::mock::InMemoryStorageClient;
 
 pub const MIT_ACCEPT: (&str, &[u8]) = ("mit_license_accepted", b"true");
 
+/// A minimal test case that always passes (expects empty output from a passthrough filter).
+pub const DEFAULT_PASSING_TEST: (&str, &[u8]) = (
+    "test:default.toml",
+    b"name = \"default\"\ninline = \"\"\n\n[[expect]]\nequals = \"\"\n",
+);
+
 pub use tokf_common::multipart::build_body as make_multipart;
 
 pub fn make_state(pool: PgPool) -> AppState {
@@ -78,6 +84,9 @@ pub fn rand_i64() -> i64 {
 }
 
 /// POST `/api/filters` and assert success; returns the `content_hash`.
+///
+/// If `test_files` is empty, a default passing test is added automatically
+/// (publishing requires at least one passing test).
 pub async fn publish_filter_helper(
     app: axum::Router,
     token: &str,
@@ -85,7 +94,11 @@ pub async fn publish_filter_helper(
     test_files: &[(&str, &[u8])],
 ) -> String {
     let mut fields: Vec<(&str, &[u8])> = vec![("filter", filter_toml), MIT_ACCEPT];
-    fields.extend_from_slice(test_files);
+    if test_files.is_empty() {
+        fields.push(DEFAULT_PASSING_TEST);
+    } else {
+        fields.extend_from_slice(test_files);
+    }
     let (body, content_type) = make_multipart(&fields);
     let resp = app
         .oneshot(

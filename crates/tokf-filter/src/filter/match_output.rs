@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::types::MatchOutputRule;
+use tokf_common::config::types::MatchOutputRule;
 
 use super::section::SectionMap;
 use super::template;

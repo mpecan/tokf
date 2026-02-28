@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TestCase {
     pub name: String,
     #[serde(default)]
@@ -15,7 +15,7 @@ pub struct TestCase {
     pub expects: Vec<Expectation>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Expectation {
     #[serde(default)]
     pub contains: Option<String>,

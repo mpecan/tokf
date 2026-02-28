@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 # ── Stage 1: build ──────────────────────────────────────────────────────────
 FROM rust:slim AS builder
+# g++ is required for mlua's vendored Luau build (C++ source compiled via cc crate)
+RUN apt-get update && apt-get install -y --no-install-recommends g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/

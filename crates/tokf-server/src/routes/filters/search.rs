@@ -414,7 +414,7 @@ mod tests {
             b"command = \"git push\"\n",
             &[(
                 "test:basic.toml",
-                b"name = \"basic\"\n\n[[expect]]\ncontains = \"ok\"\n",
+                b"name = \"basic\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n",
             )],
         )
         .await;
@@ -469,7 +469,9 @@ mod tests {
             json["filter_toml"].as_str().unwrap(),
             std::str::from_utf8(filter_toml).unwrap()
         );
-        assert_eq!(json["test_files"], serde_json::json!([]));
+        // publish_filter_helper auto-adds a default passing test when none provided
+        let test_files = json["test_files"].as_array().unwrap();
+        assert_eq!(test_files.len(), 1, "expected 1 auto-added default test");
     }
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
@@ -488,11 +490,11 @@ mod tests {
             &[
                 (
                     "test:basic.toml",
-                    b"name = \"basic\"\n\n[[expect]]\ncontains = \"ok\"\n",
+                    b"name = \"basic\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n",
                 ),
                 (
                     "test:edge.toml",
-                    b"name = \"edge\"\n\n[[expect]]\ncontains = \"ok\"\n",
+                    b"name = \"edge\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n",
                 ),
             ],
         )

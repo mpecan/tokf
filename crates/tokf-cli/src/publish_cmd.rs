@@ -68,6 +68,65 @@ fn hash_filter(filter_bytes: &[u8]) -> anyhow::Result<(String, String)> {
     Ok((hash, cfg.command.first().to_string()))
 }
 
+/// If `lua_script.file` is set, read the external file and embed its content
+/// as `lua_script.source` so the filter TOML is self-contained for publishing.
+///
+/// Returns the (possibly modified) filter bytes. When no `lua_script.file` is
+/// present, the original bytes are returned unchanged.
+///
+/// The script path is canonicalized and must reside within (or under) the
+/// filter file's parent directory to prevent path-traversal attacks.
+fn inline_lua_script(filter_bytes: Vec<u8>, filter_path: &Path) -> anyhow::Result<Vec<u8>> {
+    let toml_str = std::str::from_utf8(&filter_bytes)
+        .map_err(|_| anyhow::anyhow!("filter TOML is not valid UTF-8"))?;
+    let mut cfg: tokf_common::config::types::FilterConfig =
+        toml::from_str(toml_str).map_err(|e| anyhow::anyhow!("invalid filter TOML: {e}"))?;
+
+    let script_file = match cfg.lua_script.as_ref().and_then(|s| s.file.as_ref()) {
+        Some(f) => f.clone(),
+        None => return Ok(filter_bytes),
+    };
+
+    let base_dir = filter_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("cannot resolve filter directory: {e}"))?;
+    let script_path = base_dir.join(&script_file);
+    let canonical_script = script_path.canonicalize().map_err(|e| {
+        anyhow::anyhow!(
+            "cannot resolve lua_script.file '{}': {e}",
+            script_path.display()
+        )
+    })?;
+
+    if !canonical_script.starts_with(&base_dir) {
+        anyhow::bail!(
+            "lua_script.file '{}' escapes the filter directory — \
+             the script must reside within '{}'",
+            script_file,
+            base_dir.display()
+        );
+    }
+
+    let source = std::fs::read_to_string(&canonical_script).map_err(|e| {
+        anyhow::anyhow!(
+            "cannot read lua_script.file '{}': {e}",
+            canonical_script.display()
+        )
+    })?;
+
+    if let Some(script_cfg) = cfg.lua_script.as_mut() {
+        script_cfg.source = Some(source);
+        script_cfg.file = None;
+    }
+
+    eprintln!("[tokf] inlined lua_script.file '{script_file}' into filter source");
+    let serialized =
+        toml::to_string_pretty(&cfg).map_err(|e| anyhow::anyhow!("TOML serialize error: {e}"))?;
+    Ok(serialized.into_bytes())
+}
+
 // ── Publish flow ────────────────────────────────────────────────────────────
 
 fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
@@ -75,6 +134,7 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
     let resolved_filter = resolve_local_filter(filter_name)?;
 
     let filter_bytes = std::fs::read(&resolved_filter.source_path)?;
+    let filter_bytes = inline_lua_script(filter_bytes, &resolved_filter.source_path)?;
     let (content_hash, command_pattern) = hash_filter(&filter_bytes)?;
     let test_files = collect_test_files(&resolved_filter)?;
 
@@ -268,6 +328,150 @@ mod tests {
         let names: std::collections::HashSet<_> = files.iter().map(|(n, _)| n.as_str()).collect();
         assert!(names.contains("basic.toml"));
         assert!(names.contains("edge.toml"));
+    }
+
+    #[test]
+    fn inline_lua_script_embeds_file_content() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let filter_path = dir.path().join("my-filter.toml");
+        let script_path = dir.path().join("transform.luau");
+
+        std::fs::write(&script_path, "return output:upper()").unwrap();
+        std::fs::write(
+            &filter_path,
+            r#"command = "my-cmd"
+
+[lua_script]
+lang = "luau"
+file = "transform.luau"
+"#,
+        )
+        .unwrap();
+
+        let filter_bytes = std::fs::read(&filter_path).unwrap();
+        let result = inline_lua_script(filter_bytes, &filter_path).unwrap();
+
+        let cfg: tokf_common::config::types::FilterConfig =
+            toml::from_str(std::str::from_utf8(&result).unwrap()).unwrap();
+        let script = cfg.lua_script.unwrap();
+        assert!(script.file.is_none(), "file should be removed");
+        assert_eq!(script.source.unwrap(), "return output:upper()");
+    }
+
+    #[test]
+    fn inline_lua_script_rejects_path_traversal() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let subdir = dir.path().join("filters");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        // Create a file outside the filter directory
+        let secret = dir.path().join("secret.txt");
+        std::fs::write(&secret, "sensitive data").unwrap();
+
+        let filter_path = subdir.join("my-filter.toml");
+        std::fs::write(
+            &filter_path,
+            r#"command = "my-cmd"
+
+[lua_script]
+lang = "luau"
+file = "../secret.txt"
+"#,
+        )
+        .unwrap();
+
+        let filter_bytes = std::fs::read(&filter_path).unwrap();
+        let result = inline_lua_script(filter_bytes, &filter_path);
+        assert!(result.is_err(), "path traversal should be rejected");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("escapes the filter directory"),
+            "expected traversal error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn inline_lua_script_allows_subdirectory() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let scripts_dir = dir.path().join("scripts");
+        std::fs::create_dir_all(&scripts_dir).unwrap();
+
+        std::fs::write(scripts_dir.join("helper.luau"), "return 'ok'").unwrap();
+
+        let filter_path = dir.path().join("my-filter.toml");
+        std::fs::write(
+            &filter_path,
+            r#"command = "my-cmd"
+
+[lua_script]
+lang = "luau"
+file = "scripts/helper.luau"
+"#,
+        )
+        .unwrap();
+
+        let filter_bytes = std::fs::read(&filter_path).unwrap();
+        let result = inline_lua_script(filter_bytes, &filter_path).unwrap();
+
+        let cfg: tokf_common::config::types::FilterConfig =
+            toml::from_str(std::str::from_utf8(&result).unwrap()).unwrap();
+        let script = cfg.lua_script.unwrap();
+        assert!(script.file.is_none());
+        assert_eq!(script.source.unwrap(), "return 'ok'");
+    }
+
+    #[test]
+    fn inline_lua_script_empty_file_produces_empty_source() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let filter_path = dir.path().join("my-filter.toml");
+        std::fs::write(dir.path().join("empty.luau"), "").unwrap();
+        std::fs::write(
+            &filter_path,
+            r#"command = "my-cmd"
+
+[lua_script]
+lang = "luau"
+file = "empty.luau"
+"#,
+        )
+        .unwrap();
+
+        let filter_bytes = std::fs::read(&filter_path).unwrap();
+        let result = inline_lua_script(filter_bytes, &filter_path).unwrap();
+
+        let cfg: tokf_common::config::types::FilterConfig =
+            toml::from_str(std::str::from_utf8(&result).unwrap()).unwrap();
+        let script = cfg.lua_script.unwrap();
+        assert_eq!(script.source.unwrap(), "");
+    }
+
+    #[test]
+    fn inline_lua_script_hash_stable_when_no_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let filter_path = dir.path().join("my-filter.toml");
+        let toml_str = r#"command = "my-cmd""#;
+        std::fs::write(&filter_path, toml_str).unwrap();
+
+        let filter_bytes = toml_str.as_bytes().to_vec();
+        let (hash_before, _) = hash_filter(&filter_bytes).unwrap();
+        let result = inline_lua_script(filter_bytes, &filter_path).unwrap();
+        let (hash_after, _) = hash_filter(&result).unwrap();
+        assert_eq!(
+            hash_before, hash_after,
+            "hash should be stable when no inlining occurs"
+        );
+    }
+
+    #[test]
+    fn inline_lua_script_noop_without_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let filter_path = dir.path().join("my-filter.toml");
+        let toml_str = r#"command = "my-cmd""#;
+        std::fs::write(&filter_path, toml_str).unwrap();
+
+        let filter_bytes = toml_str.as_bytes().to_vec();
+        let result = inline_lua_script(filter_bytes.clone(), &filter_path).unwrap();
+        assert_eq!(result, filter_bytes, "should return unchanged bytes");
     }
 
     #[test]

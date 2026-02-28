@@ -108,9 +108,16 @@ Every filter in the stdlib **must** have a `_test/` suite — CI enforces this w
 
 ## Lua filters
 
-For filters that need logic beyond what TOML can express, use the `[lua_script]` section with [Luau](https://luau.org/). The sandbox blocks `io`, `os`, and `package` — scripts cannot access the filesystem or network.
+For filters that need logic beyond what TOML can express, use the `[lua_script]` section with [Luau](https://luau.org/).
 
-See the [README](README.md#lua-escape-hatch) for the full API and the built-in filter library for examples.
+All Lua execution is sandboxed:
+
+- **Blocked libraries:** `io`, `os`, `package` — no filesystem or network access.
+- **Resource limits:** 1 million VM instructions, 16 MB memory (prevents infinite loops and memory exhaustion).
+
+For local development, you can reference external scripts with `lua_script.file = "script.luau"`. For published filters, use inline `source` — `tokf publish` automatically inlines file references before uploading.
+
+See `docs/lua-escape-hatch.md` for the full API, globals, and examples.
 
 ---
 
