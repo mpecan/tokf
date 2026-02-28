@@ -18,8 +18,8 @@
   ],
   "packages": {
     "crates/tokf-common": {},
-    "crates/tokf-cli": { "component": "tokf" },
-    "crates/tokf-server": {}
+    "crates/tokf-filter": {},
+    "crates/tokf-cli": { "component": "tokf" }
   },
   "plugins": [
     {
@@ -29,7 +29,7 @@
     {
       "type": "linked-versions",
       "groupName": "workspace",
-      "components": ["tokf-common", "tokf", "tokf-server"]
+      "components": ["tokf-common", "tokf-filter", "tokf"]
     }
   ]
 }
