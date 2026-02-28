@@ -101,6 +101,7 @@ fn escape_ilike(s: &str) -> String {
 /// - `500 Internal Server Error` on database failures.
 pub async fn search_filters(
     auth: AuthUser,
+    crate::routes::ip::PeerIp(peer_ip): crate::routes::ip::PeerIp,
     headers: HeaderMap,
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
@@ -113,7 +114,7 @@ pub async fn search_filters(
     }
 
     // Per-IP rate limit (60/min).
-    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, peer_ip.as_deref());
     let ip_rl = state.ip_search_rate_limiter.check_and_increment(ip);
     if !ip_rl.allowed {
         return Err(AppError::rate_limited(&ip_rl));
@@ -185,11 +186,12 @@ pub async fn search_filters(
 /// - `500 Internal Server Error` on database failures.
 pub async fn get_filter(
     auth: AuthUser,
+    crate::routes::ip::PeerIp(peer_ip): crate::routes::ip::PeerIp,
     headers: HeaderMap,
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<(HeaderMap, Json<FilterDetails>), AppError> {
-    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, peer_ip.as_deref());
     let ip_rl = state.ip_search_rate_limiter.check_and_increment(ip);
     if !ip_rl.allowed {
         return Err(AppError::rate_limited(&ip_rl));
@@ -250,11 +252,12 @@ pub async fn get_filter(
 #[allow(clippy::too_many_lines)]
 pub async fn download_filter(
     auth: AuthUser,
+    crate::routes::ip::PeerIp(peer_ip): crate::routes::ip::PeerIp,
     headers: HeaderMap,
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<(HeaderMap, Json<DownloadPayload>), AppError> {
-    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, peer_ip.as_deref());
     let ip_rl = state.ip_download_rate_limiter.check_and_increment(ip);
     if !ip_rl.allowed {
         return Err(AppError::rate_limited(&ip_rl));

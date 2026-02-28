@@ -11,8 +11,8 @@ const BASE_BACKOFF_SECS: u64 = 1;
 ///
 /// Retries up to 3 times with delays of 1 s, 2 s, 4 s plus random jitter
 /// (0-500 ms) to prevent thundering-herd effects when many clients retry
-/// simultaneously. If the server's `Retry-After` value is larger than the
-/// computed backoff, it is used instead (still with jitter).
+/// simultaneously. When the server provides a `Retry-After` value, the
+/// actual delay is `max(computed_backoff, retry_after)` (still with jitter).
 ///
 /// Returns the error from the final attempt if all retries are exhausted, or
 /// any non-429 error immediately.
@@ -32,7 +32,8 @@ where
                 if !is_rate_limited(&e) || attempt >= MAX_RETRIES {
                     return Err(e);
                 }
-                let backoff = parse_retry_after(&e).unwrap_or(BASE_BACKOFF_SECS << attempt);
+                let computed = BASE_BACKOFF_SECS << attempt;
+                let backoff = parse_retry_after(&e).map_or(computed, |ra| ra.max(computed));
                 let jitter_ms = jitter();
                 attempt += 1;
                 eprintln!(
@@ -55,26 +56,28 @@ fn jitter() -> u64 {
     u64::from(nanos % 500)
 }
 
+/// Check if the error is a [`RateLimitedError`] via downcast.
 fn is_rate_limited(err: &anyhow::Error) -> bool {
-    err.to_string().contains("HTTP 429")
+    err.downcast_ref::<super::RateLimitedError>().is_some()
 }
 
+/// Extract the `retry_after_secs` from a [`RateLimitedError`] via downcast.
 fn parse_retry_after(err: &anyhow::Error) -> Option<u64> {
-    let msg = err.to_string();
-    // Format: "rate limit exceeded — try again in Ns (HTTP 429)"
-    msg.split("try again in ")
-        .nth(1)?
-        .split('s')
-        .next()?
-        .parse()
-        .ok()
+    err.downcast_ref::<super::RateLimitedError>()
+        .map(|e| e.retry_after_secs)
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use crate::remote::RateLimitedError;
     use std::cell::Cell;
+
+    /// Helper: build a rate-limited `anyhow::Error` with the given retry-after.
+    fn rate_limited_err(retry_after_secs: u64) -> anyhow::Error {
+        RateLimitedError { retry_after_secs }.into()
+    }
 
     #[test]
     fn returns_success_on_first_try() {
@@ -98,7 +101,7 @@ mod tests {
         let calls = Cell::new(0u32);
         let result: anyhow::Result<()> = with_retry("test", || {
             calls.set(calls.get() + 1);
-            anyhow::bail!("rate limit exceeded — try again in 0s (HTTP 429)")
+            Err(rate_limited_err(0))
         });
         assert!(result.is_err());
         // 1 initial + 3 retries = 4 total
@@ -111,7 +114,7 @@ mod tests {
         let result = with_retry("test", || {
             calls.set(calls.get() + 1);
             if calls.get() < 2 {
-                anyhow::bail!("rate limit exceeded — try again in 0s (HTTP 429)")
+                return Err(rate_limited_err(0));
             }
             Ok("success")
         });
@@ -120,14 +123,28 @@ mod tests {
     }
 
     #[test]
-    fn parses_retry_after_from_error() {
-        let err = anyhow::anyhow!("rate limit exceeded — try again in 120s (HTTP 429)");
+    fn parses_retry_after_from_structured_error() {
+        let err = rate_limited_err(120);
         assert_eq!(parse_retry_after(&err), Some(120));
     }
 
     #[test]
-    fn returns_none_for_unparseable_retry_after() {
+    fn returns_none_for_non_rate_limit_error() {
         let err = anyhow::anyhow!("some other error");
         assert_eq!(parse_retry_after(&err), None);
+    }
+
+    #[test]
+    fn backoff_uses_max_of_computed_and_server_value() {
+        // Server says 0s, computed is 1s → should use 1s (computed)
+        let err = rate_limited_err(0);
+        let computed = BASE_BACKOFF_SECS; // attempt 0 → 1s
+        let backoff = parse_retry_after(&err).map_or(computed, |ra| ra.max(computed));
+        assert_eq!(backoff, 1);
+
+        // Server says 10s, computed is 1s → should use 10s (server)
+        let err = rate_limited_err(10);
+        let backoff = parse_retry_after(&err).map_or(computed, |ra| ra.max(computed));
+        assert_eq!(backoff, 10);
     }
 }

@@ -1,6 +1,28 @@
+use std::net::SocketAddr;
+
+use axum::extract::ConnectInfo;
 use axum::http::HeaderMap;
+use axum::http::request::Parts;
 
 use crate::rate_limit::RateLimitResult;
+
+/// Axum extractor that resolves the TCP peer IP from `ConnectInfo<SocketAddr>`.
+///
+/// Returns `None` when `ConnectInfo` is unavailable (e.g. in tests that use
+/// `Router::oneshot` without `into_make_service_with_connect_info`).
+pub struct PeerIp(pub Option<String>);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for PeerIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let ip = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ci| ci.0.ip().to_string());
+        Ok(Self(ip))
+    }
+}
 
 /// Extract the client IP address from request headers and/or peer address.
 ///

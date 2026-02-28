@@ -122,9 +122,11 @@ pub async fn register_machine(
                 .await?;
 
             if count >= MAX_MACHINES_PER_USER {
+                // Constant is 50 — always fits in u32.
+                #[allow(clippy::cast_possible_truncation)]
                 return Err(AppError::RateLimited {
                     retry_after_secs: 0,
-                    limit: 50,
+                    limit: MAX_MACHINES_PER_USER as u32,
                     remaining: 0,
                 });
             }

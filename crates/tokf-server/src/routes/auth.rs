@@ -57,9 +57,10 @@ pub struct PendingResponse {
 /// `Internal` on GitHub API or database failures.
 pub async fn initiate_device_flow(
     State(state): State<AppState>,
+    super::ip::PeerIp(peer_ip): super::ip::PeerIp,
     headers: axum::http::HeaderMap,
 ) -> Result<(StatusCode, Json<DeviceFlowResponse>), AppError> {
-    let ip = super::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip = super::ip::extract_ip(&headers, state.trust_proxy, peer_ip.as_deref());
 
     // Piggyback cleanup of expired flows
     let _ = sqlx::query("DELETE FROM device_flows WHERE expires_at < NOW()")
@@ -76,9 +77,11 @@ pub async fn initiate_device_flow(
     .await?;
 
     if count >= MAX_FLOWS_PER_IP_PER_HOUR {
+        // Constant is 10 — always fits in u32.
+        #[allow(clippy::cast_possible_truncation)]
         return Err(AppError::RateLimited {
             retry_after_secs: 3600,
-            limit: 10,
+            limit: MAX_FLOWS_PER_IP_PER_HOUR as u32,
             remaining: 0,
         });
     }

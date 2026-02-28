@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokf_server::{
@@ -133,12 +134,15 @@ async fn cmd_serve() -> Result<()> {
 
     // Wrap in async {} so the IntoFuture impl is resolved before select!
     let serve = async {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                drain_rx.await.ok();
-                tracing::info!("draining in-flight requests (30 s deadline)…");
-            })
-            .await
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            drain_rx.await.ok();
+            tracing::info!("draining in-flight requests (30 s deadline)…");
+        })
+        .await
     };
 
     tokio::select! {

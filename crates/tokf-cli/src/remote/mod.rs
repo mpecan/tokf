@@ -7,10 +7,30 @@ pub mod publish_client;
 pub mod retry;
 pub mod sync_client;
 
+/// Structured error for HTTP 429 responses, allowing retry logic to branch
+/// on the type rather than parsing error message strings.
+#[derive(Debug)]
+pub struct RateLimitedError {
+    pub retry_after_secs: u64,
+}
+
+impl std::fmt::Display for RateLimitedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "rate limit exceeded — try again in {}s (HTTP 429)",
+            self.retry_after_secs
+        )
+    }
+}
+
+impl std::error::Error for RateLimitedError {}
+
 /// Consume a response and return it if the status is successful.
 ///
 /// On 401 Unauthorized, returns a specific error prompting re-authentication.
-/// On 429 Too Many Requests, parses `Retry-After` and returns a descriptive error.
+/// On 429 Too Many Requests, returns a [`RateLimitedError`] with the parsed
+/// `Retry-After` value (defaulting to 60 s).
 /// On other non-2xx statuses, includes the response body in the error message.
 ///
 /// # Errors
@@ -32,7 +52,10 @@ pub(crate) fn require_success(
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(60);
-        anyhow::bail!("rate limit exceeded — try again in {retry_after}s (HTTP 429)");
+        return Err(RateLimitedError {
+            retry_after_secs: retry_after,
+        }
+        .into());
     }
     if !status.is_success() {
         let text = resp

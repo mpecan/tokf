@@ -10,9 +10,11 @@ use crate::state::AppState;
 
 /// General rate-limit middleware for authenticated requests.
 ///
-/// Checks the bearer token against the general rate limiter (300/min per user).
-/// Adds `X-RateLimit-*` headers to the response only if the handler did not
-/// already set them (endpoint-specific headers take priority).
+/// Checks the bearer token against the general rate limiter (300/min per token).
+/// Different tokens for the same user get independent counters — see
+/// [`token_to_rate_limit_key`]. Adds `X-RateLimit-*` headers to the response
+/// only if the handler did not already set them (endpoint-specific headers take
+/// priority).
 ///
 /// Unauthenticated requests (no `Authorization` header) pass through unmodified.
 pub async fn general_rate_limit(
