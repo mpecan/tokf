@@ -11,8 +11,16 @@ mod harness;
 const FILTER_TOML: &[u8] = b"command = \"git push\"\n";
 
 fn valid_test(name: &str) -> (String, Vec<u8>) {
-    let content = format!("name = \"{name}\"\n\n[[expect]]\ncontains = \"ok\"\n");
+    let content =
+        format!("name = \"{name}\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n");
     (format!("{name}.toml"), content.into_bytes())
+}
+
+fn default_test() -> (String, Vec<u8>) {
+    (
+        "default.toml".to_string(),
+        b"name = \"default\"\ninline = \"\"\n\n[[expect]]\nequals = \"\"\n".to_vec(),
+    )
 }
 
 /// Publish a filter → verify is_new=true, hash returned.
@@ -20,7 +28,9 @@ fn valid_test(name: &str) -> (String, Vec<u8>) {
 async fn publish_filter_returns_hash(pool: PgPool) {
     let h = harness::TestHarness::with_storage(pool).await;
 
-    let (is_new, resp) = h.blocking_publish(FILTER_TOML.to_vec(), vec![]).await;
+    let (is_new, resp) = h
+        .blocking_publish(FILTER_TOML.to_vec(), vec![default_test()])
+        .await;
 
     assert!(is_new, "expected is_new=true for first publish");
     assert!(!resp.content_hash.is_empty());
@@ -44,10 +54,14 @@ async fn publish_with_invalid_test_fails(pool: PgPool) {
 async fn duplicate_publish_returns_existing(pool: PgPool) {
     let h = harness::TestHarness::with_storage(pool).await;
 
-    let (is_new1, resp1) = h.blocking_publish(FILTER_TOML.to_vec(), vec![]).await;
+    let (is_new1, resp1) = h
+        .blocking_publish(FILTER_TOML.to_vec(), vec![default_test()])
+        .await;
     assert!(is_new1);
 
-    let (is_new2, resp2) = h.blocking_publish(FILTER_TOML.to_vec(), vec![]).await;
+    let (is_new2, resp2) = h
+        .blocking_publish(FILTER_TOML.to_vec(), vec![default_test()])
+        .await;
     assert!(!is_new2, "expected is_new=false for duplicate publish");
     assert_eq!(resp1.content_hash, resp2.content_hash);
 }

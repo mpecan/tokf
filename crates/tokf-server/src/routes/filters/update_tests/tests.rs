@@ -297,18 +297,18 @@ async fn zero_to_n_tests_update(pool: PgPool) {
     let storage = Arc::new(InMemoryStorageClient::new());
     let (_, token) = insert_test_user(&pool, "user_zero_n").await;
 
-    // Publish with no tests
+    // Publish with no explicit tests (auto-adds 1 default passing test)
     let app =
         crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
     let hash = publish_filter_helper(app, &token, VALID_FILTER_TOML, &[]).await;
 
-    // Verify 0 tests
+    // Verify 1 test (auto-added default)
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM filter_tests WHERE filter_hash = $1")
         .bind(&hash)
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(count, 0, "expected 0 tests before update");
+    assert_eq!(count, 1, "expected 1 auto-added default test before update");
 
     // Update to 2 tests
     let app =
