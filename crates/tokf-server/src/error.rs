@@ -1,6 +1,8 @@
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 
+use crate::rate_limit::RateLimitResult;
+
 #[derive(Debug)]
 pub enum AppError {
     Internal(String),
@@ -8,8 +10,23 @@ pub enum AppError {
     NotFound(String),
     Forbidden(String),
     Conflict(String),
-    RateLimited,
+    RateLimited {
+        retry_after_secs: u64,
+        limit: u32,
+        remaining: u32,
+    },
     Unauthorized,
+}
+
+impl AppError {
+    /// Construct a `RateLimited` error from a denied [`RateLimitResult`].
+    pub const fn rate_limited(result: &RateLimitResult) -> Self {
+        Self::RateLimited {
+            retry_after_secs: result.reset_after_secs,
+            limit: result.limit,
+            remaining: result.remaining,
+        }
+    }
 }
 
 impl std::fmt::Display for AppError {
@@ -20,7 +37,7 @@ impl std::fmt::Display for AppError {
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
             Self::Forbidden(msg) => write!(f, "forbidden: {msg}"),
             Self::Conflict(msg) => write!(f, "conflict: {msg}"),
-            Self::RateLimited => write!(f, "rate limited"),
+            Self::RateLimited { .. } => write!(f, "rate limited"),
             Self::Unauthorized => write!(f, "unauthorized"),
         }
     }
@@ -29,14 +46,32 @@ impl std::fmt::Display for AppError {
 impl std::error::Error for AppError {}
 
 impl IntoResponse for AppError {
+    #[allow(clippy::unwrap_used)]
     fn into_response(self) -> axum::response::Response {
         match self {
-            Self::RateLimited => (
-                StatusCode::TOO_MANY_REQUESTS,
-                [("retry-after", "3600")],
-                Json(json!({ "error": "rate limit exceeded" })),
-            )
-                .into_response(),
+            Self::RateLimited {
+                retry_after_secs,
+                limit,
+                remaining,
+            } => {
+                let mut headers = axum::http::HeaderMap::new();
+                headers.insert("retry-after", retry_after_secs.to_string().parse().unwrap());
+                headers.insert("x-ratelimit-limit", limit.to_string().parse().unwrap());
+                headers.insert(
+                    "x-ratelimit-remaining",
+                    remaining.to_string().parse().unwrap(),
+                );
+                headers.insert(
+                    "x-ratelimit-reset",
+                    retry_after_secs.to_string().parse().unwrap(),
+                );
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    headers,
+                    Json(json!({ "error": "rate limit exceeded" })),
+                )
+                    .into_response()
+            }
             Self::Internal(msg) => {
                 tracing::error!("internal error: {msg}");
                 (
@@ -115,13 +150,57 @@ mod tests {
 
     #[tokio::test]
     async fn rate_limited_returns_429_with_retry_after() {
-        let resp = AppError::RateLimited.into_response();
+        let resp = AppError::RateLimited {
+            retry_after_secs: 3600,
+            limit: 20,
+            remaining: 0,
+        }
+        .into_response();
         assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(
             resp.headers()
                 .get("retry-after")
                 .and_then(|v| v.to_str().ok()),
             Some("3600")
+        );
+    }
+
+    #[tokio::test]
+    async fn rate_limited_includes_all_headers() {
+        let resp = AppError::RateLimited {
+            retry_after_secs: 120,
+            limit: 60,
+            remaining: 0,
+        }
+        .into_response();
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            resp.headers().get("retry-after").unwrap().to_str().unwrap(),
+            "120"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-ratelimit-limit")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "60"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-ratelimit-remaining")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0"
+        );
+        assert_eq!(
+            resp.headers()
+                .get("x-ratelimit-reset")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "120"
         );
     }
 

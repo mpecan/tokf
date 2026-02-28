@@ -122,7 +122,13 @@ pub async fn register_machine(
                 .await?;
 
             if count >= MAX_MACHINES_PER_USER {
-                return Err(AppError::RateLimited);
+                // Constant is 50 — always fits in u32.
+                #[allow(clippy::cast_possible_truncation)]
+                return Err(AppError::RateLimited {
+                    retry_after_secs: 0,
+                    limit: MAX_MACHINES_PER_USER as u32,
+                    remaining: 0,
+                });
             }
 
             let row = sqlx::query_as::<_, MachineRow>(
@@ -187,7 +193,7 @@ mod tests {
 
     use crate::auth::mock::NoOpGitHubClient;
     use crate::auth::token::{generate_token, hash_token};
-    use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
+    use crate::rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter};
     use crate::state::AppState;
     use crate::storage::noop::NoOpStorageClient;
 
@@ -203,6 +209,9 @@ mod tests {
             publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
             search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
             sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+            ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+            ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+            general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
         }
     }
 

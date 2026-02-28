@@ -12,7 +12,7 @@ use tower::ServiceExt;
 
 use crate::auth::mock::NoOpGitHubClient;
 use crate::auth::token::{generate_token, hash_token};
-use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
+use crate::rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter};
 use crate::state::AppState;
 use crate::storage::mock::InMemoryStorageClient;
 
@@ -26,15 +26,12 @@ pub const DEFAULT_PASSING_TEST: (&str, &[u8]) = (
 
 pub use tokf_common::multipart::build_body as make_multipart;
 
-pub fn make_state(pool: PgPool) -> AppState {
-    make_state_with_storage(pool, Arc::new(InMemoryStorageClient::new()))
-}
-
-pub fn make_state_with_storage(pool: PgPool, storage: Arc<InMemoryStorageClient>) -> AppState {
+/// Build a base `AppState` for filter route tests with generous rate limits.
+fn base_test_state(pool: PgPool) -> AppState {
     AppState {
         db: pool,
         github: Arc::new(NoOpGitHubClient),
-        storage,
+        storage: Arc::new(InMemoryStorageClient::new()),
         github_client_id: "test-client-id".to_string(),
         github_client_secret: "test-client-secret".to_string(),
         trust_proxy: false,
@@ -42,6 +39,20 @@ pub fn make_state_with_storage(pool: PgPool, storage: Arc<InMemoryStorageClient>
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
+    }
+}
+
+pub fn make_state(pool: PgPool) -> AppState {
+    base_test_state(pool)
+}
+
+pub fn make_state_with_storage(pool: PgPool, storage: Arc<InMemoryStorageClient>) -> AppState {
+    AppState {
+        storage,
+        ..base_test_state(pool)
     }
 }
 

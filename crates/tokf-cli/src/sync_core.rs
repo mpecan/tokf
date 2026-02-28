@@ -149,12 +149,14 @@ pub fn perform_sync(
             events: sync_events,
         };
 
-        let response = crate::remote::sync_client::sync_events(
-            &http_client,
-            &auth.server_url,
-            &auth.token,
-            &req,
-        )?;
+        let response = crate::remote::retry::with_retry("sync", || {
+            crate::remote::sync_client::sync_events(
+                &http_client,
+                &auth.server_url,
+                &auth.token,
+                &req,
+            )
+        })?;
 
         total_synced += response.accepted;
         let new_cursor = response.cursor;

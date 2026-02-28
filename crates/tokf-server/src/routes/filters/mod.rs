@@ -1,6 +1,9 @@
 mod publish;
 mod search;
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod search_tests;
+#[cfg(test)]
 pub mod test_helpers;
 mod update_tests;
 

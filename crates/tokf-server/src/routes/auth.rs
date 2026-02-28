@@ -47,21 +47,6 @@ pub struct PendingResponse {
     pub interval: Option<i64>,
 }
 
-// ── IP extraction ───────────────────────────────────────────────────────────
-
-fn extract_ip(headers: &axum::http::HeaderMap, trust_proxy: bool) -> String {
-    if trust_proxy
-        && let Some(ip) = headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.split(',').next())
-            .map(|s| s.trim().to_string())
-    {
-        return ip;
-    }
-    "unknown".to_string()
-}
-
 // ── POST /api/auth/device ───────────────────────────────────────────────────
 
 /// Starts the GitHub device authorization flow.
@@ -72,9 +57,10 @@ fn extract_ip(headers: &axum::http::HeaderMap, trust_proxy: bool) -> String {
 /// `Internal` on GitHub API or database failures.
 pub async fn initiate_device_flow(
     State(state): State<AppState>,
+    super::ip::PeerIp(peer_ip): super::ip::PeerIp,
     headers: axum::http::HeaderMap,
 ) -> Result<(StatusCode, Json<DeviceFlowResponse>), AppError> {
-    let ip = extract_ip(&headers, state.trust_proxy);
+    let ip = super::ip::extract_ip(&headers, state.trust_proxy, peer_ip.as_deref());
 
     // Piggyback cleanup of expired flows
     let _ = sqlx::query("DELETE FROM device_flows WHERE expires_at < NOW()")
@@ -91,7 +77,13 @@ pub async fn initiate_device_flow(
     .await?;
 
     if count >= MAX_FLOWS_PER_IP_PER_HOUR {
-        return Err(AppError::RateLimited);
+        // Constant is 10 — always fits in u32.
+        #[allow(clippy::cast_possible_truncation)]
+        return Err(AppError::RateLimited {
+            retry_after_secs: 3600,
+            limit: MAX_FLOWS_PER_IP_PER_HOUR as u32,
+            remaining: 0,
+        });
     }
 
     let gh_resp = state

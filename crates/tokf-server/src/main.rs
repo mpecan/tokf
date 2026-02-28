@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokf_server::{
@@ -92,10 +93,30 @@ async fn cmd_serve() -> Result<()> {
         github_client_secret,
         trust_proxy: cfg.trust_proxy,
         public_url: cfg.public_url.clone(),
-        publish_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(20, 3600)),
-        // Search/download is cheaper than publish — allow 300 requests per hour.
-        search_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(300, 3600)),
-        sync_rate_limiter: Arc::new(rate_limit::SyncRateLimiter::new(60, 3600)),
+        publish_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(
+            cfg.rate_limits.publish.max,
+            cfg.rate_limits.publish.safe_window_secs(),
+        )),
+        search_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(
+            cfg.rate_limits.search.max,
+            cfg.rate_limits.search.safe_window_secs(),
+        )),
+        sync_rate_limiter: Arc::new(rate_limit::SyncRateLimiter::new(
+            cfg.rate_limits.sync.max,
+            cfg.rate_limits.sync.safe_window_secs(),
+        )),
+        ip_search_rate_limiter: Arc::new(rate_limit::IpRateLimiter::new(
+            cfg.rate_limits.ip_search.max,
+            cfg.rate_limits.ip_search.safe_window_secs(),
+        )),
+        ip_download_rate_limiter: Arc::new(rate_limit::IpRateLimiter::new(
+            cfg.rate_limits.ip_download.max,
+            cfg.rate_limits.ip_download.safe_window_secs(),
+        )),
+        general_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(
+            cfg.rate_limits.general.max,
+            cfg.rate_limits.general.safe_window_secs(),
+        )),
     };
     let app = routes::create_router(app_state).layer(
         // R11: explicitly disable header capture to prevent accidental secret leakage
@@ -113,12 +134,15 @@ async fn cmd_serve() -> Result<()> {
 
     // Wrap in async {} so the IntoFuture impl is resolved before select!
     let serve = async {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                drain_rx.await.ok();
-                tracing::info!("draining in-flight requests (30 s deadline)…");
-            })
-            .await
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            drain_rx.await.ok();
+            tracing::info!("draining in-flight requests (30 s deadline)…");
+        })
+        .await
     };
 
     tokio::select! {
@@ -232,6 +256,7 @@ mod tests {
             github_client_id: Some("gh-client".to_string()),
             github_client_secret: Some("gh-secret".to_string()),
             public_url: "http://localhost:8080".to_string(),
+            rate_limits: config::RateLimitConfig::default(),
         }
     }
 
@@ -250,6 +275,7 @@ mod tests {
             github_client_id: Some("gh-client".to_string()),
             github_client_secret: Some("gh-secret".to_string()),
             public_url: "http://localhost:8080".to_string(),
+            rate_limits: config::RateLimitConfig::default(),
         }
     }
 

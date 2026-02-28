@@ -10,7 +10,7 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 
 use crate::auth::mock::NoOpGitHubClient;
-use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
+use crate::rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter};
 use crate::routes::test_helpers::*;
 use crate::state::AppState;
 use crate::storage::noop::NoOpStorageClient;
@@ -519,6 +519,9 @@ async fn sync_rate_limits_machine(pool: PgPool) {
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(1, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
     };
     let app = Router::new()
         .route("/api/sync", post(sync_usage))
@@ -542,8 +545,26 @@ async fn sync_rate_limits_machine(pool: PgPool) {
     // First request: ownership verified, rate check increments to 1, empty events → OK
     let resp1 = app.clone().oneshot(make_req()).await.unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
+    assert!(
+        resp1.headers().contains_key("x-ratelimit-limit"),
+        "success response should include x-ratelimit-limit"
+    );
+    assert_eq!(
+        resp1.headers()["x-ratelimit-remaining"],
+        "0",
+        "should have 0 remaining after using the single allowed request"
+    );
 
     // Second request: rate check fails (limit=1 already consumed)
     let resp2 = app.oneshot(make_req()).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(
+        resp2.headers().contains_key("retry-after"),
+        "429 response should include retry-after"
+    );
+    assert_eq!(
+        resp2.headers()["x-ratelimit-remaining"],
+        "0",
+        "429 response should have 0 remaining"
+    );
 }

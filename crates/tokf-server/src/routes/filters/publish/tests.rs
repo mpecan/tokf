@@ -8,7 +8,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use crate::auth::mock::NoOpGitHubClient;
-use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
+use crate::rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter};
 use crate::state::AppState;
 use crate::storage::mock::InMemoryStorageClient;
 
@@ -289,6 +289,9 @@ async fn publish_filter_rate_limits_user(pool: PgPool) {
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(1, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
     };
 
     let app = crate::routes::create_router(state.clone());
@@ -308,6 +311,20 @@ async fn publish_filter_rate_limits_user(pool: PgPool) {
         "first publish should succeed"
     );
 
+    // First response should include rate-limit headers.
+    assert!(
+        resp.headers().contains_key("x-ratelimit-limit"),
+        "success response should include x-ratelimit-limit"
+    );
+    assert!(
+        resp.headers().contains_key("x-ratelimit-remaining"),
+        "success response should include x-ratelimit-remaining"
+    );
+    assert!(
+        resp.headers().contains_key("x-ratelimit-reset"),
+        "success response should include x-ratelimit-reset"
+    );
+
     // Upload a different filter (different content) to avoid the 200-OK deduplicate path
     let app = crate::routes::create_router(state);
     let different_toml = b"command = \"other-tool\"\n";
@@ -321,6 +338,19 @@ async fn publish_filter_rate_limits_user(pool: PgPool) {
         resp.status(),
         StatusCode::TOO_MANY_REQUESTS,
         "second publish should be rate limited"
+    );
+    assert!(
+        resp.headers().contains_key("retry-after"),
+        "429 response should include retry-after"
+    );
+    assert!(
+        resp.headers().contains_key("x-ratelimit-limit"),
+        "429 response should include x-ratelimit-limit"
+    );
+    assert_eq!(
+        resp.headers()["x-ratelimit-remaining"],
+        "0",
+        "429 response should have 0 remaining"
     );
 }
 
