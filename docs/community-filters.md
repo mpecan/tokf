@@ -133,7 +133,3 @@ tokf publish --update-tests git/push --dry-run  # preview only
 - You must be the original author of the filter.
 
 ---
-
-## Publishing a Filter
-
-See [Publishing Filters](./publishing-filters.md) for how to share your own filters with the community registry.

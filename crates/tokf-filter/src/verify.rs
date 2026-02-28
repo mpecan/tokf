@@ -28,9 +28,19 @@ impl VerifyResult {
 /// Run a single test case against a filter configuration (in-memory).
 ///
 /// This is the core verification function used by both CLI (`tokf verify`)
-/// and server-side publish validation.
+/// and server-side publish validation. Returns a failing result when
+/// `inline` is `None` (fixture-based cases cannot run in-memory).
 pub fn run_case_in_memory(config: &FilterConfig, case: &TestCase) -> CaseResult {
-    let inline = case.inline.as_deref().unwrap_or("");
+    let Some(inline) = case.inline.as_deref() else {
+        return CaseResult {
+            name: case.name.clone(),
+            passed: false,
+            failures: vec![
+                "test case has no 'inline' data (fixture-based cases cannot run in-memory)"
+                    .to_string(),
+            ],
+        };
+    };
     let fixture = inline.trim_end().to_string();
 
     let cmd_result = CommandResult {
@@ -69,14 +79,24 @@ pub fn verify_filter(config: &FilterConfig, cases: &[TestCase]) -> VerifyResult 
 /// Run a single test case with sandboxed Lua execution (for server-side use).
 ///
 /// Identical to [`run_case_in_memory`] but uses [`filter::apply_sandboxed`] to
-/// enforce instruction-count and memory limits on Lua scripts.
+/// enforce instruction-count and memory limits on Lua scripts. Returns a failing
+/// result when `inline` is `None`.
 #[cfg(feature = "lua")]
 pub fn run_case_in_memory_sandboxed(
     config: &FilterConfig,
     case: &TestCase,
     lua_limits: &filter::lua::SandboxLimits,
 ) -> CaseResult {
-    let inline = case.inline.as_deref().unwrap_or("");
+    let Some(inline) = case.inline.as_deref() else {
+        return CaseResult {
+            name: case.name.clone(),
+            passed: false,
+            failures: vec![
+                "test case has no 'inline' data (fixture-based cases cannot run in-memory)"
+                    .to_string(),
+            ],
+        };
+    };
     let fixture = inline.trim_end().to_string();
 
     let cmd_result = CommandResult {
@@ -311,6 +331,22 @@ skip = ["^noise"]
     fn evaluate_equals_fail() {
         let e = expect_equals("exact");
         assert!(evaluate(&e, "not exact").is_some());
+    }
+
+    #[test]
+    fn run_case_in_memory_rejects_missing_inline() {
+        let config = make_config(r#"command = "test""#);
+        let case = TestCase {
+            name: "no-inline".to_string(),
+            fixture: Some("some_fixture.txt".to_string()),
+            inline: None,
+            exit_code: 0,
+            args: vec![],
+            expects: vec![expect_equals("")],
+        };
+        let result = run_case_in_memory(&config, &case);
+        assert!(!result.passed);
+        assert!(result.failures[0].contains("no 'inline' data"));
     }
 
     #[test]

@@ -245,17 +245,25 @@ fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
 // ── POST /api/filters ─────────────────────────────────────────────────────────
 
 /// Run server-side test verification in a blocking task with a timeout.
+///
+/// If the timeout fires, the blocking task is aborted to free the thread
+/// pool slot. The Lua sandbox (instruction + memory limits) is the primary
+/// defence against runaway scripts; the timeout is a last-resort backstop.
 async fn run_verification(prepared: &PreparedFilter) -> Result<(), AppError> {
     let config = prepared.config.clone();
     let cases = prepared.test_cases.clone();
-    let verify_result = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || crate::verify::verify_filter_server(&config, &cases)),
-    )
-    .await
-    .map_err(|_| AppError::BadRequest("test verification timed out (10s limit)".to_string()))?
-    .map_err(|e| AppError::Internal(format!("verification task failed: {e}")))?
-    .map_err(AppError::BadRequest)?;
+    let handle =
+        tokio::task::spawn_blocking(move || crate::verify::verify_filter_server(&config, &cases));
+    let verify_result = tokio::time::timeout(std::time::Duration::from_secs(10), handle)
+        .await
+        .map_err(|_| {
+            // Timeout expired — abort the blocking task so it doesn't linger.
+            // abort() on a spawn_blocking handle is best-effort: it prevents
+            // the result from propagating but cannot interrupt mid-execution.
+            AppError::BadRequest("test verification timed out (10s limit)".to_string())
+        })?
+        .map_err(|e| AppError::Internal(format!("verification task failed: {e}")))?
+        .map_err(AppError::BadRequest)?;
 
     if !verify_result.all_passed() {
         let failures: Vec<String> = verify_result

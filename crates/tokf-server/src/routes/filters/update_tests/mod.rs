@@ -151,10 +151,15 @@ async fn swap_test_rows(
 ) -> Result<Vec<String>, AppError> {
     let mut tx = state.db.begin().await?;
 
-    sqlx::query("SELECT 1 FROM filters WHERE content_hash = $1 FOR UPDATE")
+    let locked = sqlx::query("SELECT 1 FROM filters WHERE content_hash = $1 FOR UPDATE")
         .bind(hash)
         .fetch_optional(&mut *tx)
         .await?;
+    if locked.is_none() {
+        return Err(AppError::NotFound(format!(
+            "filter deleted during update: {hash}"
+        )));
+    }
 
     let old_keys: Vec<String> =
         sqlx::query_scalar("SELECT r2_key FROM filter_tests WHERE filter_hash = $1")
@@ -214,16 +219,18 @@ pub async fn update_tests(
     let validated = parse_and_validate_tests(&mut multipart).await?;
 
     // Download the filter config and run server-side test verification.
+    // The Lua sandbox (instruction + memory limits) is the primary defence;
+    // the timeout is a last-resort backstop. spawn_blocking tasks cannot be
+    // interrupted mid-execution, but the result is discarded on timeout.
     let config = load_filter_config(&state, &hash).await?;
     let cases = validated.cases.clone();
-    let verify_result = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || crate::verify::verify_filter_server(&config, &cases)),
-    )
-    .await
-    .map_err(|_| AppError::BadRequest("test verification timed out (10s limit)".to_string()))?
-    .map_err(|e| AppError::Internal(format!("verification task failed: {e}")))?
-    .map_err(AppError::BadRequest)?;
+    let handle =
+        tokio::task::spawn_blocking(move || crate::verify::verify_filter_server(&config, &cases));
+    let verify_result = tokio::time::timeout(std::time::Duration::from_secs(10), handle)
+        .await
+        .map_err(|_| AppError::BadRequest("test verification timed out (10s limit)".to_string()))?
+        .map_err(|e| AppError::Internal(format!("verification task failed: {e}")))?
+        .map_err(AppError::BadRequest)?;
 
     if !verify_result.all_passed() {
         let failures: Vec<String> = verify_result
