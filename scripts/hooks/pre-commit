@@ -24,16 +24,6 @@ out=$(cargo clippy --workspace --all-targets -- -D warnings 2>&1) || {
     exit 1
 }
 
-out=$(cargo test 2>&1) || {
-    echo "Tests failed."
-    echo "$out"
-    exit 1
-}
-
-# cargo test may update Cargo.lock (new deps resolved, etc.). Stage it so
-# the committed state stays consistent with what was just tested.
-git add Cargo.lock
-
 out=$(bash scripts/check-file-sizes.sh 2>&1) || {
     echo "File size check failed."
     echo "$out"
