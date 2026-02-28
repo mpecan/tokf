@@ -304,9 +304,17 @@ pub async fn publish_filter(
     auth: AuthUser,
     State(state): State<AppState>,
     mut multipart: axum::extract::Multipart,
-) -> Result<(StatusCode, Json<PublishFilterResponse>), AppError> {
-    if !state.publish_rate_limiter.check_and_increment(auth.user_id) {
-        return Err(AppError::RateLimited);
+) -> Result<
+    (
+        StatusCode,
+        axum::http::HeaderMap,
+        Json<PublishFilterResponse>,
+    ),
+    AppError,
+> {
+    let rl = state.publish_rate_limiter.check_and_increment(auth.user_id);
+    if !rl.allowed {
+        return Err(AppError::rate_limited(&rl));
     }
 
     let fields = parse_multipart(&mut multipart).await?;
@@ -348,6 +356,7 @@ pub async fn publish_filter(
     };
     Ok((
         status,
+        crate::routes::ip::rate_limit_headers(&rl),
         Json(PublishFilterResponse {
             content_hash: prepared.content_hash,
             command_pattern: prepared.command_pattern,

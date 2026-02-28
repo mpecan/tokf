@@ -44,23 +44,9 @@ pub fn sync_events(
         .send()
         .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
 
-    let status = resp.status();
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        anyhow::bail!(
-            "server returned HTTP 401 Unauthorized — run `tokf auth login` to re-authenticate"
-        );
-    }
-    if !status.is_success() {
-        let text = resp
-            .text()
-            .unwrap_or_else(|_| "<unreadable body>".to_string());
-        anyhow::bail!("server returned HTTP {status}: {text}");
-    }
-
-    let response = resp
-        .json::<SyncResponse>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))?;
-    Ok(response)
+    let resp = super::require_success(resp)?;
+    resp.json::<SyncResponse>()
+        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
 }
 
 #[cfg(test)]

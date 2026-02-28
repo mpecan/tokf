@@ -159,6 +159,7 @@ mod tests {
             github_client_id: None,
             github_client_secret: None,
             public_url: "http://localhost:8080".to_string(),
+            rate_limits: crate::config::RateLimitConfig::default(),
         }
     }
 

@@ -5,6 +5,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
+use sqlx::PgPool;
 use tower::ServiceExt;
 
 use crate::storage::StorageClient;
@@ -153,27 +154,34 @@ async fn empty_test_upload_gets_400(pool: PgPool) {
     );
 }
 
-#[crdb_test_macro::crdb_test(migrations = "./migrations")]
-async fn invalid_test_toml_gets_400(pool: PgPool) {
+/// Publish a filter then PUT a single bad test file; returns the response status.
+async fn publish_then_put_bad_test(
+    pool: PgPool,
+    username: &str,
+    test_file: (&str, &[u8]),
+) -> StatusCode {
     let storage = Arc::new(InMemoryStorageClient::new());
-    let (_, token) = insert_test_user(&pool, "user_invalid_toml").await;
+    let (_, token) = insert_test_user(&pool, username).await;
 
     let app =
         crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
     let hash = publish_filter_helper(app, &token, VALID_FILTER_TOML, &[]).await;
 
-    // PUT with malformed TOML
     let app =
         crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
-    let resp = put_tests(
-        app,
-        &token,
-        &hash,
-        &[("test:bad.toml", b"not valid toml [[[")],
+    let resp = put_tests(app, &token, &hash, &[test_file]).await;
+    resp.status()
+}
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn invalid_test_toml_gets_400(pool: PgPool) {
+    let status = publish_then_put_bad_test(
+        pool,
+        "user_invalid_toml",
+        ("test:bad.toml", b"not valid toml [[["),
     )
     .await;
-
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
@@ -272,24 +280,14 @@ async fn invalid_hash_format_gets_400(pool: PgPool) {
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn semantically_invalid_test_gets_400(pool: PgPool) {
-    let storage = Arc::new(InMemoryStorageClient::new());
-    let (_, token) = insert_test_user(&pool, "user_semantic").await;
-
-    let app =
-        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
-    let hash = publish_filter_helper(app, &token, VALID_FILTER_TOML, &[]).await;
-
     // Valid TOML but missing [[expect]] block
-    let app =
-        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
-    let resp = put_tests(
-        app,
-        &token,
-        &hash,
-        &[("test:no_expect.toml", b"name = \"no expects\"")],
+    let status = publish_then_put_bad_test(
+        pool,
+        "user_semantic",
+        ("test:no_expect.toml", b"name = \"no expects\""),
     )
     .await;
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]

@@ -1,3 +1,80 @@
+/// A single rate-limit entry: maximum requests per time window.
+///
+/// Both fields are required when provided explicitly in JSON, but default to
+/// `max = 0, window_secs = 60` when omitted via `#[serde(default)]`.
+/// A `window_secs` of 0 is clamped to 1 at construction time to prevent
+/// degenerate sliding-window behaviour.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
+pub struct LimitEntry {
+    pub max: u32,
+    pub window_secs: u64,
+}
+
+impl Default for LimitEntry {
+    fn default() -> Self {
+        Self {
+            max: 0,
+            window_secs: 60,
+        }
+    }
+}
+
+impl LimitEntry {
+    pub const fn new(max: u32, window_secs: u64) -> Self {
+        Self { max, window_secs }
+    }
+
+    /// Return `window_secs` clamped to a minimum of 1 to prevent zero-duration
+    /// windows that would make the rate limiter ineffective.
+    pub const fn safe_window_secs(&self) -> u64 {
+        if self.window_secs == 0 {
+            1
+        } else {
+            self.window_secs
+        }
+    }
+}
+
+/// Configurable rate limits for all endpoints.
+///
+/// Set via the `RATE_LIMITS` environment variable as a JSON object.
+/// Unset fields use the defaults shown below.  Invalid JSON logs a
+/// warning and falls back to all defaults.
+///
+/// ```bash
+/// RATE_LIMITS='{"publish":{"max":50,"window_secs":3600}}' tokf-server serve
+/// ```
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
+pub struct RateLimitConfig {
+    /// Per-user publish rate limit (default: 20/hr).
+    pub publish: LimitEntry,
+    /// Per-user search rate limit (default: 300/hr).
+    pub search: LimitEntry,
+    /// Per-machine sync rate limit (default: 60/hr).
+    pub sync: LimitEntry,
+    /// Per-IP search rate limit (default: 60/min).
+    pub ip_search: LimitEntry,
+    /// Per-IP download rate limit (default: 120/min).
+    pub ip_download: LimitEntry,
+    /// General per-user rate limit across all authenticated endpoints (default: 300/min).
+    pub general: LimitEntry,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            publish: LimitEntry::new(20, 3600),
+            search: LimitEntry::new(300, 3600),
+            sync: LimitEntry::new(60, 3600),
+            ip_search: LimitEntry::new(60, 60),
+            ip_download: LimitEntry::new(120, 60),
+            general: LimitEntry::new(300, 60),
+        }
+    }
+}
+
 pub struct Config {
     pub port: u16,
     pub database_url: Option<String>,
@@ -18,13 +95,23 @@ pub struct Config {
     pub github_client_id: Option<String>,
     pub github_client_secret: Option<String>,
     /// When `true`, the server trusts `X-Forwarded-For` headers for client IP
-    /// extraction (required behind a reverse proxy). When `false`, only the
-    /// TCP peer address is used.  Defaults to `false`.
+    /// extraction (required behind a reverse proxy). When `false`, all
+    /// unauthenticated requests share a single `"unknown"` IP bucket.
+    ///
+    /// **Security:** only enable this when the server sits behind a trusted
+    /// reverse proxy (e.g. Cloudflare, AWS ALB, nginx) that overwrites
+    /// `X-Forwarded-For` with the real client IP. Clients can trivially spoof
+    /// this header to bypass per-IP rate limits when no proxy is present.
+    ///
+    /// Defaults to `false`.
     pub trust_proxy: bool,
     /// The public base URL of this server instance (e.g. `https://registry.tokf.net`).
     /// Used to generate fully-qualified URLs in API responses.
     /// Defaults to `http://localhost:8080` when `PUBLIC_URL` is not set.
     pub public_url: String,
+    /// Rate-limit configuration for all endpoints.
+    /// Override via the `RATE_LIMITS` environment variable (JSON).
+    pub rate_limits: RateLimitConfig,
 }
 
 // R10: Custom Debug masks secrets so the struct is safe to log.
@@ -59,6 +146,7 @@ impl std::fmt::Debug for Config {
             )
             .field("trust_proxy", &self.trust_proxy)
             .field("public_url", &self.public_url)
+            .field("rate_limits", &self.rate_limits)
             .finish()
     }
 }
@@ -131,6 +219,14 @@ impl Config {
                 .unwrap_or(false),
             public_url: Self::env_non_empty("PUBLIC_URL")
                 .unwrap_or_else(|| "http://localhost:8080".to_string()),
+            rate_limits: Self::env_non_empty("RATE_LIMITS")
+                .map(|s| {
+                    serde_json::from_str(&s).unwrap_or_else(|e| {
+                        tracing::warn!("invalid RATE_LIMITS JSON ({e}), using defaults");
+                        RateLimitConfig::default()
+                    })
+                })
+                .unwrap_or_default(),
         }
     }
 }
@@ -268,6 +364,7 @@ mod tests {
             github_client_id: Some("gh-client-id".to_string()),
             github_client_secret: Some("gh-secret-value".to_string()),
             public_url: "http://localhost:8080".to_string(),
+            rate_limits: RateLimitConfig::default(),
         };
         let debug_str = format!("{cfg:?}");
         assert!(!debug_str.contains("postgres://secret"));
@@ -286,19 +383,9 @@ mod tests {
     #[test]
     fn r2_endpoint_url_prefers_explicit_endpoint() {
         let cfg = Config {
-            port: 8080,
-            database_url: None,
-            migration_database_url: None,
-            run_migrations: true,
-            trust_proxy: false,
-            r2_bucket_name: None,
-            r2_access_key_id: None,
-            r2_secret_access_key: None,
             r2_endpoint: Some("https://custom.endpoint.com".to_string()),
             r2_account_id: Some("account123".to_string()),
-            github_client_id: None,
-            github_client_secret: None,
-            public_url: "http://localhost:8080".to_string(),
+            ..default_config()
         };
         assert_eq!(
             cfg.r2_endpoint_url().as_deref(),
@@ -309,19 +396,8 @@ mod tests {
     #[test]
     fn r2_endpoint_url_derives_from_account_id() {
         let cfg = Config {
-            port: 8080,
-            database_url: None,
-            migration_database_url: None,
-            run_migrations: true,
-            trust_proxy: false,
-            r2_bucket_name: None,
-            r2_access_key_id: None,
-            r2_secret_access_key: None,
-            r2_endpoint: None,
             r2_account_id: Some("myaccount".to_string()),
-            github_client_id: None,
-            github_client_secret: None,
-            public_url: "http://localhost:8080".to_string(),
+            ..default_config()
         };
         assert_eq!(
             cfg.r2_endpoint_url().as_deref(),
@@ -331,21 +407,7 @@ mod tests {
 
     #[test]
     fn r2_endpoint_url_returns_none_when_neither_set() {
-        let cfg = Config {
-            port: 8080,
-            database_url: None,
-            migration_database_url: None,
-            run_migrations: true,
-            trust_proxy: false,
-            r2_bucket_name: None,
-            r2_access_key_id: None,
-            r2_secret_access_key: None,
-            r2_endpoint: None,
-            r2_account_id: None,
-            github_client_id: None,
-            github_client_secret: None,
-            public_url: "http://localhost:8080".to_string(),
-        };
+        let cfg = default_config();
         assert!(cfg.r2_endpoint_url().is_none());
     }
 
@@ -429,6 +491,85 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rate_limits_defaults() {
+        let rl = RateLimitConfig::default();
+        assert_eq!(rl.publish.max, 20);
+        assert_eq!(rl.publish.window_secs, 3600);
+        assert_eq!(rl.search.max, 300);
+        assert_eq!(rl.sync.max, 60);
+        assert_eq!(rl.ip_search.max, 60);
+        assert_eq!(rl.ip_search.window_secs, 60);
+        assert_eq!(rl.ip_download.max, 120);
+        assert_eq!(rl.general.max, 300);
+        assert_eq!(rl.general.window_secs, 60);
+    }
+
+    #[test]
+    fn rate_limits_from_env_json() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        unsafe {
+            std::env::set_var(
+                "RATE_LIMITS",
+                r#"{"publish":{"max":50,"window_secs":7200}}"#,
+            );
+        }
+        let cfg = Config::from_env();
+        unsafe { std::env::remove_var("RATE_LIMITS") };
+        assert_eq!(cfg.rate_limits.publish.max, 50);
+        assert_eq!(cfg.rate_limits.publish.window_secs, 7200);
+        // Unset fields keep defaults
+        assert_eq!(cfg.rate_limits.search.max, 300);
+        assert_eq!(cfg.rate_limits.sync.max, 60);
+    }
+
+    #[test]
+    fn rate_limits_partial_limit_entry_uses_field_defaults() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        // Only max is provided — window_secs should default to 60.
+        unsafe {
+            std::env::set_var("RATE_LIMITS", r#"{"publish":{"max":50}}"#);
+        }
+        let cfg = Config::from_env();
+        unsafe { std::env::remove_var("RATE_LIMITS") };
+        assert_eq!(cfg.rate_limits.publish.max, 50);
+        assert_eq!(
+            cfg.rate_limits.publish.window_secs, 60,
+            "missing window_secs should default to 60"
+        );
+    }
+
+    #[test]
+    fn safe_window_secs_clamps_zero_to_one() {
+        let entry = LimitEntry::new(10, 0);
+        assert_eq!(entry.safe_window_secs(), 1);
+    }
+
+    #[test]
+    fn safe_window_secs_passes_through_nonzero() {
+        let entry = LimitEntry::new(10, 3600);
+        assert_eq!(entry.safe_window_secs(), 3600);
+    }
+
+    #[test]
+    fn rate_limits_invalid_json_falls_back() {
+        let _g = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // SAFETY: protected by ENV_LOCK; no concurrent env mutations
+        unsafe { std::env::set_var("RATE_LIMITS", "not valid json") };
+        let cfg = Config::from_env();
+        unsafe { std::env::remove_var("RATE_LIMITS") };
+        assert_eq!(cfg.rate_limits.publish.max, 20);
+        assert_eq!(cfg.rate_limits.search.max, 300);
+    }
+
     /// Baseline config with all optional fields unset, for use with `..default_config()`.
     fn default_config() -> Config {
         Config {
@@ -445,6 +586,7 @@ mod tests {
             github_client_id: None,
             github_client_secret: None,
             public_url: "http://localhost:8080".to_string(),
+            rate_limits: RateLimitConfig::default(),
         }
     }
 }

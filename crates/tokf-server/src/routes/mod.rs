@@ -2,7 +2,9 @@ pub mod auth;
 mod filters;
 mod gain;
 mod health;
+pub mod ip;
 mod machines;
+mod middleware;
 mod ready;
 mod sync;
 
@@ -15,6 +17,7 @@ use axum::{
 };
 
 use crate::state::AppState;
+use middleware::general_rate_limit;
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
@@ -40,5 +43,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/gain", get(gain::get_gain))
         .route("/api/gain/global", get(gain::get_global_gain))
         .route("/api/gain/filter/{hash}", get(gain::get_filter_gain))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            general_rate_limit,
+        ))
         .with_state(state)
 }

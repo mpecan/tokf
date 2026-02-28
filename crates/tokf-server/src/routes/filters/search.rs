@@ -1,6 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::HeaderMap,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row as _;
@@ -100,9 +101,10 @@ fn escape_ilike(s: &str) -> String {
 /// - `500 Internal Server Error` on database failures.
 pub async fn search_filters(
     auth: AuthUser,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
-) -> Result<Json<Vec<FilterSummary>>, AppError> {
+) -> Result<(HeaderMap, Json<Vec<FilterSummary>>), AppError> {
     // P1.3: Reject unreasonably long queries to prevent DB performance issues.
     if params.q.len() > 200 {
         return Err(AppError::BadRequest(
@@ -110,10 +112,20 @@ pub async fn search_filters(
         ));
     }
 
-    // P2.7: Rate limit search endpoint.
-    if !state.search_rate_limiter.check_and_increment(auth.user_id) {
-        return Err(AppError::RateLimited);
+    // Per-IP rate limit (60/min).
+    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip_rl = state.ip_search_rate_limiter.check_and_increment(ip);
+    if !ip_rl.allowed {
+        return Err(AppError::rate_limited(&ip_rl));
     }
+
+    // Per-user rate limit.
+    let user_rl = state.search_rate_limiter.check_and_increment(auth.user_id);
+    if !user_rl.allowed {
+        return Err(AppError::rate_limited(&user_rl));
+    }
+
+    let rl = crate::routes::ip::most_restrictive(ip_rl, user_rl);
 
     let limit = clamp_limit(params.limit);
     // P1.1: Escape ILIKE wildcards in user-supplied query to prevent wildcard injection.
@@ -159,7 +171,7 @@ pub async fn search_filters(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;
 
-    Ok(Json(summaries))
+    Ok((crate::routes::ip::rate_limit_headers(&rl), Json(summaries)))
 }
 
 // ── GET /api/filters/:hash ────────────────────────────────────────────────────
@@ -173,12 +185,20 @@ pub async fn search_filters(
 /// - `500 Internal Server Error` on database failures.
 pub async fn get_filter(
     auth: AuthUser,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Path(hash): Path<String>,
-) -> Result<Json<FilterDetails>, AppError> {
-    if !state.search_rate_limiter.check_and_increment(auth.user_id) {
-        return Err(AppError::RateLimited);
+) -> Result<(HeaderMap, Json<FilterDetails>), AppError> {
+    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip_rl = state.ip_search_rate_limiter.check_and_increment(ip);
+    if !ip_rl.allowed {
+        return Err(AppError::rate_limited(&ip_rl));
     }
+    let user_rl = state.search_rate_limiter.check_and_increment(auth.user_id);
+    if !user_rl.allowed {
+        return Err(AppError::rate_limited(&user_rl));
+    }
+    let rl = crate::routes::ip::most_restrictive(ip_rl, user_rl);
     let row = sqlx::query(
         "SELECT f.content_hash, f.command_pattern, u.username AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
@@ -214,7 +234,7 @@ pub async fn get_filter(
     })()
     .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;
 
-    Ok(Json(details))
+    Ok((crate::routes::ip::rate_limit_headers(&rl), Json(details)))
 }
 
 // ── GET /api/filters/:hash/download ──────────────────────────────────────────
@@ -226,14 +246,24 @@ pub async fn get_filter(
 /// - `401 Unauthorized` if the bearer token is missing or invalid.
 /// - `404 Not Found` if no filter with the given hash exists.
 /// - `500 Internal Server Error` on storage or database failures.
+// 8 lines over the 60-line guideline due to per-IP + per-user rate-limit checks.
+#[allow(clippy::too_many_lines)]
 pub async fn download_filter(
     auth: AuthUser,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Path(hash): Path<String>,
-) -> Result<Json<DownloadPayload>, AppError> {
-    if !state.search_rate_limiter.check_and_increment(auth.user_id) {
-        return Err(AppError::RateLimited);
+) -> Result<(HeaderMap, Json<DownloadPayload>), AppError> {
+    let ip = crate::routes::ip::extract_ip(&headers, state.trust_proxy, None);
+    let ip_rl = state.ip_download_rate_limiter.check_and_increment(ip);
+    if !ip_rl.allowed {
+        return Err(AppError::rate_limited(&ip_rl));
     }
+    let user_rl = state.search_rate_limiter.check_and_increment(auth.user_id);
+    if !user_rl.allowed {
+        return Err(AppError::rate_limited(&user_rl));
+    }
+    let rl = crate::routes::ip::most_restrictive(ip_rl, user_rl);
     let r2_key: Option<String> =
         sqlx::query_scalar("SELECT r2_key FROM filters WHERE content_hash = $1")
             .bind(&hash)
@@ -290,290 +320,22 @@ pub async fn download_filter(
         });
     }
 
-    Ok(Json(DownloadPayload {
-        filter_toml,
-        test_files,
-    }))
+    Ok((
+        crate::routes::ip::rate_limit_headers(&rl),
+        Json(DownloadPayload {
+            filter_toml,
+            test_files,
+        }),
+    ))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+// DB integration tests live in `search_tests.rs` (same pattern as sync/sync_tests).
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used)]
 mod tests {
-    use std::sync::Arc;
-
-    use axum::http::StatusCode;
-    use http_body_util::BodyExt;
-
-    use crate::storage::mock::InMemoryStorageClient;
-
-    use super::super::test_helpers::{
-        get_request, insert_test_user, make_state, make_state_with_storage, publish_filter_helper,
-    };
     use super::escape_ilike;
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn search_returns_empty_for_empty_registry(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "search_empty").await;
-        let app = crate::routes::create_router(make_state(pool));
-
-        let resp = get_request(app, &token, "/api/filters").await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json, serde_json::json!([]));
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn search_matches_command_pattern(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "search_match").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        publish_filter_helper(app, &token, b"command = \"git push\"\n", &[]).await;
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        publish_filter_helper(app, &token, b"command = \"cargo build\"\n", &[]).await;
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, "/api/filters?q=git").await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let results: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(results.len(), 1, "expected 1 result for q=git");
-        assert_eq!(results[0]["command_pattern"], "git push");
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn search_empty_q_returns_all(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "search_all").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-
-        for toml in [
-            b"command = \"git push\"\n".as_slice(),
-            b"command = \"cargo check\"\n",
-        ] {
-            let app = crate::routes::create_router(make_state_with_storage(
-                pool.clone(),
-                Arc::clone(&storage),
-            ));
-            publish_filter_helper(app, &token, toml, &[]).await;
-        }
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, "/api/filters").await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let results: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(results.len(), 2, "expected all 2 results");
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn get_filter_returns_404_for_unknown_hash(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "get_404").await;
-        let app = crate::routes::create_router(make_state(pool));
-
-        let resp = get_request(
-            app,
-            &token,
-            "/api/filters/deadbeef00000000000000000000000000000000000000000000000000000000",
-        )
-        .await;
-
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn get_filter_returns_details(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "get_details").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let hash = publish_filter_helper(
-            app,
-            &token,
-            b"command = \"git push\"\n",
-            &[(
-                "test:basic.toml",
-                b"name = \"basic\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n",
-            )],
-        )
-        .await;
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, &format!("/api/filters/{hash}")).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["content_hash"], hash);
-        assert_eq!(json["command_pattern"], "git push");
-        assert_eq!(json["author"], "get_details");
-        assert_eq!(json["savings_pct"], 0.0);
-        assert_eq!(json["total_commands"], 0);
-        assert_eq!(json["test_count"], 1);
-        assert!(
-            json["registry_url"].as_str().unwrap().contains(&hash),
-            "registry_url should contain hash"
-        );
-        assert!(
-            json["created_at"].is_string(),
-            "created_at should be a string"
-        );
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn download_returns_toml_content(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "dl_toml").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-        let filter_toml = b"command = \"git push\"\n";
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let hash = publish_filter_helper(app, &token, filter_toml, &[]).await;
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, &format!("/api/filters/{hash}/download")).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(
-            json["filter_toml"].as_str().unwrap(),
-            std::str::from_utf8(filter_toml).unwrap()
-        );
-        // publish_filter_helper auto-adds a default passing test when none provided
-        let test_files = json["test_files"].as_array().unwrap();
-        assert_eq!(test_files.len(), 1, "expected 1 auto-added default test");
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn download_returns_test_files(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "dl_tests").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let hash = publish_filter_helper(
-            app,
-            &token,
-            b"command = \"git push\"\n",
-            &[
-                (
-                    "test:basic.toml",
-                    b"name = \"basic\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n",
-                ),
-                (
-                    "test:edge.toml",
-                    b"name = \"edge\"\ninline = \"ok output\"\n\n[[expect]]\ncontains = \"ok\"\n",
-                ),
-            ],
-        )
-        .await;
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, &format!("/api/filters/{hash}/download")).await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let test_files = json["test_files"].as_array().unwrap();
-        assert_eq!(test_files.len(), 2, "expected 2 test files");
-
-        let filenames: std::collections::HashSet<&str> = test_files
-            .iter()
-            .map(|f| f["filename"].as_str().unwrap())
-            .collect();
-        assert!(filenames.contains("basic.toml"), "expected basic.toml");
-        assert!(filenames.contains("edge.toml"), "expected edge.toml");
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn download_returns_404_for_unknown_hash(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "dl_404").await;
-        let app = crate::routes::create_router(make_state(pool));
-
-        let resp = get_request(
-            app,
-            &token,
-            "/api/filters/deadbeef00000000000000000000000000000000000000000000000000000000/download",
-        )
-        .await;
-
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn search_limit_is_respected(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "search_limit").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-
-        for toml in [
-            b"command = \"git push\"\n".as_slice(),
-            b"command = \"git pull\"\n",
-            b"command = \"git fetch\"\n",
-        ] {
-            let app = crate::routes::create_router(make_state_with_storage(
-                pool.clone(),
-                Arc::clone(&storage),
-            ));
-            publish_filter_helper(app, &token, toml, &[]).await;
-        }
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, "/api/filters?limit=1").await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let results: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(results.len(), 1, "limit=1 should return at most 1 result");
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn search_rejects_oversized_query(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "search_big_q").await;
-        let app = crate::routes::create_router(make_state(pool));
-
-        let long_query = "a".repeat(201);
-        let resp = get_request(app, &token, &format!("/api/filters?q={long_query}")).await;
-
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
 
     #[test]
     fn escape_ilike_leaves_normal_text_unchanged() {
@@ -586,34 +348,5 @@ mod tests {
         assert_eq!(escape_ilike("100%"), r"100\%");
         assert_eq!(escape_ilike("git_push"), r"git\_push");
         assert_eq!(escape_ilike("%git_"), r"\%git\_");
-    }
-
-    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-    async fn search_wildcard_injection_does_not_return_all(pool: PgPool) {
-        let (_, token) = insert_test_user(&pool, "wildcard_test").await;
-        let storage = Arc::new(InMemoryStorageClient::new());
-
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        publish_filter_helper(app, &token, b"command = \"cargo build\"\n", &[]).await;
-
-        // Search for "_" — without escaping this would match any single character
-        // and return all filters. With proper escaping it matches literal underscore.
-        let app = crate::routes::create_router(make_state_with_storage(
-            pool.clone(),
-            Arc::clone(&storage),
-        ));
-        let resp = get_request(app, &token, "/api/filters?q=_").await;
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let results: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
-        assert_eq!(
-            results.len(),
-            0,
-            "escaped underscore should match nothing (no underscore in 'cargo build')"
-        );
     }
 }

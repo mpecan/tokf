@@ -15,7 +15,7 @@ use axum::{
 use http_body_util::BodyExt;
 use tokf_server::{
     auth::mock::NoOpGitHubClient,
-    rate_limit::{PublishRateLimiter, SyncRateLimiter},
+    rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter},
     routes::create_router,
     state::AppState,
     storage::noop::NoOpStorageClient,
@@ -45,6 +45,9 @@ fn test_state() -> AppState {
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
     }
 }
 
@@ -67,6 +70,9 @@ fn down_state() -> AppState {
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
     }
 }
 

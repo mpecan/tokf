@@ -36,7 +36,7 @@ use tokf_server::{
         mock::{NoOpGitHubClient, SuccessGitHubClient},
         token::{AuthUser, generate_token, hash_token},
     },
-    rate_limit::{PublishRateLimiter, SyncRateLimiter},
+    rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter},
     routes::create_router,
     state::AppState,
     storage::noop::NoOpStorageClient,
@@ -68,21 +68,16 @@ fn db_state(pool: PgPool) -> AppState {
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
     }
 }
 
 fn db_state_with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> AppState {
     AppState {
-        db: pool,
         github,
-        storage: Arc::new(NoOpStorageClient),
-        github_client_id: "test-client-id".to_string(),
-        github_client_secret: "test-client-secret".to_string(),
-        trust_proxy: true,
-        public_url: "http://localhost:8080".to_string(),
-        publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
-        search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
-        sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ..db_state(pool)
     }
 }
 

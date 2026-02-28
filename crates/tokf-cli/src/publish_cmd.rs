@@ -151,13 +151,15 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
     ensure_license_accepted()?;
     let (client, auth) = authed_client()?;
 
-    let (is_new, resp) = publish_client::publish_filter(
-        &client,
-        &auth.server_url,
-        &auth.token,
-        &filter_bytes,
-        &test_files,
-    )?;
+    let (is_new, resp) = tokf::remote::retry::with_retry("publish", || {
+        publish_client::publish_filter(
+            &client,
+            &auth.server_url,
+            &auth.token,
+            &filter_bytes,
+            &test_files,
+        )
+    })?;
 
     if is_new {
         eprintln!("[tokf] published {filter_name}  (201 Created)");
@@ -203,13 +205,15 @@ fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32>
 
     let (client, auth) = authed_client()?;
 
-    let resp = publish_client::update_tests(
-        &client,
-        &auth.server_url,
-        &auth.token,
-        &content_hash,
-        &test_files,
-    )?;
+    let resp = tokf::remote::retry::with_retry("update-tests", || {
+        publish_client::update_tests(
+            &client,
+            &auth.server_url,
+            &auth.token,
+            &content_hash,
+            &test_files,
+        )
+    })?;
 
     eprintln!(
         "[tokf] updated test suite for {filter_name} ({} file(s))",

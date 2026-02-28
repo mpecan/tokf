@@ -202,16 +202,20 @@ async fn swap_test_rows(
 /// - `404 Not Found` if no filter with the given hash exists.
 /// - `429 Too Many Requests` if the user exceeds rate limits.
 /// - `500 Internal Server Error` on storage or database failures.
+// 10 lines over the 60-line guideline due to rate-limit checks and server-side
+// test verification with timeout handling.
+#[allow(clippy::too_many_lines)]
 pub async fn update_tests(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(hash): Path<String>,
     mut multipart: axum::extract::Multipart,
-) -> Result<Json<UpdateTestsResponse>, AppError> {
+) -> Result<(axum::http::HeaderMap, Json<UpdateTestsResponse>), AppError> {
     validate_hash(&hash)?;
 
-    if !state.publish_rate_limiter.check_and_increment(auth.user_id) {
-        return Err(AppError::RateLimited);
+    let rl = state.publish_rate_limiter.check_and_increment(auth.user_id);
+    if !rl.allowed {
+        return Err(AppError::rate_limited(&rl));
     }
 
     let command_pattern = verify_author(&state, &hash, auth.user_id).await?;
@@ -261,13 +265,16 @@ pub async fn update_tests(
     }
 
     let registry_url = format!("{}/filters/{}", state.public_url, hash);
-    Ok(Json(UpdateTestsResponse {
-        content_hash: hash,
-        command_pattern,
-        author: auth.username,
-        test_count,
-        registry_url,
-    }))
+    Ok((
+        crate::routes::ip::rate_limit_headers(&rl),
+        Json(UpdateTestsResponse {
+            content_hash: hash,
+            command_pattern,
+            author: auth.username,
+            test_count,
+            registry_url,
+        }),
+    ))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

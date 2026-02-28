@@ -198,7 +198,7 @@ pub async fn sync_usage(
     auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<SyncRequest>,
-) -> Result<Json<SyncResponse>, AppError> {
+) -> Result<(axum::http::HeaderMap, Json<SyncResponse>), AppError> {
     if req.events.len() > MAX_BATCH_SIZE {
         return Err(AppError::BadRequest(format!(
             "batch size {} exceeds limit of {MAX_BATCH_SIZE}",
@@ -213,21 +213,25 @@ pub async fn sync_usage(
 
     verify_machine_owner(&state.db, machine_id, auth.user_id).await?;
 
-    if !state
+    let rl = state
         .sync_rate_limiter
-        .check_and_increment(machine_id.as_u128())
-    {
-        return Err(AppError::RateLimited);
+        .check_and_increment(machine_id.as_u128());
+    if !rl.allowed {
+        return Err(AppError::rate_limited(&rl));
     }
+    let rl_headers = crate::routes::ip::rate_limit_headers(&rl);
 
     let cursor = fetch_cursor(&state.db, machine_id).await?;
     let new_events: Vec<&SyncEvent> = req.events.iter().filter(|e| e.id > cursor).collect();
 
     if new_events.is_empty() {
-        return Ok(Json(SyncResponse {
-            accepted: 0,
-            cursor,
-        }));
+        return Ok((
+            rl_headers,
+            Json(SyncResponse {
+                accepted: 0,
+                cursor,
+            }),
+        ));
     }
 
     let new_cursor = new_events.iter().map(|e| e.id).max().unwrap_or(cursor);
@@ -238,10 +242,13 @@ pub async fn sync_usage(
     persist_events(&mut tx, &new_events, machine_id, new_cursor, &filter_hashes).await?;
     tx.commit().await?;
 
-    Ok(Json(SyncResponse {
-        accepted,
-        cursor: new_cursor,
-    }))
+    Ok((
+        rl_headers,
+        Json(SyncResponse {
+            accepted,
+            cursor: new_cursor,
+        }),
+    ))
 }
 
 // Tests live in a sibling file to keep this file within the 500-line soft limit.

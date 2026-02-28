@@ -73,11 +73,27 @@ impl TestHarness {
         Self::with_github(pool, Arc::new(SuccessGitHubClient)).await
     }
 
+    /// Create a harness with a custom `AppState` mutation closure.
+    /// Useful for overriding specific fields like rate limiters.
+    pub async fn with_custom_state<F>(pool: PgPool, mutate: F) -> Self
+    where
+        F: FnOnce(&mut tokf_server::state::AppState),
+    {
+        Self::build(
+            pool,
+            Arc::new(NoOpGitHubClient),
+            Arc::new(InMemoryStorageClient::new()),
+            Some(mutate),
+        )
+        .await
+    }
+
     async fn with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> Self {
-        Self::with_github_and_storage(
+        Self::build::<fn(&mut tokf_server::state::AppState)>(
             pool,
             github,
             Arc::new(tokf_server::storage::noop::NoOpStorageClient),
+            None,
         )
         .await
     }
@@ -87,52 +103,36 @@ impl TestHarness {
         github: Arc<dyn GitHubClient>,
         storage: Arc<dyn tokf_server::storage::StorageClient>,
     ) -> Self {
-        // Create user, token, and machine in DB
+        Self::build::<fn(&mut tokf_server::state::AppState)>(pool, github, storage, None).await
+    }
+
+    /// Core builder: creates user/machine, builds state, starts server.
+    async fn build<F>(
+        pool: PgPool,
+        github: Arc<dyn GitHubClient>,
+        storage: Arc<dyn tokf_server::storage::StorageClient>,
+        mutate: Option<F>,
+    ) -> Self
+    where
+        F: FnOnce(&mut tokf_server::state::AppState),
+    {
         let (user_id, token) = test_helpers::create_user_and_token(&pool).await;
         let machine_id = test_helpers::create_machine(&pool, user_id).await;
 
-        // Build state — override the github client and storage
         let mut state = test_helpers::make_state(pool.clone());
         state.github = github;
         state.storage = storage;
-
-        let app = create_router(state);
-
-        // Bind to OS-assigned port
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        let server_handle = tokio::spawn(async move {
-            axum::serve(listener, app.into_make_service())
-                .await
-                .unwrap();
-        });
-
-        let base_url = format!("http://{addr}");
-
-        // Wait for server readiness
-        let client = reqwest::Client::new();
-        let mut server_ready = false;
-        for _ in 0..40 {
-            if client
-                .get(format!("{base_url}/health"))
-                .send()
-                .await
-                .is_ok()
-            {
-                server_ready = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        if let Some(f) = mutate {
+            f(&mut state);
         }
-        assert!(server_ready, "server did not become ready within 200ms");
 
-        // Set up `SQLite` tracking DB in a temp directory
+        let (server_addr, base_url, server_handle) = Self::start_server(state).await;
+
         let temp_dir = tempfile::TempDir::new().unwrap();
         let sqlite_path = temp_dir.path().join("tracking.db");
 
         Self {
-            server_addr: addr,
+            server_addr,
             base_url,
             token,
             user_id,
@@ -142,6 +142,40 @@ impl TestHarness {
             _temp_dir: temp_dir,
             server_handle,
         }
+    }
+
+    /// Bind to a random port, spawn the axum server, and wait for readiness.
+    async fn start_server(
+        state: tokf_server::state::AppState,
+    ) -> (SocketAddr, String, JoinHandle<()>) {
+        let app = create_router(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .unwrap();
+        });
+
+        let base_url = format!("http://{addr}");
+        let client = reqwest::Client::new();
+        let mut ready = false;
+        for _ in 0..40 {
+            if client
+                .get(format!("{base_url}/health"))
+                .send()
+                .await
+                .is_ok()
+            {
+                ready = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(ready, "server did not become ready within 200ms");
+
+        (addr, base_url, handle)
     }
 
     /// Create a second user+token pair (for testing authorization).
@@ -399,21 +433,33 @@ impl TestHarness {
         .unwrap()
     }
 
+    /// Run a fallible client call on a blocking thread with the harness credentials.
+    async fn try_client_call<T, F>(&self, f: F) -> anyhow::Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&reqwest::blocking::Client, &str, &str) -> anyhow::Result<T> + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Self::http_client();
+            f(&client, &base_url, &token)
+        })
+        .await
+        .unwrap()
+    }
+
     /// Try to update tests (returns Result for error-path tests).
     pub async fn try_update_tests(
         &self,
         hash: &str,
         test_files: Vec<(String, Vec<u8>)>,
     ) -> anyhow::Result<UpdateTestsResponse> {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
         let hash = hash.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            publish_client::update_tests(&client, &base_url, &token, &hash, &test_files)
+        self.try_client_call(move |client, base_url, token| {
+            publish_client::update_tests(client, base_url, token, &hash, &test_files)
         })
         .await
-        .unwrap()
     }
 
     /// Try to update tests with a custom token (for auth tests).
@@ -445,6 +491,19 @@ impl TestHarness {
         })
         .await
         .unwrap()
+    }
+
+    /// Try to search filters (returns Result for error-path tests).
+    pub async fn try_search_filters(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<FilterSummary>> {
+        let query = query.to_string();
+        self.try_client_call(move |client, base_url, token| {
+            filter_client::search_filters(client, base_url, token, &query, limit)
+        })
+        .await
     }
 
     /// Get filter details by hash.

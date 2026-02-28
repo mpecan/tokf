@@ -12,7 +12,7 @@ use sqlx::PgPool;
 
 use crate::auth::mock::NoOpGitHubClient;
 use crate::auth::token::{generate_token, hash_token};
-use crate::rate_limit::{PublishRateLimiter, SyncRateLimiter};
+use crate::rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter};
 use crate::state::AppState;
 use crate::storage::noop::NoOpStorageClient;
 
@@ -69,6 +69,9 @@ pub fn make_state(pool: PgPool) -> AppState {
         publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
         search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
         sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
+        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
+        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
     }
 }
 
