@@ -142,6 +142,10 @@ pub struct FilterConfig {
     #[serde(default)]
     pub lua_script: Option<ScriptConfig>,
 
+    /// Chunk processing: split output into repeating structural blocks.
+    #[serde(default)]
+    pub chunk: Vec<ChunkConfig>,
+
     /// Variant entries for context-aware filter delegation.
     #[serde(default)]
     pub variant: Vec<Variant>,
@@ -224,8 +228,12 @@ pub struct OutputBranch {
     /// Template string for the output.
     pub output: Option<String>,
 
-    /// Aggregation rule for collected sections.
+    /// Aggregation rule for collected sections (singular shorthand).
     pub aggregate: Option<AggregateRule>,
+
+    /// Multiple aggregation rules for collected sections.
+    #[serde(default)]
+    pub aggregates: Vec<AggregateRule>,
 
     /// Number of lines to keep from the tail.
     pub tail: Option<usize>,
@@ -256,6 +264,73 @@ pub struct AggregateRule {
     /// Name for the count of matching entries.
     pub count_as: Option<String>,
 }
+
+/// Configuration for splitting output into repeating structural blocks.
+///
+/// Chunks split output at delimiter lines, extract structured data from
+/// each block, and collect the results as a structured collection for
+/// template rendering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChunkConfig {
+    /// Regex that marks the start of each chunk.
+    pub split_on: String,
+
+    /// Whether the splitting line is included in the chunk (default: true).
+    #[serde(default = "default_true")]
+    pub include_split_line: bool,
+
+    /// Variable name for the structured collection in templates.
+    pub collect_as: String,
+
+    /// Extract a named field from the split (header) line.
+    pub extract: Option<ChunkExtract>,
+
+    /// Per-chunk body line extractions (first match per rule wins).
+    #[serde(default)]
+    pub body_extract: Vec<ChunkBodyExtract>,
+
+    /// Per-chunk aggregate rules (run within each chunk's lines).
+    #[serde(default)]
+    pub aggregate: Vec<ChunkAggregateRule>,
+
+    /// Field name to group chunks by (merging numeric fields).
+    pub group_by: Option<String>,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+/// Per-chunk aggregation rule. Unlike branch-level `AggregateRule`, this does
+/// not need a `from` field because it always operates on the chunk's own lines.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChunkAggregateRule {
+    /// Regex pattern to extract numeric values.
+    pub pattern: String,
+
+    /// Name for the summed value.
+    pub sum: Option<String>,
+
+    /// Name for the count of matching entries.
+    pub count_as: Option<String>,
+}
+
+/// Extract a named field from a line within a chunk (header or body).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChunkFieldExtract {
+    /// Regex pattern with a capture group.
+    pub pattern: String,
+
+    /// Variable name for the captured value.
+    #[serde(rename = "as")]
+    pub as_name: String,
+}
+
+/// Backward-compatible alias for header extraction.
+pub type ChunkExtract = ChunkFieldExtract;
+
+/// Backward-compatible alias for body-line extraction.
+pub type ChunkBodyExtract = ChunkFieldExtract;
 
 /// Structured parsing configuration for status-like outputs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

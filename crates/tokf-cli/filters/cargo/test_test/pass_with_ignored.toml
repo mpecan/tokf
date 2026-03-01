@@ -1,0 +1,9 @@
+name = "passing tests with ignored shows ignored count"
+fixture = "pass_with_ignored.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "✓ cargo test: 12 passed, 0 failed, 3 ignored (1 suites)"
+
+[[expect]]
+contains = "tokf: 12 passed (1 suites)"

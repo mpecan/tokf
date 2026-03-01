@@ -1,0 +1,68 @@
+   Compiling tokf-common v0.1.0 (/Users/dev/tokf/crates/tokf-common)
+   Compiling tokf-filter v0.1.0 (/Users/dev/tokf/crates/tokf-filter)
+   Compiling tokf v0.1.0 (/Users/dev/tokf/crates/tokf-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.44s
+     Running unittests src/lib.rs (target/debug/deps/tokf_common-aaa111)
+
+running 5 tests
+test config::tests::test_command_pattern ... ok
+test config::tests::test_minimal ... ok
+test config::tests::test_full ... ok
+test config::tests::test_variant ... ok
+test config::tests::test_section ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf_filter-bbb222)
+
+running 20 tests
+test filter::skip::tests::skip_removes_matching ... ok
+test filter::skip::tests::skip_empty_patterns ... ok
+test filter::extract::tests::extract_first_match ... ok
+test filter::extract::tests::extract_no_match ... ok
+test filter::tests::branch_fixed_output ... FAILED
+test filter::tests::branch_tail_truncation ... ok
+test filter::tests::branch_head_truncation ... ok
+test filter::tests::match_output_first_match_wins ... ok
+test filter::dedup::tests::dedup_consecutive ... ok
+test filter::dedup::tests::dedup_window ... ok
+test filter::section::tests::stateful_section ... ok
+test filter::section::tests::stateless_section ... ok
+test filter::aggregate::tests::sum_and_count ... ok
+test filter::template::tests::simple_var ... ok
+test filter::template::tests::pipe_join ... ok
+test filter::template::tests::pipe_each ... ok
+test filter::template::tests::pipe_truncate ... ok
+test filter::template::tests::pipe_lines ... ok
+test filter::template::tests::pipe_keep ... ok
+test filter::chunk::tests::basic_chunk ... ok
+
+failures:
+
+---- filter::tests::branch_fixed_output stdout ----
+thread 'filter::tests::branch_fixed_output' panicked at crates/tokf-filter/src/filter/mod.rs:220:9:
+assertion `left == right` failed
+  left: "ok"
+ right: "ok ✓"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    filter::tests::branch_fixed_output
+
+test result: FAILED. 19 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf-ccc333)
+
+running 8 tests
+test resolve::tests::test_resolve ... ok
+test runner::tests::test_execute_echo ... ok
+test runner::tests::test_execute_failure ... ok
+test runner::tests::test_combined ... ok
+test config::tests::test_load ... ok
+test config::tests::test_pattern_match ... ok
+test config::tests::test_variant ... ok
+test config::tests::test_cache ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p tokf-filter --lib`

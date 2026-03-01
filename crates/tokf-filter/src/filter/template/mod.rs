@@ -2,29 +2,42 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
+use super::chunk::ChunkItem;
 use super::section::SectionMap;
+
+/// Chunks map: `collect_as` name → list of structured items.
+pub type ChunkMap = HashMap<String, Vec<ChunkItem>>;
 
 /// Maximum recursion depth to prevent infinite loops.
 const MAX_DEPTH: usize = 3;
 
+/// Bundles the three lookup sources for template variable resolution.
+struct TemplateContext<'a> {
+    vars: &'a HashMap<String, String>,
+    sections: &'a SectionMap,
+    chunks: &'a ChunkMap,
+}
+
 /// Render a template string, resolving `{var}`, `{var.count}`, and pipe chains.
 ///
 /// Variables are looked up first in `vars` (string values), then in `sections`
-/// (collection values). Pipe operations transform the resolved value.
+/// (collection values), then in `chunks` (structured collection values).
+/// Pipe operations transform the resolved value.
 pub fn render_template(
     template: &str,
     vars: &HashMap<String, String>,
     sections: &SectionMap,
+    chunks: &ChunkMap,
 ) -> String {
-    render_template_inner(template, vars, sections, 0)
+    let ctx = TemplateContext {
+        vars,
+        sections,
+        chunks,
+    };
+    render_template_inner(template, &ctx, 0)
 }
 
-fn render_template_inner(
-    template: &str,
-    vars: &HashMap<String, String>,
-    sections: &SectionMap,
-    depth: usize,
-) -> String {
+fn render_template_inner(template: &str, ctx: &TemplateContext<'_>, depth: usize) -> String {
     if depth >= MAX_DEPTH {
         return template.to_string();
     }
@@ -39,7 +52,7 @@ fn render_template_inner(
     // Process right-to-left to preserve offsets
     for (start, end) in expressions.into_iter().rev() {
         let inner = &template[start + 1..end - 1]; // strip { }
-        let replacement = evaluate_expression(inner, vars, sections, depth);
+        let replacement = evaluate_expression(inner, ctx, depth);
         result.replace_range(start..end, &replacement);
     }
 
@@ -98,35 +111,36 @@ fn find_matching_close(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-/// Resolved value — either a single string or a collection.
+/// Resolved value — either a single string, a flat collection, or structured items.
 enum Value {
     Str(String),
     Collection(Vec<String>),
+    StructuredCollection(Vec<ChunkItem>),
 }
 
 /// Evaluate a single expression: resolve variable, apply pipe chain.
-fn evaluate_expression(
-    expr: &str,
-    vars: &HashMap<String, String>,
-    sections: &SectionMap,
-    depth: usize,
-) -> String {
+fn evaluate_expression(expr: &str, ctx: &TemplateContext<'_>, depth: usize) -> String {
     let parts = split_pipes(expr);
     let var_part = parts[0].trim();
     let pipes = &parts[1..];
 
     // Resolve the variable
-    let mut value = resolve_variable(var_part, vars, sections);
+    let mut value = resolve_variable(var_part, ctx);
 
     // Apply each pipe
     for pipe_str in pipes {
-        value = apply_pipe(pipe_str.trim(), value, vars, sections, depth);
+        value = apply_pipe(pipe_str.trim(), value, ctx, depth);
     }
 
     // Convert final value to string
     match value {
         Value::Str(s) => s,
         Value::Collection(items) => items.join(", "),
+        Value::StructuredCollection(items) => items
+            .iter()
+            .map(format_chunk_item)
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 
@@ -158,46 +172,47 @@ fn split_pipes(expr: &str) -> Vec<&str> {
 }
 
 /// Resolve a variable name to a Value.
-fn resolve_variable(name: &str, vars: &HashMap<String, String>, sections: &SectionMap) -> Value {
+fn resolve_variable(name: &str, ctx: &TemplateContext<'_>) -> Value {
     // Check for property access (e.g., "var.count")
     if let Some((base, prop)) = name.split_once('.') {
         let base = base.trim();
         let prop = prop.trim();
 
-        if prop == "count"
-            && let Some(section_data) = sections.get(base)
-        {
-            return Value::Str(section_data.count().to_string());
+        if prop == "count" {
+            if let Some(section_data) = ctx.sections.get(base) {
+                return Value::Str(section_data.count().to_string());
+            }
+            if let Some(chunk_items) = ctx.chunks.get(base) {
+                return Value::Str(chunk_items.len().to_string());
+            }
         }
 
         // Unknown property → empty
         return Value::Str(String::new());
     }
 
-    // Plain variable: check vars first, then sections
-    if let Some(val) = vars.get(name) {
+    // Plain variable: check vars first, then sections, then chunks
+    if let Some(val) = ctx.vars.get(name) {
         return Value::Str(val.clone());
     }
 
-    if let Some(section_data) = sections.get(name) {
+    if let Some(section_data) = ctx.sections.get(name) {
         return Value::Collection(section_data.items().to_vec());
+    }
+
+    if let Some(chunk_items) = ctx.chunks.get(name) {
+        return Value::StructuredCollection(chunk_items.clone());
     }
 
     Value::Str(String::new())
 }
 
 /// Apply a single pipe operation to a value.
-fn apply_pipe(
-    pipe: &str,
-    value: Value,
-    vars: &HashMap<String, String>,
-    sections: &SectionMap,
-    depth: usize,
-) -> Value {
+fn apply_pipe(pipe: &str, value: Value, ctx: &TemplateContext<'_>, depth: usize) -> Value {
     if let Some(arg) = pipe.strip_prefix("join:") {
         apply_join(arg.trim(), value)
     } else if let Some(arg) = pipe.strip_prefix("each:") {
-        apply_each(arg.trim(), value, vars, sections, depth)
+        apply_each(arg.trim(), value, ctx, depth)
     } else if let Some(arg) = pipe.strip_prefix("truncate:") {
         apply_truncate(arg.trim(), value)
     } else if pipe == "lines" {
@@ -218,42 +233,85 @@ fn apply_join(arg: &str, value: Value) -> Value {
 
     match value {
         Value::Collection(items) => Value::Str(items.join(&sep)),
+        Value::StructuredCollection(items) => {
+            let strs: Vec<String> = items.iter().map(format_chunk_item).collect();
+            Value::Str(strs.join(&sep))
+        }
         Value::Str(s) => Value::Str(s), // already a string
     }
 }
 
 /// `| each: "template"` — map each item through a sub-template.
-fn apply_each(
-    arg: &str,
-    value: Value,
-    vars: &HashMap<String, String>,
-    sections: &SectionMap,
-    depth: usize,
-) -> Value {
+///
+/// For flat collections, injects `{index}` and `{value}`.
+/// For structured collections, also injects each item's named fields.
+fn apply_each(arg: &str, value: Value, ctx: &TemplateContext<'_>, depth: usize) -> Value {
     let tmpl = parse_string_arg(arg);
 
-    let items = match value {
-        Value::Collection(items) => items,
+    match value {
+        Value::Collection(items) => {
+            let mapped: Vec<String> = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let mut local_vars = ctx.vars.clone();
+                    local_vars.insert("index".to_string(), (i + 1).to_string());
+                    local_vars.insert("value".to_string(), item.clone());
+                    let local_ctx = TemplateContext {
+                        vars: &local_vars,
+                        sections: ctx.sections,
+                        chunks: ctx.chunks,
+                    };
+                    render_template_inner(&tmpl, &local_ctx, depth + 1)
+                })
+                .collect();
+            Value::Collection(mapped)
+        }
+        Value::StructuredCollection(items) => {
+            let mapped: Vec<String> = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let mut local_vars = ctx.vars.clone();
+                    local_vars.insert("index".to_string(), (i + 1).to_string());
+                    local_vars.insert("value".to_string(), format_chunk_item(item));
+                    // Inject all named fields from the chunk item
+                    for (k, v) in item {
+                        local_vars.insert(k.clone(), v.clone());
+                    }
+                    let local_ctx = TemplateContext {
+                        vars: &local_vars,
+                        sections: ctx.sections,
+                        chunks: ctx.chunks,
+                    };
+                    render_template_inner(&tmpl, &local_ctx, depth + 1)
+                })
+                .collect();
+            Value::Collection(mapped)
+        }
         Value::Str(s) => {
             if s.is_empty() {
                 return Value::Collection(Vec::new());
             }
-            vec![s]
+            let mut local_vars = ctx.vars.clone();
+            local_vars.insert("index".to_string(), "1".to_string());
+            local_vars.insert("value".to_string(), s);
+            let local_ctx = TemplateContext {
+                vars: &local_vars,
+                sections: ctx.sections,
+                chunks: ctx.chunks,
+            };
+            let rendered = render_template_inner(&tmpl, &local_ctx, depth + 1);
+            Value::Collection(vec![rendered])
         }
-    };
+    }
+}
 
-    let mapped: Vec<String> = items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| {
-            let mut local_vars = vars.clone();
-            local_vars.insert("index".to_string(), (i + 1).to_string());
-            local_vars.insert("value".to_string(), item.clone());
-            render_template_inner(&tmpl, &local_vars, sections, depth + 1)
-        })
-        .collect();
-
-    Value::Collection(mapped)
+/// Format a chunk item as a human-readable string (for `{value}` in `each`).
+fn format_chunk_item(item: &ChunkItem) -> String {
+    let mut parts: Vec<String> = item.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    parts.sort();
+    parts.join(", ")
 }
 
 /// `| truncate: N` — truncate a string to N characters.
@@ -289,6 +347,7 @@ fn apply_truncate(arg: &str, value: Value) -> Value {
                 .collect();
             Value::Collection(truncated)
         }
+        sc @ Value::StructuredCollection(_) => sc, // passthrough
     }
 }
 
@@ -299,11 +358,13 @@ fn apply_lines(value: Value) -> Value {
     match value {
         Value::Str(s) => Value::Collection(s.lines().map(str::to_string).collect()),
         c @ Value::Collection(_) => c,
+        sc @ Value::StructuredCollection(_) => sc,
     }
 }
 
 /// `| keep: "re"` / `| where: "re"` — retain only collection items matching the regex.
 ///
+/// For structured collections, filters by the `format_chunk_item` representation.
 /// Strings and invalid patterns pass through unchanged.
 fn apply_keep_pipe(arg: &str, value: Value) -> Value {
     let pattern = parse_string_arg(arg);
@@ -314,6 +375,12 @@ fn apply_keep_pipe(arg: &str, value: Value) -> Value {
         Value::Collection(items) => {
             Value::Collection(items.into_iter().filter(|l| re.is_match(l)).collect())
         }
+        Value::StructuredCollection(items) => Value::StructuredCollection(
+            items
+                .into_iter()
+                .filter(|item| re.is_match(&format_chunk_item(item)))
+                .collect(),
+        ),
         s @ Value::Str(_) => s,
     }
 }

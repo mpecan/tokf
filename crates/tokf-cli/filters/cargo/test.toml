@@ -1,9 +1,10 @@
 # cargo-test.toml — Stateful filter (Level 3)
 # Raw: 200+ lines with compile noise, individual "test ... ok" lines, suite summaries
-# Filtered (pass): "✓ cargo test: 137 passed (24 suites)"
-# Filtered (fail): failure details + summary
+# Filtered (pass): "✓ cargo test: 137 passed, 0 failed, 2 ignored (24 suites)"
+# Filtered (fail): failure details + summary (no truncation)
 
 command = "cargo test"
+strip_ansi = true
 
 skip = [
   "^\\s*Compiling ",
@@ -38,19 +39,67 @@ name = "summary"
 match = "^test result:"
 collect_as = "summary_lines"
 
-# Success: no failure blocks → aggregate summaries into one line
+# Chunk processing: per-crate breakdown from "Running" headers
+[[chunk]]
+split_on = "^\\s*Running "
+include_split_line = true
+collect_as = "suites_detail"
+group_by = "crate_name"
+
+[chunk.extract]
+pattern = 'deps/([\w_-]+)-'
+as = "crate_name"
+
+[[chunk.aggregate]]
+pattern = '(\d+) passed'
+sum = "passed"
+
+[[chunk.aggregate]]
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[chunk.aggregate]]
+pattern = '(\d+) ignored'
+sum = "ignored"
+
+[[chunk.aggregate]]
+pattern = '^test result:'
+count_as = "suite_count"
+
+# Success: aggregate summaries + per-crate breakdown
 [on_success]
-aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "passed", count_as = "suites" }
-output = "✓ cargo test: {passed} passed ({suites} suites)"
+output = "✓ cargo test: {passed} passed, {failed} failed, {ignored} ignored ({suites} suites)\n{suites_detail | each: \"  {crate_name}: {passed} passed ({suite_count} suites)\" | join: \"\\n\"}"
 
-# Failure: show failure details + summary
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = 'ok\. (\d+) passed'
+sum = "passed"
+count_as = "suites"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) ignored'
+sum = "ignored"
+
+# Failure: show failure details + summary (no truncation)
 [on_failure]
-output = """
-FAILURES ({failure_blocks.count}):
-═══════════════════════════════════════
-{failure_blocks | each: "{index}. {value | truncate: 200}" | join: "\n"}
+output = "✗ cargo test: {passed} passed, {failed} failed ({suites} suites)\n\nFAILURES ({failure_blocks.count}):\n{failure_blocks | each: \"\\n── {index}. ──\\n{value}\" | join: \"\\n\"}\n\n{summary_lines | join: \"\\n\"}"
 
-{summary_lines | join: "\n"}"""
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) passed'
+sum = "passed"
+count_as = "suites"
+
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
 
 [fallback]
 tail = 5

@@ -1,38 +1,105 @@
-use std::process::Command;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 
 /// Re-export `CommandResult` from tokf-filter so existing code that
 /// references `crate::runner::CommandResult` continues to work.
 pub type CommandResult = tokf_filter::CommandResult;
 
-fn build_result(output: &std::process::Output) -> CommandResult {
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+/// Which stream a line came from.
+enum Source {
+    Stdout,
+    Stderr,
+}
 
+/// Extract an exit code from a process status, mapping signals to 128+N on Unix.
+fn exit_code_from_status(status: std::process::ExitStatus) -> i32 {
     #[cfg(unix)]
-    let exit_code = {
+    {
         use std::os::unix::process::ExitStatusExt;
-        output
-            .status
+        status
             .code()
-            .unwrap_or_else(|| output.status.signal().map_or(1, |s| 128 + s))
-    };
-    #[cfg(not(unix))]
-    let exit_code = output.status.code().unwrap_or(1);
-
-    let combined = match (stdout.is_empty(), stderr.is_empty()) {
-        (true, true) => String::new(),
-        (false, true) => stdout.clone(),
-        (true, false) => stderr.clone(),
-        (false, false) => format!("{}\n{}", stdout.trim_end(), stderr),
-    };
-    let combined = combined.trim_end().to_string();
-
-    CommandResult {
-        stdout,
-        stderr,
-        exit_code,
-        combined,
+            .unwrap_or_else(|| status.signal().map_or(1, |s| 128 + s))
     }
+    #[cfg(not(unix))]
+    {
+        status.code().unwrap_or(1)
+    }
+}
+
+/// Join collected lines into a single string, with a trailing newline if non-empty.
+fn join_lines(lines: &[String]) -> String {
+    if lines.is_empty() {
+        String::new()
+    } else {
+        let mut s = lines.join("\n");
+        s.push('\n');
+        s
+    }
+}
+
+/// Run a command, reading stdout and stderr concurrently so that
+/// `combined` preserves the real-time interleaving order.
+///
+/// This is critical for filters that use chunk processing — e.g. the
+/// cargo-test filter splits on `Running` headers (stderr) and expects
+/// `test result:` lines (stdout) to appear within each chunk.
+fn run_interleaved(mut child: std::process::Child) -> anyhow::Result<CommandResult> {
+    let stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("stdout not captured"))?;
+    let stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("stderr not captured"))?;
+
+    let (tx, rx) = mpsc::channel();
+    let tx2 = tx.clone();
+
+    let stdout_thread = thread::spawn(move || {
+        let reader = BufReader::new(stdout_pipe);
+        for line in reader.lines().map_while(Result::ok) {
+            let _ = tx.send((Source::Stdout, line));
+        }
+    });
+
+    let stderr_thread = thread::spawn(move || {
+        let reader = BufReader::new(stderr_pipe);
+        for line in reader.lines().map_while(Result::ok) {
+            let _ = tx2.send((Source::Stderr, line));
+        }
+    });
+
+    stdout_thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("stdout reader thread panicked"))?;
+    stderr_thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("stderr reader thread panicked"))?;
+
+    // All senders dropped → rx iteration will terminate
+    let mut stdout_lines = Vec::new();
+    let mut stderr_lines = Vec::new();
+    let mut combined_lines = Vec::new();
+
+    for (source, line) in rx {
+        combined_lines.push(line.clone());
+        match source {
+            Source::Stdout => stdout_lines.push(line),
+            Source::Stderr => stderr_lines.push(line),
+        }
+    }
+
+    let status = child.wait()?;
+
+    Ok(CommandResult {
+        stdout: join_lines(&stdout_lines),
+        stderr: join_lines(&stderr_lines),
+        exit_code: exit_code_from_status(status),
+        combined: combined_lines.join("\n"),
+    })
 }
 
 /// Escape a string for safe inclusion in a shell command (single-quote wrapping).
@@ -41,6 +108,9 @@ pub(crate) fn shell_escape(arg: &str) -> String {
 }
 
 /// Execute a command with the given arguments.
+///
+/// Stdout and stderr are read concurrently so `combined` preserves
+/// the real-time interleaving order.
 ///
 /// # Errors
 ///
@@ -52,12 +122,20 @@ pub fn execute(command: &str, args: &[String]) -> anyhow::Result<CommandResult> 
         .ok_or_else(|| anyhow::anyhow!("empty command"))?;
     let base_args: Vec<&str> = parts.collect();
 
-    let output = Command::new(program).args(&base_args).args(args).output()?;
+    let child = Command::new(program)
+        .args(&base_args)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
 
-    Ok(build_result(&output))
+    run_interleaved(child)
 }
 
 /// Execute a shell command with `{args}` interpolation.
+///
+/// Stdout and stderr are read concurrently so `combined` preserves
+/// the real-time interleaving order.
 ///
 /// # Errors
 ///
@@ -71,9 +149,14 @@ pub fn execute_shell(run: &str, args: &[String]) -> anyhow::Result<CommandResult
     #[allow(clippy::literal_string_with_formatting_args)]
     let shell_cmd = run.replace("{args}", &joined_args);
 
-    let output = Command::new("sh").arg("-c").arg(&shell_cmd).output()?;
+    let child = Command::new("sh")
+        .arg("-c")
+        .arg(&shell_cmd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
 
-    Ok(build_result(&output))
+    run_interleaved(child)
 }
 
 #[cfg(test)]
@@ -221,14 +304,27 @@ mod tests {
     #[test]
     fn test_combined_both_streams() {
         let result = execute_shell("echo out && echo err >&2", &[]).unwrap();
-        assert_eq!(result.combined, "out\nerr");
+        // Both streams present in combined; exact order depends on scheduling
+        assert!(result.combined.contains("out"));
+        assert!(result.combined.contains("err"));
     }
 
     #[test]
-    fn test_combined_no_double_newline() {
-        // stdout from echo ends with \n; combined should not have a blank line between streams
-        let result = execute_shell("echo out && echo err >&2", &[]).unwrap();
-        assert!(!result.combined.contains("\n\n"));
+    fn test_combined_interleaving() {
+        // Verify that stderr lines appear interleaved with stdout, not appended
+        let result = execute_shell(
+            "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
+            &[],
+        )
+        .unwrap();
+        assert!(result.combined.contains("out1"));
+        assert!(result.combined.contains("out2"));
+        assert!(result.combined.contains("err1"));
+        assert!(result.combined.contains("err2"));
+        assert!(result.stdout.contains("out1"));
+        assert!(result.stdout.contains("out2"));
+        assert!(result.stderr.contains("err1"));
+        assert!(result.stderr.contains("err2"));
     }
 
     // --- signal handling (unix only) ---

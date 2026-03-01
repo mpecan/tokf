@@ -342,6 +342,131 @@ Example — for each collected block, show only `>` (pointer) and `E` (assertion
 output = "{failure_lines | each: \"{value | lines | keep: \\\"^[>E] \\\"}\" | join: \"\\n\"}"
 ```
 
+## Sections
+
+Sections collect lines into named buckets using a state-machine model. They are processed on the raw output (before skip/keep filtering) so structural markers like blank lines are available.
+
+```toml
+[[section]]
+name = "failures"
+enter = "^failures:$"        # regex that starts collecting
+exit = "^failures:$"         # regex that stops collecting (second occurrence)
+split_on = "^\\s*$"          # split collected lines into blocks at blank lines
+collect_as = "failure_blocks" # name used in templates: {failure_blocks}
+
+[[section]]
+name = "summary"
+match = "^test result:"      # stateless: collect any matching line
+collect_as = "summary_lines"
+```
+
+**Stateful sections** (with `enter`/`exit`) toggle on/off as the state machine hits the enter/exit patterns. **Stateless sections** (with `match` only) collect every matching line regardless of state.
+
+Section data is available in templates:
+- `{failure_blocks}` — the collected items
+- `{failure_blocks.count}` — number of items (blocks if `split_on` is set, otherwise lines)
+- `{failure_blocks | each: "..." | join: "\\n"}` — iterate over items
+
+## Aggregates
+
+Aggregates extract numeric values from section items and produce named variables for templates.
+
+**Single aggregate** (backwards compatible):
+
+```toml
+[on_success]
+output = "{passed} passed ({suites} suites)"
+
+[on_success.aggregate]
+from = "summary_lines"
+pattern = 'ok\. (\d+) passed'
+sum = "passed"
+count_as = "suites"
+```
+
+**Multiple aggregates** — use `[[on_success.aggregates]]` (plural) to define several rules:
+
+```toml
+[on_success]
+output = "✓ {passed} passed, {failed} failed, {ignored} ignored ({suites} suites)"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = 'ok\. (\d+) passed'
+sum = "passed"
+count_as = "suites"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) ignored'
+sum = "ignored"
+```
+
+Each rule scans the named section's items. `sum` accumulates the first capture group as a number. `count_as` counts the number of matching lines. Both singular `aggregate` and plural `aggregates` can be used together — they are merged at runtime.
+
+## Chunk processing
+
+Chunks split raw output into repeating structural blocks, extract structured data per-block, and produce named collections for template rendering. Use chunks when you need per-block breakdown (e.g., per-crate test results in a Cargo workspace).
+
+> **Note:** Like sections, chunks operate on the raw (unfiltered) command output. Skip/keep patterns do not affect chunk processing. This ensures structural markers are available for splitting.
+
+```toml
+[[chunk]]
+split_on = "^\\s*Running "   # regex that marks the start of each chunk
+include_split_line = true     # include the splitting line in the chunk (default: true)
+collect_as = "suites_detail"  # name for the structured collection
+group_by = "crate_name"       # merge chunks sharing this field value
+
+[chunk.extract]
+pattern = 'deps/([\w_-]+)-'  # extract a field from the split (header) line
+as = "crate_name"
+
+[[chunk.aggregate]]
+pattern = '(\d+) passed'     # aggregates run within each chunk's own lines
+sum = "passed"
+
+[[chunk.aggregate]]
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[chunk.aggregate]]
+pattern = '^test result:'
+count_as = "suite_count"
+```
+
+**Fields**:
+
+| Field | Description |
+|---|---|
+| `split_on` | Regex marking the start of each chunk |
+| `include_split_line` | Whether the splitting line is part of the chunk (default: `true`) |
+| `collect_as` | Name for the resulting structured collection |
+| `extract` | Extract a named field from the header line (`pattern` + `as`) |
+| `body_extract` | Extract fields from body lines (`pattern` + `as`, first match wins) |
+| `aggregate` | Per-chunk aggregation rules (run within each chunk's own lines) |
+| `group_by` | Merge chunks sharing the same field value, summing numeric fields |
+
+The resulting structured collection is available in templates as `{suites_detail}` and supports field access in `each` pipes.
+
+### Structured collections in templates
+
+When a chunk produces a structured collection, each item has named fields. Use `each` to iterate with field access:
+
+```toml
+[on_success]
+output = """✓ cargo test: {passed} passed ({suites} suites)
+{suites_detail | each: "  {crate_name}: {passed} passed ({suite_count} suites)" | join: "\\n"}"""
+```
+
+Inside the `each` template, all named fields from the chunk item are available as variables (`{crate_name}`, `{passed}`, `{suite_count}`), plus `{index}` (1-based) and `{value}` (debug representation).
+
+`{suites_detail.count}` returns the number of items in the collection.
+
 ## Filter variants
 
 Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:

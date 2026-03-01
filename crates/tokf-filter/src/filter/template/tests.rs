@@ -37,7 +37,7 @@ fn sections_with_blocks(name: &str, blocks: Vec<&str>) -> SectionMap {
 fn simple_variable_substitution() {
     let v = vars(&[("name", "world")]);
     assert_eq!(
-        render_template("hello {name}!", &v, &SectionMap::new()),
+        render_template("hello {name}!", &v, &SectionMap::new(), &ChunkMap::new()),
         "hello world!"
     );
 }
@@ -46,7 +46,7 @@ fn simple_variable_substitution() {
 fn unknown_variable_empty_string() {
     let v = HashMap::new();
     assert_eq!(
-        render_template("hello {unknown}!", &v, &SectionMap::new()),
+        render_template("hello {unknown}!", &v, &SectionMap::new(), &ChunkMap::new()),
         "hello !"
     );
 }
@@ -55,7 +55,12 @@ fn unknown_variable_empty_string() {
 fn property_access_count() {
     let s = sections_with("items", vec!["a", "b", "c"]);
     assert_eq!(
-        render_template("count: {items.count}", &HashMap::new(), &s),
+        render_template(
+            "count: {items.count}",
+            &HashMap::new(),
+            &s,
+            &ChunkMap::new()
+        ),
         "count: 3"
     );
 }
@@ -64,7 +69,12 @@ fn property_access_count() {
 fn join_with_separator() {
     let s = sections_with("lines", vec!["a", "b", "c"]);
     assert_eq!(
-        render_template("{lines | join: \", \"}", &HashMap::new(), &s),
+        render_template(
+            "{lines | join: \", \"}",
+            &HashMap::new(),
+            &s,
+            &ChunkMap::new()
+        ),
         "a, b, c"
     );
 }
@@ -73,7 +83,12 @@ fn join_with_separator() {
 fn join_with_newline() {
     let s = sections_with("lines", vec!["a", "b"]);
     assert_eq!(
-        render_template("{lines | join: \"\\n\"}", &HashMap::new(), &s),
+        render_template(
+            "{lines | join: \"\\n\"}",
+            &HashMap::new(),
+            &s,
+            &ChunkMap::new()
+        ),
         "a\nb"
     );
 }
@@ -85,7 +100,8 @@ fn each_with_index_and_value() {
         render_template(
             "{items | each: \"{index}. {value}\" | join: \", \"}",
             &HashMap::new(),
-            &s
+            &s,
+            &ChunkMap::new(),
         ),
         "1. foo, 2. bar"
     );
@@ -98,7 +114,8 @@ fn each_with_truncate_nested() {
         render_template(
             "{blocks | each: \"{value | truncate: 10}\" | join: \"; \"}",
             &HashMap::new(),
-            &s
+            &s,
+            &ChunkMap::new(),
         ),
         "short; this is a ...",
     );
@@ -108,7 +125,12 @@ fn each_with_truncate_nested() {
 fn truncate_short_string_unchanged() {
     let v = vars(&[("msg", "short")]);
     assert_eq!(
-        render_template("{msg | truncate: 100}", &v, &SectionMap::new()),
+        render_template(
+            "{msg | truncate: 100}",
+            &v,
+            &SectionMap::new(),
+            &ChunkMap::new()
+        ),
         "short"
     );
 }
@@ -117,7 +139,12 @@ fn truncate_short_string_unchanged() {
 fn truncate_long_string_truncated() {
     let v = vars(&[("msg", "abcdefghij")]);
     assert_eq!(
-        render_template("{msg | truncate: 5}", &v, &SectionMap::new()),
+        render_template(
+            "{msg | truncate: 5}",
+            &v,
+            &SectionMap::new(),
+            &ChunkMap::new()
+        ),
         "abcde..."
     );
 }
@@ -129,7 +156,8 @@ fn full_pipe_chain_each_then_join() {
         render_template(
             "{names | each: \"- {value}\" | join: \"\\n\"}",
             &HashMap::new(),
-            &s
+            &s,
+            &ChunkMap::new(),
         ),
         "- alice\n- bob"
     );
@@ -138,7 +166,12 @@ fn full_pipe_chain_each_then_join() {
 #[test]
 fn no_expressions_passthrough() {
     assert_eq!(
-        render_template("just text", &HashMap::new(), &SectionMap::new()),
+        render_template(
+            "just text",
+            &HashMap::new(),
+            &SectionMap::new(),
+            &ChunkMap::new()
+        ),
         "just text"
     );
 }
@@ -151,7 +184,8 @@ fn mixed_vars_and_sections() {
         render_template(
             "{passed} passed ({suites} suites), {lines.count} lines",
             &v,
-            &s
+            &s,
+            &ChunkMap::new(),
         ),
         "20 passed (3 suites), 2 lines"
     );
@@ -161,7 +195,12 @@ fn mixed_vars_and_sections() {
 fn empty_collection_empty_string() {
     let s = sections_with("items", vec![]);
     assert_eq!(
-        render_template("{items | join: \", \"}", &HashMap::new(), &s),
+        render_template(
+            "{items | join: \", \"}",
+            &HashMap::new(),
+            &s,
+            &ChunkMap::new()
+        ),
         ""
     );
 }
@@ -171,7 +210,7 @@ fn cargo_test_success_template() {
     let v = vars(&[("passed", "20"), ("suites", "3")]);
     let template = "\u{2713} cargo test: {passed} passed ({suites} suites)";
     assert_eq!(
-        render_template(template, &v, &SectionMap::new()),
+        render_template(template, &v, &SectionMap::new(), &ChunkMap::new()),
         "\u{2713} cargo test: 20 passed (3 suites)"
     );
 }
@@ -198,7 +237,7 @@ fn cargo_test_failure_template() {
     );
 
     let template = "FAILURES ({failure_blocks.count}):\n{failure_blocks | each: \"{index}. {value | truncate: 200}\" | join: \"\\n\"}\n\n{summary_lines | join: \"\\n\"}";
-    let result = render_template(template, &HashMap::new(), &sections);
+    let result = render_template(template, &HashMap::new(), &sections, &ChunkMap::new());
     assert!(result.starts_with("FAILURES (2):"));
     assert!(result.contains("1. thread panicked at tests/a.rs"));
     assert!(result.contains("2. thread panicked at tests/b.rs"));
@@ -209,7 +248,7 @@ fn cargo_test_failure_template() {
 fn nested_brace_handling() {
     let v = vars(&[("a", "1"), ("b", "2")]);
     assert_eq!(
-        render_template("{a}+{b}=3", &v, &SectionMap::new()),
+        render_template("{a}+{b}=3", &v, &SectionMap::new(), &ChunkMap::new()),
         "1+2=3"
     );
 }
@@ -225,7 +264,12 @@ fn unescape_escaped_quote() {
 fn pipe_lines_splits_string() {
     let v = vars(&[("msg", "a\nb\nc")]);
     // lines splits into a collection; join reassembles
-    let result = render_template("{msg | lines | join: \",\"}", &v, &SectionMap::new());
+    let result = render_template(
+        "{msg | lines | join: \",\"}",
+        &v,
+        &SectionMap::new(),
+        &ChunkMap::new(),
+    );
     assert_eq!(result, "a,b,c");
 }
 
@@ -233,7 +277,12 @@ fn pipe_lines_splits_string() {
 fn pipe_lines_on_collection_passthrough() {
     let s = sections_with("items", vec!["x", "y"]);
     // Already a collection → lines is a no-op
-    let result = render_template("{items | lines | join: \",\"}", &HashMap::new(), &s);
+    let result = render_template(
+        "{items | lines | join: \",\"}",
+        &HashMap::new(),
+        &s,
+        &ChunkMap::new(),
+    );
     assert_eq!(result, "x,y");
 }
 
@@ -244,6 +293,7 @@ fn pipe_keep_filters_collection() {
         "{lines | keep: \"^error\" | join: \"||\"}",
         &HashMap::new(),
         &s,
+        &ChunkMap::new(),
     );
     assert_eq!(result, "error: bad");
 }
@@ -255,6 +305,7 @@ fn pipe_where_is_alias_for_keep() {
         "{lines | where: \"^error\" | join: \"||\"}",
         &HashMap::new(),
         &s,
+        &ChunkMap::new(),
     );
     assert_eq!(result, "error: bad");
 }
@@ -266,6 +317,7 @@ fn pipe_keep_no_match_returns_empty() {
         "{lines | keep: \"^NOMATCH\" | join: \",\"}",
         &HashMap::new(),
         &s,
+        &ChunkMap::new(),
     );
     assert_eq!(result, "");
 }
@@ -278,6 +330,7 @@ fn pipe_keep_invalid_regex_passthrough() {
         "{lines | keep: \"[invalid\" | join: \",\"}",
         &HashMap::new(),
         &s,
+        &ChunkMap::new(),
     );
     assert_eq!(result, "a,b");
 }
@@ -289,6 +342,7 @@ fn pipe_lines_then_keep_chain() {
         "{log | lines | keep: \"fail\" | join: \",\"}",
         &v,
         &SectionMap::new(),
+        &ChunkMap::new(),
     );
     assert_eq!(result, "fail");
 }
@@ -300,6 +354,154 @@ fn pipe_lines_then_keep_then_join_chain() {
         "{log | lines | keep: \"^ERROR\" | join: \"\\n\"}",
         &v,
         &SectionMap::new(),
+        &ChunkMap::new(),
     );
     assert_eq!(result, "ERROR: bad");
+}
+
+// --- Structured collection (chunk) tests ---
+
+fn chunks_with(name: &str, items: Vec<Vec<(&str, &str)>>) -> ChunkMap {
+    let mut map = ChunkMap::new();
+    map.insert(
+        name.to_string(),
+        items
+            .into_iter()
+            .map(|pairs| {
+                pairs
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect()
+            })
+            .collect(),
+    );
+    map
+}
+
+#[test]
+fn structured_collection_count() {
+    let c = chunks_with(
+        "suites",
+        vec![
+            vec![("crate", "tokf"), ("passed", "100")],
+            vec![("crate", "tokf-filter"), ("passed", "50")],
+        ],
+    );
+    let result = render_template(
+        "{suites.count} suites",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "2 suites");
+}
+
+#[test]
+fn structured_collection_each_with_fields() {
+    let c = chunks_with(
+        "suites",
+        vec![
+            vec![("crate", "tokf"), ("passed", "100")],
+            vec![("crate", "tokf-filter"), ("passed", "50")],
+        ],
+    );
+    let result = render_template(
+        "{suites | each: \"  {crate}: {passed}\" | join: \"\\n\"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "  tokf: 100\n  tokf-filter: 50");
+}
+
+#[test]
+fn structured_collection_each_with_index() {
+    let c = chunks_with(
+        "suites",
+        vec![vec![("crate", "tokf")], vec![("crate", "tokf-filter")]],
+    );
+    let result = render_template(
+        "{suites | each: \"{index}. {crate}\" | join: \", \"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "1. tokf, 2. tokf-filter");
+}
+
+#[test]
+fn structured_collection_join_without_each() {
+    let c = chunks_with("suites", vec![vec![("crate", "tokf"), ("passed", "5")]]);
+    // Without each, join uses the format_chunk_item representation
+    let result = render_template(
+        "{suites | join: \"; \"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    // format_chunk_item sorts keys alphabetically
+    assert_eq!(result, "crate=tokf, passed=5");
+}
+
+#[test]
+fn empty_structured_collection() {
+    let c = chunks_with("suites", vec![]);
+    let result = render_template(
+        "count={suites.count}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "count=0");
+}
+
+#[test]
+fn structured_collection_keep_filters_by_format() {
+    let c = chunks_with(
+        "suites",
+        vec![
+            vec![("crate", "tokf"), ("passed", "100")],
+            vec![("crate", "tokf-filter"), ("passed", "50")],
+            vec![("crate", "other"), ("passed", "0")],
+        ],
+    );
+    // keep filters by format_chunk_item representation (key=value pairs)
+    let result = render_template(
+        "{suites | keep: \"tokf-filter\" | join: \"; \"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert!(result.contains("tokf-filter"));
+    assert!(!result.contains("other"));
+}
+
+#[test]
+fn structured_collection_where_alias_for_keep() {
+    let c = chunks_with(
+        "suites",
+        vec![vec![("name", "alpha")], vec![("name", "beta")]],
+    );
+    let result = render_template(
+        "{suites | where: \"alpha\" | join: \", \"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert!(result.contains("alpha"));
+    assert!(!result.contains("beta"));
+}
+
+#[test]
+fn structured_collection_truncate_passthrough() {
+    // truncate on StructuredCollection passes through unchanged
+    let c = chunks_with("suites", vec![vec![("crate", "tokf"), ("passed", "100")]]);
+    let result = render_template(
+        "{suites | truncate: 5 | join: \", \"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    // Should still contain the full item representation (passthrough)
+    assert!(result.contains("crate=tokf"));
 }
