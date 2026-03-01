@@ -1,0 +1,93 @@
+   Compiling tokf-common v0.1.0 (/Users/dev/tokf/crates/tokf-common)
+   Compiling tokf-filter v0.1.0 (/Users/dev/tokf/crates/tokf-filter)
+   Compiling tokf v0.1.0 (/Users/dev/tokf/crates/tokf-cli)
+   Compiling tokf-server v0.1.0 (/Users/dev/tokf/crates/tokf-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.34s
+     Running unittests src/lib.rs (target/debug/deps/tokf_common-aaa111)
+
+running 21 tests
+test config::types::tests::command_pattern_single ... ok
+test config::types::tests::command_pattern_multiple ... ok
+test config::types::tests::command_pattern_default ... ok
+test config::types::tests::deserialize_filter_config ... ok
+test config::types::tests::deserialize_output_branch ... ok
+test config::types::tests::deserialize_aggregate_rule ... ok
+test config::types::tests::deserialize_section ... ok
+test config::types::tests::deserialize_parse_config ... ok
+test config::types::tests::deserialize_variant ... ok
+test config::types::tests::deserialize_script_config ... ok
+test config::types::tests::deserialize_chunk_config ... ok
+test config::types::tests::deserialize_match_output ... ok
+test config::types::tests::deserialize_replace_rule ... ok
+test config::types::tests::deserialize_fallback ... ok
+test config::types::tests::deserialize_output_config ... ok
+test config::types::tests::deserialize_step ... ok
+test config::types::tests::serialize_roundtrip ... ok
+test config::types::tests::command_first ... ok
+test config::types::tests::command_patterns ... ok
+test config::types::tests::default_true_value ... ok
+test config::types::tests::deserialize_extract_rule ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf_filter-bbb222)
+
+running 180 tests
+test filter::aggregate::tests::sum_and_count_cargo_test_scenario ... ok
+test filter::aggregate::tests::sum_only ... ok
+test filter::aggregate::tests::count_only ... ok
+test filter::section::tests::stateful_basic ... ok
+test filter::section::tests::stateless_match_only ... ok
+test filter::template::tests::simple_variable_substitution ... ok
+test filter::tests::branch_fixed_output ... ok
+test filter::tests::branch_tail_truncation ... ok
+test filter::skip::tests::skip_removes_matching ... ok
+test filter::chunk::tests::basic_chunk_split ... ok
+test filter::chunk::tests::group_by_merges ... ok
+
+test result: ok. 180 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf-ccc333)
+
+running 550 tests
+test config::tests::test_minimal_config ... ok
+test config::tests::test_deserialize_git_push ... ok
+test filter::tests::match_output_first_match_wins ... ok
+test remote::tests::remote_error_display_unauthorized ... ok
+test tracking::tests::record_and_read ... ok
+test auth::tests::credentials_load ... ok
+
+test result: ok. 550 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/cli_basic.rs (target/debug/deps/cli_basic-eee555)
+
+running 15 tests
+test test_run_echo ... ok
+test test_run_with_filter ... ok
+test test_passthrough ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf_server-ddd444)
+
+running 95 tests
+test routes::health::tests::health_returns_200 ... ok
+test routes::filters::tests::publish_filter_creates_entry ... ok
+test db::tests::pool_connects ... ok
+test auth::tests::verify_token ... ok
+
+test result: ok. 95 passed; 0 failed; 27 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+   Doc-tests tokf-common
+
+running 2 tests
+test src/config/types.rs - config::types::CommandPattern (line 10) ... ok
+test src/config/types.rs - config::types::FilterConfig (line 48) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+   Doc-tests tokf_filter
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

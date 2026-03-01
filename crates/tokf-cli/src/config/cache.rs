@@ -8,7 +8,7 @@ use rkyv::{Archive, Deserialize, Serialize, rancor};
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 
-const CACHE_VERSION: u32 = 6;
+const CACHE_VERSION: u32 = 8;
 
 /// A single filter serialized for the binary cache.
 ///

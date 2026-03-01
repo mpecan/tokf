@@ -10,8 +10,9 @@
 #   4. dedup / dedup_window
 #   5. lua_script (escape hatch)
 #   6. [[section]] OR [parse]  ← mutually exclusive
-#   7. [on_success] / [on_failure] (exit-code branch)
-#   8. [fallback] (last resort)
+#   7. [[chunk]] (block-based structured extraction, runs alongside sections)
+#   8. [on_success] / [on_failure] (exit-code branch)
+#   9. [fallback] (last resort)
 
 # ─── TOP-LEVEL FIELDS ────────────────────────────────────────────────────────
 
@@ -147,7 +148,42 @@ name = "summary"
 match = "^SUMMARY:"
 collect_as = "summary_lines"
 
-# ─── STEP 6b: [parse] ────────────────────────────────────────────────────────
+# ─── STEP 6b: [[chunk]] ──────────────────────────────────────────────────────
+#
+# Block-based structured extraction. Splits raw output into repeating blocks,
+# extracts data per-block, and produces named structured collections.
+# Runs on raw output (alongside sections), not affected by skip/keep.
+
+# [[chunk]]
+# split_on = "^\\s*Running "        # regex marking the start of each chunk
+# include_split_line = true          # include the splitting line in each chunk
+# collect_as = "suites_detail"       # name for the structured collection
+# group_by = "crate_name"            # merge chunks sharing this field value
+# children_as = "children"           # preserve original items as nested collection
+#
+# [chunk.extract]
+# pattern = 'unittests.+deps/([\w_-]+)-'   # extract from header line
+# as = "crate_name"                  # field name for the extracted value
+# carry_forward = true               # inherit from previous chunk when unmatched
+#
+# [[chunk.body_extract]]
+# pattern = 'Running\s+(.+?)\s+\('  # extract from body lines (first match wins)
+# as = "suite_name"
+#
+# [[chunk.aggregate]]
+# pattern = '(\d+) passed'          # per-chunk aggregation
+# sum = "passed"                     # sum the captured number
+#
+# [[chunk.aggregate]]
+# pattern = '^test result:'
+# count_as = "suite_count"           # count matching lines
+#
+# Structured collections in templates:
+#   {suites_detail | each: "  {crate_name}: {passed}" | join: "\n"}
+# Tree output (when children_as is set):
+#   {suites_detail | each: "  {crate_name}\n{children | each: \"    {suite_name}\" | join: \"\\n\"}" | join: "\n"}
+
+# ─── STEP 6c: [parse] ────────────────────────────────────────────────────────
 #
 # (Commented out — cannot use both [[section]] and [parse])
 #
@@ -167,7 +203,7 @@ collect_as = "summary_lines"
 # group_counts_format = "  {label}: {count}"
 # empty = "no results"
 
-# ─── STEP 7: [on_success] ────────────────────────────────────────────────────
+# ─── STEP 8: [on_success] ────────────────────────────────────────────────────
 
 [on_success]
 # output: template. {output} = filtered output. Section variables also available.
@@ -185,16 +221,30 @@ skip = ["^\\s*$", "^debug:"]
 # extract: find first line matching pattern, render output
 extract = { pattern = '(\\d+)/(\\d+) passed', output = "✓ {1} of {2} tests passed" }
 
-# aggregate: sum numbers extracted from section lines
+# aggregate (singular): sum numbers extracted from section lines
 aggregate = { from = "summary_lines", pattern = '(\\d+) passed', sum = "passed", count_as = "suites" }
 
-# output template: has access to all [[section]] variables
+# aggregates (plural) — use [[on_success.aggregates]] for multiple rules:
+# [[on_success.aggregates]]
+# from = "summary_lines"
+# pattern = '(\\d+) passed'
+# sum = "passed"
+# count_as = "suites"
+#
+# [[on_success.aggregates]]
+# from = "summary_lines"
+# pattern = '(\\d+) failed'
+# sum = "failed"
+#
+# Both singular `aggregate` and plural `aggregates` can be used together.
+
+# output template: has access to all [[section]] and [[chunk]] variables
 output = """
 ✓ {passed} passed across {suites} suites
 Warnings: {warning_lines.count}
 {warning_lines | join: "\\n" | truncate: 500}"""
 
-# ─── STEP 7b: [on_failure] ───────────────────────────────────────────────────
+# ─── STEP 8b: [on_failure] ───────────────────────────────────────────────────
 
 [on_failure]
 # tail: keep last N lines of filtered output
@@ -212,7 +262,7 @@ Summary:
 Warnings ({warning_lines.count}):
 {warning_lines | each: "{index}. {value | truncate: 120}" | join: "\\n"}"""
 
-# ─── STEP 8: [fallback] ──────────────────────────────────────────────────────
+# ─── STEP 9: [fallback] ──────────────────────────────────────────────────────
 
 # Emitted when neither [on_success] nor [on_failure] produced output.
 # Use as a safety net for complex filters.

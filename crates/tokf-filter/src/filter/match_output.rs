@@ -23,7 +23,12 @@ pub fn render_output(output_tmpl: &str, contains: &str, combined: &str) -> Strin
         vars.insert("line_containing".to_string(), line.to_string());
     }
     vars.insert("output".to_string(), combined.to_string());
-    template::render_template(output_tmpl, &vars, &SectionMap::new())
+    template::render_template(
+        output_tmpl,
+        &vars,
+        &SectionMap::new(),
+        &template::ChunkMap::new(),
+    )
 }
 
 #[cfg(test)]

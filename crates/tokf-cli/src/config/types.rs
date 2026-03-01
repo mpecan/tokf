@@ -160,11 +160,15 @@ empty = "nothing to show"
         assert_eq!(cfg.section[2].name.as_deref(), Some("summary"));
 
         let success = cfg.on_success.unwrap();
-        let agg = success.aggregate.unwrap();
-        assert_eq!(agg.from, "summary_lines");
-        assert_eq!(agg.sum.as_deref(), Some("passed"));
-        assert_eq!(agg.count_as.as_deref(), Some("suites"));
+        assert!(success.aggregate.is_none(), "singular aggregate removed");
+        assert_eq!(success.aggregates.len(), 3);
+        assert_eq!(success.aggregates[0].from, "summary_lines");
+        assert_eq!(success.aggregates[0].sum.as_deref(), Some("passed"));
+        assert_eq!(success.aggregates[0].count_as.as_deref(), Some("suites"));
         assert!(success.output.unwrap().contains("{passed}"));
+
+        assert!(!cfg.chunk.is_empty(), "chunk config present");
+        assert_eq!(cfg.chunk[0].collect_as, "suites_detail");
 
         let failure = cfg.on_failure.unwrap();
         assert!(failure.output.unwrap().contains("FAILURES"));

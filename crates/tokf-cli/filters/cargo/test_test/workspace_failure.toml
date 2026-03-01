@@ -1,18 +1,15 @@
-name = "failing tests show failure details with summary"
-fixture = "failure.txt"
+name = "workspace failure shows failure details with per-crate info"
+fixture = "workspace_failure.txt"
 exit_code = 101
 
 [[expect]]
 starts_with = "✗ cargo test:"
 
 [[expect]]
-contains = "FAILURES (2):"
+contains = "FAILURES (1):"
 
 [[expect]]
 contains = "branch_fixed_output"
-
-[[expect]]
-contains = "extract_first_match"
 
 [[expect]]
 contains = "test result: FAILED."

@@ -395,3 +395,106 @@ dedup = true
     let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "a\nb");
 }
+
+// --- chunk pipeline integration tests ---
+
+#[test]
+fn apply_chunk_processing_success() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+
+[[chunk]]
+split_on = "^--- "
+include_split_line = true
+collect_as = "items"
+
+[chunk.extract]
+pattern = '^--- (\w+)'
+as = "name"
+
+[[chunk.aggregate]]
+pattern = '(\d+) total'
+sum = "total"
+
+[on_success]
+output = "{items | each: \"{name}: {total}\" | join: \", \"}"
+"#,
+    )
+    .unwrap();
+
+    let input = "preamble\n--- alpha\nfoo 10 total\n--- beta\nbar 5 total";
+    let result = make_result(input, 0);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
+    assert_eq!(filtered.output, "alpha: 10, beta: 5");
+}
+
+#[test]
+fn apply_chunk_processing_with_group_by() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+
+[[chunk]]
+split_on = "^RUN "
+include_split_line = true
+collect_as = "groups"
+group_by = "suite"
+
+[chunk.extract]
+pattern = '^RUN (\w+)'
+as = "suite"
+
+[[chunk.aggregate]]
+pattern = '(\d+) ok'
+sum = "passed"
+
+[on_success]
+output = "{groups | each: \"{suite}: {passed}\" | join: \", \"}"
+"#,
+    )
+    .unwrap();
+
+    // Two chunks with suite "alpha" should be merged
+    let input = "RUN alpha\n3 ok\nRUN beta\n5 ok\nRUN alpha\n7 ok";
+    let result = make_result(input, 0);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
+    assert_eq!(filtered.output, "alpha: 10, beta: 5");
+}
+
+#[test]
+fn apply_chunk_with_sections_together() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+
+[[section]]
+name = "summary"
+match = "^TOTAL:"
+collect_as = "totals"
+
+[[chunk]]
+split_on = "^RUN "
+include_split_line = true
+collect_as = "runs"
+
+[chunk.extract]
+pattern = '^RUN (\w+)'
+as = "name"
+
+[[on_success.aggregates]]
+from = "totals"
+pattern = 'TOTAL: (\d+)'
+sum = "grand_total"
+
+[on_success]
+output = "{grand_total} total across {runs.count} runs"
+"#,
+    )
+    .unwrap();
+
+    let input = "RUN a\nstuff\nRUN b\nstuff\nTOTAL: 15\nTOTAL: 25";
+    let result = make_result(input, 0);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
+    assert_eq!(filtered.output, "40 total across 2 runs");
+}

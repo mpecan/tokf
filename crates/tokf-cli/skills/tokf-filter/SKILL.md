@@ -40,9 +40,10 @@ Steps execute in this fixed order — **do not rearrange them**:
 5. **`dedup` / `dedup_window`** — collapse duplicate consecutive lines
 6. **`lua_script`** — Luau escape hatch; runs after dedup, before section/parse
 7. **`[[section]]` OR `[parse]`** — structured extraction (these are mutually exclusive; section is a state machine, parse is a declarative grouper)
-8. **Exit-code branch** — `[on_success]` or `[on_failure]` depending on exit code
-9. **`[fallback]`** — if neither `on_success` nor `on_failure` produced output
-10. **`strip_empty_lines` / `collapse_empty_lines`** — post-processing cleanup on the final output
+8. **`[[chunk]]`** — block-based structured extraction with per-block aggregation, grouping, and tree output (runs on raw output, alongside sections)
+9. **Exit-code branch** — `[on_success]` or `[on_failure]` depending on exit code
+10. **`[fallback]`** — if neither `on_success` nor `on_failure` produced output
+11. **`strip_empty_lines` / `collapse_empty_lines`** — post-processing cleanup on the final output
 
 Within `[on_success]` and `[on_failure]`, fields are processed as:
 - `head` / `tail` → trim lines
@@ -68,6 +69,7 @@ Within `[on_success]` and `[on_failure]`, fields are processed as:
 | `trim_lines` | bool | `false` | Trim leading/trailing whitespace from each line. |
 | `lua_script` | table | (absent) | Luau escape hatch. |
 | `[[section]]` | array of tables | `[]` | State-machine section collectors. |
+| `[[chunk]]` | array of tables | `[]` | Block-based structured extraction with per-block aggregation and grouping. |
 | `[parse]` | table | (absent) | Declarative structured parser (branch + group). |
 | `[on_success]` | table | (absent) | Output branch for exit code 0. |
 | `[on_failure]` | table | (absent) | Output branch for non-zero exit. |
@@ -252,7 +254,72 @@ collect_as = "summary_lines"
 
 ---
 
-### 4.7 `[parse]` — Declarative Structured Parser
+### 4.7 `[[chunk]]` — Block-Based Structured Extraction
+
+Chunks split raw output into repeating structural blocks (e.g., per-crate test suites in a Cargo workspace), extract structured data per-block, and produce named collections for template rendering. Like sections, chunks operate on the raw (unfiltered) command output — skip/keep patterns do not affect chunk processing.
+
+```toml
+[[chunk]]
+split_on = "^\\s*Running "       # regex marking the start of each chunk
+include_split_line = true         # include the splitting line in the chunk (default: true)
+collect_as = "suites_detail"      # name for the structured collection
+group_by = "crate_name"           # merge chunks sharing this field value
+children_as = "children"          # preserve original items as nested collection
+
+[chunk.extract]
+pattern = 'unittests.+deps/([\w_-]+)-'  # extract a field from the header line
+as = "crate_name"
+carry_forward = true              # inherit value from previous chunk when pattern doesn't match
+
+[[chunk.body_extract]]
+pattern = 'Running\s+(.+?)\s+\('
+as = "suite_name"
+
+[[chunk.aggregate]]
+pattern = '(\d+) passed'          # aggregates run within each chunk's lines
+sum = "passed"
+
+[[chunk.aggregate]]
+pattern = '^test result:'
+count_as = "suite_count"
+```
+
+**Fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `split_on` | string (regex) | yes | Regex marking the start of each chunk |
+| `include_split_line` | bool | no | Whether the splitting line is part of the chunk (default: `true`) |
+| `collect_as` | string | yes | Name for the resulting structured collection |
+| `extract` | table | no | Extract a named field from the header line (`pattern` + `as`) |
+| `body_extract` | array of tables | no | Extract fields from body lines (`pattern` + `as`, first match wins) |
+| `aggregate` | array of tables | no | Per-chunk aggregation rules (`pattern` + `sum`/`count_as`) |
+| `group_by` | string | no | Merge chunks sharing the same field value, summing numeric fields |
+| `children_as` | string | no | When set with `group_by`, preserve original items as a nested collection |
+
+**`carry_forward`** (on `extract` or `body_extract`): when a chunk's pattern doesn't match, inherit the value from the most recent chunk that did. Useful when boundary markers (like `Running unittests`) identify a group, and subsequent chunks should inherit that identity.
+
+**Structured collections in templates**: each item has named fields accessible in `each` pipes:
+
+```toml
+[on_success]
+output = """\
+{suites_detail | each: "  {crate_name}: {passed} passed ({suite_count} suites)" | join: "\\n"}"""
+```
+
+**Tree output with `children_as`**: groups preserve their child items for nested template rendering:
+
+```toml
+[on_success]
+output = """\
+{suites_detail | each: "  {crate_name}: {passed} passed\\n{children | each: \"    {suite_name}: {passed} passed\" | join: \"\\n\"}" | join: "\\n"}"""
+```
+
+**When to use**: when output contains repeating structural blocks with per-block data you want to aggregate and display. Common for workspace build tools (Cargo, Gradle, Nx) where output is organized by sub-project.
+
+---
+
+### 4.8 `[parse]` — Declarative Structured Parser
 
 Alternative to `[[section]]` for commands with table-like output. Declaratively extracts a header field and groups remaining lines.
 
@@ -295,7 +362,7 @@ empty = "clean — nothing to commit"
 
 ---
 
-### 4.8 `[on_success]` / `[on_failure]` — Exit Code Branches
+### 4.9 `[on_success]` / `[on_failure]` — Exit Code Branches
 
 These branches run after all top-level steps. They have their own sub-fields:
 
@@ -306,7 +373,21 @@ head = 20                     # keep first N lines
 tail = 10                     # keep last N lines
 skip = ["^\\s*$"]            # additional line filtering
 extract = { pattern = '(\S+)\s*->\s*(\S+)', output = "ok ✓ {2}" }
+
+# Singular form (one rule):
 aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "passed", count_as = "suites" }
+
+# Plural form (multiple rules):
+# [[on_success.aggregates]]
+# from = "summary_lines"
+# pattern = 'ok\. (\d+) passed'
+# sum = "passed"
+# count_as = "suites"
+#
+# [[on_success.aggregates]]
+# from = "summary_lines"
+# pattern = '(\d+) failed'
+# sum = "failed"
 
 [on_failure]
 tail = 10
@@ -316,14 +397,15 @@ output = "FAILED: {summary_lines | join: \"\\n\"}"
 **Branch sub-fields**:
 | Field | Description |
 |---|---|
-| `output` | Template string for the output. Has access to all collected `[[section]]` variables. `{output}` = the filtered output text. |
+| `output` | Template string for the output. Has access to all `[[section]]` and `[[chunk]]` variables. `{output}` = the filtered output text. |
 | `head` | Keep first N lines of filtered output |
 | `tail` | Keep last N lines of filtered output |
 | `skip` | Array of regexes to filter output lines within this branch |
 | `extract` | `{ pattern, output }` — find first match, render template with capture groups |
-| `aggregate` | Reduce collected section lines into numeric summaries |
+| `aggregate` | Reduce collected section lines into numeric summaries (singular form) |
+| `aggregates` | Array of aggregate rules (plural form — use `[[on_success.aggregates]]`) |
 
-**`aggregate` fields**:
+**`aggregate` / `aggregates` fields**:
 | Field | Description |
 |---|---|
 | `from` | Variable name (a `collect_as` result from `[[section]]`) |
@@ -331,11 +413,13 @@ output = "FAILED: {summary_lines | join: \"\\n\"}"
 | `sum` | Variable name to bind the sum to |
 | `count_as` | Variable name to bind the count (number of lines matched) to |
 
+Both singular `aggregate` and plural `aggregates` can be used together — they are merged at runtime.
+
 **When to use**: Always. Every filter should have at least one of `[on_success]` or `[on_failure]`. Use `[on_success]` to produce a clean summary. Use `[on_failure]` to show enough context to diagnose the issue.
 
 ---
 
-### 4.9 `[fallback]` — Last Resort
+### 4.10 `[fallback]` — Last Resort
 
 Emits output when neither `[on_success]` nor `[on_failure]` produced anything.
 
@@ -348,7 +432,7 @@ tail = 5
 
 ---
 
-### 4.10 `[[variant]]` — Context-Aware Filter Delegation
+### 4.11 `[[variant]]` — Context-Aware Filter Delegation
 
 Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context.
 
@@ -409,7 +493,7 @@ Output templates support pipe chains: `{var | pipe | pipe: "arg"}`.
 |---|---|---|
 | `lines` | Str → Collection | Split string on newlines into a list |
 | `join: "sep"` | Collection → Str | Join list items with separator string |
-| `each: "tmpl"` | Collection → Collection | Map each item through a sub-template; `{value}` = item, `{index}` = 1-based index |
+| `each: "tmpl"` | Collection → Collection | Map each item through a sub-template; `{value}` = item, `{index}` = 1-based index. For structured collections (from chunks), all named fields are also available (e.g. `{crate_name}`, `{passed}`). |
 | `keep: "re"` | Collection → Collection | Retain items matching the regex |
 | `where: "re"` | Collection → Collection | Alias for `keep:` |
 | `truncate: N` | Str → Str | Truncate to N characters, appending `…` |
@@ -478,6 +562,7 @@ Ask the user to provide (or capture) example output from the command. If they do
 | Level 1 (simple) | Command produces one-liner outcomes | `match_output`, `skip`, `extract` |
 | Level 2 (structured) | Table-like output needing grouping | `[parse]` + `[output]` |
 | Level 3 (stateful) | Multi-section output with nested structure | `[[section]]` + `aggregate` + pipes |
+| Level 4 (chunked) | Repeating blocks with per-block aggregation (workspaces) | `[[chunk]]` + `[[section]]` + `aggregates` + tree templates |
 
 Start at the lowest level that handles the use case. Don't reach for `[[section]]` when `skip` + `extract` suffices.
 
@@ -652,17 +737,19 @@ empty = "clean — nothing to commit"
 
 ---
 
-### Example 3: `cargo test` (Level 3 — section + aggregate + pipes)
+### Example 3: `cargo test` (Level 4 — section + chunk + aggregates + tree)
 
-Goal: 200+ lines with compile noise, per-test "ok" lines, failure blocks → one-liner on pass, structured failure report on fail.
+Goal: 200+ lines with compile noise, per-test "ok" lines, failure blocks → per-crate tree summary on pass, structured failure report on fail.
 
 ```toml
-# filters/cargo/test.toml — Level 3
+# filters/cargo/test.toml — Level 4
 # Raw output: 200+ lines
-# Filtered (pass): "✓ cargo test: 137 passed (24 suites)"
+# Filtered (pass): "✓ cargo test: 1279 passed, 0 failed, 119 ignored (42 suites)"
+#                   with per-crate tree breakdown showing individual test suites
 # Filtered (fail): failure details + summary
 
 command = "cargo test"
+strip_ansi = true
 
 # Drop all the noise
 skip = [
@@ -685,45 +772,95 @@ exit = "^failures:$"
 split_on = "^\\s*$"
 collect_as = "failure_blocks"
 
-# Collect just the failure names (short list before the blocks)
-[[section]]
-name = "failure_names"
-enter = "^failures:$"
-exit = "^\\s*$"
-match = "^\\s+\\S+"
-collect_as = "failure_list"
-
 # Collect "test result: ok/FAILED" summary lines (one per test suite)
 [[section]]
 name = "summary"
 match = "^test result:"
 collect_as = "summary_lines"
 
-# Success: aggregate "N passed" across all suite summaries
+# Chunk processing: per-crate breakdown from "Running" headers.
+# "unittests" lines define crate boundaries; integration test suites
+# inherit the crate name via carry_forward.
+[[chunk]]
+split_on = "^\\s*Running "
+include_split_line = true
+collect_as = "suites_detail"
+group_by = "crate_name"
+children_as = "children"
+
+[chunk.extract]
+pattern = 'unittests.+deps/([\w_-]+)-'
+as = "crate_name"
+carry_forward = true
+
+[[chunk.body_extract]]
+pattern = 'Running\s+(.+?)\s+\('
+as = "suite_name"
+
+[[chunk.aggregate]]
+pattern = '(\d+) passed'
+sum = "passed"
+
+[[chunk.aggregate]]
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[chunk.aggregate]]
+pattern = '(\d+) ignored'
+sum = "ignored"
+
+[[chunk.aggregate]]
+pattern = '^test result:'
+count_as = "suite_count"
+
+# Success: aggregate summaries + per-crate tree breakdown
 [on_success]
-aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "passed", count_as = "suites" }
-output = "✓ cargo test: {passed} passed ({suites} suites)"
+output = "✓ cargo test: {passed} passed, {failed} failed, {ignored} ignored ({suites} suites)\n{suites_detail | each: \"  {crate_name}: {passed} passed ({suite_count} suites)\\n{children | each: \\\"    {suite_name}: {passed} passed\\\" | join: \\\"\\\\n\\\"}\" | join: \"\\n\"}"
 
-# Failure: show numbered, truncated failure blocks + full summary
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = 'ok\. (\d+) passed'
+sum = "passed"
+count_as = "suites"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) ignored'
+sum = "ignored"
+
+# Failure: show failure details + summary
 [on_failure]
-output = """
-FAILURES ({failure_blocks.count}):
-═══════════════════════════════════════
-{failure_blocks | each: "{index}. {value | truncate: 200}" | join: "\\n"}
+output = "✗ cargo test: {passed} passed, {failed} failed ({suites} suites)\n\nFAILURES ({failure_blocks.count}):\n{failure_blocks | each: \"\\n── {index}. ──\\n{value}\" | join: \"\\n\"}\n\n{summary_lines | join: \"\\n\"}"
 
-{summary_lines | join: "\\n"}"""
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) passed'
+sum = "passed"
+count_as = "suites"
 
-# Safety net: if sections didn't collect (very short output), show last 5 lines
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
 [fallback]
 tail = 5
 ```
 
 **Key decisions**:
 - `skip` removes all per-test "ok" lines — only failures and summaries remain
-- Three `[[section]]` collectors handle different structural parts of the output
-- `aggregate` sums "N passed" across multiple suite summary lines
-- Pipe chain `{failure_blocks | each: "..." | join: "\\n"}` formats numbered, truncated blocks
-- `[fallback]` catches edge cases where cargo emits very short output (e.g., no tests found)
+- `[[section]]` collectors handle failure blocks and summary lines
+- `[[chunk]]` splits on `Running` headers, extracts crate names from `unittests` lines
+- `carry_forward = true` makes integration test suites inherit the crate name from the preceding unit test suite
+- `children_as = "children"` preserves per-suite detail within each crate group
+- `[[on_success.aggregates]]` (plural) sums passed/failed/ignored across all suite summary lines
+- Nested `each` pipes produce tree output: crate → suites
+- `[fallback]` catches edge cases (compile errors with no test output)
 
 ---
 

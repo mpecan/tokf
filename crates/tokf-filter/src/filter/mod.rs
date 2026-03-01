@@ -1,4 +1,5 @@
 mod aggregate;
+pub mod chunk;
 mod cleanup;
 mod dedup;
 mod extract;
@@ -221,10 +222,10 @@ fn apply_internal(
 
     // 1.5 + 1.6. Replace + per-line cleanup (strip_ansi, trim_lines)
     let raw = build_raw_lines(&result.combined, config, opts);
-    let raw_lines: Vec<&str> = raw.clean.iter().map(String::as_str).collect();
+    let clean_lines: Vec<&str> = raw.clean.iter().map(String::as_str).collect();
 
     // 2. Top-level skip/keep pre-filtering
-    let lines = skip::apply_skip(&config.skip, &raw_lines);
+    let lines = skip::apply_skip(&config.skip, &clean_lines);
     let lines = skip::apply_keep(&config.keep, &lines);
 
     // 2.5. Dedup
@@ -255,15 +256,21 @@ fn apply_internal(
         };
     }
 
-    // 4. Collect sections (from raw output — sections need structural
-    //    markers like blank lines that skip patterns remove).
+    // 4. Collect sections and chunks (both run on raw output — they need
+    //    structural markers like blank lines that skip patterns remove).
     //    DESIGN NOTE: section enter/exit regexes match against the original,
     //    unmodified lines. If the command emits ANSI codes in marker lines,
     //    set `strip_ansi = true` AND write patterns that match the raw text,
     //    or configure the command to disable color (e.g. `--no-color`).
     let has_sections = !config.section.is_empty();
+    let needs_raw_lines = has_sections || !config.chunk.is_empty();
+    let raw_lines: Vec<&str> = if needs_raw_lines {
+        result.combined.lines().collect()
+    } else {
+        Vec::new()
+    };
+
     let sections = if has_sections {
-        let raw_lines: Vec<&str> = result.combined.lines().collect();
         section::collect_sections(&config.section, &raw_lines)
     } else {
         SectionMap::new()
@@ -276,12 +283,18 @@ fn apply_internal(
         lines.join("\n")
     };
 
+    let chunks = if config.chunk.is_empty() {
+        template::ChunkMap::new()
+    } else {
+        chunk::process_chunks(&config.chunk, &raw_lines)
+    };
+
     // 5. Select branch by exit code
     let branch = select_branch(config, result.exit_code);
     let output = branch.map_or_else(
         || apply_fallback(config, &pre_filtered),
         |b| {
-            apply_branch(b, &pre_filtered, &sections, has_sections)
+            apply_branch(b, &pre_filtered, &sections, &chunks, has_sections)
                 .unwrap_or_else(|| apply_fallback(config, &pre_filtered))
         },
     );
@@ -318,15 +331,22 @@ fn apply_branch(
     branch: &OutputBranch,
     combined: &str,
     sections: &SectionMap,
+    chunks: &template::ChunkMap,
     has_sections: bool,
 ) -> Option<String> {
-    // 1. Aggregation
-    let vars = branch
-        .aggregate
-        .as_ref()
-        .map_or_else(std::collections::HashMap::new, |agg_rule| {
-            aggregate::run_aggregate(agg_rule, sections)
-        });
+    // 1. Aggregation — merge singular `aggregate` + plural `aggregates`
+    let mut all_rules: Vec<&tokf_common::config::types::AggregateRule> =
+        branch.aggregates.iter().collect();
+    if let Some(ref single) = branch.aggregate {
+        all_rules.push(single);
+    }
+    let vars = if all_rules.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        let owned_rules: Vec<tokf_common::config::types::AggregateRule> =
+            all_rules.into_iter().cloned().collect();
+        aggregate::run_aggregates(&owned_rules, sections)
+    };
 
     // 2. Output template
     if let Some(ref output_tmpl) = branch.output {
@@ -334,13 +354,18 @@ fn apply_branch(
             let any_collected = sections
                 .values()
                 .any(|s| !s.lines.is_empty() || !s.blocks.is_empty());
-            if !any_collected && vars.is_empty() {
+            if !any_collected {
                 return None; // sections expected but empty → fallback
             }
         }
         let mut vars = vars;
         vars.insert("output".to_string(), combined.to_string());
-        return Some(template::render_template(output_tmpl, &vars, sections));
+        return Some(template::render_template(
+            output_tmpl,
+            &vars,
+            sections,
+            chunks,
+        ));
     }
 
     // Non-template path (tail/head/skip/extract)
@@ -380,6 +405,9 @@ fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests_chunk;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_color;
