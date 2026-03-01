@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.13](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.12...tokf-server-v0.2.13) (2026-03-01)
+
+
+### Features
+
+* **cli,server:** filter search, download, and install — tokf search/install ([#118](https://github.com/mpecan/tokf/issues/118)) ([#183](https://github.com/mpecan/tokf/issues/183)) ([e0e17c9](https://github.com/mpecan/tokf/commit/e0e17c9b2c45ab6487ccc276a0a6ccc82a44628a))
+* **cli:** remote stats sync and gain display ([#115](https://github.com/mpecan/tokf/issues/115)) ([#188](https://github.com/mpecan/tokf/issues/188)) ([3253f2f](https://github.com/mpecan/tokf/commit/3253f2f4d09909abdb4c34ac919405a8022801fc))
+* **filter,cli,server:** sandbox CLI Lua execution and inline scripts on publish ([#194](https://github.com/mpecan/tokf/issues/194)) ([4e104cb](https://github.com/mpecan/tokf/commit/4e104cb00563cdda390b9e9e44663c45e3bd9e7f))
+* **server,cli:** allow updating test suites for published filters ([#119](https://github.com/mpecan/tokf/issues/119)) ([#192](https://github.com/mpecan/tokf/issues/192)) ([ef9428b](https://github.com/mpecan/tokf/commit/ef9428b06d3d13ca4d8a2a422b3188bf3bbe5914))
+* **server,cli:** comprehensive API rate limiting ([#196](https://github.com/mpecan/tokf/issues/196)) ([52592a5](https://github.com/mpecan/tokf/commit/52592a509dbe7b2b457351fad093592d4d077e33))
+* **server,cli:** publish stdlib filters to registry ([#204](https://github.com/mpecan/tokf/issues/204)) ([#205](https://github.com/mpecan/tokf/issues/205)) ([e9bbb61](https://github.com/mpecan/tokf/commit/e9bbb61e59ae795e65606b6b6d50c374adec7965))
+* **tracking,cli,server:** usage stats sync and aggregation endpoints ([#114](https://github.com/mpecan/tokf/issues/114)) ([#186](https://github.com/mpecan/tokf/issues/186)) ([30d4ef2](https://github.com/mpecan/tokf/commit/30d4ef28dc4a4f56418b997c910486c4280dc28b))
+
+
+### Bug Fixes
+
+* **ci:** rename tokf-server self dev-dep to break release-please cycle ([#198](https://github.com/mpecan/tokf/issues/198)) ([fc46b59](https://github.com/mpecan/tokf/commit/fc46b59b55cb00e0dd99e12cf4d59fcf3978eee8))
+* **cli,server:** use test: prefix in multipart fields and add just recipes ([#193](https://github.com/mpecan/tokf/issues/193)) ([737d522](https://github.com/mpecan/tokf/commit/737d522e918bcab0df8bc0e172a17291b18edc66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.12 to 0.2.13
+    * tokf-filter bumped from 0.2.12 to 0.2.13
+
 ## [0.2.12](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.11...tokf-server-v0.2.12) (2026-02-26)
 
 
