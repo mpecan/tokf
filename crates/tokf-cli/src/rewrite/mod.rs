@@ -13,6 +13,40 @@ use types::{RewriteConfig, RewriteRule};
 
 pub use user_config::load_user_config;
 
+/// Built-in wrapper rules for task runners that support shell overrides.
+///
+/// These rewrite the command to inject tokf as the task runner's shell, so each
+/// recipe line is individually matched and filtered.  The outer command runs
+/// directly (not via `tokf run`) — its exit code flows through unmodified.
+///
+/// Note: the replacement strings use the bare command name (`make`, `just`)
+/// rather than preserving the original path prefix.  `/usr/bin/make check`
+/// rewrites to `make SHELL=tokf check`.  This is intentional — the user's
+/// `$PATH` resolves the command, and injecting `SHELL=tokf` into a full-path
+/// invocation would look unusual.
+///
+/// Users can override these via `[[rewrite]]` entries in `rewrites.toml`.
+const BUILTIN_WRAPPERS: &[(&str, &str)] = &[
+    // make: override $(SHELL) so recipe lines run as `tokf -c 'line'`
+    (r"^(?:[^\s]*/)?make(\s.*)?$", "make SHELL=tokf{1}"),
+    // just: use --shell flag to route recipe lines through `tokf -cu 'line'`
+    (
+        r"^(?:[^\s]*/)?just(\s.*)?$",
+        "just --shell tokf --shell-arg -cu{1}",
+    ),
+];
+
+/// Build `RewriteRule` entries from the built-in wrapper table.
+fn build_wrapper_rules() -> Vec<RewriteRule> {
+    BUILTIN_WRAPPERS
+        .iter()
+        .map(|(pattern, replace)| RewriteRule {
+            match_pattern: (*pattern).to_string(),
+            replace: (*replace).to_string(),
+        })
+        .collect()
+}
+
 /// Build rewrite rules by discovering installed filters (recursive walk).
 ///
 /// For each filter pattern, generates a rewrite rule via
@@ -62,6 +96,14 @@ pub fn rewrite(command: &str, verbose: bool) -> String {
     )
 }
 
+/// Collected rewrite rules passed to [`rewrite_segment`].
+struct SegmentRules<'a> {
+    /// Wrapper rules for task runners (tried first, before pipe handling).
+    wrapper: &'a [RewriteRule],
+    /// Filter-derived rules (tried after pipe handling).
+    filter: &'a [RewriteRule],
+}
+
 /// Rewrite a single command segment, handling pipe stripping and env var
 /// prefixes when appropriate.
 ///
@@ -70,6 +112,10 @@ pub fn rewrite(command: &str, verbose: bool) -> String {
 /// passing through unchanged. The env prefix is preserved in the output and
 /// applied to the command that actually runs.
 ///
+/// **Wrapper rules** (for task runners like `make` and `just`) are tried first,
+/// before pipe handling.  Wrapper rewrites inject tokf as the task runner's
+/// shell, and pipe stripping is not applicable to them.
+///
 /// If the (env-stripped) segment has a bare pipe to a simple target (tail,
 /// head, grep) and the base command matches a tokf filter, the pipe is also
 /// stripped and `--baseline-pipe` is injected — unless `strip_pipes` is false.
@@ -77,7 +123,7 @@ pub fn rewrite(command: &str, verbose: bool) -> String {
 /// runtime the smaller of filtered vs piped output is used.
 fn rewrite_segment(
     segment: &str,
-    filter_rules: &[RewriteRule],
+    rules: &SegmentRules<'_>,
     strip_pipes: bool,
     prefer_less: bool,
     verbose: bool,
@@ -86,9 +132,19 @@ fn rewrite_segment(
         strip_env_prefix(segment).unwrap_or_else(|| (String::new(), segment.to_string()));
     let cmd = cmd_owned.as_str();
 
+    // Wrapper rules are tried first — they inject SHELL=tokf rather than
+    // wrapping with `tokf run`, so pipe stripping does not apply to them.
+    let wrapper_result = apply_rules(rules.wrapper, cmd);
+    if wrapper_result != cmd {
+        if verbose {
+            eprintln!("[tokf] wrapper rewrite: task runner shell override");
+        }
+        return format!("{env_prefix}{wrapper_result}");
+    }
+
     if has_bare_pipe(cmd) {
         if strip_pipes && let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd) {
-            let rewritten = apply_rules(filter_rules, &base);
+            let rewritten = apply_rules(rules.filter, &base);
             if rewritten != base {
                 if verbose {
                     eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
@@ -103,7 +159,7 @@ fn rewrite_segment(
         return segment.to_string();
     }
 
-    let result = apply_rules(filter_rules, cmd);
+    let result = apply_rules(rules.filter, cmd);
     if result == cmd {
         segment.to_string()
     } else {
@@ -162,17 +218,20 @@ pub(crate) fn rewrite_with_config(
         return command.to_string();
     }
 
-    // User rules run before the pipe guard so they can explicitly wrap piped commands.
+    // User rules run before everything — they can override built-in wrappers.
     let user_result = apply_rules(&user_config.rewrite, command);
     if user_result != command {
         return user_result;
     }
 
-    let filter_rules = build_rules_from_filters(search_dirs);
+    let rules = SegmentRules {
+        wrapper: &build_wrapper_rules(),
+        filter: &build_rules_from_filters(search_dirs),
+    };
     let segments = split_compound(command);
 
     if segments.len() == 1 {
-        return rewrite_segment(command, &filter_rules, strip_pipes, prefer_less, verbose);
+        return rewrite_segment(command, &rules, strip_pipes, prefer_less, verbose);
     }
 
     // Compound command: rewrite each segment independently so every sub-command
@@ -185,7 +244,7 @@ pub(crate) fn rewrite_with_config(
         {
             trimmed.to_string()
         } else {
-            let r = rewrite_segment(trimmed, &filter_rules, strip_pipes, prefer_less, verbose);
+            let r = rewrite_segment(trimmed, &rules, strip_pipes, prefer_less, verbose);
             if r != trimmed {
                 changed = true;
             }

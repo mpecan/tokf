@@ -174,3 +174,41 @@ fn rewrite_compound_prefer_less_per_segment() {
         "tokf run git add . && tokf run --baseline-pipe 'head -5' --prefer-less git diff"
     );
 }
+
+// --- inject_pipe_flags direct unit tests ---
+
+#[test]
+fn inject_pipe_flags_normal() {
+    let r = inject_pipe_flags("tokf run cargo test", "tail -5", false);
+    assert_eq!(r, "tokf run --baseline-pipe 'tail -5' cargo test");
+}
+
+#[test]
+fn inject_pipe_flags_with_prefer_less() {
+    let r = inject_pipe_flags("tokf run cargo test", "tail -5", true);
+    assert_eq!(
+        r,
+        "tokf run --baseline-pipe 'tail -5' --prefer-less cargo test"
+    );
+}
+
+#[test]
+fn inject_pipe_flags_non_tokf_prefix_passthrough() {
+    let r = inject_pipe_flags("some-other-wrapper cargo test", "tail -5", false);
+    assert_eq!(r, "some-other-wrapper cargo test");
+}
+
+#[test]
+fn inject_pipe_flags_single_quote_escaping() {
+    let r = inject_pipe_flags("tokf run cargo test", "grep -E 'fail'", false);
+    assert_eq!(
+        r,
+        "tokf run --baseline-pipe 'grep -E '\\''fail'\\''' cargo test"
+    );
+}
+
+#[test]
+fn inject_pipe_flags_empty_suffix() {
+    let r = inject_pipe_flags("tokf run cargo test", "", false);
+    assert_eq!(r, "tokf run --baseline-pipe '' cargo test");
+}
