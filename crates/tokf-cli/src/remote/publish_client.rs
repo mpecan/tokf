@@ -38,12 +38,12 @@ pub fn publish_filter(
 ) -> anyhow::Result<(bool, PublishResponse)> {
     let filter_bytes = filter_bytes.to_vec();
     let test_files = test_files.to_vec();
-    let resp = client.post_multipart("/api/filters", || {
+    let resp = client.post_multipart("/api/filters", move || {
         let mut form = Form::new()
-            .part("filter", Part::bytes(filter_bytes.clone()))
+            .part("filter", Part::bytes(filter_bytes))
             .part("mit_license_accepted", Part::text("true"));
-        for (name, bytes) in &test_files {
-            form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
+        for (name, bytes) in test_files {
+            form = form.part(format!("test:{name}"), Part::bytes(bytes));
         }
         form
     })?;

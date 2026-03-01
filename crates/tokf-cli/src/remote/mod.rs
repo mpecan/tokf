@@ -265,9 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_error_display_connection_failed() {
-        // Build a reqwest error by attempting to connect to an invalid address.
-        // We test the Display format indirectly via the enum variant.
+    fn remote_error_display_unauthorized() {
         let err = RemoteError::Unauthorized;
         let msg = err.to_string();
         assert!(msg.contains("401 Unauthorized"));
@@ -341,10 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_error_display_request_error_no_debug() {
-        // RequestError should show a generic message without debug.
-        // We can't easily construct a reqwest::Error, so test the variant exists
-        // and is_transient returns false (tested separately).
+    fn remote_error_display_client_error_bad_request() {
         let err = RemoteError::ClientError {
             url: "https://api.tokf.net/bad".to_string(),
             status: reqwest::StatusCode::BAD_REQUEST,
@@ -352,6 +347,7 @@ mod tests {
         };
         let msg = err.to_string();
         assert!(msg.contains("400"));
+        assert!(msg.contains("TOKF_DEBUG=1"));
     }
 
     #[test]
