@@ -192,12 +192,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Publish stdlib filters
-        run: bash scripts/publish-stdlib.sh
+        run: cargo run -p tokf --features stdlib-publish -- publish-stdlib
         env:
           TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
-          TOKF_REGISTRY_URL: https://api.tokf.dev
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKF_REGISTRY_URL: https://api.tokf.net
 
   trigger-site-rebuild:
     name: Trigger tokf.net rebuild

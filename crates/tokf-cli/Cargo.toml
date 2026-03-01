@@ -37,6 +37,9 @@ open = "5"
 uuid = { version = "1", features = ["v4"] }
 gethostname = "1"
 
+[features]
+stdlib-publish = []
+
 [dev-dependencies]
 tempfile = "3"
 serial_test = "3"

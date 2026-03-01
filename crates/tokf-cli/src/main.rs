@@ -8,6 +8,8 @@ mod info_cmd;
 mod install_cmd;
 mod output;
 mod publish_cmd;
+#[cfg(feature = "stdlib-publish")]
+mod publish_stdlib_cmd;
 mod remote_cmd;
 mod resolve;
 mod search_cmd;
@@ -212,6 +214,19 @@ enum Commands {
         /// Show last sync time and count of pending events
         #[arg(long)]
         status: bool,
+    },
+    /// Publish all stdlib filters to the registry (CI only)
+    #[cfg(feature = "stdlib-publish")]
+    PublishStdlib {
+        /// Registry base URL
+        #[arg(long, env = "TOKF_REGISTRY_URL")]
+        registry_url: String,
+        /// Service token for authentication
+        #[arg(long, env = "TOKF_SERVICE_TOKEN")]
+        token: String,
+        /// Preview the payload without uploading
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Install a filter from the community registry
     Install {
@@ -423,6 +438,12 @@ fn main() {
             update_tests,
         } => publish_cmd::cmd_publish(filter, *dry_run, *update_tests),
         Commands::Search { query, limit, json } => search_cmd::cmd_search(query, *limit, *json),
+        #[cfg(feature = "stdlib-publish")]
+        Commands::PublishStdlib {
+            registry_url,
+            token,
+            dry_run,
+        } => publish_stdlib_cmd::cmd_publish_stdlib(registry_url, token, *dry_run),
         Commands::Install {
             filter,
             local,

@@ -1,3 +1,5 @@
+use std::error::Error as _;
+
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{Credentials, Region};
 use aws_sdk_s3::primitives::ByteStream;
@@ -76,7 +78,11 @@ impl StorageClient for R2StorageClient {
             .key(key)
             .body(ByteStream::from(body))
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(key, bucket = %self.bucket, error = %e, source = ?e.source(), "R2 put_object failed");
+                anyhow::anyhow!("R2 put_object failed for key '{key}': {e}")
+            })?;
         Ok(key.to_string())
     }
 
@@ -100,6 +106,7 @@ impl StorageClient for R2StorageClient {
                 {
                     return Ok(None);
                 }
+                tracing::error!(key, bucket = %self.bucket, error = %err, source = ?err.source(), "R2 get_object failed");
                 Err(err.into())
             }
         }
@@ -111,7 +118,11 @@ impl StorageClient for R2StorageClient {
             .bucket(&self.bucket)
             .key(key)
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(key, bucket = %self.bucket, error = %e, source = ?e.source(), "R2 delete_object failed");
+                anyhow::anyhow!("R2 delete_object failed for key '{key}': {e}")
+            })?;
         Ok(())
     }
 
@@ -132,6 +143,7 @@ impl StorageClient for R2StorageClient {
                 {
                     return Ok(false);
                 }
+                tracing::error!(key, bucket = %self.bucket, error = %err, source = ?err.source(), "R2 head_object failed");
                 Err(err.into())
             }
         }

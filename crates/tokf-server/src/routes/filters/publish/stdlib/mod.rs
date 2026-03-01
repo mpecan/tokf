@@ -204,6 +204,8 @@ pub async fn publish_stdlib(
     State(state): State<AppState>,
     Json(req): Json<StdlibPublishRequest>,
 ) -> Result<(StatusCode, Json<StdlibPublishResponse>), AppError> {
+    tracing::info!(count = req.filters.len(), "publish-stdlib request received");
+
     if req.filters.len() > MAX_BATCH_SIZE {
         return Err(AppError::BadRequest(format!(
             "batch size {} exceeds maximum of {MAX_BATCH_SIZE}",
@@ -219,9 +221,23 @@ pub async fn publish_stdlib(
         match process_entry(&state, entry, &mut skipped).await {
             Ok(true) => published += 1,
             Ok(false) => {} // skipped — already counted inside process_entry
-            Err(e) => failed.push(e),
+            Err(e) => {
+                tracing::warn!(
+                    command = %e.command_pattern,
+                    error = %e.error,
+                    "stdlib filter failed"
+                );
+                failed.push(e);
+            }
         }
     }
+
+    tracing::info!(
+        published,
+        skipped,
+        failed = failed.len(),
+        "publish-stdlib complete"
+    );
 
     let status = if failed.is_empty() {
         if published > 0 {
@@ -252,24 +268,48 @@ async fn process_entry(
     entry: &StdlibFilterEntry,
     skipped: &mut usize,
 ) -> Result<bool, StdlibFailure> {
-    let prepared = prepare_stdlib_filter(entry).map_err(|e| StdlibFailure {
-        command_pattern: guess_command_pattern(&entry.filter_toml),
-        error: e,
-    })?;
+    let cmd_hint = guess_command_pattern(&entry.filter_toml);
+    let prepared =
+        prepare_stdlib_filter(entry).map_err(|e| fail(&cmd_hint, "preparation failed", e))?;
 
-    // Check if already published (idempotent)
+    if check_existing(state, &prepared, skipped).await? {
+        return Ok(false);
+    }
+
+    run_verification(&prepared.config, &prepared.test_cases)
+        .await
+        .map_err(|e| fail(&prepared.command_pattern, "verification failed", e))?;
+
+    persist_filter(state, &prepared, &entry.author_github_username)
+        .await
+        .map_err(|e| fail(&prepared.command_pattern, "persist failed", e.to_string()))?;
+
+    Ok(true)
+}
+
+/// Build a `StdlibFailure` and log a warning in one call.
+fn fail(command_pattern: &str, phase: &str, error: String) -> StdlibFailure {
+    tracing::warn!(command = %command_pattern, error = %error, "stdlib {phase}");
+    StdlibFailure {
+        command_pattern: command_pattern.to_string(),
+        error,
+    }
+}
+
+/// Returns `Ok(true)` if the filter already exists (and updates `is_stdlib`).
+async fn check_existing(
+    state: &AppState,
+    prepared: &PreparedStdlibFilter,
+    skipped: &mut usize,
+) -> Result<bool, StdlibFailure> {
     let existing: Option<String> =
         sqlx::query_scalar("SELECT content_hash FROM filters WHERE content_hash = $1")
             .bind(&prepared.content_hash)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| StdlibFailure {
-                command_pattern: prepared.command_pattern.clone(),
-                error: e.to_string(),
-            })?;
+            .map_err(|e| fail(&prepared.command_pattern, "db lookup", e.to_string()))?;
 
     if existing.is_some() {
-        // Ensure is_stdlib flag is set even if previously published by a user
         if let Err(e) = sqlx::query("UPDATE filters SET is_stdlib = TRUE WHERE content_hash = $1")
             .bind(&prepared.content_hash)
             .execute(&state.db)
@@ -278,25 +318,10 @@ async fn process_entry(
             tracing::warn!(hash = %prepared.content_hash, "failed to set is_stdlib: {e}");
         }
         *skipped += 1;
-        return Ok(false);
+        return Ok(true);
     }
 
-    // Run verification
-    run_verification(&prepared.config, &prepared.test_cases)
-        .await
-        .map_err(|e| StdlibFailure {
-            command_pattern: prepared.command_pattern.clone(),
-            error: e,
-        })?;
-
-    persist_filter(state, &prepared, &entry.author_github_username)
-        .await
-        .map_err(|e| StdlibFailure {
-            command_pattern: prepared.command_pattern.clone(),
-            error: e.to_string(),
-        })?;
-
-    Ok(true)
+    Ok(false)
 }
 
 /// Upload to storage and insert DB records for a validated stdlib filter.
