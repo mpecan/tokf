@@ -28,15 +28,9 @@ fn exit_code_from_status(status: std::process::ExitStatus) -> i32 {
     }
 }
 
-/// Join collected lines into a single string, with a trailing newline if non-empty.
+/// Join collected lines into a single string without forcing a trailing newline.
 fn join_lines(lines: &[String]) -> String {
-    if lines.is_empty() {
-        String::new()
-    } else {
-        let mut s = lines.join("\n");
-        s.push('\n');
-        s
-    }
+    lines.join("\n")
 }
 
 /// Run a command, reading stdout and stderr concurrently so that

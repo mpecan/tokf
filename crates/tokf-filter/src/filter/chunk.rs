@@ -89,7 +89,7 @@ pub fn process_chunks(configs: &[ChunkConfig], lines: &[&str]) -> HashMap<String
             .collect();
 
         apply_carry_forward(config, &mut items);
-        normalize_keys(&mut items);
+        normalize_keys(config, &mut items);
 
         let data = match (&config.group_by, &config.children_as) {
             (Some(group_field), Some(children_key)) => {
@@ -191,11 +191,30 @@ fn process_single_chunk(chunk_lines: &[&str], compiled: &CompiledChunkConfig<'_>
 
 /// Ensure all chunk items have the same key set.
 ///
-/// Collects the union of all keys across items, then fills missing keys with
-/// empty string. This prevents outer branch-aggregate variables from bleeding
-/// through in `each:` templates when a chunk item is missing a field.
-pub(crate) fn normalize_keys(items: &mut [ChunkItem]) {
-    let all_keys: HashSet<String> = items.iter().flat_map(|item| item.keys().cloned()).collect();
+/// Collects the union of all keys across items — including configured field
+/// names from extract, `body_extract`, and aggregate rules — then fills missing
+/// keys with empty string. This prevents outer branch-aggregate variables from
+/// bleeding through in `each:` templates when a chunk item is missing a field.
+pub(crate) fn normalize_keys(config: &ChunkConfig, items: &mut [ChunkItem]) {
+    let mut all_keys: HashSet<String> =
+        items.iter().flat_map(|item| item.keys().cloned()).collect();
+
+    // Seed from configured field names so they always exist on every item.
+    if let Some(ref extract) = config.extract {
+        all_keys.insert(extract.as_name.clone());
+    }
+    for be in &config.body_extract {
+        all_keys.insert(be.as_name.clone());
+    }
+    for agg in &config.aggregate {
+        if let Some(ref sum) = agg.sum {
+            all_keys.insert(sum.clone());
+        }
+        if let Some(ref count_as) = agg.count_as {
+            all_keys.insert(count_as.clone());
+        }
+    }
+
     for item in items.iter_mut() {
         for key in &all_keys {
             item.entry(key.clone()).or_insert_with(String::new);
@@ -285,13 +304,21 @@ fn group_by_field_with_children(
 }
 
 /// Merge `source` into `target`: sum numeric fields, keep first non-numeric.
+///
+/// Empty existing values are treated as 0 when the incoming value is numeric,
+/// so grouping reliably sums fields regardless of encounter order.
 fn merge_into(target: &mut ChunkItem, source: &ChunkItem) {
     for (k, v) in source {
         if let Some(existing_val) = target.get(k) {
-            if let (Ok(a), Ok(b)) = (existing_val.parse::<i64>(), v.parse::<i64>()) {
+            let existing_trimmed = existing_val.trim();
+            if existing_trimmed.is_empty() {
+                if let Ok(b) = v.parse::<i64>() {
+                    target.insert(k.clone(), b.to_string());
+                }
+            } else if let (Ok(a), Ok(b)) = (existing_val.parse::<i64>(), v.parse::<i64>()) {
                 target.insert(k.clone(), (a + b).to_string());
             }
-            // Non-numeric: keep existing (first wins)
+            // Non-numeric and non-empty existing value: keep existing (first wins)
         } else {
             target.insert(k.clone(), v.clone());
         }

@@ -92,7 +92,7 @@ fn exclude_header_line() {
     let result = process_chunks(&[config], &lines);
     let suites = flat_items(&result["suites"]);
     assert_eq!(suites.len(), 1);
-    assert!(!suites[0].contains_key("crate")); // header was excluded
+    assert_eq!(suites[0]["crate"], ""); // header was excluded, seeded from config as empty
     assert_eq!(suites[0]["passed"], "10");
 }
 
@@ -211,7 +211,7 @@ fn normalize_keys_fills_missing_fields() {
             // missing "passed"
         ]),
     ];
-    normalize_keys(&mut items);
+    normalize_keys(&basic_config(), &mut items);
     assert_eq!(items[0]["passed"], "10");
     assert_eq!(items[1]["passed"], ""); // filled with empty string
     assert_eq!(items[0]["crate"], "alpha");
@@ -221,7 +221,7 @@ fn normalize_keys_fills_missing_fields() {
 #[test]
 fn normalize_keys_no_items() {
     let mut items: Vec<ChunkItem> = vec![];
-    normalize_keys(&mut items); // should not panic
+    normalize_keys(&basic_config(), &mut items); // should not panic
     assert!(items.is_empty());
 }
 
@@ -237,11 +237,21 @@ fn normalize_keys_uniform_items_unchanged() {
             ("b".to_string(), "4".to_string()),
         ]),
     ];
-    normalize_keys(&mut items);
+    normalize_keys(&basic_config(), &mut items);
     assert_eq!(items[0]["a"], "1");
     assert_eq!(items[0]["b"], "2");
     assert_eq!(items[1]["a"], "3");
     assert_eq!(items[1]["b"], "4");
+}
+
+#[test]
+fn normalize_keys_seeds_from_config() {
+    // Even when no item has a configured field, it should be seeded from config.
+    let mut items = vec![ChunkItem::from([("other".to_string(), "x".to_string())])];
+    normalize_keys(&basic_config(), &mut items);
+    // basic_config has extract.as = "crate" and aggregate.sum = "passed"
+    assert_eq!(items[0].get("crate").unwrap(), "");
+    assert_eq!(items[0].get("passed").unwrap(), "");
 }
 
 #[test]
@@ -313,8 +323,8 @@ fn invalid_extract_regex_skipped() {
     let result = process_chunks(&[config], &lines);
     let suites = flat_items(&result["suites"]);
     assert_eq!(suites.len(), 1);
-    // Extract failed gracefully — no "name" key
-    assert!(!suites[0].contains_key("name"));
+    // Extract regex invalid — field seeded from config as empty
+    assert_eq!(suites[0]["name"], "");
     assert_eq!(suites[0]["passed"], "10"); // aggregation still works
 }
 
@@ -334,7 +344,7 @@ fn invalid_body_extract_regex_skipped() {
     let result = process_chunks(&[config], &lines);
     let suites = flat_items(&result["suites"]);
     assert_eq!(suites.len(), 1);
-    assert!(!suites[0].contains_key("total")); // skipped gracefully
+    assert_eq!(suites[0]["total"], ""); // regex invalid, seeded from config as empty
     assert_eq!(suites[0]["passed"], "42");
 }
 
@@ -453,6 +463,35 @@ fn carry_forward_disabled_by_default() {
     let suites = flat_items(&result["suites"]);
     assert_eq!(suites[0]["crate"], "tokf");
     assert_eq!(suites[1]["crate"], ""); // NOT carried — normalized to empty
+}
+
+// --- merge_into tests ---
+
+#[test]
+fn merge_into_empty_existing_with_numeric_incoming() {
+    // When the first chunk in a group has an empty field (from normalize_keys)
+    // and a later chunk has a numeric value, the group should pick up the number.
+    let lines = vec![
+        "     Running no-deps-match",
+        "test result: ok. 0 passed; 0 failed",
+        "     Running deps/tokf-abc123",
+        "test result: ok. 10 passed; 0 failed",
+    ];
+    let mut config = basic_config();
+    config.group_by = Some("crate".to_string());
+    config.extract = Some(ChunkExtract {
+        pattern: r"deps/([\w_-]+)-".to_string(),
+        as_name: "crate".to_string(),
+        carry_forward: false,
+    });
+    let result = process_chunks(&[config], &lines);
+    let suites = flat_items(&result["suites"]);
+    // The first chunk has crate="" and the second has crate="tokf",
+    // so they should NOT merge. But verify the empty-crate group still sums.
+    assert_eq!(suites.len(), 2);
+    assert_eq!(suites[0]["crate"], "");
+    assert_eq!(suites[1]["crate"], "tokf");
+    assert_eq!(suites[1]["passed"], "10");
 }
 
 // --- group_by_field_with_children tests ---

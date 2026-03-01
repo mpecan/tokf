@@ -222,10 +222,10 @@ fn apply_internal(
 
     // 1.5 + 1.6. Replace + per-line cleanup (strip_ansi, trim_lines)
     let raw = build_raw_lines(&result.combined, config, opts);
-    let raw_lines: Vec<&str> = raw.clean.iter().map(String::as_str).collect();
+    let clean_lines: Vec<&str> = raw.clean.iter().map(String::as_str).collect();
 
     // 2. Top-level skip/keep pre-filtering
-    let lines = skip::apply_skip(&config.skip, &raw_lines);
+    let lines = skip::apply_skip(&config.skip, &clean_lines);
     let lines = skip::apply_keep(&config.keep, &lines);
 
     // 2.5. Dedup
