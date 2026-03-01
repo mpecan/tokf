@@ -280,7 +280,7 @@ fn write_hook_shim_creates_executable_script() {
 }
 
 #[test]
-fn write_hook_shim_quotes_path() {
+fn write_hook_shim_uses_bare_tokf() {
     let dir = tempfile::TempDir::new().unwrap();
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
@@ -288,10 +288,9 @@ fn write_hook_shim_quotes_path() {
     write_hook_shim(&hook_dir, &hook_script).unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
-    // The exec line should contain single quotes around the path
     assert!(
-        content.contains("exec '"),
-        "expected quoted path in script, got: {content}"
+        content.contains("exec tokf hook handle"),
+        "expected bare tokf in script, got: {content}"
     );
 }
 

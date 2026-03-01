@@ -114,10 +114,8 @@ pub(crate) fn install_to(hook_dir: &Path, settings_path: &Path) -> anyhow::Resul
 fn write_hook_shim(hook_dir: &Path, hook_script: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(hook_dir)?;
 
-    let tokf_path = std::env::current_exe()?;
-    let quoted = runner::shell_escape(&tokf_path.to_string_lossy());
-    let content = format!("#!/bin/sh\nexec {quoted} hook handle\n");
-    std::fs::write(hook_script, &content)?;
+    let content = "#!/bin/sh\nexec tokf hook handle\n";
+    std::fs::write(hook_script, content)?;
 
     // Make executable on Unix
     #[cfg(unix)]
