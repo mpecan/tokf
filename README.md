@@ -124,6 +124,25 @@ tokf looks up a filter for `git push`, runs the command, and applies the filter.
 
 ---
 
+## Set up automatic filtering
+
+If you use an AI coding tool, install the hook so every command is filtered automatically — no `tokf run` prefix needed:
+
+```sh
+# Claude Code (recommended: --global so it works in every project)
+tokf hook install --global
+
+# OpenCode
+tokf hook install --tool opencode --global
+
+# OpenAI Codex CLI
+tokf hook install --tool codex --global
+```
+
+Drop `--global` to install for the current project only. See [Integrations](#integrations) for details on each tool, the `--path` flag, and optional extras like the filter-authoring skill.
+
+---
+
 ## Usage
 
 ### Run a command with filtering
@@ -708,6 +727,15 @@ tokf hook install --global # user-level (~/.config/tokf/)
 ```
 
 Once installed, every command Claude runs through the Bash tool is filtered transparently. Track cumulative savings with `tokf gain`.
+
+### Custom binary path
+
+By default the generated hook script calls bare `tokf`, relying on PATH at runtime. If `tokf` isn't on PATH in the hook's execution environment (common with Linuxbrew or `cargo install` when PATH is only set in interactive shell profiles), pass `--path` to embed a specific binary location:
+
+```sh
+tokf hook install --global --path ~/.cargo/bin/tokf
+tokf hook install --tool opencode --path /home/linuxbrew/.linuxbrew/bin/tokf
+```
 
 tokf also ships a filter-authoring skill that teaches Claude the complete filter schema:
 

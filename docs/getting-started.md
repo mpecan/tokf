@@ -39,6 +39,25 @@ tokf looks up a filter for `git push`, runs the command, and applies the filter.
 
 ---
 
+## Set up automatic filtering
+
+If you use an AI coding tool, install the hook so every command is filtered automatically — no `tokf run` prefix needed:
+
+```sh
+# Claude Code (recommended: --global so it works in every project)
+tokf hook install --global
+
+# OpenCode
+tokf hook install --tool opencode --global
+
+# OpenAI Codex CLI
+tokf hook install --tool codex --global
+```
+
+Drop `--global` to install for the current project only. See [Integrations](#integrations) for details on each tool, the `--path` flag, and optional extras like the filter-authoring skill.
+
+---
+
 ## Usage
 
 ### Run a command with filtering
