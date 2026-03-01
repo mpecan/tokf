@@ -541,7 +541,7 @@ fn hook_install_opencode_embeds_tokf_path() {
     let plugin_file = dir.path().join(".opencode/plugins/tokf.ts");
     let content = std::fs::read_to_string(&plugin_file).unwrap();
     assert!(
-        !content.contains("{{TOKF_PATH}}"),
+        !content.contains("{{TOKF_BIN}}"),
         "plugin file must not contain raw placeholder, got: {content}"
     );
 }

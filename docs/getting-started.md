@@ -54,7 +54,7 @@ tokf hook install --tool opencode --global
 tokf hook install --tool codex --global
 ```
 
-Drop `--global` to install for the current project only. See [Integrations](#integrations) for details on each tool, the `--path` flag, and optional extras like the filter-authoring skill.
+Drop `--global` to install for the current project only. See [Claude Code hook](#claude-code-hook) for details on each tool, the `--path` flag, and optional extras like the filter-authoring skill.
 
 ---
 
