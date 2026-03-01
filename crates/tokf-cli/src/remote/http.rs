@@ -180,7 +180,7 @@ impl Client {
         form_builder: F,
     ) -> anyhow::Result<reqwest::blocking::Response>
     where
-        F: Fn() -> Form,
+        F: FnOnce() -> Form,
     {
         let url = self.url(path);
         let form = form_builder();
