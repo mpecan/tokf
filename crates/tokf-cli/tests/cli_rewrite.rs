@@ -549,6 +549,45 @@ fn which_variant_file_match() {
     );
 }
 
+// --- Built-in wrapper rewrites ---
+
+#[test]
+fn rewrite_make_check() {
+    let r = rewrite_with_stdlib("make check");
+    assert_eq!(r, "make SHELL=tokf check");
+}
+
+#[test]
+fn rewrite_make_bare() {
+    let r = rewrite_with_stdlib("make");
+    assert_eq!(r, "make SHELL=tokf");
+}
+
+#[test]
+fn rewrite_just_test() {
+    let r = rewrite_with_stdlib("just test");
+    assert_eq!(r, "just --shell tokf --shell-arg -cu test");
+}
+
+#[test]
+fn rewrite_just_bare() {
+    let r = rewrite_with_stdlib("just");
+    assert_eq!(r, "just --shell tokf --shell-arg -cu");
+}
+
+#[test]
+fn rewrite_cmake_not_wrapper() {
+    let r = rewrite_with_stdlib("cmake --build .");
+    // cmake should NOT match the make wrapper.
+    assert_eq!(r, "cmake --build .");
+}
+
+#[test]
+fn rewrite_make_compound_with_git() {
+    let r = rewrite_with_stdlib("make check && git status");
+    assert_eq!(r, "make SHELL=tokf check && tokf run git status");
+}
+
 // --- Exit code ---
 
 #[test]

@@ -13,6 +13,84 @@ tokf looks for a `rewrites.toml` file in two locations (first found wins):
 
 This file controls custom rewrite rules, skip patterns, and pipe handling. All `[pipe]`, `[skip]`, and `[[rewrite]]` sections documented below go in this file.
 
+## Task runner integration (make, just)
+
+Task runners like `make` and `just` execute recipe lines via a shell (`$SHELL -c 'recipe_line'`). By default, only the outer `make`/`just` command is visible to tokf — child commands (`cargo test`, `uv run mypy`, etc.) pass through unfiltered.
+
+tokf solves this with **built-in wrapper rules** that inject tokf as the task runner's shell. Each recipe line is then individually matched against installed filters:
+
+```sh
+# What you type:
+make check
+
+# What tokf rewrites it to:
+make SHELL=tokf check
+
+# What make then does for each recipe line:
+tokf -c 'cargo test'          → filter matches → filtered output
+tokf -c 'cargo clippy'        → filter matches → filtered output
+tokf -c 'echo done'           → no filter → delegates to sh
+```
+
+For `just`, the `--shell` flag is used instead:
+
+```sh
+just test  →  just --shell tokf --shell-arg -cu test
+```
+
+### Exit code preservation
+
+Shell mode (`tokf -c '...'`) always propagates the **real exit code** — no masking, no "Error: Exit code N" prefix. This means `make` sees the actual exit code from each recipe line and stops on failure as expected.
+
+### Shell mode (`tokf -c`)
+
+When invoked as `tokf -c 'command'` (or with combined flags like `-cu`, `-ec`), tokf enters shell mode. It tries to match the command against installed filters. If a match is found, the command runs through tokf's filter pipeline and filtered output is printed. If no match is found, the command is delegated to `sh` with the same flags — so unfiltered recipes run normally.
+
+This mode is not typically invoked directly; it is called by task runners (make, just) after the rewrite injects tokf as their shell.
+
+### Compound and complex recipe lines
+
+Recipe lines with shell metacharacters — operators (`&&`, `||`, `;`), pipes (`|`), redirections (`>`, `<`), quotes, globs, or subshells — are delegated to the real shell (`sh`) so that their semantics are preserved. (Operators inside quoted strings may also trigger delegation — this is a safe false positive since `sh` handles them correctly.) Only simple `command arg arg` recipe lines are matched against filters.
+
+### Debugging task runner rewrites
+
+Use `tokf rewrite --verbose "make check"` to confirm the wrapper rewrite is active and see which rule fired.
+
+Shell mode also respects environment variables for diagnostics (since it has no access to CLI flags like `--verbose`):
+
+```sh
+TOKF_VERBOSE=1 make check     # print filter resolution details for each recipe line
+TOKF_NO_FILTER=1 make check   # bypass filtering entirely, delegate all recipe lines to sh
+```
+
+### Overriding or disabling wrappers
+
+The built-in wrappers for `make` and `just` can be overridden or disabled via `[[rewrite]]` or `[skip]` entries in `.tokf/rewrites.toml`:
+
+```toml
+# Override the make wrapper with a custom one:
+# "make check" → "make SHELL=tokf .SHELLFLAGS=-ec check"
+# Note: use (?:[^\\s]*/)? prefix to also match full paths like /usr/bin/make
+[[rewrite]]
+match = "^(?:[^\\s]*/)?make(\\s.*)?$"
+replace = "make SHELL=tokf .SHELLFLAGS=-ec{1}"
+
+# Or disable it entirely:
+[skip]
+patterns = ["^make"]
+```
+
+### Adding wrappers for other task runners
+
+You can add wrappers for other task runners via `[[rewrite]]`. The exact mechanism depends on how the task runner invokes recipe lines — check its documentation for shell override options:
+
+```toml
+# Example: if your task runner respects $SHELL for recipe execution
+[[rewrite]]
+match = "^(?:[^\\s]*/)?mise run(\\s.*)?$"
+replace = "SHELL=tokf mise run{1}"
+```
+
 ## Piped commands
 
 When a command is piped to a simple output-shaping tool (`grep`, `tail`, or `head`), tokf **strips the pipe automatically** and uses its own structured filter output instead. The original pipe suffix is passed to `--baseline-pipe` so token savings are still calculated accurately.

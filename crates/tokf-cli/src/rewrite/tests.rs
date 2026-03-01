@@ -304,3 +304,217 @@ fn rewrite_basename_and_transparent_flags_combined() {
         "tokf run /usr/bin/git --no-pager -C /repo log --oneline"
     );
 }
+
+// --- built-in wrapper rules (make, just) ---
+
+#[test]
+fn wrapper_make_with_args() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "make SHELL=tokf check");
+}
+
+#[test]
+fn wrapper_make_no_args() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("make", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "make SHELL=tokf");
+}
+
+#[test]
+fn wrapper_make_full_path() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "/usr/bin/make check",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "make SHELL=tokf check");
+}
+
+#[test]
+fn wrapper_just_with_args() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("just test", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "just --shell tokf --shell-arg -cu test");
+}
+
+#[test]
+fn wrapper_just_no_args() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("just", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "just --shell tokf --shell-arg -cu");
+}
+
+#[test]
+fn wrapper_just_full_path() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "/usr/local/bin/just test",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "just --shell tokf --shell-arg -cu test");
+}
+
+#[test]
+fn wrapper_user_rule_overrides_builtin_wrapper() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig {
+        skip: None,
+        pipe: None,
+        rewrite: vec![RewriteRule {
+            match_pattern: r"^make(\s.*)?$".to_string(),
+            replace: "custom-make{1}".to_string(),
+        }],
+    };
+    let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "custom-make check");
+}
+
+#[test]
+fn wrapper_skip_pattern_prevents_wrapper() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig {
+        skip: Some(types::SkipConfig {
+            patterns: vec!["^make".to_string()],
+        }),
+        pipe: None,
+        rewrite: vec![],
+    };
+    let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "make check");
+}
+
+#[test]
+fn wrapper_make_in_compound() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "make check && git status",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "make SHELL=tokf check && tokf run git status");
+}
+
+#[test]
+fn wrapper_env_prefix_preserved() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "MAKEFLAGS=-j4 make check",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "MAKEFLAGS=-j4 make SHELL=tokf check");
+}
+
+// --- negative: commands that must NOT match wrapper rules ---
+
+#[test]
+fn wrapper_cmake_not_rewritten() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "cmake --build .",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "cmake --build .");
+}
+
+#[test]
+fn wrapper_remake_not_rewritten() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("remake check", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "remake check");
+}
+
+#[test]
+fn wrapper_justfile_not_rewritten() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("justfile test", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "justfile test");
+}
+
+#[test]
+fn wrapper_adjust_not_rewritten() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config("adjust params", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(r, "adjust params");
+}
+
+// --- wrapper edge cases ---
+
+#[test]
+fn wrapper_make_with_pipe_preserves_pipe() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "make check | tee log.txt",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "make SHELL=tokf check | tee log.txt");
+}
+
+#[test]
+fn wrapper_two_wrappers_in_compound() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "just test && make check",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(
+        r,
+        "just --shell tokf --shell-arg -cu test && make SHELL=tokf check"
+    );
+}
+
+#[test]
+fn wrapper_env_prefix_with_just() {
+    let dir = TempDir::new().unwrap();
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "CI=true just test",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "CI=true just --shell tokf --shell-arg -cu test");
+}
+
+#[test]
+fn wrapper_build_rules_count() {
+    let rules = build_wrapper_rules();
+    assert_eq!(rules.len(), 2, "expected 2 built-in wrappers (make, just)");
+    // Verify regexes compile.
+    for rule in &rules {
+        regex::Regex::new(&rule.match_pattern).expect("built-in wrapper regex should compile");
+    }
+}
