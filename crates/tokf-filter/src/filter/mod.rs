@@ -406,6 +406,9 @@ fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests_chunk;
+#[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_color;
 #[cfg(test)]

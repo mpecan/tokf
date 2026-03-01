@@ -295,6 +295,10 @@ pub struct ChunkConfig {
 
     /// Field name to group chunks by (merging numeric fields).
     pub group_by: Option<String>,
+
+    /// When set alongside `group_by`, preserve each group's original items
+    /// as a nested collection under this name instead of discarding them.
+    pub children_as: Option<String>,
 }
 
 const fn default_true() -> bool {
@@ -324,6 +328,11 @@ pub struct ChunkFieldExtract {
     /// Variable name for the captured value.
     #[serde(rename = "as")]
     pub as_name: String,
+
+    /// When true, if this field is not extracted from a chunk, it inherits
+    /// the value from the most recent chunk that did extract it.
+    #[serde(default)]
+    pub carry_forward: bool,
 }
 
 /// Backward-compatible alias for header extraction.

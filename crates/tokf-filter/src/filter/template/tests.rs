@@ -361,19 +361,65 @@ fn pipe_lines_then_keep_then_join_chain() {
 
 // --- Structured collection (chunk) tests ---
 
+use super::super::chunk::ChunkData;
+
 fn chunks_with(name: &str, items: Vec<Vec<(&str, &str)>>) -> ChunkMap {
     let mut map = ChunkMap::new();
     map.insert(
         name.to_string(),
-        items
-            .into_iter()
-            .map(|pairs| {
-                pairs
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                    .collect()
-            })
-            .collect(),
+        ChunkData::Flat(
+            items
+                .into_iter()
+                .map(|pairs| {
+                    pairs
+                        .into_iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect()
+                })
+                .collect(),
+        ),
+    );
+    map
+}
+
+#[allow(clippy::type_complexity)]
+fn tree_chunks_with(
+    name: &str,
+    groups: Vec<Vec<(&str, &str)>>,
+    children_key: &str,
+    children: Vec<Vec<Vec<(&str, &str)>>>,
+) -> ChunkMap {
+    let mut map = ChunkMap::new();
+    let groups_items: Vec<ChunkItem> = groups
+        .into_iter()
+        .map(|pairs| {
+            pairs
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        })
+        .collect();
+    let children_items: Vec<Vec<ChunkItem>> = children
+        .into_iter()
+        .map(|group_children| {
+            group_children
+                .into_iter()
+                .map(|pairs| {
+                    pairs
+                        .into_iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect()
+                })
+                .collect()
+        })
+        .collect();
+    map.insert(
+        name.to_string(),
+        ChunkData::Tree {
+            groups: groups_items,
+            children_key: children_key.to_string(),
+            children: children_items,
+        },
     );
     map
 }
@@ -504,4 +550,119 @@ fn structured_collection_truncate_passthrough() {
     );
     // Should still contain the full item representation (passthrough)
     assert!(result.contains("crate=tokf"));
+}
+
+// --- Tree collection tests ---
+
+#[test]
+fn tree_collection_count() {
+    let c = tree_chunks_with(
+        "suites",
+        vec![
+            vec![("crate", "tokf"), ("passed", "23")],
+            vec![("crate", "tokf-filter"), ("passed", "50")],
+        ],
+        "children",
+        vec![
+            vec![
+                vec![("crate", "tokf"), ("passed", "12")],
+                vec![("crate", "tokf"), ("passed", "11")],
+            ],
+            vec![vec![("crate", "tokf-filter"), ("passed", "50")]],
+        ],
+    );
+    let result = render_template(
+        "{suites.count} groups",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "2 groups");
+}
+
+#[test]
+fn tree_collection_each_with_fields() {
+    let c = tree_chunks_with(
+        "suites",
+        vec![
+            vec![("crate", "alpha"), ("passed", "15")],
+            vec![("crate", "beta"), ("passed", "5")],
+        ],
+        "children",
+        vec![
+            vec![vec![("crate", "alpha"), ("passed", "15")]],
+            vec![vec![("crate", "beta"), ("passed", "5")]],
+        ],
+    );
+    let result = render_template(
+        "{suites | each: \"  {crate}: {passed}\" | join: \"\\n\"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "  alpha: 15\n  beta: 5");
+}
+
+#[test]
+fn tree_collection_each_with_children() {
+    let c = tree_chunks_with(
+        "suites",
+        vec![vec![("crate", "tokf"), ("passed", "23")]],
+        "children",
+        vec![vec![
+            vec![("suite", "lib"), ("passed", "12")],
+            vec![("suite", "main"), ("passed", "11")],
+        ]],
+    );
+    let result = render_template(
+        "{suites | each: \"{crate}: {passed}\\n{children | each: \\\"  {suite}: {passed}\\\" | join: \\\"\\\\n\\\"}\" | join: \"\\n\"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert!(result.contains("tokf: 23"));
+    assert!(result.contains("  lib: 12"));
+    assert!(result.contains("  main: 11"));
+}
+
+#[test]
+fn tree_collection_join_without_each() {
+    let c = tree_chunks_with(
+        "suites",
+        vec![vec![("crate", "tokf"), ("passed", "5")]],
+        "children",
+        vec![vec![vec![("crate", "tokf"), ("passed", "5")]]],
+    );
+    // join on TreeCollection uses group format_chunk_item
+    let result = render_template(
+        "{suites | join: \"; \"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert!(result.contains("crate=tokf"));
+    assert!(result.contains("passed=5"));
+}
+
+#[test]
+fn tree_collection_keep_filters_groups() {
+    let c = tree_chunks_with(
+        "suites",
+        vec![
+            vec![("crate", "alpha"), ("passed", "10")],
+            vec![("crate", "beta"), ("passed", "5")],
+        ],
+        "children",
+        vec![
+            vec![vec![("crate", "alpha"), ("passed", "10")]],
+            vec![vec![("crate", "beta"), ("passed", "5")]],
+        ],
+    );
+    let result = render_template(
+        "{suites | keep: \"alpha\" | each: \"{crate}\" | join: \",\"}",
+        &HashMap::new(),
+        &SectionMap::new(),
+        &c,
+    );
+    assert_eq!(result, "alpha");
 }

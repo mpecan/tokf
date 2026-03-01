@@ -59,6 +59,15 @@ test auth::tests::credentials_load ... ok
 
 test result: ok. 550 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
 
+     Running tests/cli_basic.rs (target/debug/deps/cli_basic-eee555)
+
+running 15 tests
+test test_run_echo ... ok
+test test_run_with_filter ... ok
+test test_passthrough ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
      Running unittests src/lib.rs (target/debug/deps/tokf_server-ddd444)
 
 running 95 tests
@@ -68,15 +77,6 @@ test db::tests::pool_connects ... ok
 test auth::tests::verify_token ... ok
 
 test result: ok. 95 passed; 0 failed; 27 ignored; 0 measured; 0 filtered out; finished in 0.08s
-
-     Running tests/cli_basic.rs (target/debug/deps/cli_basic-eee555)
-
-running 15 tests
-test test_run_echo ... ok
-test test_run_with_filter ... ok
-test test_passthrough ... ok
-
-test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
 
    Doc-tests tokf-common
 

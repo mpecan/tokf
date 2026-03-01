@@ -1,0 +1,18 @@
+name = "real workspace output with carry_forward groups integration tests under their crate"
+fixture = "full_pass_fixture.txt"
+exit_code = 0
+
+[[expect]]
+contains = "cargo test:"
+
+[[expect]]
+contains = "crdb_test_macro: 0 passed (1 suites)"
+
+[[expect]]
+contains = "e2e_tests: 0 passed (7 suites)"
+
+[[expect]]
+contains = "tokf_common: 21 passed (1 suites)"
+
+[[expect]]
+contains = "tokf_filter: 257 passed (1 suites)"

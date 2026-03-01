@@ -7,3 +7,6 @@ starts_with = "✓ cargo test: 12 passed, 0 failed, 3 ignored (1 suites)"
 
 [[expect]]
 contains = "tokf: 12 passed (1 suites)"
+
+[[expect]]
+contains = "unittests src/lib.rs: 12 passed"

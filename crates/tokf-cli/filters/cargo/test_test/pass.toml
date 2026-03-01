@@ -1,4 +1,4 @@
-name = "passing tests show aggregated summary with per-crate breakdown"
+name = "passing tests show aggregated summary with per-crate tree breakdown"
 fixture = "pass.txt"
 exit_code = 0
 
@@ -7,3 +7,9 @@ starts_with = "✓ cargo test: 23 passed, 0 failed, 0 ignored (3 suites)"
 
 [[expect]]
 contains = "tokf: 23 passed (3 suites)"
+
+[[expect]]
+contains = "unittests src/lib.rs: 12 passed"
+
+[[expect]]
+contains = "unittests src/main.rs: 11 passed"

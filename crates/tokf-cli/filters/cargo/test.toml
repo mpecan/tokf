@@ -39,16 +39,24 @@ name = "summary"
 match = "^test result:"
 collect_as = "summary_lines"
 
-# Chunk processing: per-crate breakdown from "Running" headers
+# Chunk processing: per-crate breakdown from "Running" headers.
+# "unittests" lines define crate boundaries; integration test suites
+# (tests/*.rs) inherit the crate name via carry_forward.
 [[chunk]]
 split_on = "^\\s*Running "
 include_split_line = true
 collect_as = "suites_detail"
 group_by = "crate_name"
+children_as = "children"
 
 [chunk.extract]
-pattern = 'deps/([\w_-]+)-'
+pattern = 'unittests.+deps/([\w_-]+)-'
 as = "crate_name"
+carry_forward = true
+
+[[chunk.body_extract]]
+pattern = 'Running\s+(.+?)\s+\(target/'
+as = "suite_name"
 
 [[chunk.aggregate]]
 pattern = '(\d+) passed'
@@ -66,9 +74,9 @@ sum = "ignored"
 pattern = '^test result:'
 count_as = "suite_count"
 
-# Success: aggregate summaries + per-crate breakdown
+# Success: aggregate summaries + per-crate tree breakdown
 [on_success]
-output = "✓ cargo test: {passed} passed, {failed} failed, {ignored} ignored ({suites} suites)\n{suites_detail | each: \"  {crate_name}: {passed} passed ({suite_count} suites)\" | join: \"\\n\"}"
+output = "✓ cargo test: {passed} passed, {failed} failed, {ignored} ignored ({suites} suites)\n{suites_detail | each: \"  {crate_name}: {passed} passed ({suite_count} suites)\\n{children | each: \\\"    {suite_name}: {passed} passed\\\" | join: \\\"\\\\n\\\"}\" | join: \"\\n\"}"
 
 [[on_success.aggregates]]
 from = "summary_lines"

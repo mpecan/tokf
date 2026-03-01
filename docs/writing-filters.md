@@ -214,6 +214,8 @@ count_as = "suite_count"
 | `body_extract` | Extract fields from body lines (`pattern` + `as`, first match wins) |
 | `aggregate` | Per-chunk aggregation rules (run within each chunk's own lines) |
 | `group_by` | Merge chunks sharing the same field value, summing numeric fields |
+| `children_as` | When set with `group_by`, preserve original items as a nested collection under this name |
+| `carry_forward` | On `extract` or `body_extract`: inherit value from the previous chunk when the pattern doesn't match |
 
 The resulting structured collection is available in templates as `{suites_detail}` and supports field access in `each` pipes.
 
@@ -230,6 +232,42 @@ output = """✓ cargo test: {passed} passed ({suites} suites)
 Inside the `each` template, all named fields from the chunk item are available as variables (`{crate_name}`, `{passed}`, `{suite_count}`), plus `{index}` (1-based) and `{value}` (debug representation).
 
 `{suites_detail.count}` returns the number of items in the collection.
+
+### Carry-forward fields
+
+When a chunk's `extract` or `body_extract` rule has `carry_forward = true`, chunks that don't match the pattern inherit the value from the most recent chunk that did. This is useful when boundary markers (like `Running unittests`) identify a group, and subsequent chunks (like integration test suites) should inherit that identity.
+
+```toml
+[chunk.extract]
+pattern = 'unittests.+deps/([\w_-]+)-'
+as = "crate_name"
+carry_forward = true
+```
+
+### Tree-structured groups (children_as)
+
+When `children_as` is set alongside `group_by`, the grouped collection preserves each group's original items as a nested collection. Inside an `each` template, the children are accessible by the `children_as` name and support their own `each`/`join` pipes:
+
+```toml
+[[chunk]]
+split_on = "^\\s*Running "
+collect_as = "suites_detail"
+group_by = "crate_name"
+children_as = "children"
+
+[on_success]
+output = """✓ {passed} passed ({suites} suites)
+{suites_detail | each: "  {crate_name}: {passed} passed\n{children | each: \"    {suite_name}: {passed}\" | join: \"\\n\"}" | join: "\\n"}"""
+```
+
+This produces tree output like:
+
+```
+✓ 565 passed (2 suites)
+  tokf: 565 passed
+    unittests src/lib.rs: 550
+    tests/cli_basic.rs: 15
+```
 
 ## Filter variants
 

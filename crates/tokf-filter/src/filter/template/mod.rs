@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
-use super::chunk::ChunkItem;
+use super::chunk::{ChunkData, ChunkItem};
 use super::section::SectionMap;
 
-/// Chunks map: `collect_as` name → list of structured items.
-pub type ChunkMap = HashMap<String, Vec<ChunkItem>>;
+/// Chunks map: `collect_as` name → chunk data (flat or tree).
+pub type ChunkMap = HashMap<String, ChunkData>;
 
 /// Maximum recursion depth to prevent infinite loops.
 const MAX_DEPTH: usize = 3;
@@ -111,11 +111,17 @@ fn find_matching_close(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-/// Resolved value — either a single string, a flat collection, or structured items.
+/// Resolved value — either a single string, a flat collection, structured items,
+/// or a tree (grouped items with children).
 enum Value {
     Str(String),
     Collection(Vec<String>),
     StructuredCollection(Vec<ChunkItem>),
+    TreeCollection {
+        groups: Vec<ChunkItem>,
+        children_key: String,
+        children: Vec<Vec<ChunkItem>>,
+    },
 }
 
 /// Evaluate a single expression: resolve variable, apply pipe chain.
@@ -137,6 +143,11 @@ fn evaluate_expression(expr: &str, ctx: &TemplateContext<'_>, depth: usize) -> S
         Value::Str(s) => s,
         Value::Collection(items) => items.join(", "),
         Value::StructuredCollection(items) => items
+            .iter()
+            .map(format_chunk_item)
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::TreeCollection { groups, .. } => groups
             .iter()
             .map(format_chunk_item)
             .collect::<Vec<_>>()
@@ -182,8 +193,8 @@ fn resolve_variable(name: &str, ctx: &TemplateContext<'_>) -> Value {
             if let Some(section_data) = ctx.sections.get(base) {
                 return Value::Str(section_data.count().to_string());
             }
-            if let Some(chunk_items) = ctx.chunks.get(base) {
-                return Value::Str(chunk_items.len().to_string());
+            if let Some(chunk_data) = ctx.chunks.get(base) {
+                return Value::Str(chunk_data.len().to_string());
             }
         }
 
@@ -200,8 +211,19 @@ fn resolve_variable(name: &str, ctx: &TemplateContext<'_>) -> Value {
         return Value::Collection(section_data.items().to_vec());
     }
 
-    if let Some(chunk_items) = ctx.chunks.get(name) {
-        return Value::StructuredCollection(chunk_items.clone());
+    if let Some(chunk_data) = ctx.chunks.get(name) {
+        return match chunk_data {
+            ChunkData::Flat(items) => Value::StructuredCollection(items.clone()),
+            ChunkData::Tree {
+                groups,
+                children_key,
+                children,
+            } => Value::TreeCollection {
+                groups: groups.clone(),
+                children_key: children_key.clone(),
+                children: children.clone(),
+            },
+        };
     }
 
     Value::Str(String::new())
@@ -237,8 +259,36 @@ fn apply_join(arg: &str, value: Value) -> Value {
             let strs: Vec<String> = items.iter().map(format_chunk_item).collect();
             Value::Str(strs.join(&sep))
         }
+        Value::TreeCollection { groups, .. } => {
+            let strs: Vec<String> = groups.iter().map(format_chunk_item).collect();
+            Value::Str(strs.join(&sep))
+        }
         Value::Str(s) => Value::Str(s), // already a string
     }
+}
+
+/// Render one iteration of an `each` template with index/value vars injected.
+#[allow(clippy::too_many_arguments)]
+fn render_each_item(
+    tmpl: &str,
+    ctx: &TemplateContext<'_>,
+    depth: usize,
+    index: usize,
+    value: String,
+    extra: &ChunkItem,
+) -> String {
+    let mut local_vars = ctx.vars.clone();
+    local_vars.insert("index".to_string(), (index + 1).to_string());
+    local_vars.insert("value".to_string(), value);
+    for (k, v) in extra {
+        local_vars.insert(k.clone(), v.clone());
+    }
+    let local_ctx = TemplateContext {
+        vars: &local_vars,
+        sections: ctx.sections,
+        chunks: ctx.chunks,
+    };
+    render_template_inner(tmpl, &local_ctx, depth + 1)
 }
 
 /// `| each: "template"` — map each item through a sub-template.
@@ -247,44 +297,45 @@ fn apply_join(arg: &str, value: Value) -> Value {
 /// For structured collections, also injects each item's named fields.
 fn apply_each(arg: &str, value: Value, ctx: &TemplateContext<'_>, depth: usize) -> Value {
     let tmpl = parse_string_arg(arg);
+    let empty = HashMap::new();
 
     match value {
         Value::Collection(items) => {
-            let mapped: Vec<String> = items
+            let mapped = items
                 .iter()
                 .enumerate()
-                .map(|(i, item)| {
-                    let mut local_vars = ctx.vars.clone();
-                    local_vars.insert("index".to_string(), (i + 1).to_string());
-                    local_vars.insert("value".to_string(), item.clone());
-                    let local_ctx = TemplateContext {
-                        vars: &local_vars,
-                        sections: ctx.sections,
-                        chunks: ctx.chunks,
-                    };
-                    render_template_inner(&tmpl, &local_ctx, depth + 1)
-                })
+                .map(|(i, item)| render_each_item(&tmpl, ctx, depth, i, item.clone(), &empty))
                 .collect();
             Value::Collection(mapped)
         }
         Value::StructuredCollection(items) => {
-            let mapped: Vec<String> = items
+            let mapped = items
                 .iter()
                 .enumerate()
                 .map(|(i, item)| {
-                    let mut local_vars = ctx.vars.clone();
-                    local_vars.insert("index".to_string(), (i + 1).to_string());
-                    local_vars.insert("value".to_string(), format_chunk_item(item));
-                    // Inject all named fields from the chunk item
-                    for (k, v) in item {
-                        local_vars.insert(k.clone(), v.clone());
-                    }
-                    let local_ctx = TemplateContext {
-                        vars: &local_vars,
+                    render_each_item(&tmpl, ctx, depth, i, format_chunk_item(item), item)
+                })
+                .collect();
+            Value::Collection(mapped)
+        }
+        Value::TreeCollection {
+            groups,
+            children_key,
+            children,
+        } => {
+            let mapped = groups
+                .iter()
+                .zip(&children)
+                .enumerate()
+                .map(|(i, (item, child_items))| {
+                    let mut local_chunks = ctx.chunks.clone();
+                    local_chunks.insert(children_key.clone(), ChunkData::Flat(child_items.clone()));
+                    let child_ctx = TemplateContext {
+                        vars: ctx.vars,
                         sections: ctx.sections,
-                        chunks: ctx.chunks,
+                        chunks: &local_chunks,
                     };
-                    render_template_inner(&tmpl, &local_ctx, depth + 1)
+                    render_each_item(&tmpl, &child_ctx, depth, i, format_chunk_item(item), item)
                 })
                 .collect();
             Value::Collection(mapped)
@@ -293,16 +344,7 @@ fn apply_each(arg: &str, value: Value, ctx: &TemplateContext<'_>, depth: usize) 
             if s.is_empty() {
                 return Value::Collection(Vec::new());
             }
-            let mut local_vars = ctx.vars.clone();
-            local_vars.insert("index".to_string(), "1".to_string());
-            local_vars.insert("value".to_string(), s);
-            let local_ctx = TemplateContext {
-                vars: &local_vars,
-                sections: ctx.sections,
-                chunks: ctx.chunks,
-            };
-            let rendered = render_template_inner(&tmpl, &local_ctx, depth + 1);
-            Value::Collection(vec![rendered])
+            Value::Collection(vec![render_each_item(&tmpl, ctx, depth, 0, s, &empty)])
         }
     }
 }
@@ -348,6 +390,7 @@ fn apply_truncate(arg: &str, value: Value) -> Value {
             Value::Collection(truncated)
         }
         sc @ Value::StructuredCollection(_) => sc, // passthrough
+        tc @ Value::TreeCollection { .. } => tc,   // passthrough
     }
 }
 
@@ -359,6 +402,7 @@ fn apply_lines(value: Value) -> Value {
         Value::Str(s) => Value::Collection(s.lines().map(str::to_string).collect()),
         c @ Value::Collection(_) => c,
         sc @ Value::StructuredCollection(_) => sc,
+        tc @ Value::TreeCollection { .. } => tc,
     }
 }
 
@@ -381,6 +425,22 @@ fn apply_keep_pipe(arg: &str, value: Value) -> Value {
                 .filter(|item| re.is_match(&format_chunk_item(item)))
                 .collect(),
         ),
+        Value::TreeCollection {
+            groups,
+            children_key,
+            children,
+        } => {
+            let (filtered_groups, filtered_children): (Vec<_>, Vec<_>) = groups
+                .into_iter()
+                .zip(children)
+                .filter(|(item, _)| re.is_match(&format_chunk_item(item)))
+                .unzip();
+            Value::TreeCollection {
+                groups: filtered_groups,
+                children_key,
+                children: filtered_children,
+            }
+        }
         s @ Value::Str(_) => s,
     }
 }
