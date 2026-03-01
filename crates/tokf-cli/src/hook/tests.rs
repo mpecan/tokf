@@ -262,7 +262,7 @@ fn write_hook_shim_creates_executable_script() {
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
 
-    write_hook_shim(&hook_dir, &hook_script).unwrap();
+    write_hook_shim(&hook_dir, &hook_script, "tokf").unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
     assert!(content.starts_with("#!/bin/sh\n"));
@@ -285,12 +285,42 @@ fn write_hook_shim_uses_bare_tokf() {
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
 
-    write_hook_shim(&hook_dir, &hook_script).unwrap();
+    write_hook_shim(&hook_dir, &hook_script, "tokf").unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
     assert!(
         content.contains("exec tokf hook handle"),
         "expected bare tokf in script, got: {content}"
+    );
+}
+
+#[test]
+fn write_hook_shim_custom_path() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join("hooks");
+    let hook_script = hook_dir.join("pre-tool-use.sh");
+
+    write_hook_shim(&hook_dir, &hook_script, "/opt/bin/tokf").unwrap();
+
+    let content = std::fs::read_to_string(&hook_script).unwrap();
+    assert!(
+        content.contains("exec '/opt/bin/tokf' hook handle"),
+        "expected shell-escaped custom path, got: {content}"
+    );
+}
+
+#[test]
+fn write_hook_shim_path_with_spaces() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join("hooks");
+    let hook_script = hook_dir.join("pre-tool-use.sh");
+
+    write_hook_shim(&hook_dir, &hook_script, "/home/my user/bin/tokf").unwrap();
+
+    let content = std::fs::read_to_string(&hook_script).unwrap();
+    assert!(
+        content.contains("exec '/home/my user/bin/tokf' hook handle"),
+        "path with spaces should be shell-escaped, got: {content}"
     );
 }
 
@@ -302,7 +332,7 @@ fn install_to_creates_files() {
     let hook_dir = dir.path().join("global/tokf/hooks");
     let settings_path = dir.path().join("global/.claude/settings.json");
 
-    install_to(&hook_dir, &settings_path).unwrap();
+    install_to(&hook_dir, &settings_path, "tokf").unwrap();
 
     let hook_script = hook_dir.join("pre-tool-use.sh");
     assert!(hook_script.exists(), "hook script should exist");
@@ -320,8 +350,8 @@ fn install_to_idempotent() {
     let hook_dir = dir.path().join(".tokf/hooks");
     let settings_path = dir.path().join("settings.json");
 
-    install_to(&hook_dir, &settings_path).unwrap();
-    install_to(&hook_dir, &settings_path).unwrap();
+    install_to(&hook_dir, &settings_path, "tokf").unwrap();
+    install_to(&hook_dir, &settings_path, "tokf").unwrap();
 
     let content = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();

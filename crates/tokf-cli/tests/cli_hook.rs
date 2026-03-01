@@ -546,6 +546,61 @@ fn hook_install_opencode_embeds_tokf_path() {
     );
 }
 
+// --- tokf hook install --path ---
+
+#[test]
+fn hook_install_custom_path_embeds_in_shim() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--path", "/custom/bin/tokf"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hook install --path failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let hook_script = dir.path().join(".tokf/hooks/pre-tool-use.sh");
+    let content = std::fs::read_to_string(&hook_script).unwrap();
+    assert!(
+        content.contains("'/custom/bin/tokf'"),
+        "expected custom path in hook shim, got: {content}"
+    );
+}
+
+#[test]
+fn hook_install_custom_path_opencode() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args([
+            "hook",
+            "install",
+            "--tool",
+            "opencode",
+            "--path",
+            "/custom/bin/tokf",
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hook install --tool opencode --path failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let plugin_file = dir.path().join(".opencode/plugins/tokf.ts");
+    let content = std::fs::read_to_string(&plugin_file).unwrap();
+    assert!(
+        content.contains(r#"const TOKF_BIN = "/custom/bin/tokf";"#),
+        "expected custom path in plugin, got: {content}"
+    );
+}
+
 // --- tokf hook install --tool codex ---
 
 #[test]

@@ -78,7 +78,7 @@ pub(crate) fn handle_json_with_config(
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool) -> anyhow::Result<()> {
+pub fn install(global: bool, tokf_bin: &str) -> anyhow::Result<()> {
     let (hook_dir, settings_path) = if global {
         let user = crate::paths::user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
@@ -94,13 +94,17 @@ pub fn install(global: bool) -> anyhow::Result<()> {
         (hook_dir, settings_path)
     };
 
-    install_to(&hook_dir, &settings_path)
+    install_to(&hook_dir, &settings_path, tokf_bin)
 }
 
 /// Core install logic with explicit paths (testable).
-pub(crate) fn install_to(hook_dir: &Path, settings_path: &Path) -> anyhow::Result<()> {
+pub(crate) fn install_to(
+    hook_dir: &Path,
+    settings_path: &Path,
+    tokf_bin: &str,
+) -> anyhow::Result<()> {
     let hook_script = hook_dir.join("pre-tool-use.sh");
-    write_hook_shim(hook_dir, &hook_script)?;
+    write_hook_shim(hook_dir, &hook_script, tokf_bin)?;
     patch_settings(settings_path, &hook_script)?;
 
     eprintln!("[tokf] hook installed");
@@ -111,10 +115,15 @@ pub(crate) fn install_to(hook_dir: &Path, settings_path: &Path) -> anyhow::Resul
 }
 
 /// Write the hook shim script.
-fn write_hook_shim(hook_dir: &Path, hook_script: &Path) -> anyhow::Result<()> {
+fn write_hook_shim(hook_dir: &Path, hook_script: &Path, tokf_bin: &str) -> anyhow::Result<()> {
     std::fs::create_dir_all(hook_dir)?;
 
-    let content = "#!/bin/sh\nexec tokf hook handle\n";
+    let escaped_bin = if tokf_bin == "tokf" {
+        tokf_bin.to_string()
+    } else {
+        runner::shell_escape(tokf_bin)
+    };
+    let content = format!("#!/bin/sh\nexec {escaped_bin} hook handle\n");
     std::fs::write(hook_script, content)?;
 
     // Make executable on Unix
