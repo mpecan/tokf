@@ -55,7 +55,7 @@ as = "crate_name"
 carry_forward = true
 
 [[chunk.body_extract]]
-pattern = 'Running\s+(.+?)\s+\(target/'
+pattern = 'Running\s+(.+?)\s+\('
 as = "suite_name"
 
 [[chunk.aggregate]]
