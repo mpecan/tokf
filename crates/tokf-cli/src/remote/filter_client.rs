@@ -11,6 +11,8 @@ pub struct FilterSummary {
     pub total_commands: i64,
     #[serde(default)]
     pub created_at: String,
+    #[serde(default)]
+    pub is_stdlib: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +25,8 @@ pub struct FilterDetails {
     pub created_at: String,
     pub test_count: i64,
     pub registry_url: String,
+    #[serde(default)]
+    pub is_stdlib: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,5 +140,32 @@ mod tests {
         let json = r#"{"filter_toml": "command = \"cargo build\"\n", "test_files": []}"#;
         let dl: DownloadedFilter = serde_json::from_str(json).unwrap();
         assert!(dl.test_files.is_empty());
+    }
+
+    #[test]
+    fn deserialize_filter_summary_with_is_stdlib() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0,
+            "is_stdlib": true
+        }"#;
+        let summary: FilterSummary = serde_json::from_str(json).unwrap();
+        assert!(summary.is_stdlib);
+    }
+
+    #[test]
+    fn deserialize_filter_summary_is_stdlib_defaults_false() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0
+        }"#;
+        let summary: FilterSummary = serde_json::from_str(json).unwrap();
+        assert!(!summary.is_stdlib);
     }
 }

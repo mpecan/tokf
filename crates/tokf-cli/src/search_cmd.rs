@@ -34,7 +34,7 @@ fn search(query: &str, limit: usize, json: bool) -> anyhow::Result<i32> {
 fn print_table(results: &[filter_client::FilterSummary]) {
     let cmd_width = results
         .iter()
-        .map(|r| r.command_pattern.len())
+        .map(|r| display_command(r).len())
         .max()
         .unwrap_or(7)
         .max(7);
@@ -67,13 +67,21 @@ fn print_table(results: &[filter_client::FilterSummary]) {
     for r in results {
         println!(
             "{:<cmd_width$}  {:<author_width$}  {:>7.1}%  {:>8}",
-            r.command_pattern,
+            display_command(r),
             r.author,
             r.savings_pct,
             format_number(r.total_commands),
             cmd_width = cmd_width,
             author_width = author_width,
         );
+    }
+}
+
+fn display_command(r: &filter_client::FilterSummary) -> String {
+    if r.is_stdlib {
+        format!("{} [stdlib]", r.command_pattern)
+    } else {
+        r.command_pattern.clone()
     }
 }
 
@@ -105,5 +113,29 @@ mod tests {
         assert_eq!(format_number(1000), "1,000");
         assert_eq!(format_number(1234), "1,234");
         assert_eq!(format_number(1_000_000), "1,000,000");
+    }
+
+    fn make_summary(command: &str, is_stdlib: bool) -> filter_client::FilterSummary {
+        filter_client::FilterSummary {
+            content_hash: String::new(),
+            command_pattern: command.to_string(),
+            author: String::new(),
+            savings_pct: 0.0,
+            total_commands: 0,
+            created_at: String::new(),
+            is_stdlib,
+        }
+    }
+
+    #[test]
+    fn display_command_appends_stdlib_badge() {
+        let r = make_summary("git push", true);
+        assert_eq!(display_command(&r), "git push [stdlib]");
+    }
+
+    #[test]
+    fn display_command_no_badge_for_community() {
+        let r = make_summary("git push", false);
+        assert_eq!(display_command(&r), "git push");
     }
 }
