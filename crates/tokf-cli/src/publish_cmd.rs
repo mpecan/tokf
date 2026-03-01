@@ -3,6 +3,7 @@ use std::path::Path;
 
 use tokf::auth::credentials;
 use tokf::config;
+use tokf::remote::http::Client;
 use tokf::remote::publish_client;
 
 /// Entry point for the `tokf publish` subcommand.
@@ -40,21 +41,6 @@ fn resolve_local_filter(filter_name: &str) -> anyhow::Result<config::ResolvedFil
     }
 
     Ok(resolved_filter)
-}
-
-/// Load credentials and build an authenticated HTTP client.
-fn authed_client() -> anyhow::Result<(reqwest::blocking::Client, credentials::LoadedAuth)> {
-    let auth = credentials::load()
-        .ok_or_else(|| anyhow::anyhow!("not logged in — run `tokf auth login` first"))?;
-    if auth.is_expired() {
-        anyhow::bail!("token has expired — run `tokf auth login` to re-authenticate");
-    }
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| anyhow::anyhow!("could not build HTTP client: {e}"))?;
-    Ok((client, auth))
 }
 
 /// Parse filter bytes and return `(content_hash, command_pattern)`.
@@ -149,16 +135,10 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
     }
 
     ensure_license_accepted()?;
-    let (client, auth) = authed_client()?;
+    let client = Client::authed()?;
 
     let (is_new, resp) = tokf::remote::retry::with_retry("publish", || {
-        publish_client::publish_filter(
-            &client,
-            &auth.server_url,
-            &auth.token,
-            &filter_bytes,
-            &test_files,
-        )
+        publish_client::publish_filter(&client, &filter_bytes, &test_files)
     })?;
 
     if is_new {
@@ -203,16 +183,10 @@ fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32>
         return Ok(0);
     }
 
-    let (client, auth) = authed_client()?;
+    let client = Client::authed()?;
 
     let resp = tokf::remote::retry::with_retry("update-tests", || {
-        publish_client::update_tests(
-            &client,
-            &auth.server_url,
-            &auth.token,
-            &content_hash,
-            &test_files,
-        )
+        publish_client::update_tests(&client, &content_hash, &test_files)
     })?;
 
     eprintln!(

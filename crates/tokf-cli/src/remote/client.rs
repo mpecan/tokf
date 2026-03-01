@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use super::require_success;
+use super::http::Client;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisteredMachine {
@@ -19,49 +19,29 @@ pub struct MachineInfo {
 
 /// Register this machine with the tokf server via `POST /api/machines`.
 ///
-/// The `client` must have a timeout configured (recommended: 10s request,
-/// 5s connect) to avoid hanging indefinitely on an unreachable server.
-///
 /// # Errors
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
 pub fn register_machine(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
+    client: &Client,
     machine_id: &str,
     hostname: &str,
 ) -> anyhow::Result<RegisteredMachine> {
-    let url = format!("{base_url}/api/machines");
-    let resp = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {token}"))
-        .json(&serde_json::json!({ "machine_id": machine_id, "hostname": hostname }))
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
-
-    let resp = require_success(resp)?;
-    resp.json::<RegisteredMachine>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+    client.post(
+        "/api/machines",
+        &serde_json::json!({ "machine_id": machine_id, "hostname": hostname }),
+    )
 }
 
 /// List machines registered for the authenticated user via `GET /api/machines`.
-///
-/// The `client` must have a timeout configured (recommended: 10s request,
-/// 5s connect) to avoid hanging indefinitely on an unreachable server.
 ///
 /// # Errors
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
-pub fn list_machines(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
-) -> anyhow::Result<Vec<MachineInfo>> {
-    let url = format!("{base_url}/api/machines");
-    super::http::authed_get(client, &url, token)
+pub fn list_machines(client: &Client) -> anyhow::Result<Vec<MachineInfo>> {
+    client.get("/api/machines")
 }
 
 #[cfg(test)]

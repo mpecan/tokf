@@ -1,4 +1,5 @@
-use tokf::remote::{filter_client, http};
+use tokf::remote::filter_client;
+use tokf::remote::http::Client;
 
 /// Entry point for the `tokf search` subcommand.
 pub fn cmd_search(query: &str, limit: usize, json: bool) -> i32 {
@@ -12,11 +13,9 @@ pub fn cmd_search(query: &str, limit: usize, json: bool) -> i32 {
 }
 
 fn search(query: &str, limit: usize, json: bool) -> anyhow::Result<i32> {
-    let auth = http::load_auth()?;
-    let client = http::build_client(http::LIGHT_TIMEOUT_SECS)?;
+    let client = Client::authed()?;
 
-    let results =
-        filter_client::search_filters(&client, &auth.server_url, &auth.token, query, limit)?;
+    let results = filter_client::search_filters(&client, query, limit)?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&results)?);

@@ -1,7 +1,6 @@
-use std::time::Duration;
-
 use tokf::auth::client::is_secure_url;
-use tokf::remote::{client, http, machine};
+use tokf::remote::http::{Client, load_auth};
+use tokf::remote::{client, machine};
 use uuid::Uuid;
 
 /// Register this machine with the tokf server.
@@ -15,7 +14,7 @@ use uuid::Uuid;
 /// Returns an error if the user is not logged in, the token is expired, or
 /// the server is unreachable.
 pub fn cmd_remote_setup() -> anyhow::Result<i32> {
-    let auth = http::load_auth()?;
+    let auth = load_auth()?;
 
     if !is_secure_url(&auth.server_url) {
         eprintln!(
@@ -23,21 +22,11 @@ pub fn cmd_remote_setup() -> anyhow::Result<i32> {
         );
     }
 
-    let http_client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .connect_timeout(Duration::from_secs(5))
-        .user_agent(format!("tokf-cli/{}", env!("CARGO_PKG_VERSION")))
-        .build()?;
+    let http_client = Client::new(&auth.server_url, Some(&auth.token))?;
 
     if let Some(m) = machine::load() {
         // Already registered locally — re-sync with server to fix any stale state.
-        client::register_machine(
-            &http_client,
-            &auth.server_url,
-            &auth.token,
-            &m.machine_id,
-            &m.hostname,
-        )?;
+        client::register_machine(&http_client, &m.machine_id, &m.hostname)?;
         eprintln!(
             "[tokf] Already registered: {} ({})",
             m.machine_id, m.hostname
@@ -45,13 +34,7 @@ pub fn cmd_remote_setup() -> anyhow::Result<i32> {
     } else {
         let machine_id = Uuid::new_v4().to_string();
         let hostname = gethostname::gethostname().to_string_lossy().into_owned();
-        client::register_machine(
-            &http_client,
-            &auth.server_url,
-            &auth.token,
-            &machine_id,
-            &hostname,
-        )?;
+        client::register_machine(&http_client, &machine_id, &hostname)?;
         machine::save(&machine_id, &hostname)?;
         eprintln!("[tokf] Machine registered: {machine_id} ({hostname})");
     }
@@ -83,7 +66,7 @@ pub fn cmd_remote_status() -> anyhow::Result<i32> {
 pub fn cmd_remote_sync() -> anyhow::Result<i32> {
     use tokf::tracking;
 
-    let auth = http::load_auth()?;
+    let auth = load_auth()?;
 
     let machine = machine::load()
         .ok_or_else(|| anyhow::anyhow!("machine not registered. Run `tokf remote setup` first"))?;

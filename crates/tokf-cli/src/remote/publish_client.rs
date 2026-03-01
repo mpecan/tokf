@@ -1,7 +1,8 @@
 use reqwest::blocking::multipart::{Form, Part};
 use serde::Deserialize;
 
-use super::require_success;
+use super::check_auth_and_rate_limit;
+use super::http::Client;
 
 /// Extract the error message from a JSON response body `{"error": "..."}`.
 /// Falls back to the raw body text if JSON parsing fails.
@@ -26,34 +27,28 @@ pub struct PublishResponse {
 /// - `is_new = true` when the server returns `201 Created` (first upload).
 /// - `is_new = false` when the server returns `200 OK` (hash already exists).
 ///
-/// The `client` should have connection and request timeouts configured.
-///
 /// # Errors
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
 pub fn publish_filter(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
+    client: &Client,
     filter_bytes: &[u8],
     test_files: &[(String, Vec<u8>)],
 ) -> anyhow::Result<(bool, PublishResponse)> {
-    let url = format!("{base_url}/api/filters");
+    let filter_bytes = filter_bytes.to_vec();
+    let test_files = test_files.to_vec();
+    let resp = client.post_multipart("/api/filters", || {
+        let mut form = Form::new()
+            .part("filter", Part::bytes(filter_bytes.clone()))
+            .part("mit_license_accepted", Part::text("true"));
+        for (name, bytes) in &test_files {
+            form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
+        }
+        form
+    })?;
 
-    let mut form = Form::new()
-        .part("filter", Part::bytes(filter_bytes.to_vec()))
-        .part("mit_license_accepted", Part::text("true"));
-    for (name, bytes) in test_files {
-        form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
-    }
-
-    let resp = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {token}"))
-        .multipart(form)
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
+    check_auth_and_rate_limit(&resp)?;
 
     let is_new = resp.status() == reqwest::StatusCode::CREATED;
     let status = resp.status();
@@ -73,7 +68,11 @@ pub fn publish_filter(
         anyhow::bail!("server returned HTTP {status}: {msg}");
     }
 
-    let resp = require_success(resp)?;
+    if !status.is_success() {
+        let body = resp.text().unwrap_or_default();
+        anyhow::bail!("server returned HTTP {status}: {body}");
+    }
+
     let response = resp
         .json::<PublishResponse>()
         .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))?;
@@ -100,25 +99,21 @@ pub struct UpdateTestsResponse {
 /// status (403 = not author, 404 = filter not found), or the response
 /// body cannot be deserialized.
 pub fn update_tests(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
+    client: &Client,
     content_hash: &str,
     test_files: &[(String, Vec<u8>)],
 ) -> anyhow::Result<UpdateTestsResponse> {
-    let url = format!("{base_url}/api/filters/{content_hash}/tests");
+    let path = format!("/api/filters/{content_hash}/tests");
+    let test_files = test_files.to_vec();
+    let resp = client.put_multipart(&path, || {
+        let mut form = Form::new();
+        for (name, bytes) in &test_files {
+            form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
+        }
+        form
+    })?;
 
-    let mut form = Form::new();
-    for (name, bytes) in test_files {
-        form = form.part(format!("test:{name}"), Part::bytes(bytes.clone()));
-    }
-
-    let resp = client
-        .put(&url)
-        .header("Authorization", format!("Bearer {token}"))
-        .multipart(form)
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
+    check_auth_and_rate_limit(&resp)?;
 
     let status = resp.status();
     if status == reqwest::StatusCode::FORBIDDEN {
@@ -140,7 +135,10 @@ pub fn update_tests(
         }
         anyhow::bail!("server returned HTTP {status}: {msg}");
     }
-    let resp = require_success(resp)?;
+    if !status.is_success() {
+        let body = resp.text().unwrap_or_default();
+        anyhow::bail!("server returned HTTP {status}: {body}");
+    }
     resp.json::<UpdateTestsResponse>()
         .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
 }

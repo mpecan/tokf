@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::require_success;
+use super::http::Client;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FilterSummary {
@@ -47,23 +47,12 @@ pub struct DownloadedFilter {
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
 pub fn search_filters(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
+    client: &Client,
     query: &str,
     limit: usize,
 ) -> anyhow::Result<Vec<FilterSummary>> {
-    let base = format!("{base_url}/api/filters");
-    let resp = client
-        .get(&base)
-        .query(&[("q", query), ("limit", &limit.to_string())])
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {base}: {e}"))?;
-
-    let resp = require_success(resp)?;
-    resp.json::<Vec<FilterSummary>>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+    let limit_str = limit.to_string();
+    client.get_with_query("/api/filters", &[("q", query), ("limit", &limit_str)])
 }
 
 /// Get details for a specific filter by content hash.
@@ -72,13 +61,8 @@ pub fn search_filters(
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
-pub fn get_filter(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
-    hash: &str,
-) -> anyhow::Result<FilterDetails> {
-    super::http::authed_get(client, &format!("{base_url}/api/filters/{hash}"), token)
+pub fn get_filter(client: &Client, hash: &str) -> anyhow::Result<FilterDetails> {
+    client.get(&format!("/api/filters/{hash}"))
 }
 
 /// Download a filter's TOML and test files by content hash.
@@ -87,17 +71,8 @@ pub fn get_filter(
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
-pub fn download_filter(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
-    hash: &str,
-) -> anyhow::Result<DownloadedFilter> {
-    super::http::authed_get(
-        client,
-        &format!("{base_url}/api/filters/{hash}/download"),
-        token,
-    )
+pub fn download_filter(client: &Client, hash: &str) -> anyhow::Result<DownloadedFilter> {
+    client.get(&format!("/api/filters/{hash}/download"))
 }
 
 #[cfg(test)]

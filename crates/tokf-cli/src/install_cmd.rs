@@ -1,6 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
-use tokf::remote::{filter_client, http};
+use tokf::remote::filter_client;
+use tokf::remote::http::Client;
 use tokf_common::config::types::FilterConfig;
 
 /// Entry point for the `tokf install` subcommand.
@@ -15,17 +16,12 @@ pub fn cmd_install(filter: &str, local: bool, force: bool, dry_run: bool, yes: b
     }
 }
 
-fn resolve_hash(
-    client: &reqwest::blocking::Client,
-    auth: &tokf::auth::credentials::LoadedAuth,
-    filter: &str,
-) -> anyhow::Result<(String, String)> {
+fn resolve_hash(client: &Client, filter: &str) -> anyhow::Result<(String, String)> {
     if is_hash(filter) {
-        let details = filter_client::get_filter(client, &auth.server_url, &auth.token, filter)?;
+        let details = filter_client::get_filter(client, filter)?;
         Ok((details.content_hash, details.author))
     } else {
-        let results =
-            filter_client::search_filters(client, &auth.server_url, &auth.token, filter, 1)?;
+        let results = filter_client::search_filters(client, filter, 1)?;
         let first = results
             .into_iter()
             .next()
@@ -42,11 +38,10 @@ fn install(
     dry_run: bool,
     yes: bool,
 ) -> anyhow::Result<i32> {
-    let auth = http::load_auth()?;
-    let client = http::build_client(http::HEAVY_TIMEOUT_SECS)?;
+    let client = Client::authed()?;
 
-    let (hash, author) = resolve_hash(&client, &auth, filter)?;
-    let downloaded = filter_client::download_filter(&client, &auth.server_url, &auth.token, &hash)?;
+    let (hash, author) = resolve_hash(&client, filter)?;
+    let downloaded = filter_client::download_filter(&client, &hash)?;
 
     // Parse TOML once; derive command pattern and detect Lua in a single pass.
     let (command_pattern, config) = parse_filter_toml(&downloaded.filter_toml)?;
