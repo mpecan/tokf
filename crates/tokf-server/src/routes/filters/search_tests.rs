@@ -58,6 +58,10 @@ async fn search_matches_command_pattern(pool: PgPool) {
     let results: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
     assert_eq!(results.len(), 1, "expected 1 result for q=git");
     assert_eq!(results[0]["command_pattern"], "git push");
+    assert_eq!(
+        results[0]["is_stdlib"], false,
+        "community filter should have is_stdlib=false"
+    );
 }
 
 /// Publish a list of filter TOMLs, then search with the given URI and return the result list.
@@ -161,6 +165,10 @@ async fn get_filter_returns_details(pool: PgPool) {
     assert!(
         json["created_at"].is_string(),
         "created_at should be a string"
+    );
+    assert_eq!(
+        json["is_stdlib"], false,
+        "community-published filter should not be stdlib"
     );
 }
 

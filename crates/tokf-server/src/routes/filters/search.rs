@@ -35,6 +35,7 @@ pub struct FilterSummary {
     pub total_commands: i64,
     /// ISO 8601 timestamp when the filter was first published. P3.2.
     pub created_at: String,
+    pub is_stdlib: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +48,7 @@ pub struct FilterDetails {
     pub created_at: String,
     pub test_count: i64,
     pub registry_url: String,
+    pub is_stdlib: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,7 +142,8 @@ pub async fn search_filters(
         "SELECT f.content_hash, f.command_pattern, u.username AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
                 COALESCE(fs.total_commands, 0) AS total_commands,
-                f.created_at::TEXT AS created_at
+                f.created_at::TEXT AS created_at,
+                f.is_stdlib
          FROM filters f
          JOIN users u ON u.id = f.author_id
          LEFT JOIN filter_stats fs ON fs.filter_hash = f.content_hash
@@ -167,6 +170,7 @@ pub async fn search_filters(
                 savings_pct: row.try_get("savings_pct")?,
                 total_commands: row.try_get("total_commands")?,
                 created_at: row.try_get("created_at")?,
+                is_stdlib: row.try_get("is_stdlib")?,
             })
         })
         .collect::<Result<Vec<_>, _>>()
@@ -207,7 +211,8 @@ pub async fn get_filter(
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,
                 (SELECT COUNT(*)::BIGINT FROM filter_tests
-                 WHERE filter_hash = f.content_hash) AS test_count
+                 WHERE filter_hash = f.content_hash) AS test_count,
+                f.is_stdlib
          FROM filters f
          JOIN users u ON u.id = f.author_id
          LEFT JOIN filter_stats fs ON fs.filter_hash = f.content_hash
@@ -232,6 +237,7 @@ pub async fn get_filter(
             created_at: row.try_get("created_at")?,
             test_count: row.try_get("test_count")?,
             registry_url,
+            is_stdlib: row.try_get("is_stdlib")?,
         })
     })()
     .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;

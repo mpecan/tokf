@@ -133,7 +133,7 @@ async fn upsert_filter_record(
     Ok((author_username.to_string(), true))
 }
 
-pub(super) async fn upload_tests(
+pub async fn upload_tests(
     state: &AppState,
     content_hash: &str,
     test_files: Vec<(String, Vec<u8>)>,
@@ -148,7 +148,7 @@ pub(super) async fn upload_tests(
     Ok(keys)
 }
 
-pub(super) async fn insert_filter_tests(
+pub async fn insert_filter_tests(
     pool: &sqlx::PgPool,
     content_hash: &str,
     test_r2_keys: &[String],
@@ -249,21 +249,15 @@ fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
 /// If the timeout fires, the blocking task is aborted to free the thread
 /// pool slot. The Lua sandbox (instruction + memory limits) is the primary
 /// defence against runaway scripts; the timeout is a last-resort backstop.
-async fn run_verification(prepared: &PreparedFilter) -> Result<(), AppError> {
-    let config = prepared.config.clone();
-    let cases = prepared.test_cases.clone();
+pub async fn run_verification(config: &FilterConfig, cases: &[TestCase]) -> Result<(), String> {
+    let config = config.clone();
+    let cases = cases.to_vec();
     let handle =
         tokio::task::spawn_blocking(move || crate::verify::verify_filter_server(&config, &cases));
     let verify_result = tokio::time::timeout(std::time::Duration::from_secs(10), handle)
         .await
-        .map_err(|_| {
-            // Timeout expired — abort the blocking task so it doesn't linger.
-            // abort() on a spawn_blocking handle is best-effort: it prevents
-            // the result from propagating but cannot interrupt mid-execution.
-            AppError::BadRequest("test verification timed out (10s limit)".to_string())
-        })?
-        .map_err(|e| AppError::Internal(format!("verification task failed: {e}")))?
-        .map_err(AppError::BadRequest)?;
+        .map_err(|_| "test verification timed out (10s limit)".to_string())?
+        .map_err(|e| format!("verification task failed: {e}"))??;
 
     if !verify_result.all_passed() {
         let failures: Vec<String> = verify_result
@@ -272,10 +266,7 @@ async fn run_verification(prepared: &PreparedFilter) -> Result<(), AppError> {
             .filter(|c| !c.passed)
             .map(|c| format!("test '{}' failed:\n  {}", c.name, c.failures.join("\n  ")))
             .collect();
-        return Err(AppError::BadRequest(format!(
-            "filter tests failed:\n{}",
-            failures.join("\n")
-        )));
+        return Err(format!("filter tests failed:\n{}", failures.join("\n")));
     }
     Ok(())
 }
@@ -321,7 +312,9 @@ pub async fn publish_filter(
     let prepared = prepare_filter(fields)?;
 
     // Run server-side test verification before persisting anything.
-    run_verification(&prepared).await?;
+    run_verification(&prepared.config, &prepared.test_cases)
+        .await
+        .map_err(AppError::BadRequest)?;
 
     // Upload to R2 first (idempotent). If the DB insert below fails, the R2
     // object is orphaned but harmless — no user-visible state changes, and
@@ -367,6 +360,8 @@ pub async fn publish_filter(
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+pub mod stdlib;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]

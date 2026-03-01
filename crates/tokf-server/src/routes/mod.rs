@@ -13,6 +13,7 @@ pub mod test_helpers;
 
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{get, post, put},
 };
 
@@ -39,6 +40,10 @@ pub fn create_router(state: AppState) -> Router {
             get(filters::download_filter),
         )
         .route("/api/filters/{hash}/tests", put(filters::update_tests))
+        .route(
+            "/api/filters/publish-stdlib",
+            post(filters::publish_stdlib).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
         .route("/api/sync", post(sync::sync_usage))
         .route("/api/gain", get(gain::get_gain))
         .route("/api/gain/global", get(gain::get_global_gain))
