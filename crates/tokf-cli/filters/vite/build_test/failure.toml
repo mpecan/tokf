@@ -1,0 +1,6 @@
+name = "build failure shows error details"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "error TS"

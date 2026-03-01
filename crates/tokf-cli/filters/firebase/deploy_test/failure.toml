@@ -1,0 +1,6 @@
+name = "deploy failure shows error"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "Permission denied"

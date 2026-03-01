@@ -1,0 +1,22 @@
+
+> ssp-erp@0.1.0 build
+> vue-tsc -b && vite build
+
+vite v5.4.19 building for production...
+transforming (1)
+transforming (100)
+transforming (500)
+transforming (1000)
+transforming (1500)
+✓ 1732 modules transformed.
+rendering chunks (1)...
+rendering chunks (50)...
+computing gzip size (1)...
+computing gzip size (50)...
+dist/assets/logo-BhG4Szvc.svg              0.49 kB │ gzip:  0.35 kB
+dist/assets/PrimeIcons-CQZREGVR.woff2     18.55 kB │ gzip: 18.55 kB
+dist/assets/PrimeIcons-B5CUZZXG.woff      18.79 kB │ gzip: 18.79 kB
+dist/assets/PrimeIcons-DWcP1cBi.ttf       38.54 kB │ gzip: 20.30 kB
+dist/assets/index-D1q9eBoM.css            285.01 kB │ gzip: 37.66 kB
+dist/assets/index-BfZLhkYs.js           1,014.21 kB │ gzip: 293.14 kB
+✓ built in 4.41s

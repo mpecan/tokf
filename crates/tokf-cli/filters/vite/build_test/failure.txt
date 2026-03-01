@@ -1,0 +1,19 @@
+
+> ssp-erp@0.1.0 build
+> vue-tsc -b && vite build
+
+src/features/payroll/ui/PayrollCalculation.vue:42:7 - error TS2322: Type 'string' is not assignable to type 'number'.
+
+42       const amount: number = getAmount();
+         ~~~~~~
+
+src/entities/employee/model/types.ts:15:3 - error TS2741: Property 'department' is missing in type '{}' but required in type 'Employee'.
+
+15   department: string;
+     ~~~~~~~~~~
+
+Found 2 errors in 2 files.
+
+Errors  Files
+     1  src/features/payroll/ui/PayrollCalculation.vue:42
+     1  src/entities/employee/model/types.ts:15

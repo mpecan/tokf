@@ -1,0 +1,14 @@
+command = ["firebase deploy", "npx firebase deploy"]
+strip_ansi = true
+skip = [
+  "^\\s*$",
+  "^i\\s",
+  "^\\+\\s",
+  "^Uploading",
+]
+
+[on_success]
+output = "{output}"
+
+[on_failure]
+tail = 30

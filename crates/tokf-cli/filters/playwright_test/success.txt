@@ -1,0 +1,9 @@
+Running 5 tests using 2 workers
+
+  ✓ [1/5] auth.spec.ts:5:1 › should login successfully (2.1s)
+  ✓ [2/5] auth.spec.ts:15:1 › should logout (1.3s)
+  ✓ [3/5] payroll.spec.ts:8:1 › should display payroll table (3.2s)
+  ✓ [4/5] payroll.spec.ts:20:1 › should calculate totals (2.8s)
+  ✓ [5/5] dashboard.spec.ts:5:1 › should load dashboard (1.5s)
+
+  5 passed (11.2s)
