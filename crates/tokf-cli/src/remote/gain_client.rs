@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::require_success;
+use super::http::Client;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MachineGain {
@@ -52,13 +52,8 @@ pub struct GlobalGainResponse {
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
-pub fn get_gain(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
-) -> anyhow::Result<GainResponse> {
-    let url = format!("{base_url}/api/gain");
-    super::http::authed_get(client, &url, token)
+pub fn get_gain(client: &Client) -> anyhow::Result<GainResponse> {
+    client.get("/api/gain")
 }
 
 /// Fetch global (all-users) token savings from the remote server (public, no auth).
@@ -67,19 +62,8 @@ pub fn get_gain(
 ///
 /// Returns an error if the server is unreachable, returns a non-success
 /// status, or the response body cannot be deserialized.
-pub fn get_global_gain(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-) -> anyhow::Result<GlobalGainResponse> {
-    let url = format!("{base_url}/api/gain/global");
-    let resp = client
-        .get(&url)
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
-
-    let resp = require_success(resp)?;
-    resp.json::<GlobalGainResponse>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+pub fn get_global_gain(client: &Client) -> anyhow::Result<GlobalGainResponse> {
+    client.get("/api/gain/global")
 }
 
 #[cfg(test)]

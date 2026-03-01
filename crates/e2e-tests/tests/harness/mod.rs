@@ -19,6 +19,7 @@ use tokf::auth::credentials::LoadedAuth;
 use tokf::remote::client::{MachineInfo, RegisteredMachine};
 use tokf::remote::filter_client::{self, DownloadedFilter, FilterDetails, FilterSummary};
 use tokf::remote::gain_client::{GainResponse, GlobalGainResponse};
+use tokf::remote::http::Client;
 use tokf::remote::machine::StoredMachine;
 use tokf::remote::publish_client::{self, PublishResponse, UpdateTestsResponse};
 use tokf::remote::sync_client::{self, SyncEvent, SyncRequest, SyncResponse};
@@ -233,15 +234,6 @@ impl TestHarness {
         }
     }
 
-    /// Build a blocking HTTP client with a 10s timeout.
-    pub fn http_client() -> reqwest::blocking::Client {
-        reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .connect_timeout(std::time::Duration::from_secs(5))
-            .build()
-            .unwrap()
-    }
-
     // ── Sync request builders ───────────────────────────────────
 
     /// Build a `SyncRequest` from local `SQLite` events using the harness's machine ID.
@@ -278,18 +270,66 @@ impl TestHarness {
     }
 
     // ── Blocking helpers (wrap spawn_blocking boilerplate) ───────
+    //
+    // IMPORTANT: `reqwest::blocking::Client` creates an internal Tokio runtime.
+    // It must NOT be constructed or dropped in an async context — otherwise the
+    // runtime's `Drop` panics ("Cannot drop a runtime in a context where
+    // blocking is not allowed"). The three `run_blocking*` helpers below
+    // ensure `Client::new()` is always called inside a `spawn_blocking`
+    // closure.
+
+    /// Run `f` on a blocking thread with an authenticated `Client`.
+    async fn run_blocking<T, F>(&self, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce(&Client) -> T + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Client::new(&base_url, Some(&token)).unwrap();
+            f(&client)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Run `f` on a blocking thread with an unauthenticated `Client`.
+    async fn run_blocking_unauthed<T, F>(&self, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce(&Client) -> T + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Client::unauthenticated(&base_url).unwrap();
+            f(&client)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Run `f` on a blocking thread with a `Client` using the given token.
+    async fn run_blocking_with_token<T, F>(&self, token: &str, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce(&Client) -> T + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        let token = token.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Client::new(&base_url, Some(&token)).unwrap();
+            f(&client)
+        })
+        .await
+        .unwrap()
+    }
 
     /// Sync a pre-built request to the remote server.
     pub async fn blocking_sync_request(&self, req: &SyncRequest) -> SyncResponse {
         let req = req.clone();
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            sync_client::sync_events(&client, &base_url, &token, &req).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking(move |c| sync_client::sync_events(c, &req).unwrap())
+            .await
     }
 
     /// Attempt sync and return the `Result` (for error-path tests).
@@ -299,37 +339,20 @@ impl TestHarness {
         token: &str,
     ) -> anyhow::Result<SyncResponse> {
         let req = req.clone();
-        let base_url = self.base_url.clone();
-        let token = token.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            sync_client::sync_events(&client, &base_url, &token, &req)
-        })
-        .await
-        .unwrap()
+        self.run_blocking_with_token(token, move |c| sync_client::sync_events(c, &req))
+            .await
     }
 
     /// Fetch the authenticated user's gain summary.
     pub async fn blocking_gain(&self) -> GainResponse {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            tokf::remote::gain_client::get_gain(&client, &base_url, &token).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking(|c| tokf::remote::gain_client::get_gain(c).unwrap())
+            .await
     }
 
     /// Fetch the global (unauthenticated) gain summary.
     pub async fn blocking_global_gain(&self) -> GlobalGainResponse {
-        let base_url = self.base_url.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            tokf::remote::gain_client::get_global_gain(&client, &base_url).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking_unauthed(|c| tokf::remote::gain_client::get_global_gain(c).unwrap())
+            .await
     }
 
     /// Register a machine via the CLI client function.
@@ -338,47 +361,24 @@ impl TestHarness {
         machine_id: &str,
         hostname: &str,
     ) -> RegisteredMachine {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
         let machine_id = machine_id.to_string();
         let hostname = hostname.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            tokf::remote::client::register_machine(
-                &client,
-                &base_url,
-                &token,
-                &machine_id,
-                &hostname,
-            )
-            .unwrap()
+        self.run_blocking(move |c| {
+            tokf::remote::client::register_machine(c, &machine_id, &hostname).unwrap()
         })
         .await
-        .unwrap()
     }
 
     /// List machines for the authenticated user.
     pub async fn blocking_list_machines(&self) -> Vec<MachineInfo> {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            tokf::remote::client::list_machines(&client, &base_url, &token).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking(|c| tokf::remote::client::list_machines(c).unwrap())
+            .await
     }
 
     /// Fetch gain using a specific token (for auth-flow tests).
     pub async fn blocking_gain_with_token(&self, token: &str) -> GainResponse {
-        let base_url = self.base_url.clone();
-        let token = token.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            tokf::remote::gain_client::get_gain(&client, &base_url, &token).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking_with_token(token, |c| tokf::remote::gain_client::get_gain(c).unwrap())
+            .await
     }
 
     // ── Filter helpers ──────────────────────────────────────────
@@ -389,14 +389,8 @@ impl TestHarness {
         filter_bytes: Vec<u8>,
         test_files: Vec<(String, Vec<u8>)>,
     ) -> anyhow::Result<(bool, PublishResponse)> {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            publish_client::publish_filter(&client, &base_url, &token, &filter_bytes, &test_files)
-        })
-        .await
-        .unwrap()
+        self.run_blocking(move |c| publish_client::publish_filter(c, &filter_bytes, &test_files))
+            .await
     }
 
     /// Publish a filter with optional test files. Returns `(is_new, response)`.
@@ -405,15 +399,10 @@ impl TestHarness {
         filter_bytes: Vec<u8>,
         test_files: Vec<(String, Vec<u8>)>,
     ) -> (bool, PublishResponse) {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            publish_client::publish_filter(&client, &base_url, &token, &filter_bytes, &test_files)
-                .unwrap()
+        self.run_blocking(move |c| {
+            publish_client::publish_filter(c, &filter_bytes, &test_files).unwrap()
         })
         .await
-        .unwrap()
     }
 
     /// Update the test suite for a published filter.
@@ -422,31 +411,9 @@ impl TestHarness {
         hash: &str,
         test_files: Vec<(String, Vec<u8>)>,
     ) -> UpdateTestsResponse {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
         let hash = hash.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            publish_client::update_tests(&client, &base_url, &token, &hash, &test_files).unwrap()
-        })
-        .await
-        .unwrap()
-    }
-
-    /// Run a fallible client call on a blocking thread with the harness credentials.
-    async fn try_client_call<T, F>(&self, f: F) -> anyhow::Result<T>
-    where
-        T: Send + 'static,
-        F: FnOnce(&reqwest::blocking::Client, &str, &str) -> anyhow::Result<T> + Send + 'static,
-    {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            f(&client, &base_url, &token)
-        })
-        .await
-        .unwrap()
+        self.run_blocking(move |c| publish_client::update_tests(c, &hash, &test_files).unwrap())
+            .await
     }
 
     /// Try to update tests (returns Result for error-path tests).
@@ -456,10 +423,8 @@ impl TestHarness {
         test_files: Vec<(String, Vec<u8>)>,
     ) -> anyhow::Result<UpdateTestsResponse> {
         let hash = hash.to_string();
-        self.try_client_call(move |client, base_url, token| {
-            publish_client::update_tests(client, base_url, token, &hash, &test_files)
-        })
-        .await
+        self.run_blocking(move |c| publish_client::update_tests(c, &hash, &test_files))
+            .await
     }
 
     /// Try to update tests with a custom token (for auth tests).
@@ -469,28 +434,18 @@ impl TestHarness {
         test_files: Vec<(String, Vec<u8>)>,
         token: &str,
     ) -> anyhow::Result<UpdateTestsResponse> {
-        let base_url = self.base_url.clone();
-        let token = token.to_string();
         let hash = hash.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            publish_client::update_tests(&client, &base_url, &token, &hash, &test_files)
+        self.run_blocking_with_token(token, move |c| {
+            publish_client::update_tests(c, &hash, &test_files)
         })
         .await
-        .unwrap()
     }
 
     /// Search the filter registry.
     pub async fn blocking_search_filters(&self, query: &str, limit: usize) -> Vec<FilterSummary> {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
         let query = query.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            filter_client::search_filters(&client, &base_url, &token, &query, limit).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking(move |c| filter_client::search_filters(c, &query, limit).unwrap())
+            .await
     }
 
     /// Try to search filters (returns Result for error-path tests).
@@ -500,35 +455,21 @@ impl TestHarness {
         limit: usize,
     ) -> anyhow::Result<Vec<FilterSummary>> {
         let query = query.to_string();
-        self.try_client_call(move |client, base_url, token| {
-            filter_client::search_filters(client, base_url, token, &query, limit)
-        })
-        .await
+        self.run_blocking(move |c| filter_client::search_filters(c, &query, limit))
+            .await
     }
 
     /// Get filter details by hash.
     pub async fn blocking_get_filter(&self, hash: &str) -> FilterDetails {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
         let hash = hash.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            filter_client::get_filter(&client, &base_url, &token, &hash).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking(move |c| filter_client::get_filter(c, &hash).unwrap())
+            .await
     }
 
     /// Download filter TOML + test files by hash.
     pub async fn blocking_download_filter(&self, hash: &str) -> DownloadedFilter {
-        let base_url = self.base_url.clone();
-        let token = self.token.clone();
         let hash = hash.to_string();
-        tokio::task::spawn_blocking(move || {
-            let client = Self::http_client();
-            filter_client::download_filter(&client, &base_url, &token, &hash).unwrap()
-        })
-        .await
-        .unwrap()
+        self.run_blocking(move |c| filter_client::download_filter(c, &hash).unwrap())
+            .await
     }
 }

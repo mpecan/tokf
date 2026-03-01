@@ -6,6 +6,7 @@ use rusqlite::Connection;
 
 use crate::auth::credentials::LoadedAuth;
 use crate::paths;
+use crate::remote::http::Client;
 use crate::remote::machine::StoredMachine;
 use crate::remote::sync_client::{SyncEvent, SyncRequest};
 use crate::tracking;
@@ -130,7 +131,7 @@ pub fn perform_sync(
     let _lock =
         SyncLock::acquire().ok_or_else(|| anyhow::anyhow!("another sync is already running"))?;
 
-    let http_client = crate::remote::http::build_client(crate::remote::http::HEAVY_TIMEOUT_SECS)?;
+    let http_client = Client::new(&auth.server_url, Some(&auth.token))?;
 
     let mut total_synced = 0usize;
     let mut cursor = tracking::get_last_synced_id(conn)?;
@@ -150,12 +151,7 @@ pub fn perform_sync(
         };
 
         let response = crate::remote::retry::with_retry("sync", || {
-            crate::remote::sync_client::sync_events(
-                &http_client,
-                &auth.server_url,
-                &auth.token,
-                &req,
-            )
+            crate::remote::sync_client::sync_events(&http_client, &req)
         })?;
 
         total_synced += response.accepted;

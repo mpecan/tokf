@@ -56,27 +56,30 @@ fn jitter() -> u64 {
     u64::from(nanos % 500)
 }
 
-/// Check if the error is a [`RateLimitedError`] via downcast.
+/// Check if the error is a rate-limit error (`RemoteError::RateLimited`).
 fn is_rate_limited(err: &anyhow::Error) -> bool {
-    err.downcast_ref::<super::RateLimitedError>().is_some()
+    err.downcast_ref::<super::RemoteError>()
+        .is_some_and(|e| matches!(e, super::RemoteError::RateLimited(_)))
 }
 
-/// Extract the `retry_after_secs` from a [`RateLimitedError`] via downcast.
+/// Extract the `retry_after_secs` from a rate-limit error.
 fn parse_retry_after(err: &anyhow::Error) -> Option<u64> {
-    err.downcast_ref::<super::RateLimitedError>()
-        .map(|e| e.retry_after_secs)
+    if let Some(super::RemoteError::RateLimited(inner)) = err.downcast_ref::<super::RemoteError>() {
+        return Some(inner.retry_after_secs);
+    }
+    None
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::remote::RateLimitedError;
+    use crate::remote::{RateLimitedError, RemoteError};
     use std::cell::Cell;
 
     /// Helper: build a rate-limited `anyhow::Error` with the given retry-after.
     fn rate_limited_err(retry_after_secs: u64) -> anyhow::Error {
-        RateLimitedError { retry_after_secs }.into()
+        RemoteError::RateLimited(RateLimitedError { retry_after_secs }).into()
     }
 
     #[test]

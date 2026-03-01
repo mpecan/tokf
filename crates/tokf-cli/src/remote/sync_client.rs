@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::http::Client;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SyncEvent {
     pub id: i64,
@@ -30,23 +32,8 @@ pub struct SyncResponse {
 ///
 /// Returns an error if the server is unreachable, returns a non-success status,
 /// or the response body cannot be deserialized.
-pub fn sync_events(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    token: &str,
-    req: &SyncRequest,
-) -> anyhow::Result<SyncResponse> {
-    let url = format!("{base_url}/api/sync");
-    let resp = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {token}"))
-        .json(req)
-        .send()
-        .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
-
-    let resp = super::require_success(resp)?;
-    resp.json::<SyncResponse>()
-        .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
+pub fn sync_events(client: &Client, req: &SyncRequest) -> anyhow::Result<SyncResponse> {
+    client.post("/api/sync", req)
 }
 
 #[cfg(test)]

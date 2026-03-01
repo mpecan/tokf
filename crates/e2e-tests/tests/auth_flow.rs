@@ -8,6 +8,18 @@ mod harness;
 
 use tokf::auth::client::{self, PollResult};
 use tokf::remote::client as machine_client;
+use tokf::remote::http::Client;
+
+/// Build a raw reqwest blocking client for the device auth flow.
+/// The auth flow uses raw reqwest since it's interactive polling,
+/// not the standard Client wrapper.
+fn auth_http_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap()
+}
 
 /// Full device flow: initiate → poll → receive token → verify it works.
 #[crdb_test_macro::crdb_test(migrations = "../tokf-server/migrations")]
@@ -18,7 +30,7 @@ async fn device_flow_creates_token(pool: PgPool) {
     // Step 1: Initiate device flow
     let initiate_url = base_url.clone();
     let device = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
+        let http = auth_http_client();
         client::initiate_device_flow(&http, &initiate_url)
     })
     .await
@@ -32,7 +44,7 @@ async fn device_flow_creates_token(pool: PgPool) {
     let poll_url = base_url.clone();
     let device_code = device.device_code.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
+        let http = auth_http_client();
         client::poll_token(&http, &poll_url, &device_code)
     })
     .await
@@ -64,7 +76,7 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
     // Step 1: Device flow
     let initiate_url = base_url.clone();
     let device = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
+        let http = auth_http_client();
         client::initiate_device_flow(&http, &initiate_url)
     })
     .await
@@ -74,7 +86,7 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
     let poll_url = base_url.clone();
     let dc = device.device_code.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
+        let http = auth_http_client();
         client::poll_token(&http, &poll_url, &dc)
     })
     .await
@@ -89,12 +101,12 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
 
     // Step 2: Register machine
     let machine_id = uuid::Uuid::new_v4().to_string();
-    let register_url = base_url.clone();
+    let register_base = base_url.clone();
     let register_token = token.clone();
     let mid = machine_id.clone();
     let registered = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        machine_client::register_machine(&http, &register_url, &register_token, &mid, "e2e-host")
+        let client = Client::new(&register_base, Some(&register_token)).unwrap();
+        machine_client::register_machine(&client, &mid, "e2e-host")
     })
     .await
     .unwrap()
@@ -124,11 +136,11 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
 
     let req = h.build_sync_request_for_machine(&conn, &machine_id);
 
-    let sync_url = base_url.clone();
+    let sync_base = base_url.clone();
     let sync_token = token.clone();
     let resp = tokio::task::spawn_blocking(move || {
-        let http = harness::TestHarness::http_client();
-        tokf::remote::sync_client::sync_events(&http, &sync_url, &sync_token, &req)
+        let client = Client::new(&sync_base, Some(&sync_token)).unwrap();
+        tokf::remote::sync_client::sync_events(&client, &req)
     })
     .await
     .unwrap()

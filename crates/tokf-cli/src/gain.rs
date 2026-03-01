@@ -1,5 +1,5 @@
 use tokf::remote::gain_client;
-use tokf::remote::http;
+use tokf::remote::http::Client;
 use tokf::tracking;
 
 pub fn cmd_gain(daily: bool, by_filter: bool, json: bool) -> i32 {
@@ -129,17 +129,15 @@ pub fn cmd_gain_remote(daily: bool, by_filter: bool, json: bool) -> i32 {
         return 1;
     }
 
-    let Ok(auth) = http::load_auth() else {
-        eprintln!("[tokf] Log in with 'tokf auth login' to see remote stats");
-        return 1;
+    let client = match Client::authed() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[tokf] {e:#}");
+            return 1;
+        }
     };
 
-    let Ok(client) = http::build_client(http::LIGHT_TIMEOUT_SECS) else {
-        eprintln!("[tokf] error: could not build HTTP client");
-        return 1;
-    };
-
-    let resp = match gain_client::get_gain(&client, &auth.server_url, &auth.token) {
+    let resp = match gain_client::get_gain(&client) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
