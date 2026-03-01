@@ -308,6 +308,96 @@ collect_as = "summary_lines"
 
 ---
 
+## `[[chunk]]`
+
+**Type**: array of tables
+**Required**: no
+**Default**: `[]`
+
+Block-based structured extraction. Splits raw output into repeating structural blocks, extracts structured data per-block, and produces named collections for template rendering. Like `[[section]]`, chunks operate on the raw (unfiltered) command output — skip/keep patterns do not affect chunk processing.
+
+```toml
+[[chunk]]
+split_on = "^\\s*Running "
+include_split_line = true
+collect_as = "suites_detail"
+group_by = "crate_name"
+children_as = "children"
+
+[chunk.extract]
+pattern = 'unittests.+deps/([\w_-]+)-'
+as = "crate_name"
+carry_forward = true
+
+[[chunk.body_extract]]
+pattern = 'Running\s+(.+?)\s+\('
+as = "suite_name"
+
+[[chunk.aggregate]]
+pattern = '(\d+) passed'
+sum = "passed"
+
+[[chunk.aggregate]]
+pattern = '^test result:'
+count_as = "suite_count"
+```
+
+**Top-level chunk fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `split_on` | string (regex) | yes | Regex marking the start of each chunk. Each match starts a new chunk; lines before the first match are discarded. |
+| `include_split_line` | bool | no | Whether the line matching `split_on` is included as the first line of its chunk. Default: `true`. |
+| `collect_as` | string | yes | Variable name for the resulting structured collection. Available in output templates. |
+| `group_by` | string | no | Field name to group chunks by. Chunks sharing the same field value are merged: numeric fields are summed, non-numeric fields keep the first value. |
+| `children_as` | string | no | When set alongside `group_by`, preserve original (pre-merge) items as a nested collection under this name. Enables tree-structured template output. |
+
+**`[chunk.extract]` fields** (singular table — extracts from the header/split line):
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `pattern` | string (regex) | yes | Regex with one capture group to extract from the header line |
+| `as` | string | yes | Variable name to bind the extracted value to |
+| `carry_forward` | bool | no | When `true`, chunks that don't match inherit the value from the most recent chunk that did. Default: `false`. |
+
+**`[[chunk.body_extract]]` fields** (array of tables — extracts from body lines):
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `pattern` | string (regex) | yes | Regex with one capture group. Scans all chunk lines; first match wins. |
+| `as` | string | yes | Variable name to bind the extracted value to |
+| `carry_forward` | bool | no | When `true`, inherit from previous chunk if not matched. Default: `false`. |
+
+**`[[chunk.aggregate]]` fields** (array of tables — per-chunk aggregation):
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `pattern` | string (regex) | yes | Regex to match against each chunk line |
+| `sum` | string | no | Variable name to bind the sum of matched capture group values (parsed as integers) |
+| `count_as` | string | no | Variable name to bind the count of lines matching the pattern |
+
+At least one of `sum` or `count_as` must be set per aggregate rule.
+
+**Key normalization**: All chunk items are normalized to have the same set of keys. Missing fields default to empty string. This prevents template variables from one chunk item bleeding through to another during `each` rendering.
+
+**Accessing chunk data in templates**:
+
+| Expression | Description |
+|---|---|
+| `{suites_detail}` | The structured collection (flat or tree) |
+| `{suites_detail.count}` | Number of items (or groups, if grouped) |
+| `{suites_detail \| each: "..."}` | Iterate over items; named fields are available as `{field_name}` |
+
+**Tree output** (when both `group_by` and `children_as` are set):
+
+Inside an `each` template iterating over a tree collection, the children are accessible by the `children_as` name and support their own `each`/`join` pipes:
+
+```toml
+output = "{suites_detail | each: \"  {crate_name}: {passed} passed\\n{children | each: \\\"    {suite_name}: {passed}\\\" | join: \\\"\\\\n\\\"}\" | join: \"\\n\"}"
+```
+
+---
+
 ## `[parse]`
 
 **Type**: table
@@ -395,19 +485,36 @@ head = 20
 tail = 10
 skip = ["^\\s*$"]
 extract = { pattern = '(\S+)\s*->\s*(\S+)', output = "ok ✓ {2}" }
+
+# Singular form (one rule):
 aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "passed", count_as = "suites" }
+
+# Plural form (multiple rules) — use [[on_success.aggregates]]:
+# [[on_success.aggregates]]
+# from = "summary_lines"
+# pattern = 'ok\. (\d+) passed'
+# sum = "passed"
+# count_as = "suites"
+#
+# [[on_success.aggregates]]
+# from = "summary_lines"
+# pattern = '(\d+) failed'
+# sum = "failed"
 ```
 
 **Fields**:
 
 | Field | Type | Description |
 |---|---|---|
-| `output` | string | Template for the final output. Has access to all `[[section]]` variables and `{output}` (filtered output text). |
+| `output` | string | Template for the final output. Has access to all `[[section]]` and `[[chunk]]` variables, plus `{output}` (filtered output text). |
 | `head` | integer | Keep only the first N lines of filtered output. |
 | `tail` | integer | Keep only the last N lines of filtered output. |
 | `skip` | array of strings | Additional regexes to filter output lines within this branch. |
 | `extract` | inline table | Find the first matching line, render a template with capture groups. |
-| `aggregate` | inline table | Reduce section lines into numeric summaries. |
+| `aggregate` | inline table | Reduce section lines into numeric summaries (singular form — one rule). |
+| `aggregates` | array of tables | Multiple aggregate rules (plural form — use `[[on_success.aggregates]]`). |
+
+Both singular `aggregate` and plural `aggregates` can be used together — they are merged at runtime.
 
 **`extract` fields**:
 
@@ -416,7 +523,7 @@ aggregate = { from = "summary_lines", pattern = 'ok\. (\d+) passed', sum = "pass
 | `pattern` | string (regex) | yes | Pattern to search for (first match wins) |
 | `output` | string | yes | Template with `{1}`, `{2}`, … for capture groups |
 
-**`aggregate` fields**:
+**`aggregate` / `aggregates` fields** (same schema for both forms):
 
 | Field | Type | Required | Description |
 |---|---|---|---|
