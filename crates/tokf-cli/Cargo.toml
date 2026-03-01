@@ -39,8 +39,10 @@ gethostname = "1"
 
 [features]
 stdlib-publish = []
+test-keyring = []
 
 [dev-dependencies]
+tokf-dev = { path = ".", package = "tokf", features = ["test-keyring"] }
 tempfile = "3"
 serial_test = "3"
 mockito = "1.7.2"

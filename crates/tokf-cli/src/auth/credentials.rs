@@ -169,6 +169,121 @@ pub fn load() -> Option<LoadedAuth> {
     })
 }
 
+/// Switch the keyring to an in-memory backend that persists across entries.
+///
+/// Must be called before any keyring operations in tests to avoid touching
+/// real OS credentials. Safe to call multiple times.
+#[cfg(any(test, feature = "test-keyring"))]
+pub fn use_mock_keyring() {
+    keyring::set_default_credential_builder(mem_keyring::credential_builder());
+}
+
+/// In-memory credential store that persists across `Entry::new()` calls.
+///
+/// Unlike `keyring::mock` (which has `EntryOnly` persistence), this backend
+/// stores passwords in a process-global `HashMap` keyed by `(service, user)`,
+/// so `save()` + `load()` round-trips work correctly in tests.
+#[cfg(any(test, feature = "test-keyring"))]
+mod mem_keyring {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    use keyring::credential::{
+        Credential, CredentialApi, CredentialBuilder, CredentialBuilderApi, CredentialPersistence,
+    };
+    use keyring::error::{Error, Result};
+
+    type CredentialStore = HashMap<(String, String), Vec<u8>>;
+    static STORE: Mutex<Option<CredentialStore>> = Mutex::new(None);
+
+    fn with_store<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut HashMap<(String, String), Vec<u8>>) -> R,
+    {
+        let Ok(mut guard) = STORE.lock() else {
+            // Poisoned lock — return with an empty map so tests don't hang.
+            return f(&mut HashMap::new());
+        };
+        f(guard.get_or_insert_with(HashMap::new))
+    }
+
+    #[derive(Debug)]
+    struct MemCredential {
+        service: String,
+        user: String,
+    }
+
+    impl CredentialApi for MemCredential {
+        fn set_password(&self, password: &str) -> Result<()> {
+            self.set_secret(password.as_bytes())
+        }
+
+        fn set_secret(&self, secret: &[u8]) -> Result<()> {
+            with_store(|m| {
+                m.insert((self.service.clone(), self.user.clone()), secret.to_vec());
+            });
+            Ok(())
+        }
+
+        fn get_password(&self) -> Result<String> {
+            let bytes = self.get_secret()?;
+            String::from_utf8(bytes).map_err(|e| Error::BadEncoding(e.into_bytes()))
+        }
+
+        fn get_secret(&self) -> Result<Vec<u8>> {
+            with_store(|m| {
+                m.get(&(self.service.clone(), self.user.clone()))
+                    .cloned()
+                    .ok_or(Error::NoEntry)
+            })
+        }
+
+        fn delete_credential(&self) -> Result<()> {
+            with_store(|m| {
+                m.remove(&(self.service.clone(), self.user.clone()))
+                    .map(|_| ())
+                    .ok_or(Error::NoEntry)
+            })
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
+        fn debug_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            std::fmt::Debug::fmt(self, f)
+        }
+    }
+
+    struct MemCredentialBuilder;
+
+    impl CredentialBuilderApi for MemCredentialBuilder {
+        fn build(
+            &self,
+            _target: Option<&str>,
+            service: &str,
+            user: &str,
+        ) -> Result<Box<Credential>> {
+            Ok(Box::new(MemCredential {
+                service: service.to_string(),
+                user: user.to_string(),
+            }))
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
+        fn persistence(&self) -> CredentialPersistence {
+            CredentialPersistence::UntilDelete
+        }
+    }
+
+    pub(super) fn credential_builder() -> Box<CredentialBuilder> {
+        Box::new(MemCredentialBuilder)
+    }
+}
+
 /// Remove stored credentials (keyring entry and TOML file).
 ///
 /// Silently ignores errors — the credentials may already be absent.
@@ -192,6 +307,8 @@ pub fn remove() -> bool {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[test]
@@ -272,11 +389,55 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn load_returns_none_when_no_file() {
-        // This test validates graceful handling when no credentials exist.
-        // It may return Some if the developer has logged in locally, so we
-        // just verify it doesn't panic.
-        let _ = load();
+        use_mock_keyring();
+        let dir = tempfile::TempDir::new().unwrap();
+        unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+        let result = load();
+        unsafe { std::env::remove_var("TOKF_HOME") };
+        assert!(result.is_none(), "expected None when no auth file exists");
+    }
+
+    #[test]
+    #[serial]
+    fn save_and_load_roundtrip() {
+        use_mock_keyring();
+        let dir = tempfile::TempDir::new().unwrap();
+        unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+
+        save("secret-token", "alice", "https://api.tokf.net", 3600).unwrap();
+        let loaded = load().expect("credentials should be loadable after save");
+
+        unsafe { std::env::remove_var("TOKF_HOME") };
+
+        assert_eq!(loaded.token, "secret-token");
+        assert_eq!(loaded.username, "alice");
+        assert_eq!(loaded.server_url, "https://api.tokf.net");
+        assert!(loaded.expires_at > 0);
+        assert!(!loaded.is_expired());
+    }
+
+    #[test]
+    #[serial]
+    fn remove_clears_credentials() {
+        use_mock_keyring();
+        let dir = tempfile::TempDir::new().unwrap();
+        unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+
+        save("tok_xyz", "bob", "https://example.com", 0).unwrap();
+        assert!(load().is_some(), "credentials should exist after save");
+
+        let removed = remove();
+        assert!(
+            removed,
+            "remove should return true when credentials existed"
+        );
+
+        let after = load();
+        assert!(after.is_none(), "credentials should be gone after remove");
+
+        unsafe { std::env::remove_var("TOKF_HOME") };
     }
 
     #[test]

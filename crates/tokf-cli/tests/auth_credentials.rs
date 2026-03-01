@@ -1,14 +1,20 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use serial_test::serial;
 use tokf::auth::credentials;
 
 /// Verify that `remove()` is idempotent — calling it twice doesn't error.
 #[test]
+#[serial]
 fn remove_is_idempotent() {
-    // This may or may not have real credentials on the developer's machine.
-    // The function should never panic regardless.
+    credentials::use_mock_keyring();
+    let dir = tempfile::TempDir::new().unwrap();
+    unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+
     let _ = credentials::remove();
     let _ = credentials::remove();
+
+    unsafe { std::env::remove_var("TOKF_HOME") };
 }
 
 /// Verify the config path is well-formed on all platforms.
@@ -62,4 +68,41 @@ fn loaded_auth_expired_detection() {
         mit_license_accepted: None,
     };
     assert!(auth.is_expired());
+}
+
+/// Save credentials, load them back, verify all fields match.
+#[test]
+#[serial]
+fn save_load_roundtrip_integration() {
+    credentials::use_mock_keyring();
+    let dir = tempfile::TempDir::new().unwrap();
+    unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+
+    credentials::save("int-token", "carol", "https://registry.tokf.net", 7200).unwrap();
+    let loaded = credentials::load().expect("should load saved credentials");
+
+    unsafe { std::env::remove_var("TOKF_HOME") };
+
+    assert_eq!(loaded.token, "int-token");
+    assert_eq!(loaded.username, "carol");
+    assert_eq!(loaded.server_url, "https://registry.tokf.net");
+    assert!(!loaded.is_expired());
+}
+
+/// Save credentials, remove them, verify they are gone.
+#[test]
+#[serial]
+fn remove_after_save_returns_true() {
+    credentials::use_mock_keyring();
+    let dir = tempfile::TempDir::new().unwrap();
+    unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+
+    credentials::save("tok_rm", "dave", "https://example.com", 0).unwrap();
+    let removed = credentials::remove();
+    assert!(removed, "remove should return true after save");
+
+    let loaded = credentials::load();
+    assert!(loaded.is_none(), "load should return None after remove");
+
+    unsafe { std::env::remove_var("TOKF_HOME") };
 }

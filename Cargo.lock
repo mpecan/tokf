@@ -3312,6 +3312,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "tempfile",
+ "tokf",
  "tokf-common",
  "tokf-filter",
  "toml",
