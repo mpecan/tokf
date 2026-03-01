@@ -361,11 +361,12 @@ pub fn cmd_hook_handle() -> i32 {
     0
 }
 
-pub fn cmd_hook_install(global: bool, tool: &HookTool) -> i32 {
+pub fn cmd_hook_install(global: bool, tool: &HookTool, path: Option<&Path>) -> i32 {
+    let tokf_bin = path.map_or_else(|| "tokf".to_string(), |p| p.display().to_string());
     let result = match tool {
-        HookTool::ClaudeCode => hook::install(global),
+        HookTool::ClaudeCode => hook::install(global, &tokf_bin),
         // R6: Updated variant name from Opencode to OpenCode.
-        HookTool::OpenCode => hook::opencode::install(global),
+        HookTool::OpenCode => hook::opencode::install(global, &tokf_bin),
         HookTool::Codex => hook::codex::install(global),
     };
     match result {

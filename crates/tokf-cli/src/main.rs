@@ -18,7 +18,7 @@ mod sync_cmd;
 // pub(crate): accessed by install_cmd::run_verify
 pub(crate) mod verify_cmd;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
@@ -280,6 +280,10 @@ enum HookAction {
         /// Target tool to install hook for (default: claude-code)
         #[arg(long, value_enum, default_value_t = HookTool::ClaudeCode)]
         tool: HookTool,
+        /// Path to the tokf binary to embed in generated scripts.
+        /// Defaults to bare "tokf" (relies on PATH at runtime).
+        #[arg(long)]
+        path: Option<PathBuf>,
     },
 }
 
@@ -380,7 +384,9 @@ fn main() {
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
-            HookAction::Install { global, tool } => cmd_hook_install(*global, tool),
+            HookAction::Install { global, tool, path } => {
+                cmd_hook_install(*global, tool, path.as_deref())
+            }
         },
         Commands::Skill { action } => match action {
             SkillAction::Install { global } => cmd_skill_install(*global),

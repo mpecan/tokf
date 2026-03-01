@@ -15,6 +15,15 @@ tokf hook install --global # user-level (~/.config/tokf/)
 
 Once installed, every command Claude runs through the Bash tool is filtered transparently. Track cumulative savings with `tokf gain`.
 
+### Custom binary path
+
+By default the generated hook script calls bare `tokf`, relying on PATH at runtime. If `tokf` isn't on PATH in the hook's execution environment (common with Linuxbrew or `cargo install` when PATH is only set in interactive shell profiles), pass `--path` to embed a specific binary location:
+
+```sh
+tokf hook install --global --path ~/.cargo/bin/tokf
+tokf hook install --tool opencode --path /home/linuxbrew/.linuxbrew/bin/tokf
+```
+
 tokf also ships a filter-authoring skill that teaches Claude the complete filter schema:
 
 ```sh
