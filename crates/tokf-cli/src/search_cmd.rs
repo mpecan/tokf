@@ -50,7 +50,7 @@ fn print_table(results: &[filter_client::FilterSummary]) {
         "COMMAND",
         "AUTHOR",
         "SAVINGS%",
-        "INSTALLS",
+        "RUNS",
         cmd_width = cmd_width,
         author_width = author_width,
     );

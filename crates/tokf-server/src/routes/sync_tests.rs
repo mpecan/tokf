@@ -362,10 +362,10 @@ async fn sync_updates_filter_stats_for_known_hash(pool: PgPool) {
     assert_eq!(total_commands, 2, "total_commands should be 2");
     assert_eq!(total_input, 1500, "total_input_tokens should be 1500");
     assert_eq!(total_output, 300, "total_output_tokens should be 300");
-    // savings_pct = (1500 - 300) / 1500 = 0.8
+    // savings_pct = (1500 - 300) / 1500 * 100 = 80.0
     assert!(
-        (savings_pct - 0.8).abs() < 0.001,
-        "savings_pct should be ~0.8, got {savings_pct}"
+        (savings_pct - 80.0).abs() < 0.1,
+        "savings_pct should be ~80.0, got {savings_pct}"
     );
 }
 
