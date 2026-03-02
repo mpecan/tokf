@@ -11,6 +11,9 @@ use tempfile::TempDir;
 fn tokf_with_db(db_path: &Path) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
     cmd.env("TOKF_DB_PATH", db_path);
+    // Point TOKF_HOME at a nonexistent dir so the binary never finds a real
+    // auth.toml and never touches the OS keyring during tests.
+    cmd.env("TOKF_HOME", db_path.parent().unwrap().join("tokf-home"));
     cmd
 }
 
@@ -169,6 +172,101 @@ fn history_show_raw_not_found_exits_one() {
     assert!(
         stderr.contains("not found"),
         "expected 'not found' in stderr, got: {stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// history last
+// ---------------------------------------------------------------------------
+
+#[test]
+fn history_last_raw_prints_most_recent_raw_output() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(false);
+
+    // Run two commands so we can verify "last" picks the most recent one.
+    tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["run", "echo", "first"])
+        .output()
+        .expect("run first");
+
+    tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["run", "echo", "second"])
+        .output()
+        .expect("run second");
+
+    let out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["history", "last", "--raw"])
+        .output()
+        .expect("history last --raw");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(out.status.success(), "exit: {:?}", out.status.code());
+    assert!(
+        stdout.contains("second"),
+        "expected most recent raw output, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("ID:"),
+        "should not contain metadata, got: {stdout}"
+    );
+}
+
+#[test]
+fn history_last_default_includes_metadata() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(false);
+
+    tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["run", "echo", "payload"])
+        .output()
+        .expect("run");
+
+    let out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["history", "last"])
+        .output()
+        .expect("history last");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(out.status.success());
+    assert!(
+        stdout.contains("ID:"),
+        "should contain metadata, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("--- Raw Output ---"),
+        "should contain raw section, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("--- Filtered Output ---"),
+        "should contain filtered section, got: {stdout}"
+    );
+}
+
+#[test]
+fn history_last_empty_exits_zero() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(false);
+
+    let out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["history", "last"])
+        .output()
+        .expect("history last");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    assert_eq!(out.status.code(), Some(0), "expected exit 0");
+    assert!(
+        stderr.contains("no history entries found"),
+        "expected 'no history entries found' in stderr, got: {stderr}"
     );
 }
 

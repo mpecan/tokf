@@ -152,6 +152,32 @@ pub fn search_history(
     Ok(result)
 }
 
+/// Return the full most recent history entry.
+///
+/// Pass `project = Some("path")` to scope to one project, or `None` for all.
+///
+/// # Errors
+/// Returns an error if the query fails.
+pub fn get_latest_entry(
+    conn: &Connection,
+    project: Option<&str>,
+) -> anyhow::Result<Option<HistoryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp, project, command, filter_name,
+                raw_output, filtered_output, exit_code
+         FROM history
+         WHERE (?1 IS NULL OR project = ?1)
+         ORDER BY id DESC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query([project])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(map_row(row)?))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Return the command string of the most recent history entry for a project.
 ///
 /// # Errors
