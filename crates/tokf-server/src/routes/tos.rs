@@ -32,7 +32,7 @@ pub struct TosInfoResponse {
 pub async fn get_tos_info(State(state): State<AppState>) -> Json<TosInfoResponse> {
     Json(TosInfoResponse {
         version: CURRENT_TOS_VERSION,
-        url: format!("{}/terms", state.public_url),
+        url: state.terms_url,
     })
 }
 
