@@ -23,7 +23,7 @@ Returns filters whose command pattern matches `<query>` as a substring, ranked b
 and install count.
 
 ```
-COMMAND              AUTHOR    SAVINGS%   INSTALLS
+COMMAND              AUTHOR    SAVINGS%   RUNS
 git push             alice       42.3%     1,234
 git push --force     bob         38.1%       891
 ```

@@ -478,6 +478,45 @@ mod tests {
     }
 
     #[crdb_test_macro::crdb_test(migrations = "./migrations")]
+    async fn filter_gain_returns_stats_with_savings_pct(pool: PgPool) {
+        init_test_tracing();
+        let hash = "teststats0000000000000000000000000000000000000000000000000000";
+
+        // Insert filter_stats directly with a known savings_pct on the 0-100 scale
+        sqlx::query(
+            "INSERT INTO filter_stats
+                (filter_hash, total_commands, total_input_tokens, total_output_tokens, savings_pct, last_updated)
+             VALUES ($1, 5, 2000, 400, 80.0, NOW())",
+        )
+        .bind(hash)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let resp = app(pool)
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/gain/filter/{hash}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = assert_status(resp, StatusCode::OK).await;
+        let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(result["filter_hash"], hash);
+        assert_eq!(result["total_commands"], 5);
+        assert_eq!(result["total_input_tokens"], 2000);
+        assert_eq!(result["total_output_tokens"], 400);
+        assert_eq!(
+            result["savings_pct"], 80.0,
+            "savings_pct should be 80.0 (0-100 scale)"
+        );
+        assert!(result["last_updated"].is_string());
+    }
+
+    #[crdb_test_macro::crdb_test(migrations = "./migrations")]
     async fn global_gain_does_not_expose_hostnames(pool: PgPool) {
         init_test_tracing();
         let (user_id, _) = create_user_and_token(&pool).await;

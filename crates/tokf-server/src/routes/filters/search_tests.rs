@@ -282,6 +282,40 @@ async fn search_rejects_oversized_query(pool: PgPool) {
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn get_filter_returns_nonzero_savings_pct(pool: PgPool) {
+    let (_, token) = insert_test_user(&pool, "get_savings").await;
+    let storage = Arc::new(InMemoryStorageClient::new());
+
+    let app =
+        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
+    let hash = publish_filter_helper(app, &token, b"command = \"git push\"\n", &[]).await;
+
+    // Insert filter_stats with known savings_pct on the 0-100 scale
+    sqlx::query(
+        "INSERT INTO filter_stats
+            (filter_hash, total_commands, total_input_tokens, total_output_tokens, savings_pct, last_updated)
+         VALUES ($1, 10, 1000, 200, 80.0, NOW())",
+    )
+    .bind(&hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let app =
+        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
+    let resp = get_request(app, &token, &format!("/api/filters/{hash}")).await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["savings_pct"], 80.0,
+        "savings_pct should be 80.0 (0-100 scale)"
+    );
+    assert_eq!(json["total_commands"], 10);
+}
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn search_wildcard_injection_does_not_return_all(pool: PgPool) {
     let (_, token) = insert_test_user(&pool, "wildcard_test").await;
     let storage = Arc::new(InMemoryStorageClient::new());
