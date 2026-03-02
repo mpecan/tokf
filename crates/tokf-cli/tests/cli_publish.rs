@@ -87,6 +87,93 @@ fn publish_help_shows_flags() {
     );
 }
 
+/// `tokf publish --dry-run` resolves fixture references in test files.
+///
+/// Before the consolidation, regular publish sent raw test bytes without
+/// inlining `fixture = "file.txt"` references. This test verifies the fix:
+/// a filter with a `_test/` dir containing a fixture-referencing test TOML
+/// should succeed in dry-run (fixtures resolved) and report the correct count.
+#[test]
+fn publish_dry_run_resolves_fixtures_in_tests() {
+    let home = tempfile::tempdir().unwrap();
+
+    // Create filter
+    let filter_dir = home.path().join(".tokf").join("filters").join("myns");
+    std::fs::create_dir_all(&filter_dir).unwrap();
+    std::fs::write(
+        filter_dir.join("fix-filter.toml"),
+        r#"command = "my-fixture-cmd""#,
+    )
+    .unwrap();
+
+    // Create adjacent _test/ dir with a test that references a fixture
+    let test_dir = filter_dir.join("fix-filter_test");
+    std::fs::create_dir_all(&test_dir).unwrap();
+    std::fs::write(test_dir.join("sample_output.txt"), "hello world\n").unwrap();
+    std::fs::write(
+        test_dir.join("with_fixture.toml"),
+        "name = \"fixture test\"\nfixture = \"sample_output.txt\"\n\n[[expect]]\ncontains = \"hello\"\n",
+    )
+    .unwrap();
+
+    let output = tokf()
+        .env("HOME", home.path())
+        .current_dir(home.path())
+        .args(["publish", "myns/fix-filter", "--dry-run"])
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "fixture resolution should succeed in dry-run, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("Tests:   1 file(s)"),
+        "expected 1 test file (only .toml, not .txt), got: {stderr}"
+    );
+}
+
+/// `tokf publish --dry-run` fails when a fixture file is missing.
+#[test]
+fn publish_dry_run_fails_on_missing_fixture() {
+    let home = tempfile::tempdir().unwrap();
+
+    let filter_dir = home.path().join(".tokf").join("filters").join("myns");
+    std::fs::create_dir_all(&filter_dir).unwrap();
+    std::fs::write(
+        filter_dir.join("bad-filter.toml"),
+        r#"command = "my-bad-cmd""#,
+    )
+    .unwrap();
+
+    // Create _test/ dir with a test referencing a non-existent fixture
+    let test_dir = filter_dir.join("bad-filter_test");
+    std::fs::create_dir_all(&test_dir).unwrap();
+    std::fs::write(
+        test_dir.join("broken.toml"),
+        "name = \"broken\"\nfixture = \"does_not_exist.txt\"\n\n[[expect]]\ncontains = \"x\"\n",
+    )
+    .unwrap();
+
+    let output = tokf()
+        .env("HOME", home.path())
+        .current_dir(home.path())
+        .args(["publish", "myns/bad-filter", "--dry-run"])
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "expected failure when fixture is missing"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("does_not_exist.txt"),
+        "error should mention the missing fixture, got: {stderr}"
+    );
+}
+
 /// `tokf publish` with a nonexistent filter should fail with a "not found" error.
 #[test]
 fn publish_nonexistent_filter_fails() {
