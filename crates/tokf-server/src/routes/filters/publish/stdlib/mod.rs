@@ -199,13 +199,14 @@ fn synthetic_github_id(username: &str) -> i64 {
 /// verified, and published idempotently. Requires service token auth.
 ///
 /// Returns a summary of published/skipped/failed counts.
+// 1 line over the 60-line guideline due to fire-and-forget catalog materialization block.
+#[allow(clippy::too_many_lines)]
 pub async fn publish_stdlib(
     _auth: ServiceAuth,
     State(state): State<AppState>,
     Json(req): Json<StdlibPublishRequest>,
 ) -> Result<(StatusCode, Json<StdlibPublishResponse>), AppError> {
     tracing::info!(count = req.filters.len(), "publish-stdlib request received");
-
     if req.filters.len() > MAX_BATCH_SIZE {
         return Err(AppError::BadRequest(format!(
             "batch size {} exceeds maximum of {MAX_BATCH_SIZE}",
@@ -243,10 +244,14 @@ pub async fn publish_stdlib(
         "publish-stdlib complete"
     );
 
-    // Fire-and-forget: write per-filter metadata + catalog index in a single task.
-    // Sequential within the task to avoid DB pool contention from 200 concurrent queries.
+    // Fire-and-forget: per-filter metadata + catalog index (sequential to avoid pool contention).
     if !published_hashes.is_empty() {
-        spawn_stdlib_catalog_update(state.db.clone(), state.storage.clone(), published_hashes);
+        crate::catalog::spawn_batch_catalog_update(
+            state.db.clone(),
+            state.storage.clone(),
+            published_hashes,
+            true,
+        );
     }
 
     let status = if failed.is_empty() {
@@ -368,38 +373,6 @@ async fn persist_filter(
 
     insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;
     Ok(())
-}
-
-/// Single background task for all stdlib catalog writes: per-filter metadata + index.
-///
-/// Runs sequentially to avoid saturating the DB connection pool with concurrent queries.
-fn spawn_stdlib_catalog_update(
-    pool: sqlx::PgPool,
-    storage: std::sync::Arc<dyn crate::storage::StorageClient>,
-    hashes: Vec<String>,
-) {
-    tokio::spawn(async move {
-        for hash in &hashes {
-            match crate::catalog::build_filter_metadata(&pool, hash).await {
-                Ok(entry) => {
-                    if let Err(e) =
-                        crate::catalog::write_filter_metadata_to_r2(&*storage, hash, &entry).await
-                    {
-                        tracing::warn!(hash = %hash, "stdlib metadata write failed: {e}");
-                    }
-                }
-                Err(e) => tracing::warn!(hash = %hash, "stdlib metadata build failed: {e}"),
-            }
-        }
-        match crate::catalog::build_catalog_index(&pool).await {
-            Ok(index) => {
-                if let Err(e) = crate::catalog::write_catalog_to_r2(&*storage, &index).await {
-                    tracing::warn!("stdlib catalog index write failed: {e}");
-                }
-            }
-            Err(e) => tracing::warn!("stdlib catalog index build failed: {e}"),
-        }
-    });
 }
 
 /// Best-effort command pattern extraction for error messages.

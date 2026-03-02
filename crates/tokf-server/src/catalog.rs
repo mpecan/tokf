@@ -296,18 +296,42 @@ pub fn spawn_catalog_update(
     });
 }
 
-/// Spawn a background task to regenerate just the catalog index (no per-filter metadata).
+/// Spawn a background task to update metadata for multiple filters and rebuild the index.
 ///
-/// Used after batch operations where per-filter metadata was already handled.
-pub fn spawn_catalog_index_update(pool: PgPool, storage: std::sync::Arc<dyn StorageClient>) {
+/// Per-filter metadata writes that fail are logged and skipped so one bad hash
+/// doesn't block the rest. When `warn_on_missing` is `false`, missing filters
+/// are logged at `debug` level (useful for sync, where hashes may reference
+/// local-only unpublished filters).
+pub fn spawn_batch_catalog_update(
+    pool: PgPool,
+    storage: std::sync::Arc<dyn StorageClient>,
+    hashes: Vec<String>,
+    warn_on_missing: bool,
+) {
     tokio::spawn(async move {
+        for hash in &hashes {
+            match build_filter_metadata(&pool, hash).await {
+                Ok(entry) => {
+                    if let Err(e) = write_filter_metadata_to_r2(&*storage, hash, &entry).await {
+                        tracing::warn!(hash = %hash, "batch catalog metadata write failed: {e}");
+                    }
+                }
+                Err(e) => {
+                    if warn_on_missing {
+                        tracing::warn!(hash = %hash, "batch catalog metadata build failed: {e}");
+                    } else {
+                        tracing::debug!(hash = %hash, "batch catalog metadata build skipped: {e}");
+                    }
+                }
+            }
+        }
         match build_catalog_index(&pool).await {
             Ok(index) => {
                 if let Err(e) = write_catalog_to_r2(&*storage, &index).await {
-                    tracing::warn!("catalog index write failed: {e}");
+                    tracing::warn!("batch catalog index write failed: {e}");
                 }
             }
-            Err(e) => tracing::warn!("catalog index build failed: {e}"),
+            Err(e) => tracing::warn!("batch catalog index build failed: {e}"),
         }
     });
 }

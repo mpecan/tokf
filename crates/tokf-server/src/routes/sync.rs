@@ -194,36 +194,6 @@ fn validate_events(events: &[SyncEvent]) -> Result<(), AppError> {
     Ok(())
 }
 
-fn spawn_catalog_sync(
-    pool: PgPool,
-    storage: std::sync::Arc<dyn crate::storage::StorageClient>,
-    hashes: Vec<String>,
-) {
-    tokio::spawn(async move {
-        for hash in &hashes {
-            match crate::catalog::build_filter_metadata(&pool, hash).await {
-                Ok(entry) => {
-                    if let Err(e) =
-                        crate::catalog::write_filter_metadata_to_r2(&*storage, hash, &entry).await
-                    {
-                        tracing::warn!(hash = %hash, "sync catalog metadata write failed: {e}");
-                    }
-                }
-                // debug, not warn: usage events can reference local-only (unpublished) filters
-                Err(e) => tracing::debug!(hash = %hash, "sync catalog metadata build skipped: {e}"),
-            }
-        }
-        match crate::catalog::build_catalog_index(&pool).await {
-            Ok(index) => {
-                if let Err(e) = crate::catalog::write_catalog_to_r2(&*storage, &index).await {
-                    tracing::warn!("sync catalog index write failed: {e}");
-                }
-            }
-            Err(e) => tracing::warn!("sync catalog index build failed: {e}"),
-        }
-    });
-}
-
 pub async fn sync_usage(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -274,7 +244,13 @@ pub async fn sync_usage(
 
     // Fire-and-forget: update catalog metadata for affected filters + rebuild index.
     if !filter_hashes.is_empty() {
-        spawn_catalog_sync(state.db.clone(), state.storage.clone(), filter_hashes);
+        // warn_on_missing = false: usage events can reference local-only (unpublished) filters
+        crate::catalog::spawn_batch_catalog_update(
+            state.db.clone(),
+            state.storage.clone(),
+            filter_hashes,
+            false,
+        );
     }
 
     Ok((

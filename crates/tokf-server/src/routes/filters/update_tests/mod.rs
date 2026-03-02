@@ -264,6 +264,9 @@ pub async fn update_tests(
         tracing::warn!("failed to delete old test files from storage: {e}");
     }
 
+    // Fire-and-forget: update R2 metadata (test_count changed) + catalog index.
+    crate::catalog::spawn_catalog_update(state.db.clone(), state.storage.clone(), hash.clone());
+
     let registry_url = format!("{}/filters/{}", state.public_url, hash);
     Ok((
         crate::routes::ip::rate_limit_headers(&rl),
