@@ -174,14 +174,21 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
             }
             word_idx += 1;
         } else {
-            // For the first word compare basenames, supporting path variants.
+            // For the first word compare basenames, supporting path variants
+            // on both the input word and the pattern word.
             let word_to_match = if pat_idx == 0 {
                 extract_basename(words[word_idx])
             } else {
                 words[word_idx]
             };
 
-            if word_to_match == *pword {
+            let pword_to_match = if pat_idx == 0 {
+                extract_basename(pword)
+            } else {
+                pword
+            };
+
+            if word_to_match == pword_to_match {
                 word_idx += 1;
             } else if pat_idx > 0 {
                 // Between pattern words, try to skip over global flag tokens.
@@ -400,10 +407,14 @@ pub fn command_pattern_to_regex(pattern: &str) -> String {
             if word == "*" {
                 regex.push_str(r"\S+");
             } else {
+                // Strip any path prefix from the pattern word itself (e.g.
+                // `./mvnw` → `mvnw`) so that `command = "./mvnw test"` and
+                // `command = "mvnw test"` produce identical regexes.
+                let basename = extract_basename(word);
                 // Allow an optional leading path prefix (e.g. `/usr/bin/` or
                 // `./`) so that `/usr/bin/git` matches the pattern `git`.
                 regex.push_str(r"(?:[^\s]*/)?");
-                regex.push_str(&word_re);
+                regex.push_str(&regex::escape(basename));
             }
         } else if word == "*" {
             // Wildcard: require exactly one whitespace-separated token.
@@ -441,6 +452,8 @@ pub fn command_pattern_regexes(command: &CommandPattern) -> Vec<(String, String)
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_basename;
 #[cfg(test)]
 mod tests_discovery;
 #[cfg(test)]
