@@ -339,6 +339,13 @@ pub async fn publish_filter(
 
     if is_new {
         insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;
+
+        // Fire-and-forget: materialize per-filter metadata + catalog index to R2
+        crate::catalog::spawn_catalog_update(
+            state.db.clone(),
+            state.storage.clone(),
+            prepared.content_hash.clone(),
+        );
     }
 
     let registry_url = format!("{}/filters/{}", state.public_url, prepared.content_hash);

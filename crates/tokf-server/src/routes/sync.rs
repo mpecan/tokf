@@ -242,6 +242,17 @@ pub async fn sync_usage(
     persist_events(&mut tx, &new_events, machine_id, new_cursor, &filter_hashes).await?;
     tx.commit().await?;
 
+    // Fire-and-forget: update catalog metadata for affected filters + rebuild index.
+    if !filter_hashes.is_empty() {
+        // warn_on_missing = false: usage events can reference local-only (unpublished) filters
+        crate::catalog::spawn_batch_catalog_update(
+            state.db.clone(),
+            state.storage.clone(),
+            filter_hashes,
+            false,
+        );
+    }
+
     Ok((
         rl_headers,
         Json(SyncResponse {

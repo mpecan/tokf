@@ -199,13 +199,14 @@ fn synthetic_github_id(username: &str) -> i64 {
 /// verified, and published idempotently. Requires service token auth.
 ///
 /// Returns a summary of published/skipped/failed counts.
+// 1 line over the 60-line guideline due to fire-and-forget catalog materialization block.
+#[allow(clippy::too_many_lines)]
 pub async fn publish_stdlib(
     _auth: ServiceAuth,
     State(state): State<AppState>,
     Json(req): Json<StdlibPublishRequest>,
 ) -> Result<(StatusCode, Json<StdlibPublishResponse>), AppError> {
     tracing::info!(count = req.filters.len(), "publish-stdlib request received");
-
     if req.filters.len() > MAX_BATCH_SIZE {
         return Err(AppError::BadRequest(format!(
             "batch size {} exceeds maximum of {MAX_BATCH_SIZE}",
@@ -216,11 +217,15 @@ pub async fn publish_stdlib(
     let mut published = 0usize;
     let mut skipped = 0usize;
     let mut failed = Vec::new();
+    let mut published_hashes = Vec::new();
 
     for entry in &req.filters {
         match process_entry(&state, entry, &mut skipped).await {
-            Ok(true) => published += 1,
-            Ok(false) => {} // skipped — already counted inside process_entry
+            Ok(Some(hash)) => {
+                published += 1;
+                published_hashes.push(hash);
+            }
+            Ok(None) => {} // skipped — already counted inside process_entry
             Err(e) => {
                 tracing::warn!(
                     command = %e.command_pattern,
@@ -238,6 +243,16 @@ pub async fn publish_stdlib(
         failed = failed.len(),
         "publish-stdlib complete"
     );
+
+    // Fire-and-forget: per-filter metadata + catalog index (sequential to avoid pool contention).
+    if !published_hashes.is_empty() {
+        crate::catalog::spawn_batch_catalog_update(
+            state.db.clone(),
+            state.storage.clone(),
+            published_hashes,
+            true,
+        );
+    }
 
     let status = if failed.is_empty() {
         if published > 0 {
@@ -261,30 +276,31 @@ pub async fn publish_stdlib(
 
 /// Process a single stdlib filter entry.
 ///
-/// Returns `Ok(true)` when published, `Ok(false)` when skipped (increments
+/// Returns `Ok(Some(hash))` when published, `Ok(None)` when skipped (increments
 /// `*skipped`), or `Err(StdlibFailure)` when validation/verification fails.
 async fn process_entry(
     state: &AppState,
     entry: &StdlibFilterEntry,
     skipped: &mut usize,
-) -> Result<bool, StdlibFailure> {
+) -> Result<Option<String>, StdlibFailure> {
     let cmd_hint = guess_command_pattern(&entry.filter_toml);
     let prepared =
         prepare_stdlib_filter(entry).map_err(|e| fail(&cmd_hint, "preparation failed", e))?;
 
     if check_existing(state, &prepared, skipped).await? {
-        return Ok(false);
+        return Ok(None);
     }
 
     run_verification(&prepared.config, &prepared.test_cases)
         .await
         .map_err(|e| fail(&prepared.command_pattern, "verification failed", e))?;
 
+    let hash = prepared.content_hash.clone();
     persist_filter(state, &prepared, &entry.author_github_username)
         .await
         .map_err(|e| fail(&prepared.command_pattern, "persist failed", e.to_string()))?;
 
-    Ok(true)
+    Ok(Some(hash))
 }
 
 /// Build a `StdlibFailure` and log a warning in one call.

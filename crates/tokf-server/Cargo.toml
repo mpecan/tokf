@@ -47,6 +47,7 @@ tokio = { version = "1", features = ["full", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 crdb-test-macro = { path = "../crdb-test-macro" }
+ts-rs = "12"
 # Self-dependency to enable test-helpers feature for integration tests
 # (cfg(test) is only set for unit tests, not integration tests)
 # Renamed key to work around release-please cargo-workspace plugin cycle detection

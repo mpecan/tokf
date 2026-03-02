@@ -139,7 +139,8 @@ pub async fn search_filters(
     };
 
     let rows = sqlx::query(
-        "SELECT f.content_hash, f.command_pattern, u.username AS author,
+        "SELECT f.content_hash, f.command_pattern,
+                CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,
@@ -206,7 +207,8 @@ pub async fn get_filter(
     }
     let rl = crate::routes::ip::most_restrictive(ip_rl, user_rl);
     let row = sqlx::query(
-        "SELECT f.content_hash, f.command_pattern, u.username AS author,
+        "SELECT f.content_hash, f.command_pattern,
+                CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,

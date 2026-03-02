@@ -1,4 +1,5 @@
 pub mod auth;
+mod catalog;
 mod filters;
 mod gain;
 mod health;
@@ -45,6 +46,7 @@ pub fn create_router(state: AppState) -> Router {
             post(filters::publish_stdlib).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
         .route("/api/sync", post(sync::sync_usage))
+        .route("/api/catalog/refresh", post(catalog::refresh_catalog))
         .route("/api/gain", get(gain::get_gain))
         .route("/api/gain/global", get(gain::get_global_gain))
         .route("/api/gain/filter/{hash}", get(gain::get_filter_gain))
