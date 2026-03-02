@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.15](https://github.com/mpecan/tokf/compare/tokf-v0.2.14...tokf-v0.2.15) (2026-03-02)
+
+
+### Bug Fixes
+
+* **config:** normalize basename on both pattern and input words ([#221](https://github.com/mpecan/tokf/issues/221)) ([a236a8b](https://github.com/mpecan/tokf/commit/a236a8bd575eec760bfba3f4e15218b8c084eca7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.14 to 0.2.15
+    * tokf-filter bumped from 0.2.14 to 0.2.15
+
 ## [0.2.14](https://github.com/mpecan/tokf/compare/tokf-v0.2.13...tokf-v0.2.14) (2026-03-02)
 
 
