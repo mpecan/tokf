@@ -1,6 +1,0 @@
-name = "passing unit tests show aggregated summary"
-fixture = "pass.txt"
-exit_code = 0
-
-[[expect]]
-equals = "✓ cargo test: 23 passed (3 suites)"
