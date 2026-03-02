@@ -67,6 +67,25 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+  publish-npm:
+    name: Publish @tokf/catalog-types to npm
+    needs: [publish]
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish catalog types
+        working-directory: crates/tokf-server/generated
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   build-binaries:
     name: Build ${{ matrix.target }}
     if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')

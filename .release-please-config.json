@@ -20,7 +20,11 @@
     "crates/tokf-common": {},
     "crates/tokf-filter": {},
     "crates/tokf-cli": { "component": "tokf" },
-    "crates/tokf-server": {}
+    "crates/tokf-server": {},
+    "crates/tokf-server/generated": {
+      "release-type": "node",
+      "component": "catalog-types"
+    }
   },
   "plugins": [
     {
@@ -30,7 +34,7 @@
     {
       "type": "linked-versions",
       "groupName": "workspace",
-      "components": ["tokf-common", "tokf-filter", "tokf", "tokf-server"]
+      "components": ["tokf-common", "tokf-filter", "tokf", "tokf-server", "catalog-types"]
     }
   ]
 }
