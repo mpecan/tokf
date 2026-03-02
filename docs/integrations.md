@@ -83,3 +83,7 @@ tokf ships a Claude Code skill that teaches Claude the complete filter schema, p
 ```
 
 The skill is in `.claude/skills/tokf-filter/SKILL.md`. Reference material (exhaustive step docs and an annotated example TOML) lives in `.claude/skills/tokf-filter/references/`.
+
+## Task runners
+
+tokf also integrates with task runners like `make` and `just` by injecting itself as the task runner's shell. Each recipe line is individually filtered while exit codes propagate correctly. See [Rewrite configuration](#rewrite-configuration-rewritestoml) for details.

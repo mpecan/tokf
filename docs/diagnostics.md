@@ -44,6 +44,8 @@ filters:
 |---|---|---|
 | `TOKF_HOME` | Redirect **all** user-level tokf paths (filters, cache, DB, hooks, auth) to a single directory | Platform config dir (e.g. `~/.config/tokf` on Linux) |
 | `TOKF_DB_PATH` | Override the tracking database path only (takes precedence over `TOKF_HOME`) | Platform data dir (e.g. `~/.local/share/tokf/tracking.db`); or `$TOKF_HOME/tracking.db` when `TOKF_HOME` is set |
+| `TOKF_NO_FILTER` | Skip filtering in shell mode (set to `1`, `true`, or `yes`) | unset |
+| `TOKF_VERBOSE` | Print filter resolution details in shell mode | unset |
 
 `TOKF_HOME` works like `CARGO_HOME` or `RUSTUP_HOME` — set it once to relocate everything:
 
@@ -57,6 +59,22 @@ TOKF_DB_PATH=/tmp/my-tracking.db tokf info
 
 The `tokf info` output always shows the active `TOKF_HOME` value (or `(not set)`) at the top,
 so you can quickly verify which paths are in effect.
+
+## Rewrite debugging
+
+Use `tokf rewrite --verbose` to see how a command would be rewritten, including which rule fired:
+
+```sh
+tokf rewrite --verbose "make check"         # shows wrapper rule
+tokf rewrite --verbose "cargo test"          # shows filter rule
+tokf rewrite --verbose "cargo test | tail"   # shows pipe stripping
+```
+
+For shell mode (task runner recipe lines), set `TOKF_VERBOSE=1` to see filter resolution for each recipe line:
+
+```sh
+TOKF_VERBOSE=1 make check    # verbose output on stderr for each recipe
+```
 
 ## Cache management
 

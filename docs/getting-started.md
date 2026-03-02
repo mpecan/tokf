@@ -88,6 +88,17 @@ tokf verify --scope global     # only user-level filters (~/.config/tokf/filters
 tokf verify --scope stdlib     # only built-in stdlib (filters/ in CWD)
 ```
 
+### Task runner filtering
+
+tokf automatically wraps `make` and `just` so that each recipe line is individually filtered:
+
+```sh
+make check    # each recipe line (cargo test, cargo clippy, ...) is filtered
+just test     # same — each recipe runs through tokf
+```
+
+See [Rewrite configuration](#rewrite-configuration-rewritestoml) for details and customization.
+
 ### Explore available filters
 
 ```sh

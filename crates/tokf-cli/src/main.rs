@@ -13,6 +13,7 @@ mod publish_stdlib_cmd;
 mod remote_cmd;
 mod resolve;
 mod search_cmd;
+mod shell;
 mod show_cmd;
 mod sync_cmd;
 // pub(crate): accessed by install_cmd::run_verify
@@ -353,6 +354,20 @@ fn main() {
         cmd_check, cmd_hook_handle, cmd_hook_install, cmd_ls, cmd_rewrite, cmd_run,
         cmd_skill_install, cmd_test, cmd_which, or_exit,
     };
+
+    // Pre-clap shell mode detection.
+    //
+    // Task runners (make, just) invoke their shell as `$SHELL -c 'recipe_line'`.
+    // When tokf is set as the shell, we intercept `-c` (and variants like `-cu`,
+    // `-ec`) before clap parsing — clap would reject them as unknown flags.
+    let raw_args: Vec<String> = std::env::args().collect();
+    if raw_args.len() >= 2 && shell::is_shell_flag(&raw_args[1]) {
+        if raw_args.len() < 3 {
+            eprintln!("[tokf] shell mode requires a command argument");
+            std::process::exit(1);
+        }
+        std::process::exit(shell::cmd_shell(&raw_args[1], &raw_args[2]));
+    }
 
     let cli = Cli::parse();
     let exit_code = match &cli.command {
