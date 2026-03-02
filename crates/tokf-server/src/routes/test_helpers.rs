@@ -75,6 +75,19 @@ pub fn make_state(pool: PgPool) -> AppState {
     }
 }
 
+/// Insert a service token into the DB and return the raw token string.
+pub async fn insert_service_token(pool: &PgPool, description: &str) -> String {
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+    sqlx::query("INSERT INTO service_tokens (token_hash, description) VALUES ($1, $2)")
+        .bind(&token_hash)
+        .bind(description)
+        .execute(pool)
+        .await
+        .unwrap();
+    token
+}
+
 /// Inserts a test user and a non-expired auth token; returns `(user_id, token)`.
 pub async fn create_user_and_token(pool: &PgPool) -> (i64, String) {
     let user_id: i64 = sqlx::query_scalar(

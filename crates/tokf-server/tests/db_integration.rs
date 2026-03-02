@@ -33,13 +33,11 @@ use sqlx::PgPool;
 use tokf_server::{
     auth::{
         github::{AccessTokenResponse, DeviceCodeResponse, GitHubClient, GitHubOrg, GitHubUser},
-        mock::{NoOpGitHubClient, SuccessGitHubClient},
+        mock::SuccessGitHubClient,
         token::{AuthUser, generate_token, hash_token},
     },
-    rate_limit::{IpRateLimiter, PublishRateLimiter, SyncRateLimiter},
-    routes::create_router,
+    routes::{create_router, test_helpers::make_state},
     state::AppState,
-    storage::noop::NoOpStorageClient,
 };
 use tower::ServiceExt;
 
@@ -58,19 +56,8 @@ async fn protected_ok(_user: AuthUser) -> Json<serde_json::Value> {
 
 fn db_state(pool: PgPool) -> AppState {
     AppState {
-        db: pool,
-        github: Arc::new(NoOpGitHubClient),
-        storage: Arc::new(NoOpStorageClient),
-        github_client_id: "test-client-id".to_string(),
-        github_client_secret: "test-client-secret".to_string(),
         trust_proxy: true,
-        public_url: "http://localhost:8080".to_string(),
-        publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
-        search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
-        sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),
-        ip_search_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
-        ip_download_rate_limiter: Arc::new(IpRateLimiter::new(10000, 60)),
-        general_rate_limiter: Arc::new(PublishRateLimiter::new(10000, 60)),
+        ..make_state(pool)
     }
 }
 

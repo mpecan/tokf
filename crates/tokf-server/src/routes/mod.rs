@@ -1,3 +1,4 @@
+mod account;
 pub mod auth;
 mod catalog;
 mod filters;
@@ -8,6 +9,7 @@ mod machines;
 mod middleware;
 mod ready;
 mod sync;
+mod tos;
 
 #[cfg(any(test, feature = "test-helpers"))]
 pub mod test_helpers;
@@ -15,7 +17,7 @@ pub mod test_helpers;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
 };
 
 use crate::state::AppState;
@@ -50,6 +52,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/gain", get(gain::get_gain))
         .route("/api/gain/global", get(gain::get_global_gain))
         .route("/api/gain/filter/{hash}", get(gain::get_filter_gain))
+        .route("/terms", get(tos::get_terms))
+        .route("/api/tos", get(tos::get_tos_info))
+        .route("/api/tos/accept", post(tos::accept_tos))
+        .route("/api/account", delete(account::delete_account))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             general_rate_limit,

@@ -32,6 +32,12 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: i64,
     pub user: TokenUser,
+    /// Current `ToS` version the server requires (absent from old servers).
+    #[serde(default)]
+    pub tos_current_version: Option<i32>,
+    /// Highest `ToS` version this user has accepted (absent from old servers).
+    #[serde(default)]
+    pub tos_accepted_version: Option<i32>,
 }
 
 // Manual Debug impl to redact the access_token secret
@@ -42,6 +48,8 @@ impl fmt::Debug for TokenResponse {
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
             .field("user", &self.user)
+            .field("tos_current_version", &self.tos_current_version)
+            .field("tos_accepted_version", &self.tos_accepted_version)
             .finish()
     }
 }
@@ -120,6 +128,9 @@ pub fn initiate_device_flow(
 
 /// Poll for a completed device authorization via `POST /api/auth/token`.
 ///
+/// When `tos_version` is `Some`, the version is included in the request body
+/// so the server can record acceptance atomically with the token exchange.
+///
 /// # Errors
 ///
 /// Returns an error if the server is unreachable or returns a 5xx status.
@@ -127,11 +138,16 @@ pub fn poll_token(
     client: &reqwest::blocking::Client,
     base_url: &str,
     device_code: &str,
+    tos_version: Option<i32>,
 ) -> anyhow::Result<PollResult> {
     let url = format!("{base_url}/api/auth/token");
+    let mut body = serde_json::json!({ "device_code": device_code });
+    if let Some(v) = tos_version {
+        body["tos_version"] = serde_json::json!(v);
+    }
     let resp = client
         .post(&url)
-        .json(&serde_json::json!({ "device_code": device_code }))
+        .json(&body)
         .send()
         .map_err(|e| anyhow::anyhow!("could not reach {url}: {e}"))?;
 
@@ -254,6 +270,43 @@ mod tests {
         assert_eq!(resp.expires_in, 7_776_000);
         assert_eq!(resp.user.id, 42);
         assert_eq!(resp.user.username, "octocat");
+    }
+
+    #[test]
+    fn deserialize_token_response_with_tos_fields() {
+        let json = r#"{
+            "access_token": "tok_secret",
+            "token_type": "bearer",
+            "expires_in": 7776000,
+            "user": {
+                "id": 42,
+                "username": "octocat",
+                "avatar_url": "https://avatars.githubusercontent.com/u/42"
+            },
+            "tos_current_version": 1,
+            "tos_accepted_version": 1
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.tos_current_version, Some(1));
+        assert_eq!(resp.tos_accepted_version, Some(1));
+    }
+
+    #[test]
+    fn deserialize_token_response_without_tos_fields() {
+        // Old server doesn't send ToS fields — should default to None
+        let json = r#"{
+            "access_token": "tok_secret",
+            "token_type": "bearer",
+            "expires_in": 7776000,
+            "user": {
+                "id": 42,
+                "username": "octocat",
+                "avatar_url": "https://avatars.githubusercontent.com/u/42"
+            }
+        }"#;
+        let resp: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.tos_current_version, None);
+        assert_eq!(resp.tos_accepted_version, None);
     }
 
     #[test]

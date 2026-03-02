@@ -136,7 +136,7 @@ fn poll_token_success() {
         )
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::Success(resp) => {
             assert_eq!(resp.access_token, "tok_secret");
@@ -157,7 +157,7 @@ fn poll_token_pending() {
         .with_body(r#"{"error": "authorization_pending"}"#)
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::Pending { interval } => {
             assert_eq!(interval, 5); // default when not provided
@@ -177,7 +177,7 @@ fn poll_token_slow_down() {
         .with_body(r#"{"error": "slow_down", "interval": 15}"#)
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::SlowDown { interval } => {
             assert_eq!(interval, 15);
@@ -197,7 +197,7 @@ fn poll_token_client_error_denied() {
         .with_body(r#"{"error":"access_denied","error_description":"The user denied the request"}"#)
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::Failed(msg) => {
             assert_eq!(msg, "The user denied the request");
@@ -217,7 +217,7 @@ fn poll_token_client_error_expired() {
         .with_body(r#"{"error":"expired_token"}"#)
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::Failed(msg) => {
             assert_eq!(msg, "expired_token");
@@ -236,7 +236,7 @@ fn poll_token_server_error_5xx() {
         .with_body("Bad Gateway")
         .create();
 
-    let err = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap_err();
+    let err = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap_err();
     assert!(
         err.to_string().contains("HTTP 502"),
         "expected HTTP 502 in error, got: {err}"
@@ -254,7 +254,7 @@ fn poll_token_unparseable_200() {
         .with_body("not json at all")
         .create();
 
-    let err = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap_err();
+    let err = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap_err();
     assert!(
         err.to_string().contains("unexpected response"),
         "expected 'unexpected response' in error, got: {err}"
@@ -272,7 +272,7 @@ fn poll_token_unknown_error_string() {
         .with_body(r#"{"error": "some_unknown_error"}"#)
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::Failed(msg) => {
             assert_eq!(msg, "some_unknown_error");
@@ -295,7 +295,7 @@ fn poll_token_4xx_raw_text_sanitized() {
         .with_body(&body)
         .create();
 
-    let result = client::poll_token(&http_client(), &server.url(), "dc-123").unwrap();
+    let result = client::poll_token(&http_client(), &server.url(), "dc-123", None).unwrap();
     match result {
         client::PollResult::Failed(msg) => {
             // Should be truncated and control chars stripped

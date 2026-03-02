@@ -296,6 +296,8 @@ enum AuthAction {
     Logout,
     /// Show current authentication status (username, server URL)
     Status,
+    /// Permanently delete your account (requires confirmation)
+    DeleteAccount,
 }
 
 #[derive(Subcommand)]
@@ -437,6 +439,7 @@ fn main() {
             AuthAction::Login => auth_cmd::cmd_auth_login(),
             AuthAction::Logout => auth_cmd::cmd_auth_logout(),
             AuthAction::Status => auth_cmd::cmd_auth_status(),
+            AuthAction::DeleteAccount => auth_cmd::cmd_auth_delete_account(),
         }),
         Commands::Remote { action } => or_exit(match action {
             RemoteAction::Setup => remote_cmd::cmd_remote_setup(),

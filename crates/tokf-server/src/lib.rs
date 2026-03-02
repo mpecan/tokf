@@ -7,4 +7,5 @@ pub mod rate_limit;
 pub mod routes;
 pub mod state;
 pub mod storage;
+pub mod tos;
 pub mod verify;

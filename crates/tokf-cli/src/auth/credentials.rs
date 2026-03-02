@@ -19,6 +19,9 @@ pub struct StoredAuth {
     /// Whether the user has accepted the MIT license for filter publishing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mit_license_accepted: Option<bool>,
+    /// Highest Terms of Service version the user has accepted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tos_accepted_version: Option<i32>,
 }
 
 /// Loaded credentials: token (from keyring) + metadata (from TOML).
@@ -30,6 +33,8 @@ pub struct LoadedAuth {
     pub expires_at: u64,
     /// Whether the user has accepted the MIT license for filter publishing.
     pub mit_license_accepted: Option<bool>,
+    /// Highest Terms of Service version the user has accepted.
+    pub tos_accepted_version: Option<i32>,
 }
 
 impl LoadedAuth {
@@ -87,17 +92,19 @@ pub fn save(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    // Preserve any previously stored fields (e.g. mit_license_accepted)
+    // Preserve any previously stored fields (e.g. mit_license_accepted, tos_accepted_version)
     let existing = auth_config_path()
         .and_then(|p| fs::read_to_string(&p).ok())
         .and_then(|c| toml::from_str::<StoredAuth>(&c).ok());
-    let mit_license_accepted = existing.and_then(|e| e.mit_license_accepted);
+    let mit_license_accepted = existing.as_ref().and_then(|e| e.mit_license_accepted);
+    let tos_accepted_version = existing.as_ref().and_then(|e| e.tos_accepted_version);
 
     let meta = StoredAuth {
         username: username.to_string(),
         server_url: server_url.to_string(),
         expires_at,
         mit_license_accepted,
+        tos_accepted_version,
     };
     let content = toml::to_string_pretty(&meta)?;
     write_config_file(&path, &content)?;
@@ -127,6 +134,43 @@ pub(crate) fn save_license_accepted_to_path(
     path: &std::path::Path,
     accepted: bool,
 ) -> anyhow::Result<()> {
+    update_stored_auth(path, |meta| meta.mit_license_accepted = Some(accepted))
+}
+
+/// Persist the user's `ToS` acceptance version to the auth config file.
+///
+/// If no auth config file exists, creates a minimal one. Existing fields
+/// are preserved unchanged.
+///
+/// # Errors
+///
+/// Returns an error if the config directory cannot be determined or the file
+/// cannot be written.
+pub fn save_tos_accepted_version(version: i32) -> anyhow::Result<()> {
+    let path =
+        auth_config_path().ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    save_tos_accepted_version_to_path(&path, version)
+}
+
+/// Core logic for persisting `ToS` acceptance version to a specific path.
+///
+/// Separated from [`save_tos_accepted_version`] to allow direct testing
+/// without depending on the platform config directory.
+pub(crate) fn save_tos_accepted_version_to_path(
+    path: &std::path::Path,
+    version: i32,
+) -> anyhow::Result<()> {
+    update_stored_auth(path, |meta| meta.tos_accepted_version = Some(version))
+}
+
+/// Load-modify-save helper for [`StoredAuth`].
+///
+/// Reads the existing file (or creates a default), applies `mutate`, and
+/// writes back. Ensures the parent directory exists.
+fn update_stored_auth(
+    path: &std::path::Path,
+    mutate: impl FnOnce(&mut StoredAuth),
+) -> anyhow::Result<()> {
     let mut meta: StoredAuth = if path.exists() {
         let content = fs::read_to_string(path)?;
         toml::from_str(&content)?
@@ -136,10 +180,11 @@ pub(crate) fn save_license_accepted_to_path(
             server_url: String::new(),
             expires_at: 0,
             mit_license_accepted: None,
+            tos_accepted_version: None,
         }
     };
 
-    meta.mit_license_accepted = Some(accepted);
+    mutate(&mut meta);
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -166,6 +211,7 @@ pub fn load() -> Option<LoadedAuth> {
         server_url: meta.server_url,
         expires_at: meta.expires_at,
         mit_license_accepted: meta.mit_license_accepted,
+        tos_accepted_version: meta.tos_accepted_version,
     })
 }
 
@@ -320,6 +366,7 @@ mod tests {
             server_url: "https://api.tokf.net".to_string(),
             expires_at: 1_700_000_000,
             mit_license_accepted: None,
+            tos_accepted_version: None,
         };
         let serialized = toml::to_string_pretty(&meta).unwrap();
         let deserialized: StoredAuth = toml::from_str(&serialized).unwrap();
@@ -335,6 +382,7 @@ mod tests {
             server_url: "https://api.tokf.net".to_string(),
             expires_at: 0,
             mit_license_accepted: Some(true),
+            tos_accepted_version: None,
         };
         let serialized = toml::to_string_pretty(&meta).unwrap();
         assert!(
@@ -354,6 +402,7 @@ mod tests {
             server_url: "https://example.com".to_string(),
             expires_at: 9_999_999_999,
             mit_license_accepted: None,
+            tos_accepted_version: None,
         };
         let content = toml::to_string_pretty(&initial).unwrap();
         std::fs::write(&path, &content).unwrap();
@@ -444,6 +493,58 @@ mod tests {
     }
 
     #[test]
+    fn stored_auth_tos_version_roundtrip() {
+        let meta = StoredAuth {
+            username: "carol".to_string(),
+            server_url: "https://api.tokf.net".to_string(),
+            expires_at: 0,
+            mit_license_accepted: None,
+            tos_accepted_version: Some(1),
+        };
+        let serialized = toml::to_string_pretty(&meta).unwrap();
+        assert!(
+            serialized.contains("tos_accepted_version"),
+            "should serialize field: {serialized}"
+        );
+        let deserialized: StoredAuth = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.tos_accepted_version, Some(1));
+    }
+
+    #[test]
+    fn stored_auth_missing_tos_version_defaults_to_none() {
+        let toml_str = r#"
+            username = "bob"
+            server_url = "https://api.tokf.net"
+        "#;
+        let meta: StoredAuth = toml::from_str(toml_str).unwrap();
+        assert_eq!(meta.tos_accepted_version, None);
+    }
+
+    #[test]
+    fn save_tos_accepted_version_preserves_other_fields() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("auth.toml");
+        let initial = StoredAuth {
+            username: "alice".to_string(),
+            server_url: "https://example.com".to_string(),
+            expires_at: 9_999_999_999,
+            mit_license_accepted: Some(true),
+            tos_accepted_version: None,
+        };
+        let content = toml::to_string_pretty(&initial).unwrap();
+        std::fs::write(&path, &content).unwrap();
+
+        save_tos_accepted_version_to_path(&path, 1).unwrap();
+
+        let result: StoredAuth = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(result.username, "alice");
+        assert_eq!(result.server_url, "https://example.com");
+        assert_eq!(result.expires_at, 9_999_999_999);
+        assert_eq!(result.mit_license_accepted, Some(true));
+        assert_eq!(result.tos_accepted_version, Some(1));
+    }
+
+    #[test]
     fn is_expired_unknown() {
         let auth = LoadedAuth {
             token: String::new(),
@@ -451,6 +552,7 @@ mod tests {
             server_url: String::new(),
             expires_at: 0,
             mit_license_accepted: None,
+            tos_accepted_version: None,
         };
         assert!(!auth.is_expired(), "unknown expiry should not be expired");
     }
@@ -468,6 +570,7 @@ mod tests {
             server_url: String::new(),
             expires_at: future,
             mit_license_accepted: None,
+            tos_accepted_version: None,
         };
         assert!(!auth.is_expired());
     }
@@ -480,6 +583,7 @@ mod tests {
             server_url: String::new(),
             expires_at: 1, // 1970 — definitely expired
             mit_license_accepted: None,
+            tos_accepted_version: None,
         };
         assert!(auth.is_expired());
     }

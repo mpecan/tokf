@@ -5,6 +5,7 @@ use crate::auth::github::{AccessTokenResponse, GitHubClient, GitHubUser};
 use crate::auth::token::{generate_token, hash_token};
 use crate::error::AppError;
 use crate::state::AppState;
+use crate::tos::CURRENT_TOS_VERSION;
 
 const MAX_FLOWS_PER_IP_PER_HOUR: i64 = 10;
 const TOKEN_TTL_SECONDS: i64 = 7_776_000; // 90 days
@@ -23,6 +24,9 @@ pub struct DeviceFlowResponse {
 #[derive(Debug, Deserialize)]
 pub struct PollTokenRequest {
     pub device_code: String,
+    /// `ToS` version the client accepted during login (absent for older clients).
+    #[serde(default)]
+    pub tos_version: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -31,6 +35,11 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: i64,
     pub user: TokenUser,
+    /// Current `ToS` version the server requires.
+    pub tos_current_version: i32,
+    /// Highest `ToS` version this user has accepted (None if never accepted).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tos_accepted_version: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -166,7 +175,7 @@ pub async fn poll_token(
             error, interval, ..
         } => handle_pending_response(&state, flow_id, &error, interval).await,
         AccessTokenResponse::Success { access_token, .. } => {
-            handle_github_success(&state, flow_id, &access_token).await
+            handle_github_success(&state, flow_id, &access_token, req.tos_version).await
         }
     }
 }
@@ -224,6 +233,7 @@ async fn handle_github_success(
     state: &AppState,
     flow_id: i64,
     access_token: &str,
+    tos_version: Option<i32>,
 ) -> Result<axum::response::Response, AppError> {
     let (user, orgs) = fetch_github_profile(&*state.github, access_token).await?;
     let user_id = upsert_github_user(state, &user, &orgs).await?;
@@ -243,10 +253,20 @@ async fn handle_github_success(
         return Err(AppError::BadRequest("device code already used".to_string()));
     }
 
+    // Record ToS acceptance if the client sent a version matching current
+    let tos_accepted = if tos_version == Some(CURRENT_TOS_VERSION) {
+        record_tos_acceptance(state, user_id, CURRENT_TOS_VERSION).await?;
+        Some(CURRENT_TOS_VERSION)
+    } else {
+        get_accepted_tos_version(state, user_id).await?
+    };
+
     let resp = TokenResponse {
         access_token: bearer,
         token_type: "bearer".to_string(),
         expires_in,
+        tos_current_version: CURRENT_TOS_VERSION,
+        tos_accepted_version: tos_accepted,
         user: TokenUser {
             id: user_id,
             username: user.login,
@@ -271,11 +291,14 @@ async fn build_token_response(
             .await?;
 
     let (bearer, expires_in) = create_bearer_token(state, user_id).await?;
+    let tos_accepted = get_accepted_tos_version(state, user_id).await?;
 
     let resp = TokenResponse {
         access_token: bearer,
         token_type: "bearer".to_string(),
         expires_in,
+        tos_current_version: CURRENT_TOS_VERSION,
+        tos_accepted_version: tos_accepted,
         user: TokenUser {
             id: user_id,
             username,
@@ -349,4 +372,28 @@ async fn fetch_github_profile(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok((user, orgs))
+}
+
+/// Query the highest `ToS` version the user has accepted, or `None`.
+async fn get_accepted_tos_version(state: &AppState, user_id: i64) -> Result<Option<i32>, AppError> {
+    let version: Option<i32> =
+        sqlx::query_scalar("SELECT MAX(tos_version) FROM tos_acceptances WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(&state.db)
+            .await?;
+    Ok(version)
+}
+
+/// Insert a `ToS` acceptance record.
+async fn record_tos_acceptance(
+    state: &AppState,
+    user_id: i64,
+    version: i32,
+) -> Result<(), AppError> {
+    sqlx::query("INSERT INTO tos_acceptances (user_id, tos_version) VALUES ($1, $2)")
+        .bind(user_id)
+        .bind(version)
+        .execute(&state.db)
+        .await?;
+    Ok(())
 }

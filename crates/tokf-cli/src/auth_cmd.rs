@@ -1,27 +1,28 @@
+use std::io::{BufRead, Write};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use tokf::auth::{client, credentials};
+use tokf::remote::{account_client, http::Client, tos_client};
 
 const MAX_NETWORK_RETRIES: u32 = 3;
 
 pub fn cmd_auth_login() -> anyhow::Result<i32> {
-    // Check if already logged in
-    if let Some(auth) = credentials::load() {
-        eprintln!(
-            "[tokf] already logged in as {}. Run `tokf auth logout` first.",
-            auth.username
-        );
-        return Ok(0);
-    }
-
     let base_url = client::server_url();
+
+    // Check if already logged in — may need ToS re-acceptance
+    if let Some(auth) = credentials::load() {
+        return handle_existing_login(&auth, &base_url);
+    }
 
     if !client::is_secure_url(&base_url) {
         eprintln!(
             "[tokf] WARNING: server URL uses insecure HTTP — credentials will be sent unencrypted"
         );
     }
+
+    // Fetch current ToS version (unauthenticated)
+    let tos_version = prompt_tos_acceptance(&base_url)?;
 
     let http_client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -58,13 +59,107 @@ pub fn cmd_auth_login() -> anyhow::Result<i32> {
     }
 
     eprintln!("[tokf] Waiting for authorization (press Ctrl+C to cancel)...");
-    poll_for_token(&http_client, &base_url, &device_resp)
+    poll_for_token(&http_client, &base_url, &device_resp, tos_version)
+}
+
+/// If already logged in, check whether `ToS` re-acceptance is needed.
+fn handle_existing_login(auth: &credentials::LoadedAuth, base_url: &str) -> anyhow::Result<i32> {
+    // Try to fetch current ToS version from server
+    let Ok(client) = Client::unauthenticated(base_url) else {
+        eprintln!(
+            "[tokf] Already logged in as {}. Run `tokf auth logout` first.",
+            auth.username
+        );
+        return Ok(0);
+    };
+
+    // Server unreachable or old server without ToS — just report logged in
+    let Ok(tos_info) = tos_client::fetch_tos_info(&client) else {
+        eprintln!(
+            "[tokf] Already logged in as {}. Run `tokf auth logout` first.",
+            auth.username
+        );
+        return Ok(0);
+    };
+
+    // Check if local version is current
+    if auth
+        .tos_accepted_version
+        .is_some_and(|v| v >= tos_info.version)
+    {
+        eprintln!(
+            "[tokf] Already logged in as {}. Run `tokf auth logout` first.",
+            auth.username
+        );
+        return Ok(0);
+    }
+
+    // ToS re-acceptance needed
+    eprintln!(
+        "[tokf] The Terms of Service have been updated (v{}).",
+        tos_info.version
+    );
+    print_tos_summary(&tos_info.url);
+
+    if !confirm_tos(tos_info.version)? {
+        eprintln!(
+            "[tokf] Terms declined. You remain logged in but some features may require acceptance."
+        );
+        return Ok(1);
+    }
+
+    // Record acceptance on server
+    let authed_client = Client::authed()?;
+    tos_client::accept_tos(&authed_client, tos_info.version)?;
+    credentials::save_tos_accepted_version(tos_info.version)?;
+    eprintln!("[tokf] Terms of Service v{} accepted.", tos_info.version);
+    Ok(0)
+}
+
+/// Fetch `ToS` info and prompt the user to accept before proceeding with login.
+///
+/// Returns the accepted version, or an error if declined.
+fn prompt_tos_acceptance(base_url: &str) -> anyhow::Result<Option<i32>> {
+    let Ok(client) = Client::unauthenticated(base_url) else {
+        return Ok(None); // Can't reach server — proceed without ToS
+    };
+
+    let Ok(tos_info) = tos_client::fetch_tos_info(&client) else {
+        return Ok(None); // Old server without ToS endpoint
+    };
+
+    eprintln!("[tokf] Before logging in, please review our Terms of Service.");
+    print_tos_summary(&tos_info.url);
+
+    if !confirm_tos(tos_info.version)? {
+        anyhow::bail!("Terms of Service declined — login cancelled");
+    }
+
+    Ok(Some(tos_info.version))
+}
+
+fn print_tos_summary(terms_url: &str) {
+    eprintln!("[tokf] Summary: tokf collects your GitHub profile, machine IDs, and");
+    eprintln!("[tokf]          aggregate token-count statistics. We do not collect");
+    eprintln!("[tokf]          command content or output. No data is sold or shared.");
+    eprintln!("[tokf]          No guarantees are provided.");
+    eprintln!("[tokf] Full terms: {terms_url}");
+}
+
+fn confirm_tos(version: i32) -> anyhow::Result<bool> {
+    eprint!("[tokf] Accept Terms of Service (v{version})? [y/N]: ");
+    std::io::stderr().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().lock().read_line(&mut input)?;
+    Ok(input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes"))
 }
 
 fn poll_for_token(
     http_client: &reqwest::blocking::Client,
     base_url: &str,
     device_resp: &client::DeviceFlowResponse,
+    tos_version: Option<i32>,
 ) -> anyhow::Result<i32> {
     let mut interval = device_resp.interval.clamp(1, 60);
     let expires_in = device_resp.expires_in.clamp(0, 1800);
@@ -76,7 +171,7 @@ fn poll_for_token(
     for _ in 0..max_attempts {
         thread::sleep(Duration::from_secs(interval.unsigned_abs()));
 
-        match client::poll_token(http_client, base_url, &device_resp.device_code) {
+        match client::poll_token(http_client, base_url, &device_resp.device_code, tos_version) {
             Ok(client::PollResult::Success(token_resp)) => {
                 credentials::save(
                     &token_resp.access_token,
@@ -84,6 +179,10 @@ fn poll_for_token(
                     base_url,
                     token_resp.expires_in,
                 )?;
+                // Save the accepted ToS version locally
+                if let Some(v) = tos_version {
+                    credentials::save_tos_accepted_version(v)?;
+                }
                 eprintln!();
                 eprintln!("[tokf] Logged in as {}", token_resp.user.username);
                 return Ok(0);
@@ -160,5 +259,43 @@ pub fn cmd_auth_status() -> anyhow::Result<i32> {
             println!("Not logged in. Run `tokf auth login` to authenticate.");
         }
     }
+    Ok(0)
+}
+
+pub fn cmd_auth_delete_account() -> anyhow::Result<i32> {
+    let auth = credentials::load()
+        .ok_or_else(|| anyhow::anyhow!("not logged in — run `tokf auth login` first"))?;
+
+    eprintln!("[tokf] WARNING: This will permanently delete your account.");
+    eprintln!("[tokf] The following data will be removed:");
+    eprintln!("[tokf]   - Auth tokens and sessions");
+    eprintln!("[tokf]   - Machine registrations and sync state");
+    eprintln!("[tokf]   - Usage statistics and event history");
+    eprintln!("[tokf]   - Terms of Service acceptance records");
+    eprintln!("[tokf] Your published filters will remain available to the community");
+    eprintln!("[tokf] with your account converted to unclaimed status.");
+    eprintln!();
+    eprint!(
+        "[tokf] Type your username ({}) to confirm deletion: ",
+        auth.username
+    );
+    std::io::stderr().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().lock().read_line(&mut input)?;
+    let input = input.trim();
+
+    if input != auth.username {
+        eprintln!("[tokf] Username does not match. Account deletion cancelled.");
+        return Ok(1);
+    }
+
+    let client = Client::authed()?;
+    account_client::delete_account(&client)?;
+
+    // Remove local credentials
+    credentials::remove();
+
+    eprintln!("[tokf] Account deleted. Local credentials removed.");
     Ok(0)
 }
