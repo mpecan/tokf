@@ -19,6 +19,7 @@ fn remove_is_idempotent() {
 
 /// Verify the config path is well-formed on all platforms.
 #[test]
+#[serial]
 fn config_path_is_well_formed() {
     let path = credentials::auth_config_path();
     assert!(path.is_some());

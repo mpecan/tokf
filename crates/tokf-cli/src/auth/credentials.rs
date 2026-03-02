@@ -198,11 +198,13 @@ mod mem_keyring {
 
     fn with_store<F, R>(f: F) -> R
     where
-        F: FnOnce(&mut HashMap<(String, String), Vec<u8>>) -> R,
+        F: FnOnce(&mut CredentialStore) -> R,
     {
-        let Ok(mut guard) = STORE.lock() else {
-            // Poisoned lock — return with an empty map so tests don't hang.
-            return f(&mut HashMap::new());
+        let mut guard = match STORE.lock() {
+            Ok(guard) => guard,
+            // Recover the underlying data even if the mutex is poisoned so the
+            // in-memory store remains consistent across calls.
+            Err(poisoned) => poisoned.into_inner(),
         };
         f(guard.get_or_insert_with(HashMap::new))
     }
@@ -377,6 +379,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn auth_config_path_returns_some() {
         let path = auth_config_path();
         assert!(path.is_some(), "expected auth config path to be Some");
