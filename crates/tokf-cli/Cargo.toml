@@ -36,6 +36,8 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "linux-
 open = "5"
 uuid = { version = "1", features = ["v4"] }
 gethostname = "1"
+clap_complete = "4.5"
+clap_complete_nushell = "4.5"
 
 [features]
 stdlib-publish = []
