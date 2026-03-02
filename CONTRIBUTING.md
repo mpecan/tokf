@@ -18,6 +18,29 @@ The project requires a recent stable Rust toolchain. See `rust-toolchain.toml` f
 
 ---
 
+## Workspace structure
+
+The repository is a Cargo workspace with six crates:
+
+| Crate | Type | Description |
+|---|---|---|
+| `crates/tokf-cli` | bin + lib | CLI binary (`tokf`) — filter resolution, command execution, tracking, hooks |
+| `crates/tokf-common` | lib | Shared types and utilities (config hash, serde helpers) |
+| `crates/tokf-filter` | lib | Pure filter engine — all TOML-driven processing steps and Lua sandbox |
+| `crates/tokf-server` | bin + lib | Remote server — auth, publishing, sync, gain API (axum + CockroachDB) |
+| `crates/crdb-test-macro` | proc-macro | `#[crdb_test]` attribute macro for CockroachDB integration tests |
+| `crates/e2e-tests` | test-only | End-to-end tests spanning CLI, server, and database |
+
+Build or test individual crates with `-p`:
+
+```sh
+cargo build -p tokf-cli            # build the CLI only
+cargo test -p tokf-filter          # test the filter engine
+cargo clippy -p tokf-server -- -D warnings  # lint the server
+```
+
+---
+
 ## What to work on
 
 Check the [issue tracker](https://github.com/mpecan/tokf/issues) for open issues. Good first contributions include adding new filters, improving existing ones, or expanding documentation.

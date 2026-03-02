@@ -13,6 +13,18 @@ tokf gain --by-filter  # breakdown by filter
 tokf gain --json       # machine-readable output
 ```
 
+## Remote gain
+
+View aggregate savings across all your registered machines via the tokf server:
+
+```sh
+tokf gain --remote              # summary across all machines
+tokf gain --remote --by-filter  # breakdown by filter
+tokf gain --remote --json       # machine-readable output
+```
+
+Remote gain requires authentication (`tokf auth login`). The `--daily` flag is not available remotely. See [Remote Sharing](#remote-sharing) for the full setup workflow.
+
 ## Output history
 
 tokf records raw and filtered outputs in a local SQLite database, useful for debugging filters or reviewing what an AI agent saw:

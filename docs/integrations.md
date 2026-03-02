@@ -1,7 +1,7 @@
 ---
 title: Integrations
 description: Connect tokf to Claude Code, OpenCode, Codex, and other AI tools.
-order: 5
+order: 6
 ---
 
 ## Claude Code hook

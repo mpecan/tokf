@@ -1,7 +1,7 @@
 ---
 title: Community Filters
 description: Discover, install, and share filters with the tokf community registry.
-order: 8
+order: 9
 ---
 
 ## Overview

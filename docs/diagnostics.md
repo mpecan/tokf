@@ -1,7 +1,7 @@
 ---
 title: Diagnostics
 description: Inspect your tokf setup, manage the filter cache, and troubleshoot.
-order: 7
+order: 8
 ---
 
 ## tokf info
