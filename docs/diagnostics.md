@@ -84,3 +84,49 @@ tokf caches the filter discovery index for faster startup. The cache rebuilds au
 tokf cache info    # show cache location, size, and validity
 tokf cache clear   # delete the cache, forcing a rebuild on next run
 ```
+
+## Shell completions
+
+Generate tab-completion scripts for your shell:
+
+```sh
+tokf completions bash
+tokf completions zsh
+tokf completions fish
+tokf completions powershell
+tokf completions elvish
+tokf completions nushell
+```
+
+### Installation
+
+**Bash** — add to `~/.bashrc`:
+```sh
+eval "$(tokf completions bash)"
+```
+
+**Zsh** — add to `~/.zshrc`:
+```sh
+eval "$(tokf completions zsh)"
+```
+
+**Fish** — save to completions directory:
+```sh
+tokf completions fish > ~/.config/fish/completions/tokf.fish
+```
+
+**PowerShell** — add to your profile:
+```powershell
+tokf completions powershell | Out-String | Invoke-Expression
+```
+
+**Elvish** — add to `~/.elvish/rc.elv`:
+```sh
+eval (tokf completions elvish | slurp)
+```
+
+**Nushell** — save and source in your config:
+```sh
+tokf completions nushell | save -f ~/.config/nushell/tokf.nu
+source ~/.config/nushell/tokf.nu
+```

@@ -1,6 +1,7 @@
 mod auth_cmd;
 mod cache_cmd;
 mod commands;
+mod completions_cmd;
 mod eject_cmd;
 mod gain;
 mod history_cmd;
@@ -76,6 +77,11 @@ enum Commands {
         prefer_less: bool,
         #[arg(trailing_var_arg = true, required = true)]
         command_args: Vec<String>,
+    },
+    /// Generate shell completion scripts
+    Completions {
+        /// Target shell (bash, zsh, fish, powershell, elvish, nushell)
+        shell: completions_cmd::ShellChoice,
     },
     /// Validate a filter TOML file
     Check {
@@ -392,6 +398,7 @@ fn main() {
             *prefer_less,
             &cli,
         )),
+        Commands::Completions { shell } => completions_cmd::cmd_completions(*shell),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
         Commands::Test {
             filter_path,
