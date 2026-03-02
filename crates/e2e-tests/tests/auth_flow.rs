@@ -45,7 +45,7 @@ async fn device_flow_creates_token(pool: PgPool) {
     let device_code = device.device_code.clone();
     let result = tokio::task::spawn_blocking(move || {
         let http = auth_http_client();
-        client::poll_token(&http, &poll_url, &device_code)
+        client::poll_token(&http, &poll_url, &device_code, None)
     })
     .await
     .unwrap()
@@ -87,7 +87,7 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
     let dc = device.device_code.clone();
     let result = tokio::task::spawn_blocking(move || {
         let http = auth_http_client();
-        client::poll_token(&http, &poll_url, &dc)
+        client::poll_token(&http, &poll_url, &dc, None)
     })
     .await
     .unwrap()

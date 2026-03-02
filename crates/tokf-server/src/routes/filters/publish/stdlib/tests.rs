@@ -7,24 +7,11 @@ use axum::{
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use crate::auth::token::hash_token;
 use crate::routes::filters::test_helpers::make_state;
+use crate::routes::test_helpers::insert_service_token;
 use crate::storage::mock::InMemoryStorageClient;
 
 use super::{StdlibFilterEntry, StdlibPublishRequest, StdlibTestFile};
-
-/// Insert a service token into the DB and return the raw token string.
-async fn insert_service_token(pool: &sqlx::PgPool, description: &str) -> String {
-    let token = crate::auth::token::generate_token();
-    let token_hash = hash_token(&token);
-    sqlx::query("INSERT INTO service_tokens (token_hash, description) VALUES ($1, $2)")
-        .bind(&token_hash)
-        .bind(description)
-        .execute(pool)
-        .await
-        .expect("failed to insert service token");
-    token
-}
 
 fn make_valid_request() -> StdlibPublishRequest {
     StdlibPublishRequest {

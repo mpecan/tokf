@@ -1,3 +1,4 @@
+pub mod account_client;
 pub mod client;
 pub mod filter_client;
 pub mod gain_client;
@@ -6,6 +7,7 @@ pub mod machine;
 pub mod publish_client;
 pub mod retry;
 pub mod sync_client;
+pub mod tos_client;
 
 use std::fmt;
 

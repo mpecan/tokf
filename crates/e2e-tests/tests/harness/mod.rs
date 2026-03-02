@@ -223,6 +223,7 @@ impl TestHarness {
             // Far-future expiry (year ~2554) so the token is always valid.
             expires_at: 18_446_744_073,
             mit_license_accepted: None,
+            tos_accepted_version: None,
         }
     }
 

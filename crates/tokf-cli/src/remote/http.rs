@@ -166,6 +166,19 @@ impl Client {
             .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
     }
 
+    /// DELETE `{base_url}{path}`, returning the raw response.
+    ///
+    /// Does **not** retry — DELETE is non-idempotent in our usage
+    /// (account deletion is a one-shot operation).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on network failure or non-2xx status.
+    pub fn delete(&self, path: &str) -> anyhow::Result<reqwest::blocking::Response> {
+        let url = self.url(path);
+        Self::send_once(self.build_request(self.inner.delete(&url)), &url)
+    }
+
     /// POST `{base_url}{path}` with a multipart form.
     ///
     /// Returns the raw response — callers handle per-status-code logic (e.g.

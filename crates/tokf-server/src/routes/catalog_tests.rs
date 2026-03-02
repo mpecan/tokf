@@ -8,24 +8,10 @@ use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-use crate::auth::token::hash_token;
 use crate::catalog::{CatalogEntry, CatalogIndex};
-use crate::routes::test_helpers::make_state;
+use crate::routes::test_helpers::{insert_service_token, make_state};
 use crate::storage::StorageClient as _;
 use crate::storage::mock::InMemoryStorageClient;
-
-/// Insert a service token into the DB and return the raw token string.
-async fn insert_service_token(pool: &PgPool, description: &str) -> String {
-    let token = crate::auth::token::generate_token();
-    let token_hash = hash_token(&token);
-    sqlx::query("INSERT INTO service_tokens (token_hash, description) VALUES ($1, $2)")
-        .bind(&token_hash)
-        .bind(description)
-        .execute(pool)
-        .await
-        .expect("failed to insert service token");
-    token
-}
 
 async fn post_refresh(app: axum::Router, token: &str) -> axum::response::Response {
     app.oneshot(
