@@ -6,7 +6,10 @@ mod queries;
 mod types;
 
 pub use config::{HistoryConfig, SyncConfig, current_project, project_root_for};
-pub use queries::{clear_history, get_history_entry, list_history, record_history, search_history};
+pub use queries::{
+    clear_history, get_history_entry, get_latest_entry, list_history, record_history,
+    search_history,
+};
 pub use types::{HistoryEntry, HistoryRecord};
 
 /// Return `true` when `command` matches the most recent history entry for the

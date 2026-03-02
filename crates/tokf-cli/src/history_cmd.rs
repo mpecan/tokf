@@ -45,6 +45,35 @@ pub fn cmd_history_show(id: i64, raw: bool) -> anyhow::Result<i32> {
         return Ok(0);
     }
 
+    print_entry_detail(&entry);
+    Ok(0)
+}
+
+pub fn cmd_history_last(raw: bool, all: bool) -> anyhow::Result<i32> {
+    let conn = open_history_conn()?;
+    let project = if all {
+        None
+    } else {
+        Some(history::current_project())
+    };
+    let project_ref = project.as_deref();
+
+    let entry = history::get_latest_entry(&conn, project_ref)?;
+    let Some(entry) = entry else {
+        eprintln!("[tokf] no history entries found");
+        return Ok(0);
+    };
+
+    if raw {
+        print!("{}", entry.raw_output);
+        return Ok(0);
+    }
+
+    print_entry_detail(&entry);
+    Ok(0)
+}
+
+fn print_entry_detail(entry: &history::HistoryEntry) {
     println!("ID: {}", entry.id);
     println!("Timestamp: {}", entry.timestamp);
     println!("Project: {}", entry.project);
@@ -60,7 +89,6 @@ pub fn cmd_history_show(id: i64, raw: bool) -> anyhow::Result<i32> {
     println!("{}", entry.raw_output);
     println!("\n--- Filtered Output ---");
     println!("{}", entry.filtered_output);
-    Ok(0)
 }
 
 pub fn cmd_history_search(query: &str, limit: usize, all: bool) -> anyhow::Result<i32> {

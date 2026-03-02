@@ -11,6 +11,9 @@ use tempfile::TempDir;
 fn tokf_with_db(db_path: &Path) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
     cmd.env("TOKF_DB_PATH", db_path);
+    // Point TOKF_HOME at a nonexistent dir so the binary never finds a real
+    // auth.toml and never touches the OS keyring during tests.
+    cmd.env("TOKF_HOME", db_path.parent().unwrap().join("tokf-home"));
     cmd
 }
 

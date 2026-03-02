@@ -329,6 +329,15 @@ enum HistoryAction {
         #[arg(long)]
         raw: bool,
     },
+    /// Show the most recent history entry (current project by default)
+    Last {
+        /// Print only the raw captured output (no metadata, no filtered output)
+        #[arg(long)]
+        raw: bool,
+        /// Show the most recent entry across all projects
+        #[arg(short, long)]
+        all: bool,
+    },
     /// Search history by command or output content (current project by default)
     Search {
         /// Search query (searches command, raw output, and filtered output)
@@ -447,6 +456,7 @@ fn main() {
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
             HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),
+            HistoryAction::Last { raw, all } => history_cmd::cmd_history_last(*raw, *all),
             HistoryAction::Search { query, limit, all } => {
                 history_cmd::cmd_history_search(query, *limit, *all)
             }
