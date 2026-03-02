@@ -109,6 +109,9 @@ pub struct Config {
     /// Used to generate fully-qualified URLs in API responses.
     /// Defaults to `http://localhost:8080` when `PUBLIC_URL` is not set.
     pub public_url: String,
+    /// The URL where users can read the Terms of Service.
+    /// Defaults to `{public_url}/terms` when `TERMS_URL` is not set.
+    pub terms_url: String,
     /// Rate-limit configuration for all endpoints.
     /// Override via the `RATE_LIMITS` environment variable (JSON).
     pub rate_limits: RateLimitConfig,
@@ -146,6 +149,7 @@ impl std::fmt::Debug for Config {
             )
             .field("trust_proxy", &self.trust_proxy)
             .field("public_url", &self.public_url)
+            .field("terms_url", &self.terms_url)
             .field("rate_limits", &self.rate_limits)
             .finish()
     }
@@ -202,6 +206,8 @@ impl Config {
         let run_migrations = std::env::var("RUN_MIGRATIONS")
             .map(|v| !matches!(v.to_lowercase().as_str(), "false" | "0" | "no"))
             .unwrap_or(true);
+        let public_url = Self::env_non_empty("PUBLIC_URL")
+            .unwrap_or_else(|| "http://localhost:8080".to_string());
         Self {
             port,
             database_url: Self::env_non_empty("DATABASE_URL"),
@@ -217,8 +223,9 @@ impl Config {
             trust_proxy: std::env::var("TRUST_PROXY")
                 .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes"))
                 .unwrap_or(false),
-            public_url: Self::env_non_empty("PUBLIC_URL")
-                .unwrap_or_else(|| "http://localhost:8080".to_string()),
+            public_url: public_url.clone(),
+            terms_url: Self::env_non_empty("TERMS_URL")
+                .unwrap_or_else(|| format!("{public_url}/terms")),
             rate_limits: Self::env_non_empty("RATE_LIMITS")
                 .map(|s| {
                     serde_json::from_str(&s).unwrap_or_else(|e| {
@@ -364,6 +371,7 @@ mod tests {
             github_client_id: Some("gh-client-id".to_string()),
             github_client_secret: Some("gh-secret-value".to_string()),
             public_url: "http://localhost:8080".to_string(),
+            terms_url: "http://localhost:8080/terms".to_string(),
             rate_limits: RateLimitConfig::default(),
         };
         let debug_str = format!("{cfg:?}");
@@ -586,6 +594,7 @@ mod tests {
             github_client_id: None,
             github_client_secret: None,
             public_url: "http://localhost:8080".to_string(),
+            terms_url: "http://localhost:8080/terms".to_string(),
             rate_limits: RateLimitConfig::default(),
         }
     }

@@ -206,6 +206,7 @@ mod tests {
             github_client_secret: "test-client-secret".to_string(),
             trust_proxy: false,
             public_url: "http://localhost:8080".to_string(),
+            terms_url: "http://localhost:8080/terms".to_string(),
             publish_rate_limiter: Arc::new(PublishRateLimiter::new(100, 3600)),
             search_rate_limiter: Arc::new(PublishRateLimiter::new(1000, 3600)),
             sync_rate_limiter: Arc::new(SyncRateLimiter::new(100, 3600)),

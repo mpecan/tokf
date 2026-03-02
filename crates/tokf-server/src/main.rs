@@ -93,6 +93,7 @@ async fn cmd_serve() -> Result<()> {
         github_client_secret,
         trust_proxy: cfg.trust_proxy,
         public_url: cfg.public_url.clone(),
+        terms_url: cfg.terms_url.clone(),
         publish_rate_limiter: Arc::new(rate_limit::PublishRateLimiter::new(
             cfg.rate_limits.publish.max,
             cfg.rate_limits.publish.safe_window_secs(),
@@ -256,6 +257,7 @@ mod tests {
             github_client_id: Some("gh-client".to_string()),
             github_client_secret: Some("gh-secret".to_string()),
             public_url: "http://localhost:8080".to_string(),
+            terms_url: "http://localhost:8080/terms".to_string(),
             rate_limits: config::RateLimitConfig::default(),
         }
     }
@@ -275,6 +277,7 @@ mod tests {
             github_client_id: Some("gh-client".to_string()),
             github_client_secret: Some("gh-secret".to_string()),
             public_url: "http://localhost:8080".to_string(),
+            terms_url: "http://localhost:8080/terms".to_string(),
             rate_limits: config::RateLimitConfig::default(),
         }
     }
