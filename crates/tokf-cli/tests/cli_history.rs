@@ -186,17 +186,19 @@ fn history_last_raw_prints_most_recent_raw_output() {
     let work_dir = setup_local_filter(false);
 
     // Run two commands so we can verify "last" picks the most recent one.
-    tokf_with_db(&db)
+    let first = tokf_with_db(&db)
         .current_dir(work_dir.path())
         .args(["run", "echo", "first"])
         .output()
         .expect("run first");
+    assert!(first.status.success(), "exit: {:?}", first.status.code());
 
-    tokf_with_db(&db)
+    let second = tokf_with_db(&db)
         .current_dir(work_dir.path())
         .args(["run", "echo", "second"])
         .output()
         .expect("run second");
+    assert!(second.status.success(), "exit: {:?}", second.status.code());
 
     let out = tokf_with_db(&db)
         .current_dir(work_dir.path())
@@ -267,6 +269,45 @@ fn history_last_empty_exits_zero() {
     assert!(
         stderr.contains("no history entries found"),
         "expected 'no history entries found' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn history_last_all_returns_globally_most_recent() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+
+    // Two separate project directories, each with their own filter.
+    let project_a = setup_local_filter(false);
+    let project_b = setup_local_filter(false);
+
+    // Run in project A first, then project B.
+    let a_out = tokf_with_db(&db)
+        .current_dir(project_a.path())
+        .args(["run", "echo", "from-a"])
+        .output()
+        .expect("run in project A");
+    assert!(a_out.status.success(), "exit: {:?}", a_out.status.code());
+
+    let b_out = tokf_with_db(&db)
+        .current_dir(project_b.path())
+        .args(["run", "echo", "from-b"])
+        .output()
+        .expect("run in project B");
+    assert!(b_out.status.success(), "exit: {:?}", b_out.status.code());
+
+    // `last --all` from project A should still return project B's entry (most recent globally).
+    let out = tokf_with_db(&db)
+        .current_dir(project_a.path())
+        .args(["history", "last", "--all", "--raw"])
+        .output()
+        .expect("history last --all --raw");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(out.status.success(), "exit: {:?}", out.status.code());
+    assert!(
+        stdout.contains("from-b"),
+        "expected globally most recent entry (from-b), got: {stdout}"
     );
 }
 
