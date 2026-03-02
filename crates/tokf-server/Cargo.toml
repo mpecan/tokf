@@ -26,9 +26,9 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 sqlx = { version = "=0.8.6", default-features = false, features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "macros", "migrate"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
-rand = "0.8"
+rand = "0.10"
 hex = "0.4"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
