@@ -397,12 +397,6 @@ pub fn command_pattern_to_regex(pattern: &str) -> String {
     let mut regex = String::from("^");
 
     for (i, &word) in words.iter().enumerate() {
-        let word_re = if word == "*" {
-            r"\S+".to_string()
-        } else {
-            regex::escape(word)
-        };
-
         if i == 0 {
             if word == "*" {
                 regex.push_str(r"\S+");
@@ -412,8 +406,9 @@ pub fn command_pattern_to_regex(pattern: &str) -> String {
                 // `command = "mvnw test"` produce identical regexes.
                 let basename = extract_basename(word);
                 // Allow an optional leading path prefix (e.g. `/usr/bin/` or
-                // `./`) so that `/usr/bin/git` matches the pattern `git`.
-                regex.push_str(r"(?:[^\s]*/)?");
+                // `./` or `C:\tools\`) so that `/usr/bin/git` and
+                // `C:\tools\git` both match the pattern `git`.
+                regex.push_str(r"(?:[^\s]*[\\/])?");
                 regex.push_str(&regex::escape(basename));
             }
         } else if word == "*" {
@@ -432,6 +427,7 @@ pub fn command_pattern_to_regex(pattern: &str) -> String {
             // argument.  When the value would consume the target pattern word,
             // the NFA engine backtracks that optional group (making it empty)
             // so that `\s+{word_re}` can match instead.
+            let word_re = regex::escape(word);
             regex.push_str(r"(?:\s+-[^=\s]+(?:=[^\s]+)?(?:\s+[^-\s]\S*)?)*\s+");
             regex.push_str(&word_re);
         }

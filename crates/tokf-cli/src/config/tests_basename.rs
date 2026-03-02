@@ -231,6 +231,22 @@ fn regex_absolute_path_pattern_normalized() {
     );
 }
 
+// --- Windows path in regex input ---
+
+#[test]
+fn regex_windows_path_input() {
+    let r = command_pattern_to_regex("mvnw test");
+    let re = regex::Regex::new(&r).unwrap();
+    assert!(
+        re.is_match(r"C:\project\mvnw test"),
+        "Windows path should match"
+    );
+    assert!(
+        re.is_match(r"D:\tools\bin\mvnw test"),
+        "deep Windows path should match"
+    );
+}
+
 // --- negative regex cases ---
 
 #[test]
