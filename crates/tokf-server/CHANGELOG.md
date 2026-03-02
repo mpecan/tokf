@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.15](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.14...tokf-server-v0.2.15) (2026-03-02)
+
+
+### Features
+
+* **catalog:** materialize filter catalog to R2 for tokf-net ([#220](https://github.com/mpecan/tokf/issues/220)) ([4d0e4d6](https://github.com/mpecan/tokf/commit/4d0e4d6e78633a48e2101f750ef5eea31c5ef2a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.14 to 0.2.15
+    * tokf-filter bumped from 0.2.14 to 0.2.15
+
 ## [0.2.14](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.13...tokf-server-v0.2.14) (2026-03-02)
 
 
