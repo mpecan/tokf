@@ -34,10 +34,10 @@ pub struct TokenResponse {
     pub user: TokenUser,
     /// Current `ToS` version the server requires (absent from old servers).
     #[serde(default)]
-    pub tos_current_version: Option<i32>,
+    pub tos_current_version: Option<i64>,
     /// Highest `ToS` version this user has accepted (absent from old servers).
     #[serde(default)]
-    pub tos_accepted_version: Option<i32>,
+    pub tos_accepted_version: Option<i64>,
 }
 
 // Manual Debug impl to redact the access_token secret
@@ -138,7 +138,7 @@ pub fn poll_token(
     client: &reqwest::blocking::Client,
     base_url: &str,
     device_code: &str,
-    tos_version: Option<i32>,
+    tos_version: Option<i64>,
 ) -> anyhow::Result<PollResult> {
     let url = format!("{base_url}/api/auth/token");
     let mut body = serde_json::json!({ "device_code": device_code });

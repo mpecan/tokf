@@ -24,7 +24,7 @@ pub async fn get_terms() -> impl IntoResponse {
 
 #[derive(Debug, Serialize)]
 pub struct TosInfoResponse {
-    pub version: i32,
+    pub version: i64,
     pub url: String,
 }
 
@@ -40,12 +40,12 @@ pub async fn get_tos_info(State(state): State<AppState>) -> Json<TosInfoResponse
 
 #[derive(Debug, Deserialize)]
 pub struct AcceptTosRequest {
-    pub version: i32,
+    pub version: i64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct AcceptTosResponse {
-    pub accepted_version: i32,
+    pub accepted_version: i64,
     pub accepted_at: String,
 }
 

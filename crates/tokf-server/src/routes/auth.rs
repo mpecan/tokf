@@ -26,7 +26,7 @@ pub struct PollTokenRequest {
     pub device_code: String,
     /// `ToS` version the client accepted during login (absent for older clients).
     #[serde(default)]
-    pub tos_version: Option<i32>,
+    pub tos_version: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -36,10 +36,10 @@ pub struct TokenResponse {
     pub expires_in: i64,
     pub user: TokenUser,
     /// Current `ToS` version the server requires.
-    pub tos_current_version: i32,
+    pub tos_current_version: i64,
     /// Highest `ToS` version this user has accepted (None if never accepted).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tos_accepted_version: Option<i32>,
+    pub tos_accepted_version: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -233,7 +233,7 @@ async fn handle_github_success(
     state: &AppState,
     flow_id: i64,
     access_token: &str,
-    tos_version: Option<i32>,
+    tos_version: Option<i64>,
 ) -> Result<axum::response::Response, AppError> {
     let (user, orgs) = fetch_github_profile(&*state.github, access_token).await?;
     let user_id = upsert_github_user(state, &user, &orgs).await?;
@@ -375,8 +375,8 @@ async fn fetch_github_profile(
 }
 
 /// Query the highest `ToS` version the user has accepted, or `None`.
-async fn get_accepted_tos_version(state: &AppState, user_id: i64) -> Result<Option<i32>, AppError> {
-    let version: Option<i32> =
+async fn get_accepted_tos_version(state: &AppState, user_id: i64) -> Result<Option<i64>, AppError> {
+    let version: Option<i64> =
         sqlx::query_scalar("SELECT MAX(tos_version) FROM tos_acceptances WHERE user_id = $1")
             .bind(user_id)
             .fetch_one(&state.db)
@@ -388,7 +388,7 @@ async fn get_accepted_tos_version(state: &AppState, user_id: i64) -> Result<Opti
 async fn record_tos_acceptance(
     state: &AppState,
     user_id: i64,
-    version: i32,
+    version: i64,
 ) -> Result<(), AppError> {
     sqlx::query("INSERT INTO tos_acceptances (user_id, tos_version) VALUES ($1, $2)")
         .bind(user_id)
