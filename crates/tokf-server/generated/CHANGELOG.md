@@ -1,0 +1,9 @@
+# Changelog
+
+## [0.2.17](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.16...catalog-types-v0.2.17) (2026-03-02)
+
+
+### Features
+
+* **catalog:** materialize filter catalog to R2 for tokf-net ([#220](https://github.com/mpecan/tokf/issues/220)) ([4d0e4d6](https://github.com/mpecan/tokf/commit/4d0e4d6e78633a48e2101f750ef5eea31c5ef2a4))
+* **ci:** publish @tokf/catalog-types npm package on release ([#228](https://github.com/mpecan/tokf/issues/228)) ([263a130](https://github.com/mpecan/tokf/commit/263a1309402462f3f3ab8c0b16306a47837c6389))

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.17](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.16...tokf-server-v0.2.17) (2026-03-02)
+
+
+### Bug Fixes
+
+* **config:** add configurable TERMS_URL and set production env vars ([#226](https://github.com/mpecan/tokf/issues/226)) ([6fa7543](https://github.com/mpecan/tokf/commit/6fa754345c24a716d0f2fe2a6adb9867b9f2f73f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.16 to 0.2.17
+    * tokf-filter bumped from 0.2.16 to 0.2.17
+
 ## [0.2.16](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.15...tokf-server-v0.2.16) (2026-03-02)
 
 
