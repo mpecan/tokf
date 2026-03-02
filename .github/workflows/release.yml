@@ -33,36 +33,36 @@ jobs:
 
       - name: Publish tokf-common
         run: |
-          output=$(cargo publish -p tokf-common 2>&1) && exit 0
-          if echo "$output" | grep -q 'already uploaded'; then
-            echo "::notice::tokf-common already published, skipping"
+          LOCAL=$(cargo metadata --format-version 1 --no-deps -q | jq -r '.packages[] | select(.name == "tokf-common") | .version')
+          PUBLISHED=$(cargo search tokf-common --limit 1 | sed -n 's/^tokf-common = "\([^"]*\)".*/\1/p')
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "::notice::tokf-common@$LOCAL already published, skipping"
           else
-            echo "$output" >&2
-            exit 1
+            cargo publish -p tokf-common
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish tokf-filter
         run: |
-          output=$(cargo publish -p tokf-filter 2>&1) && exit 0
-          if echo "$output" | grep -q 'already uploaded'; then
-            echo "::notice::tokf-filter already published, skipping"
+          LOCAL=$(cargo metadata --format-version 1 --no-deps -q | jq -r '.packages[] | select(.name == "tokf-filter") | .version')
+          PUBLISHED=$(cargo search tokf-filter --limit 1 | sed -n 's/^tokf-filter = "\([^"]*\)".*/\1/p')
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "::notice::tokf-filter@$LOCAL already published, skipping"
           else
-            echo "$output" >&2
-            exit 1
+            cargo publish -p tokf-filter
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish tokf-cli
         run: |
-          output=$(cargo publish -p tokf 2>&1) && exit 0
-          if echo "$output" | grep -q 'already uploaded'; then
-            echo "::notice::tokf already published, skipping"
+          LOCAL=$(cargo metadata --format-version 1 --no-deps -q | jq -r '.packages[] | select(.name == "tokf") | .version')
+          PUBLISHED=$(cargo search tokf --limit 1 | sed -n 's/^tokf = "\([^"]*\)".*/\1/p')
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "::notice::tokf@$LOCAL already published, skipping"
           else
-            echo "$output" >&2
-            exit 1
+            cargo publish -p tokf
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
