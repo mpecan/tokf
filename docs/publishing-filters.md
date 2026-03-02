@@ -1,7 +1,7 @@
 ---
 title: Publishing Filters
 description: Share your filters with the tokf community registry.
-order: 9
+order: 10
 ---
 
 ## Publishing a Filter

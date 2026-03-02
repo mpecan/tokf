@@ -687,6 +687,18 @@ tokf gain --by-filter  # breakdown by filter
 tokf gain --json       # machine-readable output
 ```
 
+## Remote gain
+
+View aggregate savings across all your registered machines via the tokf server:
+
+```sh
+tokf gain --remote              # summary across all machines
+tokf gain --remote --by-filter  # breakdown by filter
+tokf gain --remote --json       # machine-readable output
+```
+
+Remote gain requires authentication (`tokf auth login`). The `--daily` flag is not available remotely. See [Remote Sharing](#remote-sharing) for the full setup workflow.
+
 ## Output history
 
 tokf records raw and filtered outputs in a local SQLite database, useful for debugging filters or reviewing what an AI agent saw:
@@ -724,6 +736,77 @@ output = "{branch} — {counts}"
 ```
 
 The hint is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line.
+
+---
+
+
+## Setup
+
+```sh
+tokf auth login            # authenticate via GitHub device flow
+tokf remote setup          # register this machine
+tokf sync                  # upload pending usage events
+tokf gain --remote         # view aggregate savings across all machines
+```
+
+## Authentication
+
+tokf uses the [GitHub device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) so no secrets are handled locally. Tokens are stored in your OS keyring (Keychain on macOS, Secret Service on Linux, Credential Manager on Windows).
+
+```sh
+tokf auth login    # start device flow — prints a one-time code, opens browser
+tokf auth status   # show current login state and server URL
+tokf auth logout   # remove stored credentials
+```
+
+## Machine registration
+
+Each machine gets a UUID that links usage events to a physical device. Registration is idempotent — running it again re-syncs the existing record.
+
+```sh
+tokf remote setup    # register this machine with the server
+tokf remote status   # show local machine ID and hostname (no network call)
+```
+
+Machine config is stored in `~/.config/tokf/machine.toml` (or `$TOKF_HOME/machine.toml`).
+
+## Syncing usage data
+
+`tokf sync` uploads pending local usage events to the remote server. Events are deduplicated by cursor — re-syncing the same events is safe.
+
+```sh
+tokf sync              # upload pending events
+tokf sync --status     # show last sync time and pending event count (no network call)
+```
+
+A file lock prevents concurrent syncs. Both `tokf auth login` and `tokf remote setup` must be completed before syncing.
+
+## Viewing remote gain
+
+View aggregate token savings across all your registered machines:
+
+```sh
+tokf gain --remote              # summary: total runs, tokens saved, reduction %
+tokf gain --remote --by-filter  # breakdown by filter
+tokf gain --remote --json       # machine-readable output
+```
+
+> **Note:** `--daily` is not available with `--remote`. Use local `tokf gain --daily` for day-by-day breakdowns.
+
+## Backfill
+
+Usage events recorded before hash-based tracking was added may be missing filter hashes. Backfill resolves them from currently installed filters:
+
+```sh
+tokf remote backfill             # update events with missing hashes
+tokf remote backfill --no-cache  # skip binary config cache during discovery
+```
+
+Backfill runs locally — no network call required.
+
+---
+
+For discovering and installing community filters, see [Community Filters](#community-filters). To publish your own, see [Publishing Filters](#publishing-filters). For the full server API reference, see [`docs/reference/api.md`](docs/reference/api.md).
 
 ---
 
@@ -1269,62 +1352,9 @@ All Lua scripts in published filters are executed in a sandbox with resource lim
 
 ---
 
-## Server authentication API
+## Server API
 
-tokf-server uses the [GitHub device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) so CLI clients can authenticate without handling secrets.
-
-### `POST /api/auth/device`
-
-Starts the device authorization flow. Returns a `user_code` and `verification_uri` for the user to visit in their browser. Rate-limited to 10 requests per IP per hour.
-
-**Response (201 Created):**
-
-```json
-{
-  "device_code": "dc-abc123",
-  "user_code": "ABCD-1234",
-  "verification_uri": "https://github.com/login/device",
-  "expires_in": 900,
-  "interval": 5
-}
-```
-
-### `POST /api/auth/token`
-
-Polls for a completed device authorization. The CLI calls this on an interval until the user has authorized.
-
-**Request body:**
-
-```json
-{ "device_code": "dc-abc123" }
-```
-
-**Response (200 OK) when authorized:**
-
-```json
-{
-  "access_token": "...",
-  "token_type": "bearer",
-  "expires_in": 7776000,
-  "user": { "id": 1, "username": "octocat", "avatar_url": "..." }
-}
-```
-
-**Response (200 OK) while waiting:**
-
-```json
-{ "error": "authorization_pending" }
-```
-
-Re-polling a completed device code is idempotent — a fresh token is issued.
-
-### Environment variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `GITHUB_CLIENT_ID` | yes | OAuth App client ID |
-| `GITHUB_CLIENT_SECRET` | yes | OAuth App client secret |
-| `TRUST_PROXY` | no | Set `true` to trust `X-Forwarded-For` for IP extraction (default `false`) |
+For the full API reference (all endpoints, request/response shapes, rate limits, and environment variables), see [`docs/reference/api.md`](docs/reference/api.md). For deployment instructions, see [`DEPLOY.md`](DEPLOY.md).
 
 ---
 

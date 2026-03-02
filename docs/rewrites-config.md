@@ -1,7 +1,7 @@
 ---
 title: Rewrite Configuration
 description: Control how tokf rewrites commands with rewrites.toml, pipe stripping, and environment variable handling.
-order: 6
+order: 7
 ---
 
 ## Rewrite configuration (`rewrites.toml`)
