@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.19](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.18...tokf-server-v0.2.19) (2026-03-02)
+
+
+### Code Refactoring
+
+* **cli,server:** consolidate publish and stdlib-publish paths ([#231](https://github.com/mpecan/tokf/issues/231)) ([1ecc3fb](https://github.com/mpecan/tokf/commit/1ecc3fb6c009fdebaf1c16592179fe7fc55fec36))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.18 to 0.2.19
+    * tokf-filter bumped from 0.2.18 to 0.2.19
+
 ## [0.2.18](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.17...tokf-server-v0.2.18) (2026-03-02)
 
 
