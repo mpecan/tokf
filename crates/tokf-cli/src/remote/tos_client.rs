@@ -4,18 +4,18 @@ use super::http::Client;
 
 #[derive(Debug, Deserialize)]
 pub struct TosInfoResponse {
-    pub version: i32,
+    pub version: i64,
     pub url: String,
 }
 
 #[derive(Debug, Serialize)]
 struct AcceptTosRequest {
-    version: i32,
+    version: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AcceptTosResponse {
-    pub accepted_version: i32,
+    pub accepted_version: i64,
     pub accepted_at: String,
 }
 
@@ -37,7 +37,7 @@ pub fn fetch_tos_info(client: &Client) -> anyhow::Result<TosInfoResponse> {
 /// # Errors
 ///
 /// Returns an error on network failure, non-2xx status, or version mismatch.
-pub fn accept_tos(client: &Client, version: i32) -> anyhow::Result<AcceptTosResponse> {
+pub fn accept_tos(client: &Client, version: i64) -> anyhow::Result<AcceptTosResponse> {
     client.post("/api/tos/accept", &AcceptTosRequest { version })
 }
 

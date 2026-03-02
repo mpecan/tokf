@@ -21,7 +21,7 @@ pub struct StoredAuth {
     pub mit_license_accepted: Option<bool>,
     /// Highest Terms of Service version the user has accepted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tos_accepted_version: Option<i32>,
+    pub tos_accepted_version: Option<i64>,
 }
 
 /// Loaded credentials: token (from keyring) + metadata (from TOML).
@@ -34,7 +34,7 @@ pub struct LoadedAuth {
     /// Whether the user has accepted the MIT license for filter publishing.
     pub mit_license_accepted: Option<bool>,
     /// Highest Terms of Service version the user has accepted.
-    pub tos_accepted_version: Option<i32>,
+    pub tos_accepted_version: Option<i64>,
 }
 
 impl LoadedAuth {
@@ -146,7 +146,7 @@ pub(crate) fn save_license_accepted_to_path(
 ///
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
-pub fn save_tos_accepted_version(version: i32) -> anyhow::Result<()> {
+pub fn save_tos_accepted_version(version: i64) -> anyhow::Result<()> {
     let path =
         auth_config_path().ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
     save_tos_accepted_version_to_path(&path, version)
@@ -158,7 +158,7 @@ pub fn save_tos_accepted_version(version: i32) -> anyhow::Result<()> {
 /// without depending on the platform config directory.
 pub(crate) fn save_tos_accepted_version_to_path(
     path: &std::path::Path,
-    version: i32,
+    version: i64,
 ) -> anyhow::Result<()> {
     update_stored_auth(path, |meta| meta.tos_accepted_version = Some(version))
 }

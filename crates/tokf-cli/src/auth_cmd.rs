@@ -119,7 +119,7 @@ fn handle_existing_login(auth: &credentials::LoadedAuth, base_url: &str) -> anyh
 /// Fetch `ToS` info and prompt the user to accept before proceeding with login.
 ///
 /// Returns the accepted version, or an error if declined.
-fn prompt_tos_acceptance(base_url: &str) -> anyhow::Result<Option<i32>> {
+fn prompt_tos_acceptance(base_url: &str) -> anyhow::Result<Option<i64>> {
     let Ok(client) = Client::unauthenticated(base_url) else {
         return Ok(None); // Can't reach server — proceed without ToS
     };
@@ -146,7 +146,7 @@ fn print_tos_summary(terms_url: &str) {
     eprintln!("[tokf] Full terms: {terms_url}");
 }
 
-fn confirm_tos(version: i32) -> anyhow::Result<bool> {
+fn confirm_tos(version: i64) -> anyhow::Result<bool> {
     eprint!("[tokf] Accept Terms of Service (v{version})? [y/N]: ");
     std::io::stderr().flush()?;
 
@@ -159,7 +159,7 @@ fn poll_for_token(
     http_client: &reqwest::blocking::Client,
     base_url: &str,
     device_resp: &client::DeviceFlowResponse,
-    tos_version: Option<i32>,
+    tos_version: Option<i64>,
 ) -> anyhow::Result<i32> {
     let mut interval = device_resp.interval.clamp(1, 60);
     let expires_in = device_resp.expires_in.clamp(0, 1800);
