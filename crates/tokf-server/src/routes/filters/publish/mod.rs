@@ -164,49 +164,41 @@ pub async fn insert_filter_tests(
 }
 
 /// Validated, hashed filter ready for storage.
-struct PreparedFilter {
-    content_hash: String,
-    command_pattern: String,
-    canonical_command: String,
-    config: FilterConfig,
-    filter_bytes: Vec<u8>,
-    test_files: Vec<(String, Vec<u8>)>,
-    test_cases: Vec<TestCase>,
+pub(super) struct PreparedFilter {
+    pub(super) content_hash: String,
+    pub(super) command_pattern: String,
+    pub(super) canonical_command: String,
+    pub(super) config: FilterConfig,
+    pub(super) filter_bytes: Vec<u8>,
+    pub(super) test_files: Vec<(String, Vec<u8>)>,
+    pub(super) test_cases: Vec<TestCase>,
 }
 
-/// Validate the multipart fields, check server-side constraints, and compute
-/// the content hash.
+/// Validate filter TOML and test files, compute the canonical content hash.
 ///
-/// Rejects filters with `lua_script.file` early — before hashing or
-/// storage — so invalid uploads never reach R2.
-fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
-    if !fields.mit_license_accepted {
-        return Err(AppError::BadRequest(
-            "MIT license not accepted — set 'mit_license_accepted' to 'true'".to_string(),
-        ));
-    }
-    let toml_str = std::str::from_utf8(&fields.filter_bytes)
-        .map_err(|_| AppError::BadRequest("filter TOML is not valid UTF-8".to_string()))?;
-    let config: FilterConfig = toml::from_str(toml_str)
-        .map_err(|e| AppError::BadRequest(format!("invalid filter TOML: {e}")))?;
+/// Shared by both regular publish and stdlib publish. Rejects filters with
+/// `lua_script.file`, empty commands, or missing tests.
+pub(super) fn validate_and_prepare(
+    filter_toml: &[u8],
+    test_files: Vec<(String, Vec<u8>)>,
+) -> Result<PreparedFilter, String> {
+    let toml_str = std::str::from_utf8(filter_toml)
+        .map_err(|_| "filter TOML is not valid UTF-8".to_string())?;
+    let config: FilterConfig =
+        toml::from_str(toml_str).map_err(|e| format!("invalid filter TOML: {e}"))?;
 
-    // Fail fast: reject lua_script.file before computing hash or uploading.
     if let Some(ref script) = config.lua_script
         && script.file.is_some()
     {
-        return Err(AppError::BadRequest(
-            "lua_script.file is not supported for published filters; \
+        return Err("lua_script.file is not supported for published filters; \
              use inline 'source' instead (Hint: `tokf publish` inlines \
              file references automatically)"
-                .to_string(),
-        ));
+            .to_string());
     }
 
     let command_pattern = config.command.first().to_string();
     if command_pattern.is_empty() {
-        return Err(AppError::BadRequest(
-            "filter must have at least one non-empty command".to_string(),
-        ));
+        return Err("filter must have at least one non-empty command".to_string());
     }
     let canonical_command = command_pattern
         .split_whitespace()
@@ -214,32 +206,37 @@ fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
         .unwrap_or(&command_pattern)
         .to_string();
 
-    // Require at least one test file
-    if fields.test_files.is_empty() {
-        return Err(AppError::BadRequest(
-            "at least one test file is required to publish a filter".to_string(),
-        ));
+    if test_files.is_empty() {
+        return Err("at least one test file is required to publish a filter".to_string());
     }
 
-    // Validate and parse test files
-    let mut test_cases = Vec::with_capacity(fields.test_files.len());
-    for (filename, bytes) in &fields.test_files {
-        let tc = tokf_common::test_case::validate(bytes)
-            .map_err(|e| AppError::BadRequest(format!("{filename}: {e}")))?;
+    let mut test_cases = Vec::with_capacity(test_files.len());
+    for (filename, bytes) in &test_files {
+        let tc = tokf_common::test_case::validate(bytes).map_err(|e| format!("{filename}: {e}"))?;
         test_cases.push(tc);
     }
 
-    let content_hash =
-        canonical_hash(&config).map_err(|e| AppError::Internal(format!("hash error: {e}")))?;
+    let content_hash = canonical_hash(&config).map_err(|e| format!("hash error: {e}"))?;
     Ok(PreparedFilter {
         content_hash,
         command_pattern,
         canonical_command,
         config,
-        filter_bytes: fields.filter_bytes,
-        test_files: fields.test_files,
+        filter_bytes: filter_toml.to_vec(),
+        test_files,
         test_cases,
     })
+}
+
+/// Validate the multipart fields, check server-side constraints, and compute
+/// the content hash. Delegates to `validate_and_prepare` after MIT license check.
+fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
+    if !fields.mit_license_accepted {
+        return Err(AppError::BadRequest(
+            "MIT license not accepted — set 'mit_license_accepted' to 'true'".to_string(),
+        ));
+    }
+    validate_and_prepare(&fields.filter_bytes, fields.test_files).map_err(AppError::BadRequest)
 }
 
 // ── POST /api/filters ─────────────────────────────────────────────────────────

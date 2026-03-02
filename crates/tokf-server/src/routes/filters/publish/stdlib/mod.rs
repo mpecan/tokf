@@ -1,15 +1,13 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use tokf_common::config::types::FilterConfig;
-use tokf_common::hash::canonical_hash;
-use tokf_common::test_case::TestCase;
 
 use crate::auth::service_token::ServiceAuth;
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::storage;
 
-use super::{insert_filter_tests, run_verification, upload_tests};
+use super::{PreparedFilter, insert_filter_tests, run_verification, upload_tests};
 
 // ── Request types ────────────────────────────────────────────────────────────
 
@@ -51,17 +49,7 @@ pub struct StdlibFailure {
 /// Maximum number of filters in a single publish-stdlib request.
 const MAX_BATCH_SIZE: usize = 200;
 
-// ── Internal types ───────────────────────────────────────────────────────────
-
-struct PreparedStdlibFilter {
-    content_hash: String,
-    command_pattern: String,
-    canonical_command: String,
-    filter_bytes: Vec<u8>,
-    test_files: Vec<(String, Vec<u8>)>,
-    config: FilterConfig,
-    test_cases: Vec<TestCase>,
-}
+// ── Internal helpers ─────────────────────────────────────────────────────────
 
 /// GitHub usernames: alphanumeric + hyphens, 1-39 chars, no leading/trailing hyphens.
 fn validate_github_username(username: &str) -> Result<(), String> {
@@ -86,55 +74,14 @@ fn validate_github_username(username: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn prepare_stdlib_filter(entry: &StdlibFilterEntry) -> Result<PreparedStdlibFilter, String> {
+fn prepare_stdlib_filter(entry: &StdlibFilterEntry) -> Result<PreparedFilter, String> {
     validate_github_username(&entry.author_github_username)?;
-
-    let config: FilterConfig =
-        toml::from_str(&entry.filter_toml).map_err(|e| format!("invalid filter TOML: {e}"))?;
-
-    if let Some(ref script) = config.lua_script
-        && script.file.is_some()
-    {
-        return Err(
-            "lua_script.file is not supported for published filters; use inline 'source' instead"
-                .to_string(),
-        );
-    }
-
-    let command_pattern = config.command.first().to_string();
-    if command_pattern.is_empty() {
-        return Err("filter must have at least one non-empty command".to_string());
-    }
-    let canonical_command = command_pattern
-        .split_whitespace()
-        .next()
-        .unwrap_or(&command_pattern)
-        .to_string();
-
-    if entry.test_files.is_empty() {
-        return Err("at least one test file is required".to_string());
-    }
-
-    let mut test_cases = Vec::with_capacity(entry.test_files.len());
-    let mut test_file_bytes = Vec::with_capacity(entry.test_files.len());
-    for tf in &entry.test_files {
-        let tc = tokf_common::test_case::validate(tf.content.as_bytes())
-            .map_err(|e| format!("{}: {e}", tf.filename))?;
-        test_cases.push(tc);
-        test_file_bytes.push((tf.filename.clone(), tf.content.as_bytes().to_vec()));
-    }
-
-    let content_hash = canonical_hash(&config).map_err(|e| format!("hash error: {e}"))?;
-
-    Ok(PreparedStdlibFilter {
-        content_hash,
-        command_pattern,
-        canonical_command,
-        filter_bytes: entry.filter_toml.as_bytes().to_vec(),
-        test_files: test_file_bytes,
-        config,
-        test_cases,
-    })
+    let test_file_bytes: Vec<_> = entry
+        .test_files
+        .iter()
+        .map(|tf| (tf.filename.clone(), tf.content.as_bytes().to_vec()))
+        .collect();
+    super::validate_and_prepare(entry.filter_toml.as_bytes(), test_file_bytes)
 }
 
 /// Find or create a user by GitHub username for stdlib attribution.
@@ -315,7 +262,7 @@ fn fail(command_pattern: &str, phase: &str, error: String) -> StdlibFailure {
 /// Returns `Ok(true)` if the filter already exists (and updates `is_stdlib`).
 async fn check_existing(
     state: &AppState,
-    prepared: &PreparedStdlibFilter,
+    prepared: &PreparedFilter,
     skipped: &mut usize,
 ) -> Result<bool, StdlibFailure> {
     let existing: Option<String> =
@@ -343,7 +290,7 @@ async fn check_existing(
 /// Upload to storage and insert DB records for a validated stdlib filter.
 async fn persist_filter(
     state: &AppState,
-    prepared: &PreparedStdlibFilter,
+    prepared: &PreparedFilter,
     author_username: &str,
 ) -> Result<(), AppError> {
     let author_id = upsert_user_by_username(&state.db, author_username).await?;
