@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.14](https://github.com/mpecan/tokf/compare/tokf-v0.2.13...tokf-v0.2.14) (2026-03-02)
+
+
+### Bug Fixes
+
+* **output:** store savings_pct as 0-100, rename INSTALLS to RUNS ([#217](https://github.com/mpecan/tokf/issues/217)) ([ea2fc11](https://github.com/mpecan/tokf/commit/ea2fc11f200b6b009e0a3894e804b3035f996b2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.13 to 0.2.14
+    * tokf-filter bumped from 0.2.13 to 0.2.14
+
 ## [0.2.13](https://github.com/mpecan/tokf/compare/tokf-v0.2.12...tokf-v0.2.13) (2026-03-02)
 
 
