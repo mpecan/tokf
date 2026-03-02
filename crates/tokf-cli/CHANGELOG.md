@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.16](https://github.com/mpecan/tokf/compare/tokf-v0.2.15...tokf-v0.2.16) (2026-03-02)
+
+
+### Features
+
+* **history:** add `tokf history last` subcommand ([#223](https://github.com/mpecan/tokf/issues/223)) ([83f7c11](https://github.com/mpecan/tokf/commit/83f7c1163954619b140d82ac3d4b198bcee80c9c))
+* **server,cli:** add Terms of Service and account deletion ([#224](https://github.com/mpecan/tokf/issues/224)) ([468e93c](https://github.com/mpecan/tokf/commit/468e93c33eefd2e91bf466b5ac4e4766f2133827))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.15 to 0.2.16
+    * tokf-filter bumped from 0.2.15 to 0.2.16
+
 ## [0.2.15](https://github.com/mpecan/tokf/compare/tokf-v0.2.14...tokf-v0.2.15) (2026-03-02)
 
 

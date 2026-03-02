@@ -1,6 +1,6 @@
 [package]
 name = "tokf"
-version = "0.2.15"
+version = "0.2.16"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -14,8 +14,8 @@ name = "tokf"
 path = "src/main.rs"
 
 [dependencies]
-tokf-common = { path = "../tokf-common", version = "0.2.15", features = ["validation"] }
-tokf-filter = { path = "../tokf-filter", version = "0.2.15" }
+tokf-common = { path = "../tokf-common", version = "0.2.16", features = ["validation"] }
+tokf-filter = { path = "../tokf-filter", version = "0.2.16" }
 clap = { version = "4", features = ["derive", "env"] }
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
