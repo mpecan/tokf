@@ -3,43 +3,73 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to republish (e.g. tokf-v0.2.13)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
 
 jobs:
   publish:
     name: Publish to crates.io
-    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Publish tokf-common
-        run: cargo publish -p tokf-common
+        run: |
+          output=$(cargo publish -p tokf-common 2>&1) && exit 0
+          if echo "$output" | grep -q 'already uploaded'; then
+            echo "::notice::tokf-common already published, skipping"
+          else
+            echo "$output" >&2
+            exit 1
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish tokf-filter
-        run: cargo publish -p tokf-filter
+        run: |
+          output=$(cargo publish -p tokf-filter 2>&1) && exit 0
+          if echo "$output" | grep -q 'already uploaded'; then
+            echo "::notice::tokf-filter already published, skipping"
+          else
+            echo "$output" >&2
+            exit 1
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish tokf-cli
-        run: cargo publish -p tokf
+        run: |
+          output=$(cargo publish -p tokf 2>&1) && exit 0
+          if echo "$output" | grep -q 'already uploaded'; then
+            echo "::notice::tokf already published, skipping"
+          else
+            echo "$output" >&2
+            exit 1
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   build-binaries:
     name: Build ${{ matrix.target }}
-    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -53,6 +83,8 @@ jobs:
             runner: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -71,7 +103,7 @@ jobs:
       - name: Package binary
         shell: bash
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ env.RELEASE_TAG }}"
           VERSION="${TAG#tokf-v}"
           ARCHIVE="tokf-v${VERSION}-${{ matrix.target }}.tar.gz"
           cp "target/${{ matrix.target }}/release/tokf" tokf
@@ -83,20 +115,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${{ env.RELEASE_TAG }}" \
             "${{ env.ARCHIVE }}" \
-            "${{ env.ARCHIVE }}.sha256"
+            "${{ env.ARCHIVE }}.sha256" \
+            --clobber
 
   update-homebrew:
     name: Update Homebrew tap
     needs: build-binaries
-    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
       - name: Compute version
         id: version
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ env.RELEASE_TAG }}"
           echo "version=${TAG#tokf-v}" >> "$GITHUB_OUTPUT"
 
       - name: Download SHA256 checksums
@@ -105,7 +138,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           for TARGET in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
-            gh release download "${{ github.event.release.tag_name }}" \
+            gh release download "${{ env.RELEASE_TAG }}" \
               --repo "${{ github.repository }}" \
               --pattern "tokf-v${VERSION}-${TARGET}.tar.gz.sha256" \
               --output "${TARGET}.sha256"
@@ -184,17 +217,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/tokf.rb
+          git diff --staged --quiet && echo "Formula unchanged, skipping commit" && exit 0
           git commit -m "chore: update tokf to v${{ steps.version.outputs.version }}"
           git push
 
   publish-stdlib:
     name: Publish stdlib filters
     needs: [publish]
-    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Install Rust
@@ -209,7 +244,7 @@ jobs:
   trigger-site-rebuild:
     name: Trigger tokf.net rebuild
     needs: build-binaries
-    if: startsWith(github.event.release.tag_name, 'tokf-v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
