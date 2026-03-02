@@ -216,11 +216,15 @@ pub async fn publish_stdlib(
     let mut published = 0usize;
     let mut skipped = 0usize;
     let mut failed = Vec::new();
+    let mut published_hashes = Vec::new();
 
     for entry in &req.filters {
         match process_entry(&state, entry, &mut skipped).await {
-            Ok(true) => published += 1,
-            Ok(false) => {} // skipped — already counted inside process_entry
+            Ok(Some(hash)) => {
+                published += 1;
+                published_hashes.push(hash);
+            }
+            Ok(None) => {} // skipped — already counted inside process_entry
             Err(e) => {
                 tracing::warn!(
                     command = %e.command_pattern,
@@ -238,6 +242,12 @@ pub async fn publish_stdlib(
         failed = failed.len(),
         "publish-stdlib complete"
     );
+
+    // Fire-and-forget: write per-filter metadata + catalog index in a single task.
+    // Sequential within the task to avoid DB pool contention from 200 concurrent queries.
+    if !published_hashes.is_empty() {
+        spawn_stdlib_catalog_update(state.db.clone(), state.storage.clone(), published_hashes);
+    }
 
     let status = if failed.is_empty() {
         if published > 0 {
@@ -261,30 +271,31 @@ pub async fn publish_stdlib(
 
 /// Process a single stdlib filter entry.
 ///
-/// Returns `Ok(true)` when published, `Ok(false)` when skipped (increments
+/// Returns `Ok(Some(hash))` when published, `Ok(None)` when skipped (increments
 /// `*skipped`), or `Err(StdlibFailure)` when validation/verification fails.
 async fn process_entry(
     state: &AppState,
     entry: &StdlibFilterEntry,
     skipped: &mut usize,
-) -> Result<bool, StdlibFailure> {
+) -> Result<Option<String>, StdlibFailure> {
     let cmd_hint = guess_command_pattern(&entry.filter_toml);
     let prepared =
         prepare_stdlib_filter(entry).map_err(|e| fail(&cmd_hint, "preparation failed", e))?;
 
     if check_existing(state, &prepared, skipped).await? {
-        return Ok(false);
+        return Ok(None);
     }
 
     run_verification(&prepared.config, &prepared.test_cases)
         .await
         .map_err(|e| fail(&prepared.command_pattern, "verification failed", e))?;
 
+    let hash = prepared.content_hash.clone();
     persist_filter(state, &prepared, &entry.author_github_username)
         .await
         .map_err(|e| fail(&prepared.command_pattern, "persist failed", e.to_string()))?;
 
-    Ok(true)
+    Ok(Some(hash))
 }
 
 /// Build a `StdlibFailure` and log a warning in one call.
@@ -357,6 +368,38 @@ async fn persist_filter(
 
     insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;
     Ok(())
+}
+
+/// Single background task for all stdlib catalog writes: per-filter metadata + index.
+///
+/// Runs sequentially to avoid saturating the DB connection pool with concurrent queries.
+fn spawn_stdlib_catalog_update(
+    pool: sqlx::PgPool,
+    storage: std::sync::Arc<dyn crate::storage::StorageClient>,
+    hashes: Vec<String>,
+) {
+    tokio::spawn(async move {
+        for hash in &hashes {
+            match crate::catalog::build_filter_metadata(&pool, hash).await {
+                Ok(entry) => {
+                    if let Err(e) =
+                        crate::catalog::write_filter_metadata_to_r2(&*storage, hash, &entry).await
+                    {
+                        tracing::warn!(hash = %hash, "stdlib metadata write failed: {e}");
+                    }
+                }
+                Err(e) => tracing::warn!(hash = %hash, "stdlib metadata build failed: {e}"),
+            }
+        }
+        match crate::catalog::build_catalog_index(&pool).await {
+            Ok(index) => {
+                if let Err(e) = crate::catalog::write_catalog_to_r2(&*storage, &index).await {
+                    tracing::warn!("stdlib catalog index write failed: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("stdlib catalog index build failed: {e}"),
+        }
+    });
 }
 
 /// Best-effort command pattern extraction for error messages.
