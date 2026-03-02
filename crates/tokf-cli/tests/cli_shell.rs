@@ -118,17 +118,16 @@ fn shell_whitespace_only_command() {
 
 #[test]
 fn shell_tokf_run_not_double_wrapped() {
-    // "tokf run echo hello" should not be intercepted as a filter match
-    // since it starts with "tokf" which is a built-in skip pattern.
-    // It delegates to sh, which runs tokf run echo hello.
-    let output = tokf()
-        .args(["-c", "echo not-double-wrapped"])
-        .output()
-        .unwrap();
+    // When shell mode receives a command that is already wrapped with
+    // `tokf run`, it should delegate to sh (the `^tokf ` skip pattern
+    // prevents filter matching). Verify the inner tokf actually runs.
+    let inner_cmd = format!("{} run echo not-double-wrapped", env!("CARGO_BIN_EXE_tokf"));
+    let output = tokf().args(["-c", &inner_cmd]).output().unwrap();
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "not-double-wrapped"
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("not-double-wrapped"),
+        "expected inner tokf to produce output, got: {stdout}"
     );
 }
 

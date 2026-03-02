@@ -224,9 +224,11 @@ pub(crate) fn rewrite_with_config(
         return user_result;
     }
 
+    let wrapper_rules = build_wrapper_rules();
+    let filter_rules = build_rules_from_filters(search_dirs);
     let rules = SegmentRules {
-        wrapper: &build_wrapper_rules(),
-        filter: &build_rules_from_filters(search_dirs),
+        wrapper: &wrapper_rules,
+        filter: &filter_rules,
     };
     let segments = split_compound(command);
 

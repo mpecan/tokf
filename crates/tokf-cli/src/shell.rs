@@ -38,7 +38,7 @@ fn needs_real_shell(command: &str) -> bool {
         || command.contains('>')
         || command.contains('<')
         || command.contains('`')
-        || command.contains("$(")
+        || command.contains('$')
         || command.contains('(')
         || command.contains('"')
         || command.contains('\'')
@@ -295,6 +295,16 @@ mod tests {
     #[test]
     fn shell_meta_redirect_in() {
         assert!(needs_real_shell("wc -l < file.txt"));
+    }
+
+    #[test]
+    fn shell_meta_variable_expansion() {
+        assert!(needs_real_shell("echo $HOME"));
+    }
+
+    #[test]
+    fn shell_meta_variable_braces() {
+        assert!(needs_real_shell("echo ${HOME}"));
     }
 
     #[test]
