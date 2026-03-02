@@ -4,7 +4,7 @@ description: Sync token savings across machines and view aggregate stats via the
 order: 5
 ---
 
-## Quick start
+## Setup
 
 ```sh
 tokf auth login            # authenticate via GitHub device flow

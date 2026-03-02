@@ -740,7 +740,7 @@ The hint is appended to stdout so it is visible to both humans and LLMs in the t
 ---
 
 
-## Quick start
+## Setup
 
 ```sh
 tokf auth login            # authenticate via GitHub device flow
