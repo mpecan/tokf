@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.18](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.17...tokf-server-v0.2.18) (2026-03-02)
+
+
+### Bug Fixes
+
+* **server,cli:** use i64 for ToS version fields (CockroachDB INT8) ([#229](https://github.com/mpecan/tokf/issues/229)) ([df084d4](https://github.com/mpecan/tokf/commit/df084d4e8662a6e7431f387b13cdc08e9ecbdb45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.17 to 0.2.18
+    * tokf-filter bumped from 0.2.17 to 0.2.18
+
 ## [0.2.17](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.16...tokf-server-v0.2.17) (2026-03-02)
 
 
