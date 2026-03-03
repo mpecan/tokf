@@ -88,8 +88,14 @@ async fn publish_filter_with_tests_creates_filter_test_rows(pool: PgPool) {
         .unwrap();
     assert_eq!(count, 2, "expected 2 filter_tests rows");
 
-    // Verify R2 received filter + 2 test files = 3 puts
-    assert_eq!(storage.put_count(), 3, "expected 3 R2 put calls");
+    // The publish handler does 3 synchronous puts (filter + 2 test files).
+    // spawn_catalog_update() may add more (metadata.json + catalog/index.json)
+    // before this assertion runs, so use >= to avoid flakiness.
+    assert!(
+        storage.put_count() >= 3,
+        "expected at least 3 R2 put calls (filter + 2 tests), got {}",
+        storage.put_count()
+    );
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
