@@ -1,7 +1,52 @@
 use tokf::auth::client::is_secure_url;
+use tokf::auth::credentials::LoadedAuth;
 use tokf::remote::http::{Client, load_auth};
 use tokf::remote::{client, machine};
 use uuid::Uuid;
+
+/// Result of machine registration.
+pub enum RegisterResult {
+    /// Machine was already registered; re-synced with server.
+    AlreadyRegistered {
+        machine_id: String,
+        hostname: String,
+    },
+    /// Machine was newly registered.
+    NewlyRegistered {
+        machine_id: String,
+        hostname: String,
+    },
+}
+
+/// Register this machine with the tokf server using the provided auth.
+///
+/// Generates a UUID v4 machine identifier, registers it with the server, and
+/// stores it in `~/.config/tokf/machine.toml`. If already registered locally,
+/// re-syncs with the server to repair any stale state (idempotent).
+///
+/// # Errors
+///
+/// Returns an error if the server is unreachable or registration fails.
+pub fn register_machine(auth: &LoadedAuth) -> anyhow::Result<RegisterResult> {
+    let http_client = Client::new(&auth.server_url, Some(&auth.token))?;
+
+    if let Some(m) = machine::load() {
+        client::register_machine(&http_client, &m.machine_id, &m.hostname)?;
+        Ok(RegisterResult::AlreadyRegistered {
+            machine_id: m.machine_id,
+            hostname: m.hostname,
+        })
+    } else {
+        let machine_id = Uuid::new_v4().to_string();
+        let hostname = gethostname::gethostname().to_string_lossy().into_owned();
+        client::register_machine(&http_client, &machine_id, &hostname)?;
+        machine::save(&machine_id, &hostname)?;
+        Ok(RegisterResult::NewlyRegistered {
+            machine_id,
+            hostname,
+        })
+    }
+}
 
 /// Register this machine with the tokf server.
 ///
@@ -22,21 +67,19 @@ pub fn cmd_remote_setup() -> anyhow::Result<i32> {
         );
     }
 
-    let http_client = Client::new(&auth.server_url, Some(&auth.token))?;
-
-    if let Some(m) = machine::load() {
-        // Already registered locally — re-sync with server to fix any stale state.
-        client::register_machine(&http_client, &m.machine_id, &m.hostname)?;
-        eprintln!(
-            "[tokf] Already registered: {} ({})",
-            m.machine_id, m.hostname
-        );
-    } else {
-        let machine_id = Uuid::new_v4().to_string();
-        let hostname = gethostname::gethostname().to_string_lossy().into_owned();
-        client::register_machine(&http_client, &machine_id, &hostname)?;
-        machine::save(&machine_id, &hostname)?;
-        eprintln!("[tokf] Machine registered: {machine_id} ({hostname})");
+    match register_machine(&auth)? {
+        RegisterResult::AlreadyRegistered {
+            machine_id,
+            hostname,
+        } => {
+            eprintln!("[tokf] Already registered: {machine_id} ({hostname})");
+        }
+        RegisterResult::NewlyRegistered {
+            machine_id,
+            hostname,
+        } => {
+            eprintln!("[tokf] Machine registered: {machine_id} ({hostname})");
+        }
     }
 
     Ok(0)

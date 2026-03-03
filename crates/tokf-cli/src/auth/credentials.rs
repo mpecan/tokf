@@ -22,6 +22,9 @@ pub struct StoredAuth {
     /// Highest Terms of Service version the user has accepted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tos_accepted_version: Option<i64>,
+    /// Whether the user has opted in to automatic usage statistics upload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upload_usage_stats: Option<bool>,
 }
 
 /// Loaded credentials: token (from keyring) + metadata (from TOML).
@@ -35,6 +38,8 @@ pub struct LoadedAuth {
     pub mit_license_accepted: Option<bool>,
     /// Highest Terms of Service version the user has accepted.
     pub tos_accepted_version: Option<i64>,
+    /// Whether the user has opted in to automatic usage statistics upload.
+    pub upload_usage_stats: Option<bool>,
 }
 
 impl LoadedAuth {
@@ -98,6 +103,7 @@ pub fn save(
         .and_then(|c| toml::from_str::<StoredAuth>(&c).ok());
     let mit_license_accepted = existing.as_ref().and_then(|e| e.mit_license_accepted);
     let tos_accepted_version = existing.as_ref().and_then(|e| e.tos_accepted_version);
+    let upload_usage_stats = existing.as_ref().and_then(|e| e.upload_usage_stats);
 
     let meta = StoredAuth {
         username: username.to_string(),
@@ -105,6 +111,7 @@ pub fn save(
         expires_at,
         mit_license_accepted,
         tos_accepted_version,
+        upload_usage_stats,
     };
     let content = toml::to_string_pretty(&meta)?;
     write_config_file(&path, &content)?;
@@ -163,6 +170,29 @@ pub(crate) fn save_tos_accepted_version_to_path(
     update_stored_auth(path, |meta| meta.tos_accepted_version = Some(version))
 }
 
+/// Persist the user's usage statistics upload preference to the auth config file.
+///
+/// # Errors
+///
+/// Returns an error if the config directory cannot be determined or the file
+/// cannot be written.
+pub fn save_upload_stats_preference(enabled: bool) -> anyhow::Result<()> {
+    let path =
+        auth_config_path().ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    save_upload_stats_preference_to_path(&path, enabled)
+}
+
+/// Core logic for persisting usage statistics preference to a specific path.
+///
+/// Separated from [`save_upload_stats_preference`] to allow direct testing
+/// without depending on the platform config directory.
+pub(crate) fn save_upload_stats_preference_to_path(
+    path: &std::path::Path,
+    enabled: bool,
+) -> anyhow::Result<()> {
+    update_stored_auth(path, |meta| meta.upload_usage_stats = Some(enabled))
+}
+
 /// Load-modify-save helper for [`StoredAuth`].
 ///
 /// Reads the existing file (or creates a default), applies `mutate`, and
@@ -181,6 +211,7 @@ fn update_stored_auth(
             expires_at: 0,
             mit_license_accepted: None,
             tos_accepted_version: None,
+            upload_usage_stats: None,
         }
     };
 
@@ -212,6 +243,7 @@ pub fn load() -> Option<LoadedAuth> {
         expires_at: meta.expires_at,
         mit_license_accepted: meta.mit_license_accepted,
         tos_accepted_version: meta.tos_accepted_version,
+        upload_usage_stats: meta.upload_usage_stats,
     })
 }
 
@@ -367,6 +399,7 @@ mod tests {
             expires_at: 1_700_000_000,
             mit_license_accepted: None,
             tos_accepted_version: None,
+            upload_usage_stats: None,
         };
         let serialized = toml::to_string_pretty(&meta).unwrap();
         let deserialized: StoredAuth = toml::from_str(&serialized).unwrap();
@@ -383,6 +416,7 @@ mod tests {
             expires_at: 0,
             mit_license_accepted: Some(true),
             tos_accepted_version: None,
+            upload_usage_stats: None,
         };
         let serialized = toml::to_string_pretty(&meta).unwrap();
         assert!(
@@ -403,6 +437,7 @@ mod tests {
             expires_at: 9_999_999_999,
             mit_license_accepted: None,
             tos_accepted_version: None,
+            upload_usage_stats: None,
         };
         let content = toml::to_string_pretty(&initial).unwrap();
         std::fs::write(&path, &content).unwrap();
@@ -500,6 +535,7 @@ mod tests {
             expires_at: 0,
             mit_license_accepted: None,
             tos_accepted_version: Some(1),
+            upload_usage_stats: None,
         };
         let serialized = toml::to_string_pretty(&meta).unwrap();
         assert!(
@@ -530,6 +566,7 @@ mod tests {
             expires_at: 9_999_999_999,
             mit_license_accepted: Some(true),
             tos_accepted_version: None,
+            upload_usage_stats: Some(true),
         };
         let content = toml::to_string_pretty(&initial).unwrap();
         std::fs::write(&path, &content).unwrap();
@@ -542,6 +579,7 @@ mod tests {
         assert_eq!(result.expires_at, 9_999_999_999);
         assert_eq!(result.mit_license_accepted, Some(true));
         assert_eq!(result.tos_accepted_version, Some(1));
+        assert_eq!(result.upload_usage_stats, Some(true));
     }
 
     #[test]
@@ -553,6 +591,7 @@ mod tests {
             expires_at: 0,
             mit_license_accepted: None,
             tos_accepted_version: None,
+            upload_usage_stats: None,
         };
         assert!(!auth.is_expired(), "unknown expiry should not be expired");
     }
@@ -571,6 +610,7 @@ mod tests {
             expires_at: future,
             mit_license_accepted: None,
             tos_accepted_version: None,
+            upload_usage_stats: None,
         };
         assert!(!auth.is_expired());
     }
@@ -584,7 +624,63 @@ mod tests {
             expires_at: 1, // 1970 — definitely expired
             mit_license_accepted: None,
             tos_accepted_version: None,
+            upload_usage_stats: None,
         };
         assert!(auth.is_expired());
+    }
+
+    #[test]
+    fn stored_auth_upload_stats_roundtrip() {
+        let meta = StoredAuth {
+            username: "dave".to_string(),
+            server_url: "https://api.tokf.net".to_string(),
+            expires_at: 0,
+            mit_license_accepted: None,
+            tos_accepted_version: None,
+            upload_usage_stats: Some(true),
+        };
+        let serialized = toml::to_string_pretty(&meta).unwrap();
+        assert!(
+            serialized.contains("upload_usage_stats"),
+            "should serialize field: {serialized}"
+        );
+        let deserialized: StoredAuth = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.upload_usage_stats, Some(true));
+    }
+
+    #[test]
+    fn stored_auth_missing_upload_stats_defaults_to_none() {
+        let toml_str = r#"
+            username = "bob"
+            server_url = "https://api.tokf.net"
+        "#;
+        let meta: StoredAuth = toml::from_str(toml_str).unwrap();
+        assert_eq!(meta.upload_usage_stats, None);
+    }
+
+    #[test]
+    fn save_upload_stats_preserves_other_fields() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("auth.toml");
+        let initial = StoredAuth {
+            username: "alice".to_string(),
+            server_url: "https://example.com".to_string(),
+            expires_at: 9_999_999_999,
+            mit_license_accepted: Some(true),
+            tos_accepted_version: Some(2),
+            upload_usage_stats: None,
+        };
+        let content = toml::to_string_pretty(&initial).unwrap();
+        std::fs::write(&path, &content).unwrap();
+
+        save_upload_stats_preference_to_path(&path, true).unwrap();
+
+        let result: StoredAuth = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(result.username, "alice");
+        assert_eq!(result.server_url, "https://example.com");
+        assert_eq!(result.expires_at, 9_999_999_999);
+        assert_eq!(result.mit_license_accepted, Some(true));
+        assert_eq!(result.tos_accepted_version, Some(2));
+        assert_eq!(result.upload_usage_stats, Some(true));
     }
 }

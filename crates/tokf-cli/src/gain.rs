@@ -1,8 +1,13 @@
+use std::io::{BufRead, IsTerminal, Write};
+
+use tokf::auth::credentials;
 use tokf::remote::gain_client;
 use tokf::remote::http::Client;
 use tokf::tracking;
 
 pub fn cmd_gain(daily: bool, by_filter: bool, json: bool) -> i32 {
+    prompt_upload_stats_if_needed();
+
     let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] error: cannot determine DB path");
         return 1;
@@ -206,6 +211,47 @@ fn cmd_gain_remote_by_filter(resp: &gain_client::GainResponse) -> i32 {
         );
     }
     0
+}
+
+/// One-time prompt for existing users who are logged in but haven't set their
+/// usage statistics preference yet. Only shows when stdin is a TTY so it won't
+/// pollute LLM/piped contexts.
+fn prompt_upload_stats_if_needed() {
+    if !std::io::stdin().is_terminal() {
+        return;
+    }
+
+    let Some(auth) = credentials::load() else {
+        return;
+    };
+    if auth.upload_usage_stats.is_some() {
+        return; // already set
+    }
+
+    eprintln!("[tokf] You're logged in but haven't set your usage statistics preference.");
+    eprintln!("[tokf] tokf can periodically sync aggregate token counts in the background.");
+    eprintln!("[tokf] No command content or output is ever sent.");
+    eprint!("[tokf] Upload usage statistics? [y/N]: ");
+    let _ = std::io::stderr().flush();
+
+    let mut input = String::new();
+    if std::io::stdin().lock().read_line(&mut input).is_err() {
+        return;
+    }
+    let enabled =
+        input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes");
+
+    if let Err(e) = credentials::save_upload_stats_preference(enabled) {
+        eprintln!("[tokf] Failed to save preference: {e:#}");
+        return;
+    }
+
+    if enabled {
+        eprintln!("[tokf] Usage statistics upload enabled.");
+    } else {
+        eprintln!("[tokf] Usage statistics upload disabled.");
+    }
+    eprintln!();
 }
 
 fn format_num(n: i64) -> String {

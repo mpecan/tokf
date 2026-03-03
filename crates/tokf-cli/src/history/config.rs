@@ -76,7 +76,7 @@ pub struct SyncConfig {
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
-            auto_sync_threshold: 50,
+            auto_sync_threshold: 100,
         }
     }
 }
@@ -85,14 +85,14 @@ impl SyncConfig {
     /// Load sync config using auto-detected paths. Priority:
     /// 1. `{project_root}/.tokf/config.toml` `[sync] auto_sync_threshold`
     /// 2. `{config_dir}/tokf/config.toml` `[sync] auto_sync_threshold`
-    /// 3. Default: 50
+    /// 3. Default: 100
     pub fn load(project_root: Option<&std::path::Path>) -> Self {
         let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
         Self::load_from(project_root, global.as_deref())
     }
 
     /// Load sync config from explicit paths. Useful for testing.
-    /// Priority: project config → global config → default 50.
+    /// Priority: project config → global config → default 100.
     pub fn load_from(
         project_root: Option<&std::path::Path>,
         global_config: Option<&std::path::Path>,
@@ -101,7 +101,7 @@ impl SyncConfig {
             read_sync_threshold_from_config(&root.join(".tokf").join("config.toml"))
         });
         let from_global = global_config.and_then(read_sync_threshold_from_config);
-        let auto_sync_threshold = from_project.or(from_global).unwrap_or(50);
+        let auto_sync_threshold = from_project.or(from_global).unwrap_or(100);
         Self {
             auto_sync_threshold,
         }

@@ -106,7 +106,7 @@ fn history_config_load_malformed_global_config_falls_back_to_default() {
 #[test]
 fn sync_config_default() {
     let config = SyncConfig::default();
-    assert_eq!(config.auto_sync_threshold, 50);
+    assert_eq!(config.auto_sync_threshold, 100);
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn sync_config_project_overrides_global() {
 fn sync_config_falls_back_to_default() {
     let dir = TempDir::new().expect("tempdir");
     let config = SyncConfig::load_from(Some(dir.path()), None);
-    assert_eq!(config.auto_sync_threshold, 50);
+    assert_eq!(config.auto_sync_threshold, 100);
 }
 
 #[test]

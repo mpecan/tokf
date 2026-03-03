@@ -141,8 +141,11 @@ pub fn try_auto_sync() {
         return;
     }
 
-    if credentials::load().is_none() {
+    let Some(auth) = credentials::load() else {
         return;
+    };
+    if !auth.upload_usage_stats.unwrap_or(false) {
+        return; // None → never asked, Some(false) → opted out
     }
     if machine::load().is_none() {
         return;
