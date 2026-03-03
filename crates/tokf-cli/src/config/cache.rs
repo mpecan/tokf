@@ -288,11 +288,9 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn cache_path_respects_tokf_home() {
-        // SAFETY: test-only env mutation; #[serial] prevents races.
-        unsafe { std::env::set_var("TOKF_HOME", "/custom/tokf_home") };
+        let _guard = crate::paths::HomeGuard::set("/custom/tokf_home");
         let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
         let path = cache_path(&search_dirs);
-        unsafe { std::env::remove_var("TOKF_HOME") };
 
         assert_eq!(
             path,

@@ -209,7 +209,7 @@ fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let env_override = std::env::var("TOKF_DB_PATH").ok();
+    let env_override = tokf::paths::db_path_override().map(|p| p.display().to_string());
     let db_path = tracking::db_path();
     let db_exists = db_path.as_ref().is_some_and(|p| p.exists());
     let db_access = db_path.as_ref().map(|p| check_write_access(p));

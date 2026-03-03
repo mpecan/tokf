@@ -9,12 +9,10 @@ use tokf::auth::credentials;
 fn remove_is_idempotent() {
     credentials::use_mock_keyring();
     let dir = tempfile::TempDir::new().unwrap();
-    unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+    let _guard = tokf::paths::HomeGuard::set(dir.path());
 
     let _ = credentials::remove();
     let _ = credentials::remove();
-
-    unsafe { std::env::remove_var("TOKF_HOME") };
 }
 
 /// Verify the config path is well-formed on all platforms.
@@ -80,12 +78,10 @@ fn loaded_auth_expired_detection() {
 fn save_load_roundtrip_integration() {
     credentials::use_mock_keyring();
     let dir = tempfile::TempDir::new().unwrap();
-    unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+    let _guard = tokf::paths::HomeGuard::set(dir.path());
 
     credentials::save("int-token", "carol", "https://registry.tokf.net", 7200).unwrap();
     let loaded = credentials::load().expect("should load saved credentials");
-
-    unsafe { std::env::remove_var("TOKF_HOME") };
 
     assert_eq!(loaded.token, "int-token");
     assert_eq!(loaded.username, "carol");
@@ -99,7 +95,7 @@ fn save_load_roundtrip_integration() {
 fn remove_after_save_returns_true() {
     credentials::use_mock_keyring();
     let dir = tempfile::TempDir::new().unwrap();
-    unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+    let _guard = tokf::paths::HomeGuard::set(dir.path());
 
     credentials::save("tok_rm", "dave", "https://example.com", 0).unwrap();
     let removed = credentials::remove();
@@ -107,6 +103,4 @@ fn remove_after_save_returns_true() {
 
     let loaded = credentials::load();
     assert!(loaded.is_none(), "load should return None after remove");
-
-    unsafe { std::env::remove_var("TOKF_HOME") };
 }

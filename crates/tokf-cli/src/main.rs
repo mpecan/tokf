@@ -378,6 +378,11 @@ fn main() {
         cmd_skill_install, cmd_test, cmd_which, or_exit,
     };
 
+    tokf::paths::init_from_env();
+
+    #[cfg(feature = "test-keyring")]
+    tokf::auth::credentials::use_mock_keyring();
+
     // Pre-clap shell mode detection.
     //
     // Task runners (make, just) invoke their shell as `$SHELL -c 'recipe_line'`.

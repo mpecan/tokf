@@ -181,7 +181,7 @@ pub fn try_auto_sync() {
     {
         Ok(_) => {}
         Err(e) => {
-            if std::env::var_os("TOKF_DEBUG").is_some() {
+            if tokf::paths::debug_enabled() {
                 eprintln!("[tokf] auto-sync spawn failed: {e}");
             }
         }

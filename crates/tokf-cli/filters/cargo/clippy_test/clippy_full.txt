@@ -1,0 +1,105 @@
+    Checking tokf-server v0.2.12 (/Users/mdp/src/github.com/mpecan/tokf/crates/tokf-server)
+error: pub(crate) module inside private module
+ --> crates/tokf-server/src/routes/filters/mod.rs:1:1
+  |
+1 | pub(crate) mod publish;
+  | ----------^^^^^^^^^^^^
+  | |
+  | help: consider using: `pub`
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#redundant_pub_crate
+  = note: `-D clippy::redundant-pub-crate` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(clippy::redundant_pub_crate)]`
+
+error: pub(crate) function inside private module
+   --> crates/tokf-server/src/routes/filters/publish/mod.rs:136:1
+    |
+136 | pub(crate) async fn upload_tests(
+    | ----------^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | help: consider using: `pub`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#redundant_pub_crate
+
+error: pub(crate) function inside private module
+   --> crates/tokf-server/src/routes/filters/publish/mod.rs:151:1
+    |
+151 | pub(crate) async fn insert_filter_tests(
+    | ----------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | help: consider using: `pub`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#redundant_pub_crate
+
+error: pub(crate) module inside private module
+   --> crates/tokf-server/src/routes/filters/publish/mod.rs:371:1
+    |
+371 | pub(crate) mod stdlib;
+    | ----------^^^^^^^^^^^
+    | |
+    | help: consider using: `pub`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#redundant_pub_crate
+
+error: redundant clone
+   --> crates/tokf-server/src/routes/filters/publish/stdlib/mod.rs:124:23
+    |
+124 |         .map_err(|e| e.to_string())?;
+    |                       ^^^^^^^^^^^^ help: remove this
+    |
+note: this value is dropped without further use
+   --> crates/tokf-server/src/routes/filters/publish/stdlib/mod.rs:124:22
+    |
+124 |         .map_err(|e| e.to_string())?;
+    |                      ^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#redundant_clone
+    = note: `-D clippy::redundant-clone` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::redundant_clone)]`
+
+error: implicitly cloning a `String` by calling `to_string` on its dereferenced type
+   --> crates/tokf-server/src/routes/filters/publish/stdlib/mod.rs:124:22
+    |
+124 |         .map_err(|e| e.to_string())?;
+    |                      ^^^^^^^^^^^^^ help: consider using: `e.clone()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#implicit_clone
+    = note: `-D clippy::implicit-clone` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::implicit_clone)]`
+
+error: casting `u64` to `i64` may wrap around the value
+   --> crates/tokf-server/src/routes/filters/publish/stdlib/mod.rs:191:6
+    |
+191 |     -((val % (i64::MAX as u64)) as i64) - 1
+    |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, use `cast_signed()` instead: `(val % (i64::MAX as u64)).cast_signed()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_possible_wrap
+    = note: `-D clippy::cast-possible-wrap` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::cast_possible_wrap)]`
+
+error: this function has too many lines (80/60)
+   --> crates/tokf-server/src/routes/filters/publish/stdlib/mod.rs:202:1
+    |
+202 | / pub async fn publish_stdlib(
+203 | |     _auth: ServiceAuth,
+204 | |     State(state): State<AppState>,
+205 | |     Json(req): Json<StdlibPublishRequest>,
+206 | | ) -> Result<(StatusCode, Json<StdlibPublishResponse>), AppError> {
+    | |________________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#too_many_lines
+    = note: `-D clippy::too-many-lines` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::too_many_lines)]`
+
+error: called `map(<f>).unwrap_or_else(<g>)` on a `Result` value
+   --> crates/tokf-server/src/routes/filters/publish/stdlib/mod.rs:306:5
+    |
+306 | /     toml::from_str::<FilterConfig>(toml_str)
+307 | |         .map(|c| c.command.first().to_string())
+308 | |         .unwrap_or_else(|_| "<unknown>".to_string())
+    | |____________________________________________________^ help: try: `toml::from_str::<FilterConfig>(toml_str).map_or_else(|_| "<unknown>".to_string(), |c| c.command.first().to_string())`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#map_unwrap_or
+    = note: `-D clippy::map-unwrap-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::map_unwrap_or)]`
+
+error: could not compile `tokf-server` (lib) due to 9 previous errors
