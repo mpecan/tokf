@@ -2,6 +2,7 @@ mod auth_cmd;
 mod cache_cmd;
 mod commands;
 mod completions_cmd;
+mod config_cmd;
 mod eject_cmd;
 mod gain;
 mod history_cmd;
@@ -140,6 +141,11 @@ enum Commands {
     Cache {
         #[command(subcommand)]
         action: cache_cmd::CacheAction,
+    },
+    /// View and modify tokf configuration
+    Config {
+        #[command(subcommand)]
+        action: config_cmd::ConfigAction,
     },
     /// Show token savings statistics
     Gain {
@@ -425,6 +431,7 @@ fn main() {
             SkillAction::Install { global } => cmd_skill_install(*global),
         },
         Commands::Cache { action } => cache_cmd::run_cache_action(action),
+        Commands::Config { action } => config_cmd::run_config_action(action),
         Commands::Gain {
             daily,
             by_filter,

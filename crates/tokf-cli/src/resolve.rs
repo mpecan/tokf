@@ -128,6 +128,11 @@ pub fn run_command(
 ///
 /// All checks are cheap (no network I/O) — only spawns a detached `tokf sync` process
 /// when all preconditions are met.
+///
+/// **Note:** `upload_usage_stats` is read from the global config only (project root = `None`).
+/// This is intentional — `try_auto_sync` runs in the hot path after every filtered command,
+/// so we skip the filesystem walk to locate `.tokf/config.toml` for performance. Users who
+/// need per-project overrides can set `upload_usage_stats` in their global config instead.
 pub fn try_auto_sync() {
     use std::process::{Command, Stdio};
     use tokf::auth::credentials;
@@ -139,6 +144,10 @@ pub fn try_auto_sync() {
     let config = SyncConfig::load(None);
     if config.auto_sync_threshold == 0 {
         return;
+    }
+
+    if !config.upload_usage_stats.unwrap_or(false) {
+        return; // None → never asked, Some(false) → opted out
     }
 
     if credentials::load().is_none() {

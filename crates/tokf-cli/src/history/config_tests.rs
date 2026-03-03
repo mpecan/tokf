@@ -106,7 +106,7 @@ fn history_config_load_malformed_global_config_falls_back_to_default() {
 #[test]
 fn sync_config_default() {
     let config = SyncConfig::default();
-    assert_eq!(config.auto_sync_threshold, 50);
+    assert_eq!(config.auto_sync_threshold, 100);
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn sync_config_project_overrides_global() {
 fn sync_config_falls_back_to_default() {
     let dir = TempDir::new().expect("tempdir");
     let config = SyncConfig::load_from(Some(dir.path()), None);
-    assert_eq!(config.auto_sync_threshold, 50);
+    assert_eq!(config.auto_sync_threshold, 100);
 }
 
 #[test]
@@ -195,6 +195,167 @@ fn mixed_history_and_sync_config() {
     let sync = SyncConfig::load_from(Some(dir.path()), None);
     assert_eq!(history.retention_count, 20);
     assert_eq!(sync.auto_sync_threshold, 75);
+}
+
+// --- SyncConfig: upload_usage_stats ---
+
+#[test]
+fn sync_config_upload_usage_stats_from_toml() {
+    let dir = TempDir::new().expect("tempdir");
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nupload_usage_stats = true\n",
+    )
+    .expect("write config");
+
+    let config = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(config.upload_usage_stats, Some(true));
+}
+
+#[test]
+fn sync_config_upload_usage_stats_false() {
+    let dir = TempDir::new().expect("tempdir");
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nupload_usage_stats = false\n",
+    )
+    .expect("write config");
+
+    let config = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(config.upload_usage_stats, Some(false));
+}
+
+#[test]
+fn sync_config_upload_usage_stats_default_is_none() {
+    let dir = TempDir::new().expect("tempdir");
+    let config = SyncConfig::load_from(Some(dir.path()), None);
+    assert_eq!(config.upload_usage_stats, None);
+}
+
+#[test]
+fn sync_config_upload_usage_stats_from_global() {
+    let global_dir = TempDir::new().expect("tempdir");
+    let global_config = global_dir.path().join("config.toml");
+    std::fs::write(&global_config, "[sync]\nupload_usage_stats = true\n")
+        .expect("write global config");
+
+    let config = SyncConfig::load_from(None, Some(&global_config));
+    assert_eq!(config.upload_usage_stats, Some(true));
+}
+
+#[test]
+fn sync_config_upload_usage_stats_project_overrides_global() {
+    let project_dir = TempDir::new().expect("tempdir");
+    let tokf_dir = project_dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nupload_usage_stats = false\n",
+    )
+    .expect("write project config");
+
+    let global_dir = TempDir::new().expect("tempdir");
+    let global_config = global_dir.path().join("config.toml");
+    std::fs::write(&global_config, "[sync]\nupload_usage_stats = true\n")
+        .expect("write global config");
+
+    let config = SyncConfig::load_from(Some(project_dir.path()), Some(&global_config));
+    assert_eq!(
+        config.upload_usage_stats,
+        Some(false),
+        "project config should take priority over global"
+    );
+}
+
+// --- SyncConfig: partial [sync] section fallthrough ---
+
+#[test]
+fn sync_config_partial_section_falls_through_to_global() {
+    // Project has [sync] with only auto_sync_threshold, no upload_usage_stats.
+    // Global has [sync] with only upload_usage_stats.
+    // Result: threshold from project, upload_usage_stats from global.
+    let project_dir = TempDir::new().expect("tempdir");
+    let tokf_dir = project_dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(
+        tokf_dir.join("config.toml"),
+        "[sync]\nauto_sync_threshold = 42\n",
+    )
+    .expect("write project config");
+
+    let global_dir = TempDir::new().expect("tempdir");
+    let global_config = global_dir.path().join("config.toml");
+    std::fs::write(&global_config, "[sync]\nupload_usage_stats = true\n")
+        .expect("write global config");
+
+    let config = SyncConfig::load_from(Some(project_dir.path()), Some(&global_config));
+    assert_eq!(
+        config.auto_sync_threshold, 42,
+        "threshold should come from project"
+    );
+    assert_eq!(
+        config.upload_usage_stats,
+        Some(true),
+        "upload_usage_stats should fall through to global"
+    );
+}
+
+// --- save_upload_stats_to_path ---
+
+#[test]
+fn save_upload_stats_to_path_creates_file() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("config.toml");
+
+    config::save_upload_stats_to_path(&path, true).expect("save");
+
+    let content = std::fs::read_to_string(&path).expect("read");
+    assert!(
+        content.contains("upload_usage_stats = true"),
+        "got: {content}"
+    );
+}
+
+#[test]
+fn save_upload_stats_to_path_preserves_other_fields() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    std::fs::write(
+        &path,
+        "[history]\nretention = 25\n\n[sync]\nauto_sync_threshold = 50\n",
+    )
+    .expect("write");
+
+    config::save_upload_stats_to_path(&path, false).expect("save");
+
+    let content = std::fs::read_to_string(&path).expect("read");
+    assert!(
+        content.contains("retention = 25"),
+        "retention preserved: {content}"
+    );
+    assert!(
+        content.contains("auto_sync_threshold = 50"),
+        "threshold preserved: {content}"
+    );
+    assert!(
+        content.contains("upload_usage_stats = false"),
+        "stats set: {content}"
+    );
+}
+
+#[test]
+fn save_upload_stats_to_path_roundtrip() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("config.toml");
+
+    config::save_upload_stats_to_path(&path, true).expect("save");
+
+    let config = SyncConfig::load_from(None, Some(&path));
+    assert_eq!(config.upload_usage_stats, Some(true));
 }
 
 // --- current_project ---

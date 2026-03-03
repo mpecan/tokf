@@ -3,7 +3,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use tokf::auth::{client, credentials};
-use tokf::remote::{account_client, http::Client, tos_client};
+use tokf::remote::{account_client, http::Client, machine, tos_client};
 
 const MAX_NETWORK_RETRIES: u32 = 3;
 
@@ -185,6 +185,11 @@ fn poll_for_token(
                 }
                 eprintln!();
                 eprintln!("[tokf] Logged in as {}", token_resp.user.username);
+
+                if let Some(auth) = credentials::load() {
+                    run_onboarding(&auth);
+                }
+
                 return Ok(0);
             }
             Ok(client::PollResult::Pending { .. }) => {
@@ -232,6 +237,99 @@ fn print_progress(start: &Instant, expires_in: i64, last_progress_secs: &mut u64
         eprint!(" ({remaining_min}m{remaining_sec:02}s left)");
     } else {
         eprint!(".");
+    }
+}
+
+/// Post-login onboarding: offer machine registration and usage stats opt-in.
+fn run_onboarding(auth: &credentials::LoadedAuth) {
+    let machine_available = prompt_machine_registration(auth);
+
+    if machine_available {
+        prompt_usage_stats();
+    }
+}
+
+/// Ask the user whether to register this machine. Returns `true` if a machine
+/// is registered (either newly or already was).
+fn prompt_machine_registration(auth: &credentials::LoadedAuth) -> bool {
+    if machine::load().is_some() {
+        return true; // already registered
+    }
+
+    eprintln!();
+    eprintln!("[tokf] Would you like to register this machine for remote sync?");
+    eprintln!("[tokf] This generates a machine ID and hostname, sent to the tokf server");
+    eprintln!("[tokf] so your usage statistics can be associated with this device.");
+    eprint!("[tokf] Register this machine? [y/N]: ");
+    let _ = std::io::stderr().flush();
+
+    let mut input = String::new();
+    if std::io::stdin().lock().read_line(&mut input).is_err() {
+        return false;
+    }
+    if !input.trim().eq_ignore_ascii_case("y") && !input.trim().eq_ignore_ascii_case("yes") {
+        eprintln!("[tokf] Skipped. You can register later with `tokf remote setup`.");
+        return false;
+    }
+
+    match crate::remote_cmd::register_machine(auth) {
+        Ok(crate::remote_cmd::RegisterResult::NewlyRegistered {
+            machine_id,
+            hostname,
+        }) => {
+            eprintln!("[tokf] Machine registered: {machine_id} ({hostname})");
+            true
+        }
+        Ok(crate::remote_cmd::RegisterResult::AlreadyRegistered {
+            machine_id,
+            hostname,
+        }) => {
+            eprintln!("[tokf] Already registered: {machine_id} ({hostname})");
+            true
+        }
+        Err(e) => {
+            eprintln!("[tokf] Machine registration failed: {e:#}");
+            eprintln!("[tokf] You can try again later with `tokf remote setup`.");
+            false
+        }
+    }
+}
+
+/// Ask the user whether to enable automatic usage statistics upload.
+///
+/// Skips the prompt if the preference has already been set (e.g. from a
+/// previous login), so re-authenticating does not re-prompt.
+fn prompt_usage_stats() {
+    let config = tokf::history::SyncConfig::load(None);
+    if config.upload_usage_stats.is_some() {
+        return;
+    }
+
+    eprintln!();
+    eprintln!("[tokf] Would you like to automatically upload anonymous usage statistics?");
+    eprintln!("[tokf] tokf periodically syncs aggregate token counts (filter name,");
+    eprintln!("[tokf] input/output token estimates) in the background. No command content");
+    eprintln!("[tokf] or output is ever sent.");
+    eprintln!("[tokf] You can change this anytime: `tokf config set sync.upload_stats true|false`");
+    eprint!("[tokf] Upload usage statistics? [y/N]: ");
+    let _ = std::io::stderr().flush();
+
+    let mut input = String::new();
+    if std::io::stdin().lock().read_line(&mut input).is_err() {
+        return;
+    }
+    let enabled =
+        input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes");
+
+    if let Err(e) = tokf::history::save_upload_stats(enabled) {
+        eprintln!("[tokf] Failed to save preference: {e:#}");
+        return;
+    }
+
+    if enabled {
+        eprintln!("[tokf] Usage statistics upload enabled.");
+    } else {
+        eprintln!("[tokf] Usage statistics upload disabled.");
     }
 }
 
