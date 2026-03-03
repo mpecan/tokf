@@ -313,7 +313,7 @@ fn prompt_usage_stats() {
     let enabled =
         input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes");
 
-    if let Err(e) = credentials::save_upload_stats_preference(enabled) {
+    if let Err(e) = tokf::history::save_upload_stats(enabled) {
         eprintln!("[tokf] Failed to save preference: {e:#}");
         return;
     }

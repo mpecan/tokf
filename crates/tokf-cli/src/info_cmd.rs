@@ -122,6 +122,13 @@ struct FilterCounts {
 }
 
 #[derive(Serialize)]
+struct ConfigFileEntry {
+    scope: &'static str,
+    path: String,
+    exists: bool,
+}
+
+#[derive(Serialize)]
 struct InfoOutput {
     version: String,
     /// `TOKF_HOME` env var value when set; affects all user-level paths.
@@ -129,6 +136,7 @@ struct InfoOutput {
     search_dirs: Vec<SearchDir>,
     tracking_db: TrackingDb,
     cache: CacheInfo,
+    config_files: Vec<ConfigFileEntry>,
     filters: Option<FilterCounts>,
 }
 
@@ -221,14 +229,52 @@ fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
         access: cache_access,
     };
 
+    let config_files = collect_config_files();
+
     InfoOutput {
         version: env!("CARGO_PKG_VERSION").to_string(),
         home_override,
         search_dirs: dirs,
         tracking_db,
         cache,
+        config_files,
         filters: collect_filter_counts(search_dirs),
     }
+}
+
+fn collect_config_files() -> Vec<ConfigFileEntry> {
+    let user_dir = tokf::paths::user_dir();
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let project_root = tokf::history::project_root_for(&cwd);
+    let local_dir = project_root.join(".tokf");
+
+    let mut entries = Vec::new();
+
+    // Global config files
+    let global_files = ["config.toml", "auth.toml", "machine.toml", "rewrites.toml"];
+    for file in &global_files {
+        let path = user_dir.as_ref().map(|d| d.join(file));
+        let exists = path.as_ref().is_some_and(|p| p.exists());
+        entries.push(ConfigFileEntry {
+            scope: "global",
+            path: path.map_or_else(|| "(unavailable)".to_string(), |p| p.display().to_string()),
+            exists,
+        });
+    }
+
+    // Local config files
+    let local_files = ["config.toml", "rewrites.toml"];
+    for file in &local_files {
+        let path = local_dir.join(file);
+        let exists = path.exists();
+        entries.push(ConfigFileEntry {
+            scope: "local",
+            path: path.display().to_string(),
+            exists,
+        });
+    }
+
+    entries
 }
 
 fn print_human(info: &InfoOutput) {
@@ -279,6 +325,12 @@ fn print_human(info: &InfoOutput) {
             println!("  path: {p} ({status})");
         }
         None => println!("  path: (could not determine)"),
+    }
+
+    println!("\nconfig files:");
+    for entry in &info.config_files {
+        let status = if entry.exists { "exists" } else { "not found" };
+        println!("  [{}] {} ({status})", entry.scope, entry.path);
     }
 
     if let Some(f) = &info.filters {

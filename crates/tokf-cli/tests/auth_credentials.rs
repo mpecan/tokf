@@ -37,7 +37,6 @@ fn stored_auth_toml_format() {
         expires_at: 1_700_000_000,
         mit_license_accepted: None,
         tos_accepted_version: None,
-        upload_usage_stats: None,
     };
     let toml_str = toml::to_string_pretty(&meta).unwrap();
     assert!(toml_str.contains("username = \"testuser\""));
@@ -54,7 +53,6 @@ fn loaded_auth_has_named_fields() {
         expires_at: 0,
         mit_license_accepted: None,
         tos_accepted_version: None,
-        upload_usage_stats: None,
     };
     assert_eq!(auth.token, "tok_123");
     assert_eq!(auth.username, "bob");
@@ -72,7 +70,6 @@ fn loaded_auth_expired_detection() {
         expires_at: 1, // epoch + 1 second = definitely expired
         mit_license_accepted: None,
         tos_accepted_version: None,
-        upload_usage_stats: None,
     };
     assert!(auth.is_expired());
 }

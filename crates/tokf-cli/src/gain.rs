@@ -221,10 +221,12 @@ fn prompt_upload_stats_if_needed() {
         return;
     }
 
-    let Some(auth) = credentials::load() else {
+    if credentials::load().is_none() {
         return;
-    };
-    if auth.upload_usage_stats.is_some() {
+    }
+
+    let config = tokf::history::SyncConfig::load(None);
+    if config.upload_usage_stats.is_some() {
         return; // already set
     }
 
@@ -241,7 +243,7 @@ fn prompt_upload_stats_if_needed() {
     let enabled =
         input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes");
 
-    if let Err(e) = credentials::save_upload_stats_preference(enabled) {
+    if let Err(e) = tokf::history::save_upload_stats(enabled) {
         eprintln!("[tokf] Failed to save preference: {e:#}");
         return;
     }

@@ -227,6 +227,53 @@ fn info_json_includes_access_fields() {
 }
 
 #[test]
+fn info_shows_config_files() {
+    let tmp = TempDir::new().unwrap();
+    let output = tokf().current_dir(tmp.path()).arg("info").output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(
+        stdout.contains("config files:"),
+        "missing config files header:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("config.toml"),
+        "expected config.toml in output:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("auth.toml"),
+        "expected auth.toml in output:\n{stdout}"
+    );
+}
+
+#[test]
+fn info_json_includes_config_files() {
+    let tmp = TempDir::new().unwrap();
+    let output = tokf()
+        .current_dir(tmp.path())
+        .args(["info", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        parsed["config_files"].is_array(),
+        "expected config_files array in JSON output: {parsed}"
+    );
+    let files = parsed["config_files"].as_array().unwrap();
+    assert!(!files.is_empty(), "config_files should not be empty");
+    assert!(
+        files[0]["scope"].is_string(),
+        "config_files entries should have scope field"
+    );
+    assert!(
+        files[0]["path"].is_string(),
+        "config_files entries should have path field"
+    );
+}
+
+#[test]
 fn info_human_shows_access_status() {
     let tmp = TempDir::new().unwrap();
     let output = tokf().current_dir(tmp.path()).arg("info").output().unwrap();
