@@ -72,7 +72,8 @@ fn print_known_keys() {
 #[derive(Serialize)]
 struct ConfigEntry {
     key: String,
-    value: String,
+    /// `None` when the value is unset (serialises as JSON `null`).
+    value: Option<String>,
     source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<String>,
@@ -103,7 +104,8 @@ fn cmd_config_show(json: bool) -> i32 {
                 ),
                 other => format!("({other})"),
             };
-            println!("  {} = {}  {source_display}", entry.key, entry.value);
+            let display_value = entry.value.as_deref().unwrap_or("(not set)");
+            println!("  {} = {display_value}  {source_display}", entry.key);
         }
     }
     0
@@ -138,7 +140,7 @@ fn collect_config_entries(
     let (ret_source, ret_file) = src(|c| c.history.as_ref().and_then(|h| h.retention).is_some());
     entries.push(ConfigEntry {
         key: "history.retention".to_string(),
-        value: history.retention_count.to_string(),
+        value: Some(history.retention_count.to_string()),
         source: ret_source,
         file: ret_file,
     });
@@ -152,7 +154,7 @@ fn collect_config_entries(
     });
     entries.push(ConfigEntry {
         key: "sync.auto_sync_threshold".to_string(),
-        value: sync.auto_sync_threshold.to_string(),
+        value: Some(sync.auto_sync_threshold.to_string()),
         source: thresh_source,
         file: thresh_file,
     });
@@ -162,9 +164,7 @@ fn collect_config_entries(
         src(|c| c.sync.as_ref().and_then(|s| s.upload_usage_stats).is_some());
     entries.push(ConfigEntry {
         key: "sync.upload_stats".to_string(),
-        value: sync
-            .upload_usage_stats
-            .map_or_else(|| "(not set)".to_string(), |b| b.to_string()),
+        value: sync.upload_usage_stats.map(|b| b.to_string()),
         source: stats_source,
         file: stats_file,
     });
@@ -215,7 +215,7 @@ fn cmd_config_get(key: &str) -> i32 {
             if let Some(v) = config.upload_usage_stats {
                 println!("{v}");
             } else {
-                println!("(not set)");
+                return 1;
             }
         }
         _ => {
@@ -380,7 +380,7 @@ mod tests {
         let entries = collect_config_entries(None, &local, dir.path());
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].key, "history.retention");
-        assert_eq!(entries[0].value, "10");
+        assert_eq!(entries[0].value.as_deref(), Some("10"));
         assert_eq!(entries[0].source, "default");
     }
 
@@ -393,7 +393,7 @@ mod tests {
         std::fs::write(&local, "[history]\nretention = 42\n").unwrap();
 
         let entries = collect_config_entries(None, &local, dir.path());
-        assert_eq!(entries[0].value, "42");
+        assert_eq!(entries[0].value.as_deref(), Some("42"));
         assert_eq!(entries[0].source, "local");
     }
 
@@ -405,7 +405,7 @@ mod tests {
         let local = dir.path().join("nonexistent/.tokf/config.toml");
 
         let entries = collect_config_entries(Some(&global), &local, dir.path());
-        assert_eq!(entries[1].value, "200");
+        assert_eq!(entries[1].value.as_deref(), Some("200"));
         assert_eq!(entries[1].source, "global");
     }
 

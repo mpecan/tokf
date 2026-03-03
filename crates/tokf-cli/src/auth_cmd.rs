@@ -296,7 +296,15 @@ fn prompt_machine_registration(auth: &credentials::LoadedAuth) -> bool {
 }
 
 /// Ask the user whether to enable automatic usage statistics upload.
+///
+/// Skips the prompt if the preference has already been set (e.g. from a
+/// previous login), so re-authenticating does not re-prompt.
 fn prompt_usage_stats() {
+    let config = tokf::history::SyncConfig::load(None);
+    if config.upload_usage_stats.is_some() {
+        return;
+    }
+
     eprintln!();
     eprintln!("[tokf] Would you like to automatically upload anonymous usage statistics?");
     eprintln!("[tokf] tokf periodically syncs aggregate token counts (filter name,");

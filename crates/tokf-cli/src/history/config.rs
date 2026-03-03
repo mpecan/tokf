@@ -39,20 +39,6 @@ fn read_retention_from_config(path: &std::path::Path) -> Option<u32> {
     cfg.history?.retention
 }
 
-/// Read `[sync] auto_sync_threshold` from a TOML config file path. Returns `None` on any error.
-fn read_sync_threshold_from_config(path: &std::path::Path) -> Option<u32> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
-    cfg.sync?.auto_sync_threshold
-}
-
-/// Read `[sync] upload_usage_stats` from a TOML config file path. Returns `None` on any error.
-fn read_upload_usage_stats_from_config(path: &std::path::Path) -> Option<bool> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
-    cfg.sync?.upload_usage_stats
-}
-
 impl HistoryConfig {
     /// Load retention config using auto-detected paths. Priority:
     /// 1. `{project_root}/.tokf/config.toml` `[history] retention`
@@ -94,31 +80,50 @@ impl Default for SyncConfig {
 }
 
 impl SyncConfig {
-    /// Load sync config using auto-detected paths. Priority:
-    /// 1. `{project_root}/.tokf/config.toml` `[sync] auto_sync_threshold`
-    /// 2. `{config_dir}/tokf/config.toml` `[sync] auto_sync_threshold`
-    /// 3. Default: 100
+    /// Load sync config using auto-detected paths. Priority (per field):
+    /// 1. `{project_root}/.tokf/config.toml` `[sync]`
+    /// 2. `{config_dir}/tokf/config.toml` `[sync]`
+    /// 3. Defaults: `auto_sync_threshold = 100`, `upload_usage_stats = None`
     pub fn load(project_root: Option<&std::path::Path>) -> Self {
         let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
         Self::load_from(project_root, global.as_deref())
     }
 
     /// Load sync config from explicit paths. Useful for testing.
-    /// Priority: project config → global config → default 100.
+    /// Priority (per field): project config → global config → default.
+    ///
+    /// Reads each config file at most once and extracts both
+    /// `auto_sync_threshold` and `upload_usage_stats` from the parsed result.
     pub fn load_from(
         project_root: Option<&std::path::Path>,
         global_config: Option<&std::path::Path>,
     ) -> Self {
-        let from_project = project_root.and_then(|root| {
-            read_sync_threshold_from_config(&root.join(".tokf").join("config.toml"))
+        let project_cfg = project_root.and_then(|root| {
+            let path = root.join(".tokf").join("config.toml");
+            let content = std::fs::read_to_string(path).ok()?;
+            toml::from_str::<TokfProjectConfig>(&content).ok()
         });
-        let from_global = global_config.and_then(read_sync_threshold_from_config);
-        let auto_sync_threshold = from_project.or(from_global).unwrap_or(100);
+        let global_cfg = global_config.and_then(|p| {
+            let content = std::fs::read_to_string(p).ok()?;
+            toml::from_str::<TokfProjectConfig>(&content).ok()
+        });
 
-        let upload_from_project = project_root.and_then(|root| {
-            read_upload_usage_stats_from_config(&root.join(".tokf").join("config.toml"))
-        });
-        let upload_from_global = global_config.and_then(read_upload_usage_stats_from_config);
+        let threshold_from_project = project_cfg
+            .as_ref()
+            .and_then(|c| c.sync.as_ref()?.auto_sync_threshold);
+        let threshold_from_global = global_cfg
+            .as_ref()
+            .and_then(|c| c.sync.as_ref()?.auto_sync_threshold);
+        let auto_sync_threshold = threshold_from_project
+            .or(threshold_from_global)
+            .unwrap_or(100);
+
+        let upload_from_project = project_cfg
+            .as_ref()
+            .and_then(|c| c.sync.as_ref()?.upload_usage_stats);
+        let upload_from_global = global_cfg
+            .as_ref()
+            .and_then(|c| c.sync.as_ref()?.upload_usage_stats);
         let upload_usage_stats = upload_from_project.or(upload_from_global);
 
         Self {

@@ -105,6 +105,16 @@ fn config_show_json_valid() {
     assert!(arr[0]["key"].is_string());
     assert!(arr[0]["value"].is_string());
     assert!(arr[0]["source"].is_string());
+    // upload_stats is unset by default → JSON value should be null
+    let upload_entry = arr
+        .iter()
+        .find(|e| e["key"] == "sync.upload_stats")
+        .unwrap();
+    assert!(
+        upload_entry["value"].is_null(),
+        "unset upload_stats value should be null in JSON, got: {}",
+        upload_entry["value"]
+    );
 }
 
 #[test]
