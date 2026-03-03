@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.20](https://github.com/mpecan/tokf/compare/tokf-v0.2.19...tokf-v0.2.20) (2026-03-03)
+
+
+### Features
+
+* **cli:** add `tokf completions` subcommand ([#233](https://github.com/mpecan/tokf/issues/233)) ([3c9bef6](https://github.com/mpecan/tokf/commit/3c9bef65621773156e6fb0085afe7d746876322d))
+* **cli:** add onboarding flow and usage stats opt-in ([#235](https://github.com/mpecan/tokf/issues/235)) ([3aeec4b](https://github.com/mpecan/tokf/commit/3aeec4b1a7316f96a2dca51d80549f57ebc34b26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.19 to 0.2.20
+    * tokf-filter bumped from 0.2.19 to 0.2.20
+
 ## [0.2.19](https://github.com/mpecan/tokf/compare/tokf-v0.2.18...tokf-v0.2.19) (2026-03-02)
 
 
