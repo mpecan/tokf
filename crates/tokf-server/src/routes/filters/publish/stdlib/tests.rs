@@ -164,8 +164,14 @@ async fn publish_stdlib_stores_tests_in_storage(pool: PgPool) {
     let resp = post_stdlib(app, &token, &req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
 
-    // 1 filter + 1 test file = 2 puts
-    assert_eq!(storage.put_count(), 2, "expected 2 R2 put calls");
+    // The publish handler does 2 synchronous puts (filter + 1 test file).
+    // spawn_batch_catalog_update() may add more (metadata.json + catalog/index.json)
+    // before this assertion runs, so use >= to avoid flakiness.
+    assert!(
+        storage.put_count() >= 2,
+        "expected at least 2 R2 put calls (filter + 1 test), got {}",
+        storage.put_count()
+    );
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
