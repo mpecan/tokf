@@ -132,6 +132,32 @@ jobs:
       - name: Run E2E integration tests
         run: cargo test -p e2e-tests -- --ignored
 
+  check:
+    name: Check
+    if: always()
+    needs: [lint, test, db-test, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "Lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "Test failed"
+            exit 1
+          fi
+          if [[ "${{ needs.db-test.result }}" != "success" ]]; then
+            echo "DB & E2E Tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docker.result }}" != "success" ]]; then
+            echo "Docker build failed"
+            exit 1
+          fi
+          echo "All checks passed"
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest
