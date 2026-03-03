@@ -164,7 +164,7 @@ fn collect_stdlib_entries(filters_dir: &Path) -> anyhow::Result<Vec<StdlibFilter
         let author = resolve_author(path).unwrap_or_else(|| fallback_author.clone());
 
         let raw_tests = collect_test_files_resolved(path)?;
-        let test_files = raw_tests
+        let test_files: Vec<StdlibTestFile> = raw_tests
             .into_iter()
             .map(|(filename, bytes)| StdlibTestFile {
                 filename,
