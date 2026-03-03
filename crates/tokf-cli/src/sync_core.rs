@@ -196,7 +196,7 @@ mod tests {
     #[serial]
     fn sync_lock_acquire_and_release() {
         let dir = tempfile::TempDir::new().unwrap();
-        unsafe { std::env::set_var("TOKF_HOME", dir.path()) };
+        let _guard = paths::HomeGuard::set(dir.path());
 
         let lock = SyncLock::acquire();
         assert!(lock.is_some(), "should acquire lock on fresh dir");
@@ -206,15 +206,13 @@ mod tests {
 
         drop(lock);
         assert!(!lock_file.exists(), "lock file should be removed on drop");
-
-        unsafe { std::env::remove_var("TOKF_HOME") };
     }
 
     #[test]
     #[serial]
     fn sync_lock_prevents_double_acquire() {
         let dir = tempfile::TempDir::new().unwrap();
-        unsafe { std::env::set_var("TOKF_HOME", dir.path()) };
+        let _guard = paths::HomeGuard::set(dir.path());
 
         let lock1 = SyncLock::acquire();
         assert!(lock1.is_some());
@@ -232,8 +230,6 @@ mod tests {
             lock3.is_some(),
             "should succeed after first lock is released"
         );
-
-        unsafe { std::env::remove_var("TOKF_HOME") };
     }
 
     #[test]
@@ -242,7 +238,7 @@ mod tests {
         use std::time::{Duration, SystemTime};
 
         let dir = tempfile::TempDir::new().unwrap();
-        unsafe { std::env::set_var("TOKF_HOME", dir.path()) };
+        let _guard = paths::HomeGuard::set(dir.path());
 
         let lock_file = dir.path().join("sync.lock");
         fs::write(&lock_file, "99999999").unwrap(); // fake PID
@@ -254,8 +250,6 @@ mod tests {
 
         let lock = SyncLock::acquire();
         assert!(lock.is_some(), "should reclaim stale lock");
-
-        unsafe { std::env::remove_var("TOKF_HOME") };
     }
 
     #[test]

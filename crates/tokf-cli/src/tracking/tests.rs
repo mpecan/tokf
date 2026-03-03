@@ -13,20 +13,14 @@ fn temp_db() -> (TempDir, Connection) {
 
 // --- db_path / open_db ---
 
-/// Must run serially: mutates the global process environment.
+/// Must run serially: mutates process-global path overrides.
 #[test]
 #[serial]
 fn db_path_env_override() {
     let dir = TempDir::new().expect("tempdir");
     let custom = dir.path().join("custom.db");
-    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", custom.to_str().expect("str"));
-    }
+    let _guard = crate::paths::DbPathGuard::set(custom.clone());
     let result = db_path();
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
     assert_eq!(result, Some(custom));
 }
 
@@ -34,14 +28,8 @@ fn db_path_env_override() {
 #[serial]
 fn db_path_tokf_home_override() {
     let dir = TempDir::new().expect("tempdir");
-    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
-    unsafe {
-        std::env::set_var("TOKF_HOME", dir.path().to_str().expect("str"));
-    }
+    let _guard = crate::paths::HomeGuard::set(dir.path());
     let result = db_path();
-    unsafe {
-        std::env::remove_var("TOKF_HOME");
-    }
     assert_eq!(result, Some(dir.path().join("tracking.db")));
 }
 
@@ -52,16 +40,9 @@ fn db_path_tokf_db_path_wins_over_tokf_home() {
     let dir = TempDir::new().expect("tempdir");
     let custom = dir.path().join("custom.db");
     let home_dir = TempDir::new().expect("tempdir");
-    // SAFETY: test-only env mutation; #[serial] prevents races with other tests.
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", custom.to_str().expect("str"));
-        std::env::set_var("TOKF_HOME", home_dir.path().to_str().expect("str"));
-    }
+    let _db_guard = crate::paths::DbPathGuard::set(custom.clone());
+    let _home_guard = crate::paths::HomeGuard::set(home_dir.path());
     let result = db_path();
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-        std::env::remove_var("TOKF_HOME");
-    }
     assert_eq!(result, Some(custom));
 }
 

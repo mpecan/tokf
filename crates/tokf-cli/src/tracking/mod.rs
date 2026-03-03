@@ -9,8 +9,8 @@ pub use tokf_common::tracking::types::{DailyGain, FilterGain, GainSummary, Track
 /// `TOKF_HOME/tracking.db` if `TOKF_HOME` is set; else
 /// `dirs::data_local_dir()/tokf/tracking.db`.
 pub fn db_path() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("TOKF_DB_PATH") {
-        return Some(PathBuf::from(p));
+    if let Some(p) = crate::paths::db_path_override() {
+        return Some(p);
     }
     crate::paths::user_data_dir().map(|d| d.join("tracking.db"))
 }

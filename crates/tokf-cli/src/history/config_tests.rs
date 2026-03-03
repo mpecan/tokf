@@ -371,15 +371,13 @@ fn current_project_returns_non_empty_string() {
 
 // --- try_record ---
 
-/// Must run serially: sets `TOKF_DB_PATH` env var.
+/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
 #[serial]
 fn try_record_records_entry_to_db() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
-    }
+    let _guard = crate::paths::DbPathGuard::set(db_path.clone());
 
     let _ = try_record(
         "git status",
@@ -389,10 +387,6 @@ fn try_record_records_entry_to_db() {
         0,
     );
 
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
-
     let conn = open_db(&db_path).expect("open db");
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM history", [], |r| r.get(0))
@@ -400,71 +394,52 @@ fn try_record_records_entry_to_db() {
     assert_eq!(count, 1, "try_record should insert one history entry");
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` env var.
+/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
 #[serial]
 fn try_record_returns_id_on_success() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
-    }
+    let _guard = crate::paths::DbPathGuard::set(db_path);
 
     let id = try_record("cargo test", "cargo/test", "raw", "filtered", 0);
-
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
 
     assert!(id.is_some(), "try_record should return Some(id) on success");
     assert_eq!(id.unwrap(), 1, "first inserted entry should have id=1");
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` env var.
+/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
 #[serial]
 fn try_record_does_not_panic_on_unwritable_db_path() {
     // Point to a path whose parent cannot be created.
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", "/dev/null/no-such-dir/tracking.db");
-        std::env::remove_var("TOKF_DEBUG");
-    }
+    let _db_guard = crate::paths::DbPathGuard::set("/dev/null/no-such-dir/tracking.db");
+    let _debug_guard = crate::paths::DebugGuard::new(false);
     // Must not panic — errors are silently swallowed when TOKF_DEBUG is unset.
     let result = try_record("cmd", "filter", "raw", "filtered", 0);
     assert!(
         result.is_none(),
         "try_record should return None on db error"
     );
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` and `TOKF_DEBUG` env vars.
+/// Must run serially: sets `TOKF_DB_PATH` and `TOKF_DEBUG` overrides.
 #[test]
 #[serial]
 fn try_record_does_not_panic_on_unwritable_db_path_with_debug() {
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", "/dev/null/no-such-dir/tracking.db");
-        std::env::set_var("TOKF_DEBUG", "1");
-    }
+    let _db_guard = crate::paths::DbPathGuard::set("/dev/null/no-such-dir/tracking.db");
+    let _debug_guard = crate::paths::DebugGuard::new(true);
     // Must not panic even when TOKF_DEBUG is set (it logs to stderr but does not panic).
     let _ = try_record("cmd", "filter", "raw", "filtered", 0);
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-        std::env::remove_var("TOKF_DEBUG");
-    }
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` env var.
+/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
 #[serial]
 fn try_was_recently_run_returns_true_for_repeated_command() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
-    }
+    let _guard = crate::paths::DbPathGuard::set(db_path);
 
     // Record first run.
     let _ = try_record("git status", "git/status", "raw", "filtered", 0);
@@ -472,29 +447,19 @@ fn try_was_recently_run_returns_true_for_repeated_command() {
     // Now the same command was "recently run".
     let repeated = try_was_recently_run("git status");
 
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
-
     assert!(repeated, "same command should be detected as recently run");
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` env var.
+/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
 #[serial]
 fn try_was_recently_run_returns_false_for_different_command() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
-    }
+    let _guard = crate::paths::DbPathGuard::set(db_path);
 
     let _ = try_record("git status", "git/status", "raw", "filtered", 0);
     let repeated = try_was_recently_run("cargo test");
-
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
 
     assert!(
         !repeated,
@@ -502,22 +467,16 @@ fn try_was_recently_run_returns_false_for_different_command() {
     );
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` env var.
+/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
 #[serial]
 fn try_was_recently_run_returns_false_on_empty_history() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    unsafe {
-        std::env::set_var("TOKF_DB_PATH", db_path.to_str().expect("path str"));
-    }
+    let _guard = crate::paths::DbPathGuard::set(db_path);
 
     // No entries recorded yet.
     let repeated = try_was_recently_run("git status");
-
-    unsafe {
-        std::env::remove_var("TOKF_DB_PATH");
-    }
 
     assert!(!repeated, "empty history should return false");
 }

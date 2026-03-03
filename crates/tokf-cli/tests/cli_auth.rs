@@ -2,47 +2,51 @@
 
 use std::process::Command;
 
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
+/// Returns a Command with `TOKF_HOME` set to a temp dir so the subprocess
+/// never probes the real OS keychain.
+fn tokf_isolated() -> (Command, tempfile::TempDir) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+    cmd.env("TOKF_HOME", dir.path());
+    (cmd, dir)
 }
 
 #[test]
 fn auth_status_not_logged_in() {
-    let output = tokf().args(["auth", "status"]).output().unwrap();
+    let (mut cmd, _dir) = tokf_isolated();
+    let output = cmd.args(["auth", "status"]).output().unwrap();
     assert!(
         output.status.success(),
         "expected exit 0, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // When no credentials are stored, should report not logged in.
-    // If the developer has logged in locally, the test still passes but checks
-    // the alternative output.
     assert!(
-        stdout.contains("Not logged in") || stdout.contains("Logged in as"),
-        "expected auth status output, got: {stdout}"
+        stdout.contains("Not logged in"),
+        "expected 'Not logged in' with empty TOKF_HOME, got: {stdout}"
     );
 }
 
 #[test]
 fn auth_logout_when_not_logged_in() {
-    let output = tokf().args(["auth", "logout"]).output().unwrap();
+    let (mut cmd, _dir) = tokf_isolated();
+    let output = cmd.args(["auth", "logout"]).output().unwrap();
     assert!(
         output.status.success(),
         "expected exit 0 (idempotent logout), stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // Should say either "Logged out" or "Not logged in, nothing to do."
     assert!(
-        stderr.contains("Logged out") || stderr.contains("nothing to do"),
-        "expected logout message, got: {stderr}"
+        stderr.contains("nothing to do"),
+        "expected 'nothing to do' with empty TOKF_HOME, got: {stderr}"
     );
 }
 
 #[test]
 fn auth_login_unreachable_server() {
-    let output = tokf()
+    let (mut cmd, _dir) = tokf_isolated();
+    let output = cmd
         .env("TOKF_SERVER_URL", "http://localhost:1")
         .args(["auth", "login"])
         .output()
@@ -61,7 +65,8 @@ fn auth_login_unreachable_server() {
 
 #[test]
 fn auth_help_shows_subcommands() {
-    let output = tokf().args(["auth", "--help"]).output().unwrap();
+    let (mut cmd, _dir) = tokf_isolated();
+    let output = cmd.args(["auth", "--help"]).output().unwrap();
     assert!(
         output.status.success(),
         "stderr: {}",

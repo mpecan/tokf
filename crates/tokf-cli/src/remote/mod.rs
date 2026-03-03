@@ -13,9 +13,7 @@ use std::fmt;
 
 /// Check whether verbose debug output is enabled via `TOKF_DEBUG=1`.
 pub fn is_debug() -> bool {
-    std::env::var("TOKF_DEBUG")
-        .ok()
-        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    crate::paths::debug_enabled()
 }
 
 /// Unified error type for all remote HTTP operations.

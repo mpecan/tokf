@@ -4,6 +4,15 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/crdb-test-macro/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/e2e-tests/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/e2e-tests/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tokf-cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tokf-cli/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tokf-common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tokf-server/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tokf-server/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/tokf-filter/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

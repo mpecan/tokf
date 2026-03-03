@@ -6,28 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: "true"
 
 jobs:
-  check:
-    name: Check
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    services:
-      cockroach:
-        image: cockroachdb/cockroach:latest-v24.3
-        env:
-          COCKROACH_ARGS: "start-single-node --insecure"
-        ports:
-          - 26257:26257
-        options: >-
-          --health-cmd "curl -f http://localhost:8080/health?ready=1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://root@localhost:26257/tokf_test?sslmode=disable
     steps:
       - uses: actions/checkout@v6
 
@@ -44,17 +34,37 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Create CockroachDB test database
-        run: psql "$DATABASE_URL" -c "SELECT 1" 2>/dev/null || psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+      - name: Check file sizes
+        run: bash scripts/check-file-sizes.sh
+
+      - name: Check for code duplication
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-dupes
+
+      - name: Run cargo-dupes check
+        run: cargo dupes check
+
+      - name: Check README is up-to-date
+        run: bash scripts/generate-readme.sh --check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
 
       - name: Run tests
-        run: cargo test --workspace
-
-      - name: Run DB integration tests
-        run: cargo test -p tokf-server -- --ignored
-
-      - name: Run E2E integration tests
-        run: cargo test -p e2e-tests -- --ignored
+        run: cargo nextest run --workspace --exclude e2e-tests --profile ci
 
       - name: Verify filter test suites
         id: verify
@@ -91,14 +101,66 @@ jobs:
         if: steps.verify.outputs.exit_code != '0'
         run: exit ${{ steps.verify.outputs.exit_code }}
 
-      - name: Check file sizes
-        run: bash scripts/check-file-sizes.sh
+  db-test:
+    name: DB & E2E Tests
+    runs-on: ubuntu-latest
+    services:
+      cockroach:
+        image: cockroachdb/cockroach:latest-v24.3
+        env:
+          COCKROACH_ARGS: "start-single-node --insecure"
+        ports:
+          - 26257:26257
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/health?ready=1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://root@localhost:26257/tokf_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
 
-      - name: Check for code duplication
-        run: cargo install cargo-dupes && cargo dupes check
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
 
-      - name: Check README is up-to-date
-        run: bash scripts/generate-readme.sh --check
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create CockroachDB test database
+        run: psql "$DATABASE_URL" -c "SELECT 1" 2>/dev/null || psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+
+      - name: Run DB integration tests
+        run: cargo test -p tokf-server -- --ignored
+
+      - name: Run E2E integration tests
+        run: cargo test -p e2e-tests -- --ignored
+
+  check:
+    name: Check
+    if: always()
+    needs: [lint, test, db-test, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "Lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "Test failed"
+            exit 1
+          fi
+          if [[ "${{ needs.db-test.result }}" != "success" ]]; then
+            echo "DB & E2E Tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docker.result }}" != "success" ]]; then
+            echo "Docker build failed"
+            exit 1
+          fi
+          echo "All checks passed"
 
   docker:
     name: Docker build
@@ -116,4 +178,3 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-

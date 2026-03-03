@@ -115,7 +115,7 @@ pub fn try_record(
     let conn = match open_db(&path) {
         Ok(c) => c,
         Err(e) => {
-            if std::env::var("TOKF_DEBUG").is_ok() {
+            if crate::paths::debug_enabled() {
                 eprintln!("[tokf] history error (db open): {e:#}");
             }
             return None;
@@ -132,7 +132,7 @@ pub fn try_record(
     match record_history(&conn, &record, &config) {
         Ok(id) => Some(id),
         Err(e) => {
-            if std::env::var("TOKF_DEBUG").is_ok() {
+            if crate::paths::debug_enabled() {
                 eprintln!("[tokf] history error (record): {e:#}");
             }
             None

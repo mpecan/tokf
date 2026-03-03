@@ -445,9 +445,8 @@ mod tests {
     fn load_returns_none_when_no_file() {
         use_mock_keyring();
         let dir = tempfile::TempDir::new().unwrap();
-        unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+        let _guard = crate::paths::HomeGuard::set(dir.path());
         let result = load();
-        unsafe { std::env::remove_var("TOKF_HOME") };
         assert!(result.is_none(), "expected None when no auth file exists");
     }
 
@@ -456,12 +455,10 @@ mod tests {
     fn save_and_load_roundtrip() {
         use_mock_keyring();
         let dir = tempfile::TempDir::new().unwrap();
-        unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+        let _guard = crate::paths::HomeGuard::set(dir.path());
 
         save("secret-token", "alice", "https://api.tokf.net", 3600).unwrap();
         let loaded = load().expect("credentials should be loadable after save");
-
-        unsafe { std::env::remove_var("TOKF_HOME") };
 
         assert_eq!(loaded.token, "secret-token");
         assert_eq!(loaded.username, "alice");
@@ -475,7 +472,7 @@ mod tests {
     fn remove_clears_credentials() {
         use_mock_keyring();
         let dir = tempfile::TempDir::new().unwrap();
-        unsafe { std::env::set_var("TOKF_HOME", dir.path().as_os_str()) };
+        let _guard = crate::paths::HomeGuard::set(dir.path());
 
         save("tok_xyz", "bob", "https://example.com", 0).unwrap();
         assert!(load().is_some(), "credentials should exist after save");
@@ -488,8 +485,6 @@ mod tests {
 
         let after = load();
         assert!(after.is_none(), "credentials should be gone after remove");
-
-        unsafe { std::env::remove_var("TOKF_HOME") };
     }
 
     #[test]
