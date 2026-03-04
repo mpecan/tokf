@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.22](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.21...catalog-types-v0.2.22) (2026-03-04)
+
+
+### Features
+
+* **types:** export filter examples types to @tokf/catalog-types ([#242](https://github.com/mpecan/tokf/issues/242)) ([d01fb44](https://github.com/mpecan/tokf/commit/d01fb44657a8591f26b262353bc5c5eaa5c9e148))
+
 ## [0.2.21](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.20...catalog-types-v0.2.21) (2026-03-04)
 
 
