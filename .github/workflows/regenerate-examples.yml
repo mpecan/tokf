@@ -29,7 +29,7 @@ jobs:
             echo "payload={\"limit\":${LIMIT}}" >> "$GITHUB_OUTPUT"
           else
             # Convert comma-separated to JSON array
-            JSON_ARRAY=$(echo "$HASHES" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+            JSON_ARRAY=$(echo "$HASHES" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(. != ""))')
             echo "payload={\"hashes\":${JSON_ARRAY},\"limit\":${LIMIT}}" >> "$GITHUB_OUTPUT"
           fi
 

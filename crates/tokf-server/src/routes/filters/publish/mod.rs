@@ -389,11 +389,13 @@ pub async fn publish_filter(
         .await
         .map_err(AppError::BadRequest)?;
 
-    // Generate before/after examples + safety report.
-    let (examples_json, safety_passed) =
-        generate_examples_and_safety(&prepared.config, &prepared.test_cases)
-            .await
-            .map_err(|e| AppError::Internal(format!("example generation: {e}")))?;
+    // Generate before/after examples + safety report (best-effort; failures don't block publish).
+    let examples_result =
+        generate_examples_and_safety(&prepared.config, &prepared.test_cases).await;
+    if let Err(ref e) = examples_result {
+        tracing::warn!(hash = %prepared.content_hash, "example generation failed (continuing): {e}");
+    }
+    let safety_passed = examples_result.as_ref().map_or(true, |(_, sp)| *sp);
 
     // Upload to R2 first (idempotent). If the DB insert below fails, the R2
     // object is orphaned but harmless — no user-visible state changes, and
@@ -407,16 +409,6 @@ pub async fn publish_filter(
     .map_err(|e| AppError::Internal(e.to_string()))?;
     let test_r2_keys = upload_tests(&state, &prepared.content_hash, prepared.test_files).await?;
 
-    // Upload examples to R2 (best-effort; always overwrites).
-    // Only set examples_generated_at on success so regeneration picks up failures.
-    if let Err(e) =
-        storage::upload_examples(&*state.storage, &prepared.content_hash, examples_json).await
-    {
-        tracing::warn!(hash = %prepared.content_hash, "failed to upload examples: {e}");
-    } else {
-        set_examples_generated_at(&state.db, &prepared.content_hash).await;
-    }
-
     let insert = FilterInsert {
         content_hash: &prepared.content_hash,
         command_pattern: &prepared.command_pattern,
@@ -426,6 +418,17 @@ pub async fn publish_filter(
         safety_passed,
     };
     let (author, is_new) = upsert_filter_record(&state, &insert, &auth.username).await?;
+
+    // Upload examples to R2 AFTER insert so set_examples_generated_at finds the row.
+    if let Ok((examples_json, _)) = examples_result {
+        if let Err(e) =
+            storage::upload_examples(&*state.storage, &prepared.content_hash, examples_json).await
+        {
+            tracing::warn!(hash = %prepared.content_hash, "failed to upload examples: {e}");
+        } else {
+            set_examples_generated_at(&state.db, &prepared.content_hash).await;
+        }
+    }
 
     if is_new {
         insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;

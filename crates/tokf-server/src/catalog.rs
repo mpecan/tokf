@@ -82,8 +82,10 @@ pub fn filter_metadata_key(hash: &str) -> String {
 }
 
 /// R2 key for a filter's before/after examples.
+///
+/// Delegates to [`crate::storage::filter_examples_key`] — single source of truth.
 pub fn filter_examples_key(hash: &str) -> String {
-    format!("filters/{hash}/examples.json")
+    crate::storage::filter_examples_key(hash)
 }
 
 // ── DB queries ───────────────────────────────────────────────────────────────

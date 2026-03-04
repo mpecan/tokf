@@ -64,6 +64,11 @@ pub async fn upload_test(
     storage.put(&key, test_bytes).await
 }
 
+/// R2 key for a filter's before/after examples.
+pub fn filter_examples_key(content_hash: &str) -> String {
+    format!("filters/{content_hash}/examples.json")
+}
+
 /// Upload filter examples JSON. Always overwrites (examples regenerate when tests change).
 ///
 /// Key format: `filters/{content_hash}/examples.json`
@@ -76,7 +81,7 @@ pub async fn upload_examples(
     content_hash: &str,
     examples_json: Vec<u8>,
 ) -> anyhow::Result<String> {
-    let key = format!("filters/{content_hash}/examples.json");
+    let key = filter_examples_key(content_hash);
     storage.put(&key, examples_json).await
 }
 
