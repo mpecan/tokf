@@ -210,7 +210,8 @@ fn read_line() -> anyhow::Result<String> {
 // pub(crate): accessed by install_cmd::run_verify
 fn run_verify(rel_path: &Path, install_path: &Path, test_dir: &Path) -> anyhow::Result<()> {
     let filter_name = rel_path.with_extension("").to_string_lossy().to_string();
-    let result = crate::verify_cmd::cmd_verify(Some(&filter_name), false, false, false, None);
+    let result =
+        crate::verify_cmd::cmd_verify(Some(&filter_name), false, false, false, None, false);
     if result != 0 {
         // Log rollback failures rather than silently discarding them.
         if let Err(e) = std::fs::remove_file(install_path) {

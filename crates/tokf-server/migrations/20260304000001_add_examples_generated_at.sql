@@ -1,0 +1,1 @@
+ALTER TABLE filters ADD COLUMN IF NOT EXISTS examples_generated_at TIMESTAMPTZ;

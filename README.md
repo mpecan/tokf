@@ -171,6 +171,8 @@ tokf verify --list --require-all  # show coverage per filter
 tokf verify --scope project    # only project-local filters (.tokf/filters/)
 tokf verify --scope global     # only user-level filters (~/.config/tokf/filters/)
 tokf verify --scope stdlib     # only built-in stdlib (filters/ in CWD)
+tokf verify --safety           # run safety checks (prompt injection, shell injection, hidden unicode)
+tokf verify git/push --safety  # safety check a specific filter
 ```
 
 ### Task runner filtering
@@ -630,6 +632,23 @@ contains = "clean"
 | `not_matches` | Output does not match this regex |
 
 Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error or uncovered filters (`--require-all`).
+
+### Safety checks
+
+Add `--safety` to detect potential security issues in your filter:
+
+```sh
+tokf verify --safety
+tokf verify my-filter --safety --json
+```
+
+Safety checks scan for:
+
+- **Prompt injection** — templates containing patterns like "ignore previous instructions", "you are now", "system prompt", etc. Both static config text and filtered output are checked (NFKC-normalized to handle compatibility/fullwidth forms; cross-script homoglyphs are not fully covered).
+- **Shell injection** — `run`, `step[].run`, and rewrite replacement strings containing shell metacharacters (`$(...)`, backticks, `;`, `&&`, pipes, redirections). Known-safe templates like `tokf run {0}` are allowlisted.
+- **Hidden Unicode** — zero-width spaces, RTL overrides, and other invisible characters that could smuggle content.
+
+Safety warnings do **not** block publishing — filters with issues are published with `safety_passed = false` and the registry shows a warning badge. Use `--safety` locally to catch issues before publishing.
 
 ---
 

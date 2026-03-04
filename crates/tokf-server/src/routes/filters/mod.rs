@@ -1,4 +1,5 @@
 mod publish;
+mod regenerate;
 mod search;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -9,5 +10,6 @@ mod update_tests;
 
 pub use publish::publish_filter;
 pub use publish::stdlib::publish_stdlib;
+pub use regenerate::regenerate_examples;
 pub use search::{download_filter, get_filter, search_filters};
 pub use update_tests::update_tests;

@@ -190,6 +190,9 @@ enum Commands {
         /// Restrict to a single filter scope (project, global, or stdlib)
         #[arg(long, value_enum)]
         scope: Option<verify_cmd::VerifyScope>,
+        /// Run safety checks (detect prompt injection, shell injection, hidden unicode)
+        #[arg(long)]
+        safety: bool,
     },
     /// Show system paths, database locations, and filter counts
     Info {
@@ -464,12 +467,14 @@ fn main() {
             json,
             require_all,
             scope,
+            safety,
         } => verify_cmd::cmd_verify(
             filter.as_deref(),
             *list,
             *json,
             *require_all,
             scope.as_ref(),
+            *safety,
         ),
         Commands::Info { json } => info_cmd::cmd_info(*json),
         Commands::Auth { action } => or_exit(match action {

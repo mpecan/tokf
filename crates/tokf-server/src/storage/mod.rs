@@ -64,6 +64,27 @@ pub async fn upload_test(
     storage.put(&key, test_bytes).await
 }
 
+/// R2 key for a filter's before/after examples.
+pub fn filter_examples_key(content_hash: &str) -> String {
+    format!("filters/{content_hash}/examples.json")
+}
+
+/// Upload filter examples JSON. Always overwrites (examples regenerate when tests change).
+///
+/// Key format: `filters/{content_hash}/examples.json`
+///
+/// # Errors
+///
+/// Returns an error if the storage call fails.
+pub async fn upload_examples(
+    storage: &dyn StorageClient,
+    content_hash: &str,
+    examples_json: Vec<u8>,
+) -> anyhow::Result<String> {
+    let key = filter_examples_key(content_hash);
+    storage.put(&key, examples_json).await
+}
+
 /// Delete a list of R2 keys (test files) for a given filter hash.
 ///
 /// # Errors
@@ -108,6 +129,32 @@ mod tests {
         // Second upload with same hash should skip put
         upload_filter(&storage, "abc123", content).await.unwrap();
         assert_eq!(storage.put_count(), 1, "should not call put again");
+    }
+
+    #[tokio::test]
+    async fn upload_examples_creates_correct_key() {
+        let storage = InMemoryStorageClient::new();
+        let key = upload_examples(&storage, "abc123", b"{}".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(key, "filters/abc123/examples.json");
+    }
+
+    #[tokio::test]
+    async fn upload_examples_overwrites_existing() {
+        let storage = InMemoryStorageClient::new();
+        upload_examples(&storage, "abc123", b"v1".to_vec())
+            .await
+            .unwrap();
+        upload_examples(&storage, "abc123", b"v2".to_vec())
+            .await
+            .unwrap();
+        let bytes = storage
+            .get("filters/abc123/examples.json")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bytes, b"v2");
     }
 
     #[tokio::test]

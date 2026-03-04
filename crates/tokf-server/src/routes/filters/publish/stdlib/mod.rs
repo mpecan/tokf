@@ -7,7 +7,10 @@ use crate::error::AppError;
 use crate::state::AppState;
 use crate::storage;
 
-use super::{PreparedFilter, insert_filter_tests, run_verification, upload_tests};
+use super::{
+    PreparedFilter, generate_examples_and_safety, insert_filter_tests, run_verification,
+    update_safety_passed, upload_tests,
+};
 
 // ── Request types ────────────────────────────────────────────────────────────
 
@@ -242,10 +245,26 @@ async fn process_entry(
         .await
         .map_err(|e| fail(&prepared.command_pattern, "verification failed", e))?;
 
+    // Generate examples + safety report (best-effort; failures don't block publish).
+    let examples_result =
+        generate_examples_and_safety(&prepared.config, &prepared.test_cases).await;
+
     let hash = prepared.content_hash.clone();
     persist_filter(state, &prepared, &entry.author_github_username)
         .await
         .map_err(|e| fail(&prepared.command_pattern, "persist failed", e.to_string()))?;
+
+    // Upload examples (best-effort) and update safety_passed.
+    if let Ok((examples_json, safety_passed)) = examples_result {
+        if let Err(e) = storage::upload_examples(&*state.storage, &hash, examples_json).await {
+            tracing::warn!(hash = %hash, "failed to upload stdlib examples: {e}");
+        } else {
+            super::set_examples_generated_at(&state.db, &hash).await;
+        }
+        if let Err(e) = update_safety_passed(&state.db, &hash, safety_passed).await {
+            tracing::warn!(hash = %hash, "failed to update safety_passed: {e}");
+        }
+    }
 
     Ok(Some(hash))
 }
