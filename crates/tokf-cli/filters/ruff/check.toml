@@ -1,0 +1,11 @@
+command = "ruff check"
+strip_ansi = true
+skip = [
+  "^\\s*$",
+]
+
+[on_success]
+output = "ok ✓ ruff check: no issues"
+
+[on_failure]
+output = "{output}"
