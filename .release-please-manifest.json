@@ -1,8 +1,8 @@
 {
-  "crates/tokf-common": "0.2.24",
-  "crates/tokf-filter": "0.2.24",
-  "crates/tokf-cli": "0.2.24",
-  "crates/tokf-server": "0.2.24",
-  "crates/tokf-server/generated": "0.2.24",
-  "crates/e2e-tests": "0.1.12"
+  "crates/tokf-common": "0.2.25",
+  "crates/tokf-filter": "0.2.25",
+  "crates/tokf-cli": "0.2.25",
+  "crates/tokf-server": "0.2.25",
+  "crates/tokf-server/generated": "0.2.25",
+  "crates/e2e-tests": "0.1.13"
 }
