@@ -1,5 +1,7 @@
 use tokf_common::config::types::FilterConfig;
-use tokf_common::examples::{ExamplesSafety, FilterExample, FilterExamples, SafetyWarningDto};
+use tokf_common::examples::{
+    ExamplesSafety, FilterExample, FilterExamples, SafetyWarningDto, estimate_tokens, reduction_pct,
+};
 use tokf_common::safety::{self, SafetyReport};
 use tokf_common::test_case::TestCase;
 
@@ -34,11 +36,17 @@ fn build_example(
 
     let pair_report = safety::check_output_pair(&raw, &filtered.output);
 
+    let raw_tok = estimate_tokens(&raw);
+    let filtered_tok = estimate_tokens(&filtered.output);
+
     let example = FilterExample {
         name: case.name.clone(),
         exit_code: case.exit_code,
         raw_line_count: line_count(&raw),
         filtered_line_count: line_count(&filtered.output),
+        raw_tokens_est: raw_tok,
+        filtered_tokens_est: filtered_tok,
+        reduction_pct: reduction_pct(raw_tok, filtered_tok),
         raw,
         filtered: filtered.output,
     };
@@ -134,7 +142,8 @@ command = "test"
 skip = ["^noise"]
 "#,
         );
-        let cases = vec![make_case("basic", "noise line\nkeep this\nnoise again", 0)];
+        let raw_input = "noise line\nkeep this\nnoise again";
+        let cases = vec![make_case("basic", raw_input, 0)];
         let result = generate_examples(&config, &cases);
 
         assert_eq!(result.examples.len(), 1);
@@ -145,6 +154,10 @@ skip = ["^noise"]
         assert_eq!(ex.filtered, "keep this");
         assert_eq!(ex.raw_line_count, 3);
         assert_eq!(ex.filtered_line_count, 1);
+        // Token estimates: raw = 31 bytes / 4 = 7, filtered = 9 bytes / 4 = 2
+        assert_eq!(ex.raw_tokens_est, estimate_tokens(raw_input));
+        assert_eq!(ex.filtered_tokens_est, estimate_tokens("keep this"));
+        assert!(ex.reduction_pct > 0.0);
         assert!(result.safety.passed);
     }
 
@@ -240,5 +253,8 @@ skip = [".*"]
 
         assert_eq!(result.examples[0].filtered_line_count, 0);
         assert_eq!(result.examples[0].filtered, "");
+        assert_eq!(result.examples[0].filtered_tokens_est, 0);
+        assert!(result.examples[0].raw_tokens_est > 0);
+        assert!((result.examples[0].reduction_pct - 100.0).abs() < 0.01);
     }
 }
