@@ -1,0 +1,16 @@
+command = ["playwright test", "npx playwright test"]
+strip_ansi = true
+skip = [
+  "^\\s*$",
+  "^Running \\d+ tests? using",
+  "^\\s*[✓✗◼].*\\[\\d+/\\d+\\]",
+  "^Slow test file",
+  "^\\s*\\d+ passed",
+  "^\\s*\\d+ skipped",
+]
+
+[on_success]
+output = "ok ✓ playwright: all tests passed"
+
+[on_failure]
+tail = 50
