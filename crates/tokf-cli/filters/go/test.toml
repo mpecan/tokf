@@ -1,0 +1,11 @@
+command = "go test"
+skip = ["^=== RUN ", "^=== PAUSE ", "^=== CONT ", "--- PASS:", "^PASS$", "^\\?\\s+"]
+
+[on_success]
+output = "✓ go test\n{output}"
+
+[on_failure]
+skip = ["^ok\\s+"]
+
+[fallback]
+tail = 20

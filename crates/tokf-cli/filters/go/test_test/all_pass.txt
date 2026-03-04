@@ -1,0 +1,42 @@
+=== RUN   TestAdd
+--- PASS: TestAdd (0.00s)
+=== RUN   TestSubtract
+--- PASS: TestSubtract (0.00s)
+=== RUN   TestMultiply
+--- PASS: TestMultiply (0.00s)
+=== RUN   TestDivide
+--- PASS: TestDivide (0.00s)
+=== RUN   TestDivideByZero
+--- PASS: TestDivideByZero (0.00s)
+=== RUN   TestSquareRoot
+=== RUN   TestSquareRoot/positive
+=== RUN   TestSquareRoot/zero
+=== RUN   TestSquareRoot/negative_returns_error
+    --- PASS: TestSquareRoot/positive (0.00s)
+    --- PASS: TestSquareRoot/zero (0.00s)
+    --- PASS: TestSquareRoot/negative_returns_error (0.00s)
+--- PASS: TestSquareRoot (0.00s)
+=== RUN   TestParallel
+=== PAUSE TestParallel
+=== CONT  TestParallel
+--- PASS: TestParallel (0.00s)
+PASS
+ok  	example.com/math	0.005s
+=== RUN   TestTrimPrefix
+--- PASS: TestTrimPrefix (0.00s)
+=== RUN   TestTrimSuffix
+--- PASS: TestTrimSuffix (0.00s)
+=== RUN   TestContains
+--- PASS: TestContains (0.00s)
+=== RUN   TestReverse
+=== RUN   TestReverse/ascii
+=== RUN   TestReverse/unicode
+    --- PASS: TestReverse/ascii (0.00s)
+    --- PASS: TestReverse/unicode (0.00s)
+--- PASS: TestReverse (0.00s)
+=== RUN   TestJoin
+--- PASS: TestJoin (0.00s)
+=== RUN   TestSplit
+--- PASS: TestSplit (0.00s)
+PASS
+ok  	example.com/strutil	0.003s
