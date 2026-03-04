@@ -27,4 +27,16 @@ raw_line_count: number,
 /**
  * Number of lines in filtered output.
  */
-filtered_line_count: number, };
+filtered_line_count: number, 
+/**
+ * Estimated tokens in raw input (bytes / 4).
+ */
+raw_tokens_est: number, 
+/**
+ * Estimated tokens in filtered output (bytes / 4).
+ */
+filtered_tokens_est: number, 
+/**
+ * Percentage reduction in estimated tokens.
+ */
+reduction_pct: number, };
