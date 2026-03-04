@@ -1,0 +1,66 @@
+name: Regenerate Filter Examples
+
+on:
+  workflow_dispatch:
+    inputs:
+      hashes:
+        description: "Comma-separated filter hashes (leave empty to process all unprocessed)"
+        required: false
+        default: ""
+      limit:
+        description: "Max filters to process per run (default 100, max 500)"
+        required: false
+        default: "100"
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Regenerate examples & safety checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build request body
+        id: body
+        run: |
+          HASHES='${{ inputs.hashes }}'
+          LIMIT='${{ inputs.limit }}'
+          if [ -z "$HASHES" ]; then
+            echo "payload={\"limit\":${LIMIT}}" >> "$GITHUB_OUTPUT"
+          else
+            # Convert comma-separated to JSON array
+            JSON_ARRAY=$(echo "$HASHES" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+            echo "payload={\"hashes\":${JSON_ARRAY},\"limit\":${LIMIT}}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Call regenerate-examples endpoint
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${TOKF_SERVICE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '${{ steps.body.outputs.payload }}' \
+            "${TOKF_REGISTRY_URL}/api/filters/regenerate-examples")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "Status: $HTTP_CODE"
+          echo "$BODY" | jq .
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::API returned status $HTTP_CODE"
+            exit 1
+          fi
+
+          PROCESSED=$(echo "$BODY" | jq -r '.processed')
+          FAILED=$(echo "$BODY" | jq -r '.failed | length')
+          echo "::notice::Processed: $PROCESSED, Failed: $FAILED"
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::warning::$FAILED filters failed to regenerate"
+            echo "$BODY" | jq -r '.failed[] | "  - \(.content_hash): \(.error)"'
+          fi
+        env:
+          TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
+          TOKF_REGISTRY_URL: https://api.tokf.net
