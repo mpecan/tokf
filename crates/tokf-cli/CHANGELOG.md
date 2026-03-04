@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.24](https://github.com/mpecan/tokf/compare/tokf-v0.2.23...tokf-v0.2.24) (2026-03-04)
+
+
+### Features
+
+* **filter:** add eslint, prettier, and ruff filters ([#164](https://github.com/mpecan/tokf/issues/164)) ([2771860](https://github.com/mpecan/tokf/commit/27718600f8a4e0ca08e8e050b36209777d18ea34))
+* **filter:** add go/test filter (issue [#42](https://github.com/mpecan/tokf/issues/42)) ([#246](https://github.com/mpecan/tokf/issues/246)) ([ffdcd30](https://github.com/mpecan/tokf/commit/ffdcd304b9ec8bca44464619f88c362d8a94cd72))
+* **filter:** add playwright, vue-tsc, firebase deploy, and vite/build filters ([#165](https://github.com/mpecan/tokf/issues/165)) ([ac4f49e](https://github.com/mpecan/tokf/commit/ac4f49e93edd0f663d0a33ca08c9c683a131a76b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.23 to 0.2.24
+    * tokf-filter bumped from 0.2.23 to 0.2.24
+
 ## [0.2.23](https://github.com/mpecan/tokf/compare/tokf-v0.2.22...tokf-v0.2.23) (2026-03-04)
 
 
