@@ -142,6 +142,13 @@ fn format_num_basic() {
     assert_eq!(format_num(-73080), "-73,080");
 }
 
+#[test]
+fn format_num_i64_min_no_panic() {
+    let result = format_num(i64::MIN);
+    assert!(result.starts_with('-'));
+    assert!(result.contains("9,223,372,036,854,775,808"));
+}
+
 // -- truncate_name tests --
 
 #[test]

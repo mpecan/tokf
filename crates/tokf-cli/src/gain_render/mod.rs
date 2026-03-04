@@ -47,14 +47,12 @@ impl ColorMode {
 ///
 /// Color is disabled when:
 /// - `no_color_flag` is `true` (the `--no-color` CLI flag), or
-/// - the `NO_COLOR` environment variable is set and non-empty (per <https://no-color.org/>).
+/// - the `NO_COLOR` environment variable is present (per <https://no-color.org/>).
 pub fn should_disable_color(no_color_flag: bool) -> bool {
     if no_color_flag {
         return true;
     }
-    std::env::var("NO_COLOR")
-        .map(|v| !v.is_empty())
-        .unwrap_or(false)
+    std::env::var_os("NO_COLOR").is_some()
 }
 
 /// Convert a remote `GainResponse` into local `GainSummary` + `Vec<FilterGain>`.
@@ -186,7 +184,7 @@ pub fn format_time_ms(ms: f64) -> String {
 
 /// Thousands-separator formatting for integers.
 pub fn format_num(n: i64) -> String {
-    let s = n.abs().to_string();
+    let s = n.unsigned_abs().to_string();
     let chunks: Vec<&str> = s
         .as_bytes()
         .rchunks(3)
