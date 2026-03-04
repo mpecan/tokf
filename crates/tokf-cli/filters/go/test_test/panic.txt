@@ -1,0 +1,22 @@
+=== RUN   TestBadAccess
+--- FAIL: TestBadAccess (0.00s)
+panic: runtime error: index out of range [5] with length 3 [recovered]
+	panic: runtime error: index out of range [5] with length 3
+
+goroutine 7 [running]:
+testing.tRunner.func1.2({0x104b8a0e0, 0x104ba4480})
+	/usr/local/go/src/testing/testing.go:1632 +0x230
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:1635 +0x334
+panic({0x104b8a0e0?, 0x104ba4480?})
+	/usr/local/go/src/runtime/panic.go:785 +0x124
+example.com/myapp.GetItem(...)
+	/Users/dev/myapp/store.go:42 +0x1c
+example.com/myapp.TestBadAccess(0x14000003e00)
+	/Users/dev/myapp/store_test.go:15 +0x30
+testing.tRunner(0x14000003e00, 0x104b9c7a8)
+	/usr/local/go/src/testing/testing.go:1690 +0x108
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1743 +0x318
+FAIL	example.com/myapp	0.006s
+FAIL

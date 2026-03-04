@@ -1,0 +1,25 @@
+=== RUN   TestAdd
+--- PASS: TestAdd (0.00s)
+=== RUN   TestSubtract
+--- PASS: TestSubtract (0.00s)
+=== RUN   TestMultiply
+    math_test.go:25: expected 12, got 0
+--- FAIL: TestMultiply (0.00s)
+=== RUN   TestDivide
+--- PASS: TestDivide (0.00s)
+=== RUN   TestDivideByZero
+=== RUN   TestDivideByZero/returns_error
+    math_test.go:44: expected error for zero divisor, got nil
+    --- FAIL: TestDivideByZero/returns_error (0.00s)
+--- FAIL: TestDivideByZero (0.00s)
+FAIL
+FAIL	example.com/math	0.004s
+=== RUN   TestTrimPrefix
+--- PASS: TestTrimPrefix (0.00s)
+=== RUN   TestTrimSuffix
+--- PASS: TestTrimSuffix (0.00s)
+=== RUN   TestContains
+--- PASS: TestContains (0.00s)
+PASS
+ok  	example.com/strutil	0.002s
+FAIL
