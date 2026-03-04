@@ -21,6 +21,8 @@ pub struct GainSummary {
     pub tokens_saved: i64,
     pub savings_pct: f64,
     pub pipe_override_count: i64,
+    pub total_filter_time_ms: i64,
+    pub avg_filter_time_ms: f64,
 }
 
 #[derive(serde::Serialize)]
@@ -32,6 +34,7 @@ pub struct DailyGain {
     pub tokens_saved: i64,
     pub savings_pct: f64,
     pub pipe_override_count: i64,
+    pub total_filter_time_ms: i64,
 }
 
 #[derive(serde::Serialize)]
@@ -43,4 +46,6 @@ pub struct FilterGain {
     pub tokens_saved: i64,
     pub savings_pct: f64,
     pub pipe_override_count: i64,
+    pub total_filter_time_ms: i64,
+    pub avg_filter_time_ms: f64,
 }

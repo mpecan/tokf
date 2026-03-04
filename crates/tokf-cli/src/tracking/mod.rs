@@ -163,7 +163,8 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
             "SELECT COUNT(*), COALESCE(SUM(input_tokens_est),0),
                     COALESCE(SUM(output_tokens_est),0),
                     COALESCE(SUM(input_tokens_est - output_tokens_est),0),
-                    COALESCE(SUM(pipe_override),0)
+                    COALESCE(SUM(pipe_override),0),
+                    COALESCE(SUM(filter_time_ms),0)
              FROM events",
             [],
             |row| {
@@ -173,6 +174,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     row.get::<_, i64>(2)?,
                     row.get::<_, i64>(3)?,
                     row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
                 ))
             },
         )
@@ -184,6 +186,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         total_output_tokens,
         tokens_saved,
         pipe_override_count,
+        total_filter_time_ms,
     ) = row;
     let savings_pct = if total_input_tokens == 0 {
         0.0
@@ -191,6 +194,12 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         #[allow(clippy::cast_precision_loss)]
         let pct = tokens_saved as f64 / total_input_tokens as f64 * 100.0;
         pct
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let avg_filter_time_ms = if total_commands == 0 {
+        0.0
+    } else {
+        total_filter_time_ms as f64 / total_commands as f64
     };
 
     Ok(GainSummary {
@@ -200,13 +209,16 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         tokens_saved,
         savings_pct,
         pipe_override_count,
+        total_filter_time_ms,
+        avg_filter_time_ms,
     })
 }
 
 /// Row type returned by aggregate queries.
-type AggregateRow = (String, i64, i64, i64, i64, i64);
+type AggregateRow = (String, i64, i64, i64, i64, i64, i64);
 
-/// Shared row mapper for aggregate queries. Returns `(label, commands, input, output, saved, pipe_overrides)`.
+/// Shared row mapper for aggregate queries.
+/// Returns `(label, commands, input, output, saved, pipe_overrides, filter_time_ms)`.
 fn map_aggregate_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AggregateRow> {
     Ok((
         row.get::<_, String>(0)?,
@@ -215,6 +227,7 @@ fn map_aggregate_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AggregateRow> 
         row.get::<_, i64>(3)?,
         row.get::<_, i64>(4)?,
         row.get::<_, i64>(5)?,
+        row.get::<_, i64>(6)?,
     ))
 }
 
@@ -235,7 +248,8 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
         "SELECT COALESCE(filter_name, 'passthrough'), COUNT(*),
                 SUM(input_tokens_est), SUM(output_tokens_est),
                 SUM(input_tokens_est - output_tokens_est),
-                COALESCE(SUM(pipe_override),0)
+                COALESCE(SUM(pipe_override),0),
+                COALESCE(SUM(filter_time_ms),0)
          FROM events
          GROUP BY filter_name
          ORDER BY SUM(input_tokens_est - output_tokens_est) DESC",
@@ -245,8 +259,21 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
 
     let mut result = Vec::new();
     for row in rows {
-        let (filter_name, commands, input_tokens, output_tokens, tokens_saved, pipe_override_count) =
-            row.context("read filter row")?;
+        let (
+            filter_name,
+            commands,
+            input_tokens,
+            output_tokens,
+            tokens_saved,
+            pipe_override_count,
+            total_filter_time_ms,
+        ) = row.context("read filter row")?;
+        #[allow(clippy::cast_precision_loss)]
+        let avg_filter_time_ms = if commands == 0 {
+            0.0
+        } else {
+            total_filter_time_ms as f64 / commands as f64
+        };
         result.push(FilterGain {
             filter_name,
             commands,
@@ -255,6 +282,8 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
             tokens_saved,
             savings_pct: savings_pct(input_tokens, tokens_saved),
             pipe_override_count,
+            total_filter_time_ms,
+            avg_filter_time_ms,
         });
     }
     Ok(result)
@@ -267,7 +296,8 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
         "SELECT substr(timestamp, 1, 10), COUNT(*),
                 SUM(input_tokens_est), SUM(output_tokens_est),
                 SUM(input_tokens_est - output_tokens_est),
-                COALESCE(SUM(pipe_override),0)
+                COALESCE(SUM(pipe_override),0),
+                COALESCE(SUM(filter_time_ms),0)
          FROM events
          GROUP BY substr(timestamp, 1, 10)
          ORDER BY substr(timestamp, 1, 10) DESC",
@@ -277,8 +307,15 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
 
     let mut result = Vec::new();
     for row in rows {
-        let (date, commands, input_tokens, output_tokens, tokens_saved, pipe_override_count) =
-            row.context("read daily row")?;
+        let (
+            date,
+            commands,
+            input_tokens,
+            output_tokens,
+            tokens_saved,
+            pipe_override_count,
+            total_filter_time_ms,
+        ) = row.context("read daily row")?;
         result.push(DailyGain {
             date,
             commands,
@@ -287,6 +324,7 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
             tokens_saved,
             savings_pct: savings_pct(input_tokens, tokens_saved),
             pipe_override_count,
+            total_filter_time_ms,
         });
     }
     Ok(result)

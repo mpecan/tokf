@@ -5,6 +5,7 @@ mod completions_cmd;
 mod config_cmd;
 mod eject_cmd;
 mod gain;
+mod gain_render;
 mod history_cmd;
 mod info_cmd;
 mod install_cmd;
@@ -161,6 +162,12 @@ enum Commands {
         /// Query remote server stats instead of local database
         #[arg(long)]
         remote: bool,
+        /// Number of top filters to show in the summary view (default: 10)
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+        /// Disable colored output (also respects the `NO_COLOR` environment variable)
+        #[arg(long)]
+        no_color: bool,
     },
     /// Manage filtered output history
     History {
@@ -442,11 +449,13 @@ fn main() {
             by_filter,
             json,
             remote,
+            top,
+            no_color,
         } => {
             if *remote {
-                gain::cmd_gain_remote(*daily, *by_filter, *json)
+                gain::cmd_gain_remote(*daily, *by_filter, *json, *top, *no_color)
             } else {
-                gain::cmd_gain(*daily, *by_filter, *json)
+                gain::cmd_gain(*daily, *by_filter, *json, *top, *no_color)
             }
         }
         Commands::Verify {
