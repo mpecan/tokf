@@ -4,23 +4,36 @@ use crate::safety::SafetyWarning;
 
 /// A single before/after example for a filter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../tokf-server/generated/")
+)]
 pub struct FilterExample {
     /// Test case name.
     pub name: String,
     /// Exit code used for this example.
+    #[cfg_attr(test, ts(type = "number"))]
     pub exit_code: i32,
     /// Raw (unfiltered) input.
     pub raw: String,
     /// Filtered output.
     pub filtered: String,
     /// Number of lines in raw input.
+    #[cfg_attr(test, ts(type = "number"))]
     pub raw_line_count: usize,
     /// Number of lines in filtered output.
+    #[cfg_attr(test, ts(type = "number"))]
     pub filtered_line_count: usize,
 }
 
 /// Collection of examples with aggregated safety results.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../tokf-server/generated/")
+)]
 pub struct FilterExamples {
     pub examples: Vec<FilterExample>,
     pub safety: ExamplesSafety,
@@ -28,6 +41,11 @@ pub struct FilterExamples {
 
 /// Serializable safety summary for the examples payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../tokf-server/generated/")
+)]
 pub struct ExamplesSafety {
     pub passed: bool,
     pub warnings: Vec<SafetyWarningDto>,
@@ -35,6 +53,11 @@ pub struct ExamplesSafety {
 
 /// A flattened, transport-friendly representation of a safety warning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../tokf-server/generated/")
+)]
 pub struct SafetyWarningDto {
     pub kind: String,
     pub message: String,
