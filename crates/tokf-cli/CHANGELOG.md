@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.21](https://github.com/mpecan/tokf/compare/tokf-v0.2.20...tokf-v0.2.21) (2026-03-04)
+
+
+### Features
+
+* **cli:** add rich color for gain, with NO_COLOR support ([#240](https://github.com/mpecan/tokf/issues/240)) ([e9e3e58](https://github.com/mpecan/tokf/commit/e9e3e582c34532c812c376010299c97350dfb8c1))
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+
+
+### Bug Fixes
+
+* **cli:** add explicit type annotation for stdlib-publish collect ([#236](https://github.com/mpecan/tokf/issues/236)) ([145ca16](https://github.com/mpecan/tokf/commit/145ca165991ced01f1c1939127ecb5a16daf6a99))
+
+
+### Performance Improvements
+
+* **cli:** optimize test execution and eliminate unsafe env var access ([#195](https://github.com/mpecan/tokf/issues/195)) ([#237](https://github.com/mpecan/tokf/issues/237)) ([389f52e](https://github.com/mpecan/tokf/commit/389f52efc8e0cdead626fbe10b03a4d2f7617cc4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.20 to 0.2.21
+    * tokf-filter bumped from 0.2.20 to 0.2.21
+
 ## [0.2.20](https://github.com/mpecan/tokf/compare/tokf-v0.2.19...tokf-v0.2.20) (2026-03-03)
 
 

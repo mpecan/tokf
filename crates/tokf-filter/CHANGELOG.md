@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.21](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.20...tokf-filter-v0.2.21) (2026-03-04)
+
+
+### Features
+
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.20 to 0.2.21
+
 ## [0.2.20](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.19...tokf-filter-v0.2.20) (2026-03-03)
 
 
