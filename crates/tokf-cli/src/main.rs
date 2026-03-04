@@ -223,14 +223,15 @@ enum Commands {
     },
     /// Search the community filter registry
     Search {
-        /// Search query (matches command pattern)
-        query: String,
         /// Maximum number of results to return
         #[arg(long, short = 'n', default_value_t = 20)]
         limit: usize,
         /// Output results as JSON
         #[arg(long)]
         json: bool,
+        /// Search query (matches command pattern)
+        #[arg(trailing_var_arg = true, required = true)]
+        query: Vec<String>,
     },
     /// Sync local usage data to the remote server
     Sync {
@@ -504,7 +505,10 @@ fn main() {
             dry_run,
             update_tests,
         } => publish_cmd::cmd_publish(filter, *dry_run, *update_tests),
-        Commands::Search { query, limit, json } => search_cmd::cmd_search(query, *limit, *json),
+        Commands::Search { query, limit, json } => {
+            let joined = query.join(" ");
+            search_cmd::cmd_search(&joined, *limit, *json)
+        }
         #[cfg(feature = "stdlib-publish")]
         Commands::PublishStdlib {
             registry_url,

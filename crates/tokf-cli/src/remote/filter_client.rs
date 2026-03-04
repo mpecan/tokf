@@ -12,6 +12,8 @@ pub struct FilterSummary {
     #[serde(default)]
     pub created_at: String,
     #[serde(default)]
+    pub test_count: i64,
+    #[serde(default)]
     pub is_stdlib: bool,
 }
 
@@ -23,6 +25,7 @@ pub struct FilterDetails {
     pub savings_pct: f64,
     pub total_commands: i64,
     pub created_at: String,
+    #[serde(default)]
     pub test_count: i64,
     pub registry_url: String,
     #[serde(default)]
@@ -154,6 +157,48 @@ mod tests {
         }"#;
         let summary: FilterSummary = serde_json::from_str(json).unwrap();
         assert!(summary.is_stdlib);
+    }
+
+    #[test]
+    fn deserialize_filter_summary_with_test_count() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0,
+            "test_count": 5
+        }"#;
+        let summary: FilterSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(summary.test_count, 5);
+    }
+
+    #[test]
+    fn deserialize_filter_summary_test_count_defaults_zero() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0
+        }"#;
+        let summary: FilterSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(summary.test_count, 0);
+    }
+
+    #[test]
+    fn deserialize_filter_details_test_count_defaults_zero() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0,
+            "created_at": "2026-01-01T00:00:00",
+            "registry_url": "https://tokf.net/filters/abc123"
+        }"#;
+        let details: FilterDetails = serde_json::from_str(json).unwrap();
+        assert_eq!(details.test_count, 0, "test_count should default to 0");
     }
 
     #[test]
