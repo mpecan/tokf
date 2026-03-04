@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.23](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.22...catalog-types-v0.2.23) (2026-03-04)
+
+
+### Features
+
+* **filter:** add token estimates to filter examples ([#244](https://github.com/mpecan/tokf/issues/244)) ([002b94c](https://github.com/mpecan/tokf/commit/002b94c066c675993e162c66462ccec3ee963503))
+
 ## [0.2.22](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.21...catalog-types-v0.2.22) (2026-03-04)
 
 
