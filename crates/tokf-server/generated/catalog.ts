@@ -6,3 +6,7 @@ export type { CatalogEntry as FilterMetadata } from "./CatalogEntry";
 export type { CatalogFilterStats } from "./CatalogFilterStats";
 export type { CatalogIndex } from "./CatalogIndex";
 export type { GlobalStats } from "./GlobalStats";
+export type { FilterExamples } from "./FilterExamples";
+export type { FilterExample } from "./FilterExample";
+export type { ExamplesSafety } from "./ExamplesSafety";
+export type { SafetyWarningDto } from "./SafetyWarningDto";

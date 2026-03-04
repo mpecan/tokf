@@ -26,3 +26,4 @@ workspace = true
 
 [dev-dependencies]
 toml = "1.0"
+ts-rs = "12"
