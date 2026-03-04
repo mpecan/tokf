@@ -35,6 +35,7 @@ pub struct FilterSummary {
     pub total_commands: i64,
     /// ISO 8601 timestamp when the filter was first published. P3.2.
     pub created_at: String,
+    pub test_count: i64,
     pub is_stdlib: bool,
 }
 
@@ -75,6 +76,11 @@ fn filename_from_r2_key(r2_key: &str) -> String {
     r2_key.rsplit('/').next().unwrap_or(r2_key).to_string()
 }
 
+/// SQL fragment: correlated subquery that counts tests for a given filter hash.
+/// Used by both `search_filters` and `get_filter` to avoid duplication.
+const TEST_COUNT_SUBQUERY: &str =
+    "(SELECT COUNT(*)::BIGINT FROM filter_tests WHERE filter_hash = f.content_hash) AS test_count";
+
 /// Escape `\`, `%`, and `_` for use in a SQL ILIKE pattern.
 ///
 /// Without escaping, user-supplied `%` or `_` characters would act as ILIKE
@@ -101,6 +107,8 @@ fn escape_ilike(s: &str) -> String {
 /// - `401 Unauthorized` if the bearer token is missing or invalid.
 /// - `429 Too Many Requests` if the caller exceeds the search rate limit.
 /// - `500 Internal Server Error` on database failures.
+// 2 lines over the 60-line guideline due to the test_count correlated subquery.
+#[allow(clippy::too_many_lines)]
 pub async fn search_filters(
     auth: AuthUser,
     crate::routes::ip::PeerIp(peer_ip): crate::routes::ip::PeerIp,
@@ -138,12 +146,13 @@ pub async fn search_filters(
         format!("%{}%", escape_ilike(&params.q))
     };
 
-    let rows = sqlx::query(
+    let sql = format!(
         "SELECT f.content_hash, f.command_pattern,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,
+                {TEST_COUNT_SUBQUERY},
                 f.is_stdlib
          FROM filters f
          JOIN users u ON u.id = f.author_id
@@ -152,12 +161,13 @@ pub async fn search_filters(
          ORDER BY COALESCE(fs.savings_pct, 0.0)
                   * (1.0 + LN(CAST(COALESCE(fs.total_commands, 0) + 1 AS FLOAT8))) DESC,
                   f.created_at DESC
-         LIMIT $2",
-    )
-    .bind(&pattern)
-    .bind(limit)
-    .fetch_all(&state.db)
-    .await?;
+         LIMIT $2"
+    );
+    let rows = sqlx::query(&sql)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await?;
 
     // Propagate DB mapping errors for all columns — COALESCE ensures they are
     // non-null so unwrap_or would only hide real schema/type mismatches.
@@ -171,6 +181,7 @@ pub async fn search_filters(
                 savings_pct: row.try_get("savings_pct")?,
                 total_commands: row.try_get("total_commands")?,
                 created_at: row.try_get("created_at")?,
+                test_count: row.try_get("test_count")?,
                 is_stdlib: row.try_get("is_stdlib")?,
             })
         })
@@ -206,24 +217,24 @@ pub async fn get_filter(
         return Err(AppError::rate_limited(&user_rl));
     }
     let rl = crate::routes::ip::most_restrictive(ip_rl, user_rl);
-    let row = sqlx::query(
+    let sql = format!(
         "SELECT f.content_hash, f.command_pattern,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS author,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,
-                (SELECT COUNT(*)::BIGINT FROM filter_tests
-                 WHERE filter_hash = f.content_hash) AS test_count,
+                {TEST_COUNT_SUBQUERY},
                 f.is_stdlib
          FROM filters f
          JOIN users u ON u.id = f.author_id
          LEFT JOIN filter_stats fs ON fs.filter_hash = f.content_hash
-         WHERE f.content_hash = $1",
-    )
-    .bind(&hash)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| AppError::NotFound(format!("filter not found: {hash}")))?;
+         WHERE f.content_hash = $1"
+    );
+    let row = sqlx::query(&sql)
+        .bind(&hash)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("filter not found: {hash}")))?;
 
     // Propagate DB mapping errors for all columns — COALESCE/casts ensure they
     // are non-null so unwrap_or would only hide real schema/type mismatches.
@@ -359,5 +370,11 @@ mod tests {
         assert_eq!(escape_ilike("100%"), r"100\%");
         assert_eq!(escape_ilike("git_push"), r"git\_push");
         assert_eq!(escape_ilike("%git_"), r"\%git\_");
+    }
+
+    #[test]
+    fn escape_ilike_escapes_backslashes() {
+        assert_eq!(escape_ilike(r"back\slash"), r"back\\slash");
+        assert_eq!(escape_ilike(r"\%"), r"\\\%");
     }
 }

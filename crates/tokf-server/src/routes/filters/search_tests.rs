@@ -59,6 +59,10 @@ async fn search_matches_command_pattern(pool: PgPool) {
     assert_eq!(results.len(), 1, "expected 1 result for q=git");
     assert_eq!(results[0]["command_pattern"], "git push");
     assert_eq!(
+        results[0]["test_count"], 1,
+        "search results should include test_count"
+    );
+    assert_eq!(
         results[0]["is_stdlib"], false,
         "community filter should have is_stdlib=false"
     );
@@ -313,6 +317,27 @@ async fn get_filter_returns_nonzero_savings_pct(pool: PgPool) {
         "savings_pct should be 80.0 (0-100 scale)"
     );
     assert_eq!(json["total_commands"], 10);
+}
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn search_multi_word_query_narrows_results(pool: PgPool) {
+    let results = publish_and_search(
+        pool,
+        "search_multi",
+        &[
+            b"command = \"git push\"\n",
+            b"command = \"git fetch\"\n",
+            b"command = \"cargo build\"\n",
+        ],
+        "/api/filters?q=git%20push",
+    )
+    .await;
+    assert_eq!(
+        results.len(),
+        1,
+        "multi-word query should match only 'git push'"
+    );
+    assert_eq!(results[0]["command_pattern"], "git push");
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]

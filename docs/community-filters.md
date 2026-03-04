@@ -16,16 +16,38 @@ Authentication is required for all registry operations. Run `tokf auth login` fi
 ## Searching for Filters
 
 ```sh
-tokf search <query>
+tokf search <query...>
 ```
 
 Returns filters whose command pattern matches `<query>` as a substring, ranked by token savings
-and install count.
+and install count. Multi-word queries work without quotes:
+
+```sh
+tokf search git push         # no quotes needed
+tokf search "git push"       # also works
+```
+
+### Interactive Mode
+
+When stderr is a terminal, search displays an interactive menu with arrow-key selection.
+Choosing a filter flows directly into `tokf install`:
 
 ```
-COMMAND              AUTHOR    SAVINGS%   RUNS
-git push             alice       42.3%     1,234
-git push --force     bob         38.1%       891
+> git push [stdlib]  @mpecan  savings:45%  tests:3  runs:12,234
+  git push --force   @alice   savings:38%  tests:1  runs:891
+  cargo build        @bob     savings:80%  tests:2  runs:500
+```
+
+Press Enter to install the selected filter, or Escape to cancel.
+
+### Non-interactive Mode
+
+When piped or redirected (`tokf search git 2>/dev/null`), a static table is printed to stderr:
+
+```
+COMMAND              AUTHOR    SAVINGS%  TESTS      RUNS
+git push             alice       42.3%      3     1,234
+git push --force     bob         38.1%      1       891
 ```
 
 ### Options
@@ -33,15 +55,19 @@ git push --force     bob         38.1%       891
 | Flag | Description |
 |------|-------------|
 | `-n, --limit <N>` | Maximum results to return (default: 20, max: 100) |
-| `--json` | Output raw JSON array |
+| `--json` | Output raw JSON array to stdout (no interactive UI) |
+
+> **Note:** Flags (`--json`, `-n`) must come **before** the query words.
+> `tokf search --json git push` works; `tokf search git push --json` sends `--json` as part of
+> the query string.
 
 ### Examples
 
 ```sh
-tokf search git              # find all git filters
-tokf search "cargo test"     # find cargo test filters
+tokf search git              # find all git filters (interactive if TTY)
+tokf search cargo test       # multi-word query, no quotes needed
 tokf search "" -n 50         # list 50 most popular filters
-tokf search git --json       # machine-readable output
+tokf search --json git       # machine-readable JSON output
 ```
 
 ---
