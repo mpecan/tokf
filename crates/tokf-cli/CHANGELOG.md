@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.25](https://github.com/mpecan/tokf/compare/tokf-v0.2.24...tokf-v0.2.25) (2026-03-04)
+
+
+### Features
+
+* **cli:** improve search ergonomics ([#248](https://github.com/mpecan/tokf/issues/248)) ([a6bc402](https://github.com/mpecan/tokf/commit/a6bc402ec19e2ff0918ed1314ce541a18db79608))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.24 to 0.2.25
+    * tokf-filter bumped from 0.2.24 to 0.2.25
+
 ## [0.2.24](https://github.com/mpecan/tokf/compare/tokf-v0.2.23...tokf-v0.2.24) (2026-03-04)
 
 
