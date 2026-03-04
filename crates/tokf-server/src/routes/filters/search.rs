@@ -107,7 +107,8 @@ fn escape_ilike(s: &str) -> String {
 /// - `401 Unauthorized` if the bearer token is missing or invalid.
 /// - `429 Too Many Requests` if the caller exceeds the search rate limit.
 /// - `500 Internal Server Error` on database failures.
-// 2 lines over the 60-line guideline due to the test_count correlated subquery.
+// Exceeds the 60-line guideline due to the test_count correlated subquery and
+// associated query-building logic.
 #[allow(clippy::too_many_lines)]
 pub async fn search_filters(
     auth: AuthUser,

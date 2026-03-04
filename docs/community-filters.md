@@ -42,7 +42,7 @@ Press Enter to install the selected filter, or Escape to cancel.
 
 ### Non-interactive Mode
 
-When piped or redirected (`tokf search git 2>/dev/null`), a static table is printed to stderr:
+When stderr is not a terminal (for example, when its output is piped: `tokf search git 2>&1 | cat`), a static table is printed to stderr:
 
 ```
 COMMAND              AUTHOR    SAVINGS%  TESTS      RUNS
@@ -66,7 +66,7 @@ git push --force     bob         38.1%      1       891
 ```sh
 tokf search git              # find all git filters (interactive if TTY)
 tokf search cargo test       # multi-word query, no quotes needed
-tokf search "" -n 50         # list 50 most popular filters
+tokf search -n 50 ""         # list 50 most popular filters
 tokf search --json git       # machine-readable JSON output
 ```
 
