@@ -107,8 +107,8 @@ async fn upsert_filter_record(
     author_username: &str,
 ) -> Result<(String, bool), AppError> {
     let result = sqlx::query(
-        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed, examples_generated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (content_hash) DO NOTHING",
     )
     .bind(insert.content_hash)

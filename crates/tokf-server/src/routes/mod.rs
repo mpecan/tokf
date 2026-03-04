@@ -44,6 +44,10 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/filters/{hash}/tests", put(filters::update_tests))
         .route(
+            "/api/filters/regenerate-examples",
+            post(filters::regenerate_examples),
+        )
+        .route(
             "/api/filters/publish-stdlib",
             post(filters::publish_stdlib).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
