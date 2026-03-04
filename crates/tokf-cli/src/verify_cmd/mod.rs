@@ -2,6 +2,7 @@ mod discovery;
 mod runner;
 
 use serde::Serialize;
+use tokf_common::examples::ExamplesSafety;
 
 use self::discovery::DiscoveredSuite;
 
@@ -30,6 +31,8 @@ pub struct SuiteResult {
     pub cases: Vec<CaseResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safety: Option<ExamplesSafety>,
 }
 
 // --- Output formatting ---
@@ -50,9 +53,10 @@ fn print_list(suites: &[DiscoveredSuite]) {
     }
 }
 
-fn print_results(results: &[SuiteResult]) {
+fn print_results(results: &[SuiteResult], show_safety: bool) {
     let mut total_cases = 0;
     let mut total_passed = 0;
+    let mut safety_warnings = 0;
 
     for suite in results {
         if let Some(err) = &suite.error {
@@ -78,24 +82,48 @@ fn print_results(results: &[SuiteResult]) {
                 }
             }
         }
+
+        if show_safety
+            && let Some(safety) = &suite.safety
+            && !safety.passed
+        {
+            for w in &safety.warnings {
+                safety_warnings += 1;
+                let detail = w.detail.as_deref().unwrap_or("");
+                println!(
+                    "    \u{26A0} [{kind}] {msg} {detail}",
+                    kind = w.kind,
+                    msg = w.message,
+                    detail = detail
+                );
+            }
+        }
     }
 
     println!();
     println!("{total_passed}/{total_cases} passed");
+    if show_safety {
+        println!("{safety_warnings} safety warning(s)");
+    }
 }
 
 // --- Entry point ---
 
-// cmd_verify orchestrates list, require-all, JSON, and run modes in a single
-// entry point. Splitting the modes into separate functions would force passing
-// the same 5 parameters and duplicating suite-discovery logic.
-#[allow(clippy::too_many_lines)]
+// cmd_verify orchestrates list, require-all, JSON, safety, and run modes in a
+// single entry point. Splitting the modes into separate functions would force
+// passing the same parameters and duplicating suite-discovery logic.
+#[allow(
+    clippy::too_many_lines,
+    clippy::fn_params_excessive_bools,
+    clippy::too_many_arguments
+)]
 pub fn cmd_verify(
     filter: Option<&str>,
     list: bool,
     json: bool,
     require_all: bool,
     scope: Option<&VerifyScope>,
+    safety: bool,
 ) -> i32 {
     // Exit codes: 0 = all pass, 1 = assertion failure, 2 = config/IO error.
     let search_dirs = discovery::verify_search_dirs(scope);
@@ -147,21 +175,28 @@ pub fn cmd_verify(
         return 0;
     }
 
-    let results: Vec<SuiteResult> = suites.iter().map(runner::run_suite).collect();
+    let results: Vec<SuiteResult> = suites
+        .iter()
+        .map(|s| runner::run_suite(s, safety))
+        .collect();
 
     let has_io_error = results.iter().any(|s| s.error.is_some());
     let has_failure = results.iter().any(|s| s.cases.iter().any(|c| !c.passed));
+    let has_safety_failure = safety
+        && results
+            .iter()
+            .any(|s| s.safety.as_ref().is_some_and(|r| !r.passed));
 
     if json {
         crate::output::print_json(&results);
     } else {
-        print_results(&results);
+        print_results(&results, safety);
     }
 
     if has_io_error {
         2
     } else {
-        i32::from(has_failure)
+        i32::from(has_failure || has_safety_failure)
     }
 }
 

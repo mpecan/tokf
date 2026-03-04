@@ -12,6 +12,7 @@ use crate::storage;
 
 pub(super) const MAX_FILTER_SIZE: usize = 64 * 1_024;
 pub(super) const MAX_TOTAL_SIZE: usize = 1_024 * 1_024;
+pub(super) const MAX_TEST_FILES: usize = 50;
 
 // ── Response type ─────────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ struct FilterInsert<'a> {
     canonical_command: &'a str,
     author_id: i64,
     r2_key: &'a str,
+    safety_passed: bool,
 }
 
 /// Returns `(author_username, was_new)` for the filter with `content_hash`.
@@ -105,8 +107,8 @@ async fn upsert_filter_record(
     author_username: &str,
 ) -> Result<(String, bool), AppError> {
     let result = sqlx::query(
-        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key)
-         VALUES ($1, $2, $3, $4, $5)
+        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (content_hash) DO NOTHING",
     )
     .bind(insert.content_hash)
@@ -114,6 +116,7 @@ async fn upsert_filter_record(
     .bind(insert.canonical_command)
     .bind(insert.author_id)
     .bind(insert.r2_key)
+    .bind(insert.safety_passed)
     .execute(&state.db)
     .await?;
 
@@ -163,6 +166,20 @@ pub async fn insert_filter_tests(
     Ok(())
 }
 
+/// Update the `safety_passed` column for a published filter.
+pub(super) async fn update_safety_passed(
+    pool: &sqlx::PgPool,
+    content_hash: &str,
+    passed: bool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE filters SET safety_passed = $1 WHERE content_hash = $2")
+        .bind(passed)
+        .bind(content_hash)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Validated, hashed filter ready for storage.
 pub(super) struct PreparedFilter {
     pub(super) content_hash: String,
@@ -208,6 +225,12 @@ pub(super) fn validate_and_prepare(
 
     if test_files.is_empty() {
         return Err("at least one test file is required to publish a filter".to_string());
+    }
+    if test_files.len() > MAX_TEST_FILES {
+        return Err(format!(
+            "too many test files ({}, max {MAX_TEST_FILES})",
+            test_files.len()
+        ));
     }
 
     let mut test_cases = Vec::with_capacity(test_files.len());
@@ -268,6 +291,31 @@ pub async fn run_verification(config: &FilterConfig, cases: &[TestCase]) -> Resu
     Ok(())
 }
 
+/// Generate before/after examples and safety report in a blocking task.
+///
+/// Returns `(examples_json, safety_passed)`. Runs with sandboxed Lua limits.
+pub async fn generate_examples_and_safety(
+    config: &FilterConfig,
+    cases: &[TestCase],
+) -> Result<(Vec<u8>, bool), String> {
+    let config = config.clone();
+    let cases = cases.to_vec();
+    let handle = tokio::task::spawn_blocking(move || {
+        let examples = tokf_filter::examples::generate_examples_sandboxed(
+            &config,
+            &cases,
+            &crate::verify::server_lua_limits(),
+        );
+        let safety_passed = examples.safety.passed;
+        let json = serde_json::to_vec(&examples).map_err(|e| format!("JSON error: {e}"))?;
+        Ok::<_, String>((json, safety_passed))
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(10), handle)
+        .await
+        .map_err(|_| "example generation timed out (10s limit)".to_string())?
+        .map_err(|e| format!("example generation task failed: {e}"))?
+}
+
 /// Publish a filter TOML and test files to the community registry.
 ///
 /// Accepts a multipart form with:
@@ -288,6 +336,7 @@ pub async fn run_verification(config: &FilterConfig, cases: &[TestCase]) -> Resu
 /// - `401 Unauthorized` if the bearer token is missing or invalid.
 /// - `429 Too Many Requests` if the user exceeds publish rate limits.
 /// - `500 Internal Server Error` on storage or database failures.
+#[allow(clippy::too_many_lines)]
 pub async fn publish_filter(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -313,6 +362,12 @@ pub async fn publish_filter(
         .await
         .map_err(AppError::BadRequest)?;
 
+    // Generate before/after examples + safety report.
+    let (examples_json, safety_passed) =
+        generate_examples_and_safety(&prepared.config, &prepared.test_cases)
+            .await
+            .map_err(|e| AppError::Internal(format!("example generation: {e}")))?;
+
     // Upload to R2 first (idempotent). If the DB insert below fails, the R2
     // object is orphaned but harmless — no user-visible state changes, and
     // the upload is retried correctly on the next publish attempt.
@@ -325,12 +380,20 @@ pub async fn publish_filter(
     .map_err(|e| AppError::Internal(e.to_string()))?;
     let test_r2_keys = upload_tests(&state, &prepared.content_hash, prepared.test_files).await?;
 
+    // Upload examples to R2 (best-effort; always overwrites).
+    if let Err(e) =
+        storage::upload_examples(&*state.storage, &prepared.content_hash, examples_json).await
+    {
+        tracing::warn!(hash = %prepared.content_hash, "failed to upload examples: {e}");
+    }
+
     let insert = FilterInsert {
         content_hash: &prepared.content_hash,
         command_pattern: &prepared.command_pattern,
         canonical_command: &prepared.canonical_command,
         author_id: auth.user_id,
         r2_key: &r2_key,
+        safety_passed,
     };
     let (author, is_new) = upsert_filter_record(&state, &insert, &auth.username).await?;
 

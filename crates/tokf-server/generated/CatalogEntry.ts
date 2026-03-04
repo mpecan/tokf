@@ -2,4 +2,4 @@
 import type { CatalogAuthor } from "./CatalogAuthor";
 import type { CatalogFilterStats } from "./CatalogFilterStats";
 
-export type CatalogEntry = { content_hash: string, command_pattern: string, canonical_command: string, author: CatalogAuthor, is_stdlib: boolean, created_at: string, test_count: number, stats: CatalogFilterStats, };
+export type CatalogEntry = { content_hash: string, command_pattern: string, canonical_command: string, author: CatalogAuthor, is_stdlib: boolean, created_at: string, test_count: number, safety_passed: boolean, stats: CatalogFilterStats, };

@@ -36,6 +36,7 @@ pub struct CatalogEntry {
     pub created_at: String,
     #[cfg_attr(test, ts(type = "number"))]
     pub test_count: i64,
+    pub safety_passed: bool,
     pub stats: CatalogFilterStats,
 }
 
@@ -80,6 +81,11 @@ pub fn filter_metadata_key(hash: &str) -> String {
     format!("filters/{hash}/metadata.json")
 }
 
+/// R2 key for a filter's before/after examples.
+pub fn filter_examples_key(hash: &str) -> String {
+    format!("filters/{hash}/examples.json")
+}
+
 // ── DB queries ───────────────────────────────────────────────────────────────
 
 /// Build the full catalog index from the database.
@@ -114,6 +120,7 @@ pub async fn build_filter_metadata(
     let row = sqlx::query(
         "SELECT f.content_hash, f.command_pattern, f.canonical_command, f.is_stdlib,
                 f.created_at::TEXT AS created_at,
+                f.safety_passed,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS username,
                 CASE WHEN u.visible THEN COALESCE(u.avatar_url, '') ELSE '' END AS avatar_url,
                 CASE WHEN u.visible THEN COALESCE(u.profile_url, '') ELSE '' END AS profile_url,
@@ -140,6 +147,7 @@ async fn fetch_all_entries(pool: &PgPool) -> Result<Vec<CatalogEntry>, crate::er
     let rows = sqlx::query(
         "SELECT f.content_hash, f.command_pattern, f.canonical_command, f.is_stdlib,
                 f.created_at::TEXT AS created_at,
+                f.safety_passed,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS username,
                 CASE WHEN u.visible THEN COALESCE(u.avatar_url, '') ELSE '' END AS avatar_url,
                 CASE WHEN u.visible THEN COALESCE(u.profile_url, '') ELSE '' END AS profile_url,
@@ -203,6 +211,7 @@ fn map_entry_row(row: &sqlx::postgres::PgRow) -> Result<CatalogEntry, sqlx::Erro
         is_stdlib: row.try_get("is_stdlib")?,
         created_at: row.try_get("created_at")?,
         test_count: row.try_get("test_count")?,
+        safety_passed: row.try_get("safety_passed")?,
         author: CatalogAuthor {
             username: row.try_get("username")?,
             avatar_url: row.try_get("avatar_url")?,
@@ -245,6 +254,24 @@ pub async fn write_filter_metadata_to_r2(
 ) -> anyhow::Result<()> {
     let json = serde_json::to_vec(entry)?;
     storage.put(&filter_metadata_key(hash), json).await?;
+    Ok(())
+}
+
+/// Write filter examples (before/after pairs) to R2.
+///
+/// Always overwrites — examples regenerate when tests change.
+///
+/// # Errors
+///
+/// Returns an error if the R2 storage call fails.
+pub async fn write_examples_to_r2(
+    storage: &dyn StorageClient,
+    hash: &str,
+    examples_json: Vec<u8>,
+) -> anyhow::Result<()> {
+    storage
+        .put(&filter_examples_key(hash), examples_json)
+        .await?;
     Ok(())
 }
 
@@ -376,6 +403,14 @@ mod tests {
     }
 
     #[test]
+    fn filter_examples_key_format() {
+        assert_eq!(
+            filter_examples_key("abc123"),
+            "filters/abc123/examples.json"
+        );
+    }
+
+    #[test]
     fn serde_round_trip_catalog_entry() {
         let entry = CatalogEntry {
             content_hash: "deadbeef".to_string(),
@@ -389,6 +424,7 @@ mod tests {
             is_stdlib: false,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             test_count: 3,
+            safety_passed: true,
             stats: CatalogFilterStats {
                 total_commands: 100,
                 total_input_tokens: 5000,
@@ -445,6 +481,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_examples_stores_at_correct_key() {
+        let storage = InMemoryStorageClient::new();
+        let examples_json = br#"{"examples":[],"safety":{"passed":true,"warnings":[]}}"#.to_vec();
+
+        write_examples_to_r2(&storage, "abc123", examples_json)
+            .await
+            .unwrap();
+
+        let bytes = storage
+            .get("filters/abc123/examples.json")
+            .await
+            .unwrap()
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(parsed["safety"]["passed"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
     async fn write_filter_metadata_stores_at_correct_key() {
         let storage = InMemoryStorageClient::new();
         let entry = CatalogEntry {
@@ -459,6 +513,7 @@ mod tests {
             is_stdlib: false,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             test_count: 1,
+            safety_passed: true,
             stats: CatalogFilterStats {
                 total_commands: 10,
                 total_input_tokens: 500,

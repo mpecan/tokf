@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 use tokf::config;
 use tokf::filter;
 use tokf::runner::CommandResult;
+use tokf_common::safety;
+
+use tokf_common::examples::{ExamplesSafety, SafetyWarningDto};
 
 use super::discovery::DiscoveredSuite;
 use super::{CaseResult, SuiteResult, TestCase};
@@ -51,7 +54,8 @@ fn load_fixture(case: &TestCase, case_path: &Path) -> anyhow::Result<String> {
 
 // --- Suite execution ---
 
-pub(super) fn run_suite(suite: &DiscoveredSuite) -> SuiteResult {
+#[allow(clippy::too_many_lines)]
+pub(super) fn run_suite(suite: &DiscoveredSuite, check_safety: bool) -> SuiteResult {
     let cfg = match config::try_load_filter(&suite.filter_path) {
         Ok(Some(c)) => c,
         Ok(None) => {
@@ -59,6 +63,7 @@ pub(super) fn run_suite(suite: &DiscoveredSuite) -> SuiteResult {
                 filter_name: suite.filter_name.clone(),
                 cases: vec![],
                 error: Some(format!("filter not found: {}", suite.filter_path.display())),
+                safety: None,
             };
         }
         Err(e) => {
@@ -66,6 +71,7 @@ pub(super) fn run_suite(suite: &DiscoveredSuite) -> SuiteResult {
                 filter_name: suite.filter_name.clone(),
                 cases: vec![],
                 error: Some(format!("{e:#}")),
+                safety: None,
             };
         }
     };
@@ -81,6 +87,7 @@ pub(super) fn run_suite(suite: &DiscoveredSuite) -> SuiteResult {
                 filter_name: suite.filter_name.clone(),
                 cases: vec![],
                 error: Some(format!("cannot read suite dir: {e}")),
+                safety: None,
             };
         }
     };
@@ -94,6 +101,7 @@ pub(super) fn run_suite(suite: &DiscoveredSuite) -> SuiteResult {
                 "suite directory is empty: {}",
                 suite.suite_dir.display()
             )),
+            safety: None,
         };
     }
 
@@ -102,10 +110,54 @@ pub(super) fn run_suite(suite: &DiscoveredSuite) -> SuiteResult {
         .map(|case_path| run_case(&cfg, case_path))
         .collect();
 
+    let safety_result = if check_safety {
+        Some(run_safety_checks(&cfg, &case_files))
+    } else {
+        None
+    };
+
     SuiteResult {
         filter_name: suite.filter_name.clone(),
         cases,
         error: None,
+        safety: safety_result,
+    }
+}
+
+fn run_safety_checks(cfg: &config::types::FilterConfig, case_files: &[PathBuf]) -> ExamplesSafety {
+    let mut reports = Vec::new();
+
+    // Static config checks (templates, command patterns, etc.)
+    reports.push(safety::check_config(cfg));
+
+    // Output pair checks: run each inline test case and check the output
+    for case_path in case_files {
+        let Ok(case) = load_case(case_path) else {
+            continue;
+        };
+        let Some(inline) = &case.inline else {
+            continue;
+        };
+        let raw = inline.trim_end().to_string();
+        let cmd_result = CommandResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            exit_code: case.exit_code,
+            combined: raw.clone(),
+        };
+        let filtered = filter::apply(
+            cfg,
+            &cmd_result,
+            &case.args,
+            &filter::FilterOptions::default(),
+        );
+        reports.push(safety::check_output_pair(&raw, &filtered.output));
+    }
+
+    let merged = safety::merge_reports(reports);
+    ExamplesSafety {
+        passed: merged.passed,
+        warnings: merged.warnings.iter().map(SafetyWarningDto::from).collect(),
     }
 }
 

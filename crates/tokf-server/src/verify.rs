@@ -48,8 +48,13 @@ pub fn verify_filter_server(
     validate_filter_for_server(config)?;
     validate_cases_for_server(cases)?;
 
-    let limits = SandboxLimits::default();
+    let limits = server_lua_limits();
     Ok(verify_filter_sandboxed(config, cases, &limits))
+}
+
+/// Returns the standard sandbox limits used for server-side Lua execution.
+pub fn server_lua_limits() -> SandboxLimits {
+    SandboxLimits::default()
 }
 
 #[cfg(test)]

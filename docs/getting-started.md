@@ -86,6 +86,8 @@ tokf verify --list --require-all  # show coverage per filter
 tokf verify --scope project    # only project-local filters (.tokf/filters/)
 tokf verify --scope global     # only user-level filters (~/.config/tokf/filters/)
 tokf verify --scope stdlib     # only built-in stdlib (filters/ in CWD)
+tokf verify --safety           # run safety checks (prompt injection, shell injection, hidden unicode)
+tokf verify git/push --safety  # safety check a specific filter
 ```
 
 ### Task runner filtering
