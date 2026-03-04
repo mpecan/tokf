@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.21](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.20...tokf-common-v0.2.21) (2026-03-04)
+
+
+### Features
+
+* **cli:** add rich color for gain, with NO_COLOR support ([#240](https://github.com/mpecan/tokf/issues/240)) ([e9e3e58](https://github.com/mpecan/tokf/commit/e9e3e582c34532c812c376010299c97350dfb8c1))
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+
 ## [0.2.20](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.19...tokf-common-v0.2.20) (2026-03-03)
 
 
