@@ -25,10 +25,11 @@ const INJECTION_PATTERNS: &[&str] = &[
     "override your",
 ];
 
-/// NFKC-normalize and lowercase a string for homoglyph-resistant matching.
+/// NFKC-normalize and lowercase a string for more robust text matching.
 ///
-/// NFKC normalization maps visually similar characters (e.g. Cyrillic 'а' →
-/// Latin 'a') to their canonical forms, defeating homoglyph substitution.
+/// This folds compatibility variants (e.g. fullwidth forms, ligatures) into
+/// their canonical representations and normalizes case, but it does *not*
+/// perform cross-script confusable/homoglyph mapping.
 fn normalize_for_matching(s: &str) -> String {
     s.nfkc().collect::<String>().to_lowercase()
 }
@@ -185,15 +186,12 @@ const SHELL_INJECTION_PATTERNS: &[&str] = &[
     "$(",  // command substitution
     "$((", // arithmetic expansion
     "`",   // backtick command substitution
-    "| ",  // pipe
+    "|",   // pipe
     "&&",  // command chaining
     "||",  // command chaining
-    "; ",  // command separator
-    ";\t", // command separator (tab)
-    ";\n", // command separator (newline)
-    "> ",  // output redirection
-    "< ",  // input redirection
-    "<(",  // process substitution
+    ";",   // command separator
+    ">",   // output redirection
+    "<",   // input redirection
 ];
 
 /// Known-safe rewrite templates. The entire replacement must match one of these
@@ -202,12 +200,45 @@ const SHELL_INJECTION_PATTERNS: &[&str] = &[
 /// warnings for replacements that contain extra content.
 const SAFE_REWRITE_TEMPLATES: &[&str] = &["tokf run {0}", "tokf run {args}", "tokf run {0} {args}"];
 
-/// Detects shell metacharacters in rewrite replacement strings.
+/// Check a string for shell metacharacter patterns. Returns matched patterns.
+fn check_shell_string(s: &str) -> Vec<&'static str> {
+    SHELL_INJECTION_PATTERNS
+        .iter()
+        .filter(|pat| s.contains(*pat))
+        .copied()
+        .collect()
+}
+
+/// Detects shell metacharacters in rewrite replacement strings and
+/// shell-executed config fields (`run`, `step[].run`).
 pub(super) struct ShellInjectionCheck;
 
 impl SafetyCheck for ShellInjectionCheck {
     fn name(&self) -> &'static str {
         "shell-injection"
+    }
+
+    fn check_config(&self, config: &FilterConfig) -> Vec<SafetyWarning> {
+        let mut warnings = Vec::new();
+        if let Some(ref run) = config.run {
+            for w in check_shell_string(run) {
+                warnings.push(SafetyWarning {
+                    kind: WarningKind::ShellInjection,
+                    message: format!("`run` contains shell metacharacter `{w}`"),
+                    detail: Some(w.to_string()),
+                });
+            }
+        }
+        for (i, step) in config.step.iter().enumerate() {
+            for w in check_shell_string(&step.run) {
+                warnings.push(SafetyWarning {
+                    kind: WarningKind::ShellInjection,
+                    message: format!("`step[{i}].run` contains shell metacharacter `{w}`"),
+                    detail: Some(w.to_string()),
+                });
+            }
+        }
+        warnings
     }
 
     fn check_rewrite(&self, replace: &str) -> Vec<SafetyWarning> {
@@ -217,17 +248,14 @@ impl SafetyCheck for ShellInjectionCheck {
             return vec![];
         }
 
-        let mut warnings = Vec::new();
-        for pat in SHELL_INJECTION_PATTERNS {
-            if replace.contains(pat) {
-                warnings.push(SafetyWarning {
-                    kind: WarningKind::ShellInjection,
-                    message: format!("Rewrite replacement contains shell metacharacter `{pat}`"),
-                    detail: Some(pat.to_string()),
-                });
-            }
-        }
-        warnings
+        check_shell_string(replace)
+            .into_iter()
+            .map(|pat| SafetyWarning {
+                kind: WarningKind::ShellInjection,
+                message: format!("Rewrite replacement contains shell metacharacter `{pat}`"),
+                detail: Some(pat.to_string()),
+            })
+            .collect()
     }
 }
 

@@ -50,11 +50,12 @@ pub async fn regenerate_examples(
 ) -> Result<Json<RegenerateResponse>, AppError> {
     let limit = req.limit.min(MAX_LIMIT);
 
-    let hashes = if req.hashes.is_empty() {
+    let mut hashes = if req.hashes.is_empty() {
         fetch_all_hashes(&state.db, limit).await?
     } else {
         req.hashes
     };
+    hashes.truncate(MAX_LIMIT);
 
     let mut processed: usize = 0;
     let mut skipped: usize = 0;
@@ -170,11 +171,7 @@ async fn process_filter(state: &AppState, content_hash: &str) -> Result<bool, St
         .await
         .map_err(|e| format!("DB error updating safety: {e}"))?;
 
-    sqlx::query("UPDATE filters SET examples_generated_at = NOW() WHERE content_hash = $1")
-        .bind(content_hash)
-        .execute(&state.db)
-        .await
-        .map_err(|e| format!("DB error updating examples_generated_at: {e}"))?;
+    super::publish::set_examples_generated_at(&state.db, content_hash).await;
 
     Ok(true)
 }

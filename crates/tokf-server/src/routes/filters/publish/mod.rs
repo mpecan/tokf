@@ -107,8 +107,8 @@ async fn upsert_filter_record(
     author_username: &str,
 ) -> Result<(String, bool), AppError> {
     let result = sqlx::query(
-        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed, examples_generated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (content_hash) DO NOTHING",
     )
     .bind(insert.content_hash)
@@ -178,6 +178,18 @@ pub(super) async fn update_safety_passed(
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// Mark a filter's examples as generated (best-effort, logs on failure).
+pub(super) async fn set_examples_generated_at(pool: &sqlx::PgPool, content_hash: &str) {
+    if let Err(e) =
+        sqlx::query("UPDATE filters SET examples_generated_at = NOW() WHERE content_hash = $1")
+            .bind(content_hash)
+            .execute(pool)
+            .await
+    {
+        tracing::warn!(hash = %content_hash, "failed to set examples_generated_at: {e}");
+    }
 }
 
 /// Validated, hashed filter ready for storage.
@@ -266,18 +278,24 @@ fn prepare_filter(fields: MultipartFields) -> Result<PreparedFilter, AppError> {
 
 /// Run server-side test verification in a blocking task with a timeout.
 ///
-/// If the timeout fires, the blocking task is aborted to free the thread
-/// pool slot. The Lua sandbox (instruction + memory limits) is the primary
-/// defence against runaway scripts; the timeout is a last-resort backstop.
+/// On timeout, the `JoinHandle` is dropped so the caller does not wait
+/// indefinitely. Note: `spawn_blocking` tasks cannot be preempted — the Lua
+/// sandbox (instruction + memory limits) is the primary defence against
+/// runaway scripts; this timeout is a last-resort backstop for the caller.
 pub async fn run_verification(config: &FilterConfig, cases: &[TestCase]) -> Result<(), String> {
     let config = config.clone();
     let cases = cases.to_vec();
     let handle =
         tokio::task::spawn_blocking(move || crate::verify::verify_filter_server(&config, &cases));
-    let verify_result = tokio::time::timeout(std::time::Duration::from_secs(10), handle)
-        .await
-        .map_err(|_| "test verification timed out (10s limit)".to_string())?
-        .map_err(|e| format!("verification task failed: {e}"))??;
+    let timeout = std::time::Duration::from_secs(10);
+    let verify_result = tokio::select! {
+        result = handle => {
+            result.map_err(|e| format!("verification task failed: {e}"))??
+        }
+        () = tokio::time::sleep(timeout) => {
+            return Err("test verification timed out (10s limit)".to_string());
+        }
+    };
 
     if !verify_result.all_passed() {
         let failures: Vec<String> = verify_result
@@ -294,6 +312,10 @@ pub async fn run_verification(config: &FilterConfig, cases: &[TestCase]) -> Resu
 /// Generate before/after examples and safety report in a blocking task.
 ///
 /// Returns `(examples_json, safety_passed)`. Runs with sandboxed Lua limits.
+/// On timeout, the `JoinHandle` is dropped so the caller does not wait
+/// indefinitely. Note: `spawn_blocking` tasks cannot be preempted — the Lua
+/// sandbox (instruction + memory limits) is the primary defence against
+/// runaway closures; this timeout is a last-resort backstop for the caller.
 pub async fn generate_examples_and_safety(
     config: &FilterConfig,
     cases: &[TestCase],
@@ -310,10 +332,15 @@ pub async fn generate_examples_and_safety(
         let json = serde_json::to_vec(&examples).map_err(|e| format!("JSON error: {e}"))?;
         Ok::<_, String>((json, safety_passed))
     });
-    tokio::time::timeout(std::time::Duration::from_secs(10), handle)
-        .await
-        .map_err(|_| "example generation timed out (10s limit)".to_string())?
-        .map_err(|e| format!("example generation task failed: {e}"))?
+    let timeout = std::time::Duration::from_secs(10);
+    tokio::select! {
+        result = handle => {
+            result.map_err(|e| format!("example generation task failed: {e}"))?
+        }
+        () = tokio::time::sleep(timeout) => {
+            Err("example generation timed out (10s limit)".to_string())
+        }
+    }
 }
 
 /// Publish a filter TOML and test files to the community registry.
@@ -381,10 +408,13 @@ pub async fn publish_filter(
     let test_r2_keys = upload_tests(&state, &prepared.content_hash, prepared.test_files).await?;
 
     // Upload examples to R2 (best-effort; always overwrites).
+    // Only set examples_generated_at on success so regeneration picks up failures.
     if let Err(e) =
         storage::upload_examples(&*state.storage, &prepared.content_hash, examples_json).await
     {
         tracing::warn!(hash = %prepared.content_hash, "failed to upload examples: {e}");
+    } else {
+        set_examples_generated_at(&state.db, &prepared.content_hash).await;
     }
 
     let insert = FilterInsert {

