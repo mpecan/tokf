@@ -17,6 +17,15 @@ impl Protocol {
     }
 }
 
+impl std::fmt::Display for Protocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Http => f.write_str("http"),
+            Self::Grpc => f.write_str("grpc"),
+        }
+    }
+}
+
 /// Runtime telemetry configuration merged from the optional config file and environment variables.
 ///
 /// Environment variables take precedence over the config file:
