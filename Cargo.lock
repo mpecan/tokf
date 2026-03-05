@@ -3665,6 +3665,7 @@ dependencies = [
  "tokf-filter",
  "tokio",
  "toml",
+ "tonic",
  "uuid",
 ]
 

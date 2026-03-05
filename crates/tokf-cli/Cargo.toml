@@ -43,6 +43,7 @@ opentelemetry     = { version = "0.28", optional = true, features = ["metrics"] 
 opentelemetry_sdk = { version = "0.28", optional = true, features = ["metrics"] }
 opentelemetry-otlp = { version = "0.28", optional = true }
 tokio             = { version = "1", optional = true, features = ["rt-multi-thread"] }
+tonic             = { version = "0.12", optional = true, default-features = false }
 
 [features]
 default = []
@@ -66,6 +67,7 @@ otel-grpc = [
   "opentelemetry-otlp/metrics",
   "opentelemetry_sdk/metrics",
   "dep:tokio",
+  "dep:tonic",
 ]
 
 [dev-dependencies]

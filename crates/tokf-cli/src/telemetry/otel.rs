@@ -216,15 +216,30 @@ fn build_http_exporter(
 fn build_grpc_exporter(
     config: &TelemetryConfig,
 ) -> anyhow::Result<opentelemetry_otlp::MetricExporter> {
-    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
-    opentelemetry_otlp::MetricExporter::builder()
+    let builder = opentelemetry_otlp::MetricExporter::builder()
         .with_temporality(Temporality::Delta)
         .with_tonic()
         .with_endpoint(&config.endpoint)
-        .with_timeout(Duration::from_secs(5))
-        .build()
-        .context("build OTLP gRPC metrics exporter")
+        .with_timeout(Duration::from_secs(5));
+
+    let builder = if config.headers.is_empty() {
+        builder
+    } else {
+        let mut metadata = tonic::metadata::MetadataMap::new();
+        for (key, value) in &config.headers {
+            if let (Ok(k), Ok(v)) = (
+                key.parse::<tonic::metadata::MetadataKey<tonic::metadata::Ascii>>(),
+                value.parse::<tonic::metadata::MetadataValue<tonic::metadata::Ascii>>(),
+            ) {
+                metadata.insert(k, v);
+            }
+        }
+        builder.with_metadata(metadata)
+    };
+
+    builder.build().context("build OTLP gRPC metrics exporter")
 }
 
 fn build_exporter(config: &TelemetryConfig) -> anyhow::Result<opentelemetry_otlp::MetricExporter> {
@@ -266,7 +281,10 @@ fn build_provider(config: &TelemetryConfig) -> anyhow::Result<SdkMeterProvider> 
     Ok(provider)
 }
 
-#[cfg(all(test, any(feature = "otel", feature = "otel-grpc")))]
+#[cfg(all(
+    test,
+    any(feature = "otel", feature = "otel-grpc", feature = "otel-http")
+))]
 mod tests {
     use opentelemetry_sdk::metrics::{ManualReader, SdkMeterProvider};
 

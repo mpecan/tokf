@@ -65,7 +65,7 @@ pub(crate) struct Cli {
     pub preserve_color: bool,
 
     /// Export metrics via OpenTelemetry OTLP (requires --features otel)
-    #[arg(long)]
+    #[arg(long, global = true)]
     otel_export: bool,
 
     #[command(subcommand)]
@@ -420,7 +420,9 @@ fn main() {
         match reporter.endpoint_description() {
             Some(ref desc) => eprintln!("[tokf] telemetry: enabled (endpoint: {desc})"),
             None if cli.otel_export => {
-                eprintln!("[tokf] telemetry: disabled (OTel feature not compiled in)");
+                eprintln!(
+                    "[tokf] telemetry: disabled or unavailable (feature not compiled, or initialization failed)"
+                );
             }
             None => {}
         }

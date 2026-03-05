@@ -10,7 +10,7 @@
 
 pub mod config;
 
-#[cfg(any(feature = "otel", feature = "otel-grpc"))]
+#[cfg(any(feature = "otel", feature = "otel-grpc", feature = "otel-http"))]
 mod otel;
 
 /// Data emitted per command invocation to the telemetry backend.
@@ -98,7 +98,7 @@ impl TelemetryReporter for NoopReporter {
 /// If `otel_export_requested` is `true` the config's `enabled` flag is forced on.
 /// Returns a `NoopReporter` when:
 /// - telemetry is disabled in both flags and config, or
-/// - the binary was not compiled with `--features otel` or `--features otel-grpc`, or
+/// - the binary was not compiled with an `OTel` transport feature, or
 /// - OTLP initialisation fails (with a warning printed to stderr).
 pub fn init(otel_export_requested: bool) -> Box<dyn TelemetryReporter> {
     let mut cfg = config::load();
@@ -111,7 +111,7 @@ pub fn init(otel_export_requested: bool) -> Box<dyn TelemetryReporter> {
     init_enabled(otel_export_requested, &cfg)
 }
 
-#[cfg(any(feature = "otel", feature = "otel-grpc"))]
+#[cfg(any(feature = "otel", feature = "otel-grpc", feature = "otel-http"))]
 fn init_enabled(_requested: bool, cfg: &config::TelemetryConfig) -> Box<dyn TelemetryReporter> {
     match otel::OtelReporter::new(cfg) {
         Ok(reporter) => Box::new(reporter),
@@ -122,7 +122,7 @@ fn init_enabled(_requested: bool, cfg: &config::TelemetryConfig) -> Box<dyn Tele
     }
 }
 
-#[cfg(not(any(feature = "otel", feature = "otel-grpc")))]
+#[cfg(not(any(feature = "otel", feature = "otel-grpc", feature = "otel-http")))]
 fn init_enabled(requested: bool, _cfg: &config::TelemetryConfig) -> Box<dyn TelemetryReporter> {
     if requested {
         eprintln!(
@@ -225,7 +225,7 @@ mod tests {
     }
 
     /// When compiled without any otel feature, requesting `OTel` export falls back to `NoopReporter`.
-    #[cfg(not(any(feature = "otel", feature = "otel-grpc")))]
+    #[cfg(not(any(feature = "otel", feature = "otel-grpc", feature = "otel-http")))]
     #[test]
     fn test_init_without_otel_feature_returns_noop() {
         let reporter = init(true); // otel_export_requested=true, but feature not compiled in

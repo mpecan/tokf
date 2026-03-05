@@ -78,12 +78,28 @@ fn apply_toml(config: &mut TelemetryConfig, table: &toml::Table) {
     if let Some(service_name) = telemetry.get("service_name").and_then(toml::Value::as_str) {
         config.service_name = service_name.to_string();
     }
+    if let Some(headers) = telemetry.get("headers").and_then(toml::Value::as_table) {
+        for (key, value) in headers {
+            if let Some(v) = value.as_str() {
+                config.headers.insert(key.clone(), v.to_string());
+            }
+        }
+    }
+}
+
+/// Returns the conventional default OTLP endpoint for the given protocol.
+const fn default_endpoint(protocol: &Protocol) -> &'static str {
+    match protocol {
+        Protocol::Http => "http://localhost:4318",
+        Protocol::Grpc => "http://localhost:4317",
+    }
 }
 
 /// Load `TelemetryConfig` by merging the optional config file with environment variables.
 /// Environment variables take precedence over the file.
 pub fn load() -> TelemetryConfig {
     let mut config = TelemetryConfig::default();
+    let mut endpoint_explicitly_set = false;
 
     // Load from file (optional) — uses the centralized paths module so
     // TOKF_HOME is respected consistently across all of tokf.
@@ -93,6 +109,9 @@ pub fn load() -> TelemetryConfig {
             && let Ok(content) = std::fs::read_to_string(&cfg_path)
             && let Ok(table) = content.parse::<toml::Table>()
         {
+            if let Some(telemetry) = table.get("telemetry").and_then(toml::Value::as_table) {
+                endpoint_explicitly_set = telemetry.contains_key("endpoint");
+            }
             apply_toml(&mut config, &table);
         }
     }
@@ -103,6 +122,7 @@ pub fn load() -> TelemetryConfig {
     }
     if let Ok(val) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         config.endpoint = val;
+        endpoint_explicitly_set = true;
     }
     if let Ok(val) = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL") {
         config.protocol = Protocol::parse(&val);
@@ -124,6 +144,13 @@ pub fn load() -> TelemetryConfig {
     {
         config.service_name = name;
     }
+
+    // When the protocol was changed but the endpoint was not explicitly set,
+    // adjust the endpoint to match the protocol's conventional default port.
+    if !endpoint_explicitly_set {
+        config.endpoint = default_endpoint(&config.protocol).to_string();
+    }
+
     config
 }
 
@@ -148,6 +175,12 @@ mod tests {
         assert_eq!(Protocol::parse("GRPC"), Protocol::Grpc);
         assert_eq!(Protocol::parse("http"), Protocol::Http);
         assert_eq!(Protocol::parse("unknown"), Protocol::Http);
+    }
+
+    #[test]
+    fn test_default_endpoint_per_protocol() {
+        assert_eq!(default_endpoint(&Protocol::Http), "http://localhost:4318");
+        assert_eq!(default_endpoint(&Protocol::Grpc), "http://localhost:4317");
     }
 
     #[test]
@@ -180,6 +213,24 @@ service_name = "my-service"
         assert_eq!(config.endpoint, "http://otel.example.com:4318");
         assert_eq!(config.protocol, Protocol::Grpc);
         assert_eq!(config.service_name, "my-service");
+    }
+
+    #[test]
+    fn test_apply_toml_headers() {
+        let toml_str = r#"
+[telemetry]
+enabled = true
+
+[telemetry.headers]
+x-api-key = "secret"
+x-team = "platform"
+"#;
+        let table: toml::Table = toml_str.parse().expect("valid toml");
+        let mut config = TelemetryConfig::default();
+        apply_toml(&mut config, &table);
+
+        assert_eq!(config.headers.get("x-api-key"), Some(&"secret".to_string()));
+        assert_eq!(config.headers.get("x-team"), Some(&"platform".to_string()));
     }
 
     #[test]
@@ -238,9 +289,28 @@ service_name = "my-service"
     fn test_load_protocol_via_env() {
         // SAFETY: single-threaded via serial_test.
         unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc") };
+        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
         let cfg = load();
         assert_eq!(cfg.protocol, Protocol::Grpc);
+        // When protocol is set to gRPC but no explicit endpoint, default to :4317
+        assert_eq!(cfg.endpoint, "http://localhost:4317");
         unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL") };
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_load_grpc_protocol_with_explicit_endpoint() {
+        // SAFETY: single-threaded via serial_test.
+        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc") };
+        unsafe {
+            std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://custom:9999");
+        };
+        let cfg = load();
+        assert_eq!(cfg.protocol, Protocol::Grpc);
+        // Explicit endpoint should not be overridden
+        assert_eq!(cfg.endpoint, "http://custom:9999");
+        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL") };
+        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
     }
 
     #[test]
