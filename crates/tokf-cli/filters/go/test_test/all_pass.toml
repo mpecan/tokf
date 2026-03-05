@@ -1,0 +1,18 @@
+name = "all passing tests collapse to summary lines"
+fixture = "all_pass.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "✓ go test"
+
+[[expect]]
+contains = "ok  \texample.com/math"
+
+[[expect]]
+contains = "ok  \texample.com/strutil"
+
+[[expect]]
+not_contains = "=== RUN"
+
+[[expect]]
+not_contains = "--- PASS:"

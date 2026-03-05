@@ -18,8 +18,8 @@ fn config_search_paths() -> Vec<PathBuf> {
         paths.push(cwd.join(".tokf/rewrites.toml"));
     }
 
-    if let Some(config) = dirs::config_dir() {
-        paths.push(config.join("tokf/rewrites.toml"));
+    if let Some(user) = crate::paths::user_dir() {
+        paths.push(user.join("rewrites.toml"));
     }
 
     paths

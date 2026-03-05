@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Load local environment variables (e.g. DATABASE_URL) if a .env file exists.
+# Copy .env.example to .env and fill in your local values.
+if [ -f .env ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source .env
+    set +a
+fi
+
+echo "Running pre-commit checks..."
+
+out=$(cargo fmt -- --check 2>&1) || {
+    echo "Formatting check failed. Run 'cargo fmt' to fix."
+    echo "$out"
+    exit 1
+}
+
+out=$(cargo clippy --workspace --all-targets -- -D warnings 2>&1) || {
+    echo "Clippy check failed. Fix the warnings above."
+    echo "$out"
+    exit 1
+}
+
+out=$(bash scripts/check-file-sizes.sh 2>&1) || {
+    echo "File size check failed."
+    echo "$out"
+    exit 1
+}
+
+if command -v cargo-dupes &>/dev/null; then
+    out=$(cargo dupes check 2>&1) || {
+        echo "Duplication check failed. Run 'cargo dupes' for details."
+        echo "$out"
+        exit 1
+    }
+fi
+
+# Regenerate README.md and auto-stage it if changed so commits are never stale.
+bash scripts/generate-readme.sh
+git add README.md
+
+echo "All pre-commit checks passed."

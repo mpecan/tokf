@@ -1,0 +1,15 @@
+name = "rule violation shows compact error with details"
+fixture = "rule_violation.txt"
+exit_code = 1
+
+[[expect]]
+contains = "rule violation"
+
+[[expect]]
+contains = "Required status check"
+
+[[expect]]
+contains = "remote rejected"
+
+[[expect]]
+not_contains = "error: failed to push"

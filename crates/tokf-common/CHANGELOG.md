@@ -1,5 +1,161 @@
 # Changelog
 
+## [0.2.25](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.24...tokf-common-v0.2.25) (2026-03-04)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.24](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.23...tokf-common-v0.2.24) (2026-03-04)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.23](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.22...tokf-common-v0.2.23) (2026-03-04)
+
+
+### Features
+
+* **filter:** add token estimates to filter examples ([#244](https://github.com/mpecan/tokf/issues/244)) ([002b94c](https://github.com/mpecan/tokf/commit/002b94c066c675993e162c66462ccec3ee963503))
+
+## [0.2.22](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.21...tokf-common-v0.2.22) (2026-03-04)
+
+
+### Features
+
+* **types:** export filter examples types to @tokf/catalog-types ([#242](https://github.com/mpecan/tokf/issues/242)) ([d01fb44](https://github.com/mpecan/tokf/commit/d01fb44657a8591f26b262353bc5c5eaa5c9e148))
+
+## [0.2.21](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.20...tokf-common-v0.2.21) (2026-03-04)
+
+
+### Features
+
+* **cli:** add rich color for gain, with NO_COLOR support ([#240](https://github.com/mpecan/tokf/issues/240)) ([e9e3e58](https://github.com/mpecan/tokf/commit/e9e3e582c34532c812c376010299c97350dfb8c1))
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+
+## [0.2.20](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.19...tokf-common-v0.2.20) (2026-03-03)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.19](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.18...tokf-common-v0.2.19) (2026-03-02)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.18](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.17...tokf-common-v0.2.18) (2026-03-02)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.17](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.16...tokf-common-v0.2.17) (2026-03-02)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.16](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.15...tokf-common-v0.2.16) (2026-03-02)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.15](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.14...tokf-common-v0.2.15) (2026-03-02)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.14](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.13...tokf-common-v0.2.14) (2026-03-02)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.13](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.12...tokf-common-v0.2.13) (2026-03-02)
+
+
+### Features
+
+* **filter,cli,server:** sandbox CLI Lua execution and inline scripts on publish ([#194](https://github.com/mpecan/tokf/issues/194)) ([4e104cb](https://github.com/mpecan/tokf/commit/4e104cb00563cdda390b9e9e44663c45e3bd9e7f))
+* **filter:** chunk processing engine with tree-structured grouping ([#203](https://github.com/mpecan/tokf/issues/203)) ([87557f5](https://github.com/mpecan/tokf/commit/87557f504f86b5e449adf518d43da03f88a8e1bc))
+* **server,cli:** allow updating test suites for published filters ([#119](https://github.com/mpecan/tokf/issues/119)) ([#192](https://github.com/mpecan/tokf/issues/192)) ([ef9428b](https://github.com/mpecan/tokf/commit/ef9428b06d3d13ca4d8a2a422b3188bf3bbe5914))
+* **tracking,cli,server:** usage stats sync and aggregation endpoints ([#114](https://github.com/mpecan/tokf/issues/114)) ([#186](https://github.com/mpecan/tokf/issues/186)) ([30d4ef2](https://github.com/mpecan/tokf/commit/30d4ef28dc4a4f56418b997c910486c4280dc28b))
+
+
+### Bug Fixes
+
+* **cli,server:** use test: prefix in multipart fields and add just recipes ([#193](https://github.com/mpecan/tokf/issues/193)) ([737d522](https://github.com/mpecan/tokf/commit/737d522e918bcab0df8bc0e172a17291b18edc66))
+
+## [0.2.12](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.11...tokf-common-v0.2.12) (2026-02-26)
+
+
+### Features
+
+* **filter:** rewrite git/status and add cargo/fmt stdlib filters ([#184](https://github.com/mpecan/tokf/issues/184)) ([06d41c3](https://github.com/mpecan/tokf/commit/06d41c3f78acbd3e442b57764e48aa9461a2f4fe))
+
+## [0.2.11](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.10...tokf-common-v0.2.11) (2026-02-26)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.10](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.9...tokf-common-v0.2.10) (2026-02-25)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.9](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.8...tokf-common-v0.2.9) (2026-02-24)
+
+
+### Features
+
+* **cli:** add --raw flag to history show ([#155](https://github.com/mpecan/tokf/issues/155)) ([a98c34d](https://github.com/mpecan/tokf/commit/a98c34d89c7ef09c3305720544beebbef1258fe9))
+
+## [0.2.8](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.7...tokf-common-v0.2.8) (2026-02-24)
+
+
+### Features
+
+* **cli:** pipe stripping control, --prefer-less mode, and override tracking ([#154](https://github.com/mpecan/tokf/issues/154)) ([7f24f12](https://github.com/mpecan/tokf/commit/7f24f12deb3b6968a9a857b9a6f327c7796928aa))
+
+## [0.2.7](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.6...tokf-common-v0.2.7) (2026-02-24)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.6](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.5...tokf-common-v0.2.6) (2026-02-23)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
+## [0.2.5](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.4...tokf-common-v0.2.5) (2026-02-23)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
 ## [0.2.4](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.3...tokf-common-v0.2.4) (2026-02-23)
 
 

@@ -124,7 +124,7 @@ tests/
 - **Capture then process**, not streaming.
 - **First match wins** for config resolution. No merging, no inheritance.
 - **Passthrough on missing filter.** Never block a command because a filter doesn't exist.
-- **Exit code propagation.** tokf must return the same exit code as the underlying command.
+- **Exit code masking (default on).** tokf exits 0 and prepends `Error: Exit code N` on failure, to avoid output duplication in Claude Code. Use `--no-mask-exit-code` to propagate the real exit code.
 - **Variant delegation, not inheritance.** Parent filters delegate to child filters via `[[variant]]` — the child filter replaces the parent entirely, it doesn't inherit or merge fields.
 - **Two-phase variant detection.** File detection (pre-execution) takes priority; output-pattern matching (post-execution) is the fallback. Parent config applies when no variant matches.
 
@@ -137,17 +137,65 @@ cargo clippy --workspace --all-targets -- -D warnings  # Lint
 cargo fmt -- --check     # Format check
 ```
 
+### Database & end-to-end tests
+
+`tokf-server` uses CockroachDB. DB integration tests and end-to-end tests are `#[ignore]`d by default — they require `DATABASE_URL` and the `--ignored` flag.
+
+Copy `.env.example` → `.env` to configure `CONTAINER_RUNTIME` (`podman` or `docker`) and `DATABASE_URL`.
+
+```sh
+just db-start                  # start CockroachDB
+just db-status                 # check if running
+just db-setup                  # create tokf_test database
+just test-db                   # tokf-server integration tests
+just test-e2e                  # end-to-end tests
+just test-all                  # unit + DB + e2e
+just db-reset                  # wipe and restart fresh
+```
+
+Or manually:
+
+```sh
+podman compose -f crates/tokf-server/docker-compose.yml up -d
+export DATABASE_URL="postgresql://root@localhost:26257/tokf_test?sslmode=disable"
+psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" \
+  -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+cargo test -p tokf-server -- --ignored
+cargo test -p e2e-tests -- --ignored
+```
+
+Each `#[crdb_test]` creates an isolated database per test with fresh migrations — no manual migration step needed.
+
 ## Documentation
 
 **Every user-facing feature or behaviour change must be documented in the same PR.**
 
-- New filter fields → add to the "Common fields" block and any relevant prose in `README.md`.
-- New CLI flags or subcommands → add to the "Usage" / "Flags" tables in `README.md`.
-- Changed behaviour (e.g. how piped commands are handled) → update the relevant section in `README.md`.
-- New runtime behaviours visible to LLMs or end-users → document with a concrete example showing input and output.
-- Significant new features → consider adding a dedicated section in `README.md` with a short explanation and a code/shell example.
+### README generation
 
-Documentation lives in `README.md` (end-user reference) and `CONTRIBUTING.md` (contributor guide). Do not open a PR that adds or changes behaviour without also updating these files.
+`README.md` is **generated** — do not edit it directly. Changes made directly to `README.md` will be overwritten by the pre-commit hook.
+
+The source files live in `docs/`:
+- `docs/_readme/header.md` — top of the README (badges, intro)
+- `docs/_readme/footer.md` — bottom of the README (acknowledgements, licence)
+- `docs/*.md` — individual sections, ordered by `order:` frontmatter
+
+To update documentation, edit the appropriate file in `docs/` and then regenerate:
+
+```sh
+bash scripts/generate-readme.sh   # regenerate README.md
+```
+
+The pre-commit hook runs this automatically on every commit, so staged changes to `docs/` will be reflected in `README.md` in the same commit.
+
+### What to document
+
+- New filter fields → add to `docs/writing-filters.md`.
+- New CLI flags or subcommands → add to the relevant `docs/*.md` section.
+- Changed behaviour (e.g. how piped commands are handled) → update the relevant `docs/*.md`.
+- New runtime behaviours visible to LLMs or end-users → document with a concrete example showing input and output.
+- Significant new features → consider adding a dedicated section with a short explanation and a code/shell example.
+
+Documentation lives in `docs/` (end-user reference) and `CONTRIBUTING.md` (contributor guide). Do not open a PR that adds or changes behaviour without also updating these files.
 
 ## What Not To Do
 

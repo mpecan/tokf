@@ -1,0 +1,14 @@
+i  deploying hosting
+i  hosting[ssp-erp]: beginning deploy...
+i  hosting[ssp-erp]: found 142 files in dist
++ hosting[ssp-erp]: file upload complete
+Uploading [============================] 142/142
+i  hosting[ssp-erp]: finalizing version...
+i  hosting[ssp-erp]: version finalized
+i  hosting[ssp-erp]: releasing new version...
+i  hosting[ssp-erp]: release complete
+
+✔  Deploy complete!
+
+Project Console: https://console.firebase.google.com/project/ssp-erp/overview
+Hosting URL: https://ssp-erp.web.app

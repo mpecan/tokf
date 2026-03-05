@@ -1,24 +1,32 @@
+mod auth_cmd;
 mod cache_cmd;
+mod commands;
+mod completions_cmd;
+mod config_cmd;
 mod eject_cmd;
 mod gain;
+mod gain_render;
 mod history_cmd;
+mod info_cmd;
+mod install_cmd;
+mod output;
+mod publish_cmd;
+#[cfg(feature = "stdlib-publish")]
+mod publish_stdlib_cmd;
+mod remote_cmd;
 mod resolve;
-mod verify_cmd;
+mod search_cmd;
+mod shell;
+mod show_cmd;
+mod sync_cmd;
+// pub(crate): accessed by install_cmd::run_verify
+pub(crate) mod verify_cmd;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
-use tokf::baseline;
-use tokf::config;
-use tokf::filter;
-use tokf::history;
-use tokf::hook;
-use tokf::rewrite;
-use tokf::runner;
-use tokf::skill;
 use tokf::telemetry;
-
 #[derive(Parser)]
 #[command(
     name = "tokf",
@@ -26,22 +34,35 @@ use tokf::telemetry;
     about = "Token filter — compress command output for LLM context"
 )]
 #[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
-struct Cli {
+pub(crate) struct Cli {
     /// Show how long filtering took
     #[arg(long, global = true)]
-    timing: bool,
+    pub timing: bool,
 
     /// Skip filtering, pass output through raw
     #[arg(long, global = true)]
-    no_filter: bool,
+    pub no_filter: bool,
 
     /// Show filter resolution details
     #[arg(short, long, global = true)]
-    verbose: bool,
+    pub verbose: bool,
 
     /// Bypass the binary config cache for this invocation
     #[arg(long, global = true)]
-    no_cache: bool,
+    pub no_cache: bool,
+
+    /// Disable exit-code masking. By default tokf exits 0 and prepends
+    /// "Error: Exit code N" to output when the underlying command fails.
+    /// This flag restores real exit-code propagation.
+    #[arg(long, global = true)]
+    pub no_mask_exit_code: bool,
+
+    /// Preserve ANSI color codes in filtered output. Internally strips ANSI
+    /// for pattern matching but restores original colored lines in the result.
+    /// Note: this is not `--color=always/never/auto` — it controls passthrough
+    /// of the child command's existing ANSI codes through the filter pipeline.
+    #[arg(long, global = true, env = "TOKF_PRESERVE_COLOR")]
+    pub preserve_color: bool,
 
     /// Export metrics via OpenTelemetry OTLP (requires --features otel)
     #[arg(long)]
@@ -58,8 +79,16 @@ enum Commands {
         /// Pipe command for fair accounting (set by rewrite when stripping pipes)
         #[arg(long)]
         baseline_pipe: Option<String>,
+        /// Use whichever output is smaller: filtered or piped (no-op without --baseline-pipe)
+        #[arg(long)]
+        prefer_less: bool,
         #[arg(trailing_var_arg = true, required = true)]
         command_args: Vec<String>,
+    },
+    /// Generate shell completion scripts
+    Completions {
+        /// Target shell (bash, zsh, fish, powershell, elvish, nushell)
+        shell: completions_cmd::ShellChoice,
     },
     /// Validate a filter TOML file
     Check {
@@ -119,6 +148,11 @@ enum Commands {
         #[command(subcommand)]
         action: cache_cmd::CacheAction,
     },
+    /// View and modify tokf configuration
+    Config {
+        #[command(subcommand)]
+        action: config_cmd::ConfigAction,
+    },
     /// Show token savings statistics
     Gain {
         /// Show daily breakdown
@@ -130,6 +164,15 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Query remote server stats instead of local database
+        #[arg(long)]
+        remote: bool,
+        /// Number of top filters to show in the summary view (default: 10)
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+        /// Disable colored output (also respects the `NO_COLOR` environment variable)
+        #[arg(long)]
+        no_color: bool,
     },
     /// Manage filtered output history
     History {
@@ -149,6 +192,87 @@ enum Commands {
         /// Fail if any filters have no test suite
         #[arg(long)]
         require_all: bool,
+        /// Restrict to a single filter scope (project, global, or stdlib)
+        #[arg(long, value_enum)]
+        scope: Option<verify_cmd::VerifyScope>,
+        /// Run safety checks (detect prompt injection, shell injection, hidden unicode)
+        #[arg(long)]
+        safety: bool,
+    },
+    /// Show system paths, database locations, and filter counts
+    Info {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Authenticate with the tokf server (credentials stored in OS keyring)
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+    /// Register this machine and manage remote sync settings
+    Remote {
+        #[command(subcommand)]
+        action: RemoteAction,
+    },
+    /// Publish a local filter to the community registry
+    Publish {
+        /// Filter name to publish (e.g. "git/my-filter")
+        filter: String,
+        /// Preview what would be published without uploading
+        #[arg(long)]
+        dry_run: bool,
+        /// Replace the test suite for an already-published filter (author-only)
+        #[arg(long)]
+        update_tests: bool,
+    },
+    /// Search the community filter registry
+    Search {
+        /// Maximum number of results to return
+        #[arg(long, short = 'n', default_value_t = 20)]
+        limit: usize,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+        /// Search query (matches command pattern)
+        #[arg(trailing_var_arg = true, required = true)]
+        query: Vec<String>,
+    },
+    /// Sync local usage data to the remote server
+    Sync {
+        /// Show last sync time and count of pending events
+        #[arg(long)]
+        status: bool,
+    },
+    /// Publish all stdlib filters to the registry (CI only)
+    #[cfg(feature = "stdlib-publish")]
+    PublishStdlib {
+        /// Registry base URL
+        #[arg(long, env = "TOKF_REGISTRY_URL")]
+        registry_url: String,
+        /// Service token for authentication
+        #[arg(long, env = "TOKF_SERVICE_TOKEN")]
+        token: String,
+        /// Preview the payload without uploading
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Install a filter from the community registry
+    Install {
+        /// Filter hash (64 hex chars) or command pattern to search for
+        filter: String,
+        /// Install to project-local .tokf/filters/ instead of global config
+        #[arg(long)]
+        local: bool,
+        /// Overwrite an existing filter at the same path
+        #[arg(long)]
+        force: bool,
+        /// Preview what would be installed without writing files
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation prompts (Lua filters still emit an audit warning)
+        #[arg(long, short = 'y')]
+        yes: bool,
     },
 }
 
@@ -162,16 +286,58 @@ enum SkillAction {
     },
 }
 
+// R6: Rename Opencode → OpenCode; use #[value(name = "opencode")] to keep CLI arg as "opencode".
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+pub(crate) enum HookTool {
+    #[default]
+    ClaudeCode,
+    #[value(name = "opencode")]
+    OpenCode,
+    #[value(name = "codex")]
+    Codex,
+}
+
 #[derive(Subcommand)]
 enum HookAction {
     /// Handle a `PreToolUse` hook invocation (reads JSON from stdin)
     Handle,
-    /// Install the hook into Claude Code settings
+    /// Install the integration for the target tool
     Install {
-        /// Install globally (~/.config/tokf) instead of project-local (.tokf)
+        /// Install globally instead of project-local
         #[arg(long)]
         global: bool,
+        /// Target tool to install hook for (default: claude-code)
+        #[arg(long, value_enum, default_value_t = HookTool::ClaudeCode)]
+        tool: HookTool,
+        /// Path to the tokf binary to embed in generated scripts.
+        /// Defaults to bare "tokf" (relies on PATH at runtime).
+        #[arg(long)]
+        path: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum AuthAction {
+    /// Log in via GitHub device flow (opens browser, stores token in OS keyring)
+    Login,
+    /// Log out and remove stored credentials (keyring token + config metadata)
+    Logout,
+    /// Show current authentication status (username, server URL)
+    Status,
+    /// Permanently delete your account (requires confirmation)
+    DeleteAccount,
+}
+
+#[derive(Subcommand)]
+enum RemoteAction {
+    /// Register this machine with the tokf server for remote sync
+    Setup,
+    /// Show remote sync registration state
+    Status,
+    /// Sync local usage events to the remote server
+    Sync,
+    /// Backfill filter hashes for past events recorded before hash tracking was added
+    Backfill,
 }
 
 #[derive(Subcommand)]
@@ -189,6 +355,18 @@ enum HistoryAction {
     Show {
         /// Entry ID to show
         id: i64,
+        /// Print only the raw captured output (no metadata, no filtered output)
+        #[arg(long)]
+        raw: bool,
+    },
+    /// Show the most recent history entry (current project by default)
+    Last {
+        /// Print only the raw captured output (no metadata, no filtered output)
+        #[arg(long)]
+        raw: bool,
+        /// Show the most recent entry across all projects
+        #[arg(short, long)]
+        all: bool,
     },
     /// Search history by command or output content (current project by default)
     Search {
@@ -209,313 +387,33 @@ enum HistoryAction {
     },
 }
 
-// NOTE: cmd_run integrates command resolution, execution, output rendering, tracking,
-// history recording, and telemetry. Splitting would require threading 6+ values through helpers.
-// Approved to exceed the 60-line limit.
-#[allow(clippy::too_many_lines)]
-fn cmd_run(
-    command_args: &[String],
-    baseline_pipe: Option<&str>,
-    cli: &Cli,
-    reporter: &dyn telemetry::TelemetryReporter,
-) -> anyhow::Result<i32> {
-    let filter_match = if cli.no_filter {
-        None
-    } else {
-        resolve::find_filter(command_args, cli.verbose, cli.no_cache)?
-    };
-
-    let words_consumed = filter_match.as_ref().map_or(0, |m| m.words_consumed);
-    let remaining_args: Vec<String> = if words_consumed > 0 {
-        command_args[words_consumed..].to_vec()
-    } else if command_args.len() > 1 {
-        command_args[1..].to_vec()
-    } else {
-        vec![]
-    };
-
-    let filter_cfg = filter_match.as_ref().map(|m| &m.config);
-    let cmd_result =
-        resolve::run_command(filter_cfg, words_consumed, command_args, &remaining_args)?;
-
-    let Some(filter_match) = filter_match else {
-        let raw_len = cmd_result.combined.len();
-        let input_bytes = match baseline_pipe {
-            Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
-            None => raw_len,
-        };
-        if !cmd_result.combined.is_empty() {
-            println!("{}", cmd_result.combined);
-        }
-        // filter_time_ms = 0: no filter was applied, not 0ms of filtering.
-        // Passthrough commands are not recorded to history: raw == filtered would
-        // waste storage and add noise with nothing useful to compare.
-        // output_bytes = raw_len: what tokf actually printed (full raw output).
-        resolve::record_run(
-            command_args,
-            None,
-            input_bytes,
-            raw_len,
-            0,
-            cmd_result.exit_code,
-        );
-        #[allow(clippy::cast_possible_truncation)]
-        let line_count = cmd_result.combined.lines().count() as u64;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-        let token_est = (raw_len / 4) as u64;
-        reporter.report(&telemetry::TelemetryEvent {
-            filter_name: None,
-            command: command_args.join(" "),
-            input_lines: line_count,
-            output_lines: line_count,
-            input_tokens: token_est,
-            output_tokens: token_est,
-            filter_duration_secs: 0.0,
-            exit_code: cmd_result.exit_code,
-            pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
-        });
-        return Ok(cmd_result.exit_code);
-    };
-
-    // Phase B: resolve deferred output-pattern variants using the already-discovered
-    // filter list (no second discovery call needed).
-    let cfg = resolve::resolve_phase_b(filter_match, &cmd_result.combined, cli.verbose);
-
-    let input_bytes = match baseline_pipe {
-        Some(pipe_cmd) => baseline::compute(&cmd_result.combined, pipe_cmd),
-        None => cmd_result.combined.len(),
-    };
-    let start = std::time::Instant::now();
-    let filtered = filter::apply(&cfg, &cmd_result, &remaining_args);
-    let elapsed = start.elapsed();
-
-    if cli.timing {
-        eprintln!("[tokf] filter took {:.1}ms", elapsed.as_secs_f64() * 1000.0);
-    }
-
-    let output_bytes = filtered.output.len();
-    let filter_name = cfg.command.first();
-    let command_str = command_args.join(" ");
-
-    resolve::record_run(
-        command_args,
-        Some(filter_name),
-        input_bytes,
-        output_bytes,
-        elapsed.as_millis(),
-        cmd_result.exit_code,
-    );
-
-    // Detect whether to show the history hint:
-    //   - filter author opted in via `show_history_hint = true`, or
-    //   - the same command was re-run (LLM confusion signal: it didn't act on
-    //     the previous filtered output and is asking again).
-    // Check the DB before recording so we compare against the *previous* run.
-    let show_hint = cfg.show_history_hint || history::try_was_recently_run(&command_str);
-
-    let history_id = history::try_record(
-        &command_str,
-        filter_name,
-        &cmd_result.combined,
-        &filtered.output,
-        cmd_result.exit_code,
-    );
-
-    if !filtered.output.is_empty() {
-        println!("{}", filtered.output);
-    }
-
-    if show_hint && let Some(id) = history_id {
-        println!("Filtered - for full content call: `tokf history show {id}`");
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    let input_lines = cmd_result.combined.lines().count() as u64;
-    #[allow(clippy::cast_possible_truncation)]
-    let output_lines = filtered.output.lines().count() as u64;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let input_tokens = (input_bytes / 4) as u64;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let output_tokens = (output_bytes / 4) as u64;
-    reporter.report(&telemetry::TelemetryEvent {
-        filter_name: Some(filter_name.to_string()),
-        command: command_str,
-        input_lines,
-        output_lines,
-        input_tokens,
-        output_tokens,
-        filter_duration_secs: elapsed.as_secs_f64(),
-        exit_code: cmd_result.exit_code,
-        pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
-    });
-
-    Ok(cmd_result.exit_code)
-}
-
-fn cmd_check(filter_path: &Path) -> i32 {
-    match config::try_load_filter(filter_path) {
-        Ok(Some(cfg)) => {
-            eprintln!(
-                "[tokf] {} is valid (command: \"{}\")",
-                filter_path.display(),
-                cfg.command.first()
-            );
-            0
-        }
-        Ok(None) => {
-            eprintln!("[tokf] file not found: {}", filter_path.display());
-            1
-        }
-        Err(e) => {
-            eprintln!("[tokf] error: {e:#}");
-            1
-        }
-    }
-}
-
-fn cmd_test(
-    filter_path: &Path,
-    fixture_path: &Path,
-    exit_code: i32,
-    cli: &Cli,
-) -> anyhow::Result<i32> {
-    let cfg = config::try_load_filter(filter_path)?
-        .ok_or_else(|| anyhow::anyhow!("filter not found: {}", filter_path.display()))?;
-
-    let fixture = std::fs::read_to_string(fixture_path)
-        .map_err(|e| anyhow::anyhow!("failed to read fixture: {}: {e}", fixture_path.display()))?;
-    let combined = fixture.trim_end().to_string();
-
-    let cmd_result = runner::CommandResult {
-        stdout: String::new(),
-        stderr: String::new(),
-        exit_code,
-        combined,
-    };
-
-    let start = std::time::Instant::now();
-    let filtered = filter::apply(&cfg, &cmd_result, &[]);
-    let elapsed = start.elapsed();
-
-    if cli.timing {
-        eprintln!("[tokf] filter took {:.1}ms", elapsed.as_secs_f64() * 1000.0);
-    }
-
-    if !filtered.output.is_empty() {
-        println!("{}", filtered.output);
-    }
-
-    Ok(0)
-}
-
-// Note: cmd_ls and cmd_which always use the cache. The --no-cache flag
-// only affects `tokf run`. Pass --no-cache to `tokf run` if you need uncached resolution.
-fn cmd_ls(verbose: bool) -> i32 {
-    let Ok(filters) = resolve::discover_filters(false) else {
-        eprintln!("[tokf] error: failed to discover filters");
-        return 1;
-    };
-
-    for filter in &filters {
-        // Display: relative path without .toml extension  →  command
-        let display_name = filter
-            .relative_path
-            .with_extension("")
-            .display()
-            .to_string();
-        println!(
-            "{display_name}  \u{2192}  {}",
-            filter.config.command.first()
-        );
-
-        if verbose {
-            eprintln!(
-                "[tokf]   source: {}  [{}]",
-                filter.source_path.display(),
-                filter.priority_label()
-            );
-            let patterns = filter.config.command.patterns();
-            if patterns.len() > 1 {
-                for p in patterns {
-                    eprintln!("[tokf]     pattern: \"{p}\"");
-                }
-            }
-        }
-    }
-
-    0
-}
-
-fn cmd_which(command: &str, verbose: bool) -> i32 {
-    let Ok(filters) = resolve::discover_filters(false) else {
-        eprintln!("[tokf] error: failed to discover filters");
-        return 1;
-    };
-
-    let words: Vec<&str> = command.split_whitespace().collect();
-    let cwd = std::env::current_dir().unwrap_or_default();
-
-    for filter in &filters {
-        if filter.matches(&words).is_some() {
-            let display_name = filter
-                .relative_path
-                .with_extension("")
-                .display()
-                .to_string();
-
-            let variant_info = if filter.config.variant.is_empty() {
-                String::new()
-            } else {
-                let res =
-                    config::variant::resolve_variants(&filter.config, &filters, &cwd, verbose);
-                let resolved = res.config.command.first().to_string();
-                if resolved != filter.config.command.first() {
-                    format!(" -> variant: \"{resolved}\"")
-                } else if res.output_variants.is_empty() {
-                    format!(
-                        " ({} variant(s), none matched by file)",
-                        filter.config.variant.len()
-                    )
-                } else {
-                    let names: Vec<&str> = res
-                        .output_variants
-                        .iter()
-                        .map(|v| v.name.as_str())
-                        .collect();
-                    format!(
-                        " ({} variant(s), {} deferred to output-pattern: {})",
-                        filter.config.variant.len(),
-                        res.output_variants.len(),
-                        names.join(", ")
-                    )
-                }
-            };
-            println!(
-                "{display_name}  [{}]  command: \"{}\"{variant_info}",
-                filter.priority_label(),
-                filter.config.command.first()
-            );
-            if verbose {
-                eprintln!("[tokf] source: {}", filter.source_path.display());
-            }
-            return 0;
-        }
-    }
-
-    eprintln!("[tokf] no filter found for \"{command}\"");
-    1
-}
-
-fn or_exit(r: anyhow::Result<i32>) -> i32 {
-    r.unwrap_or_else(|e| {
-        eprintln!("[tokf] error: {e:#}");
-        1
-    })
-}
-
 // Telemetry init + subcommand dispatch + shutdown added lines — approved to exceed 60-line limit.
 #[allow(clippy::too_many_lines)]
 fn main() {
+    use commands::{
+        cmd_check, cmd_hook_handle, cmd_hook_install, cmd_ls, cmd_rewrite, cmd_run,
+        cmd_skill_install, cmd_test, cmd_which, or_exit,
+    };
+
+    tokf::paths::init_from_env();
+
+    #[cfg(feature = "test-keyring")]
+    tokf::auth::credentials::use_mock_keyring();
+
+    // Pre-clap shell mode detection.
+    //
+    // Task runners (make, just) invoke their shell as `$SHELL -c 'recipe_line'`.
+    // When tokf is set as the shell, we intercept `-c` (and variants like `-cu`,
+    // `-ec`) before clap parsing — clap would reject them as unknown flags.
+    let raw_args: Vec<String> = std::env::args().collect();
+    if raw_args.len() >= 2 && shell::is_shell_flag(&raw_args[1]) {
+        if raw_args.len() < 3 {
+            eprintln!("[tokf] shell mode requires a command argument");
+            std::process::exit(1);
+        }
+        std::process::exit(shell::cmd_shell(&raw_args[1], &raw_args[2]));
+    }
+
     let cli = Cli::parse();
     let reporter = telemetry::init(cli.otel_export);
     if cli.verbose {
@@ -531,12 +429,15 @@ fn main() {
         Commands::Run {
             command_args,
             baseline_pipe,
+            prefer_less,
         } => or_exit(cmd_run(
             command_args,
             baseline_pipe.as_deref(),
+            *prefer_less,
             &cli,
             reporter.as_ref(),
         )),
+        Commands::Completions { shell } => completions_cmd::cmd_completions(*shell),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
         Commands::Test {
             filter_path,
@@ -551,35 +452,93 @@ fn main() {
         Commands::Ls => cmd_ls(cli.verbose),
         Commands::Rewrite { command } => cmd_rewrite(command, cli.verbose),
         Commands::Which { command } => cmd_which(command, cli.verbose),
-        Commands::Show { filter, hash } => cmd_show(filter, *hash),
+        Commands::Show { filter, hash } => show_cmd::cmd_show(filter, *hash),
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
-            HookAction::Install { global } => cmd_hook_install(*global),
+            HookAction::Install { global, tool, path } => {
+                cmd_hook_install(*global, tool, path.as_deref())
+            }
         },
         Commands::Skill { action } => match action {
             SkillAction::Install { global } => cmd_skill_install(*global),
         },
         Commands::Cache { action } => cache_cmd::run_cache_action(action),
+        Commands::Config { action } => config_cmd::run_config_action(action),
         Commands::Gain {
             daily,
             by_filter,
             json,
-        } => gain::cmd_gain(*daily, *by_filter, *json),
+            remote,
+            top,
+            no_color,
+        } => {
+            if *remote {
+                gain::cmd_gain_remote(*daily, *by_filter, *json, *top, *no_color)
+            } else {
+                gain::cmd_gain(*daily, *by_filter, *json, *top, *no_color)
+            }
+        }
         Commands::Verify {
             filter,
             list,
             json,
             require_all,
-        } => verify_cmd::cmd_verify(filter.as_deref(), *list, *json, *require_all),
+            scope,
+            safety,
+        } => verify_cmd::cmd_verify(
+            filter.as_deref(),
+            *list,
+            *json,
+            *require_all,
+            scope.as_ref(),
+            *safety,
+        ),
+        Commands::Info { json } => info_cmd::cmd_info(*json),
+        Commands::Auth { action } => or_exit(match action {
+            AuthAction::Login => auth_cmd::cmd_auth_login(),
+            AuthAction::Logout => auth_cmd::cmd_auth_logout(),
+            AuthAction::Status => auth_cmd::cmd_auth_status(),
+            AuthAction::DeleteAccount => auth_cmd::cmd_auth_delete_account(),
+        }),
+        Commands::Remote { action } => or_exit(match action {
+            RemoteAction::Setup => remote_cmd::cmd_remote_setup(),
+            RemoteAction::Status => remote_cmd::cmd_remote_status(),
+            RemoteAction::Sync => remote_cmd::cmd_remote_sync(),
+            RemoteAction::Backfill => remote_cmd::cmd_remote_backfill(cli.no_cache),
+        }),
         Commands::History { action } => or_exit(match action {
             HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
-            HistoryAction::Show { id } => history_cmd::cmd_history_show(*id),
+            HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),
+            HistoryAction::Last { raw, all } => history_cmd::cmd_history_last(*raw, *all),
             HistoryAction::Search { query, limit, all } => {
                 history_cmd::cmd_history_search(query, *limit, *all)
             }
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
         }),
+        Commands::Sync { status } => or_exit(sync_cmd::cmd_sync(*status)),
+        Commands::Publish {
+            filter,
+            dry_run,
+            update_tests,
+        } => publish_cmd::cmd_publish(filter, *dry_run, *update_tests),
+        Commands::Search { query, limit, json } => {
+            let joined = query.join(" ");
+            search_cmd::cmd_search(&joined, *limit, *json)
+        }
+        #[cfg(feature = "stdlib-publish")]
+        Commands::PublishStdlib {
+            registry_url,
+            token,
+            dry_run,
+        } => publish_stdlib_cmd::cmd_publish_stdlib(registry_url, token, *dry_run),
+        Commands::Install {
+            filter,
+            local,
+            force,
+            dry_run,
+            yes,
+        } => install_cmd::cmd_install(filter, *local, *force, *dry_run, *yes),
     };
     let flushed = reporter.shutdown();
     if cli.verbose && reporter.endpoint_description().is_some() {
@@ -590,85 +549,4 @@ fn main() {
         }
     }
     std::process::exit(exit_code);
-}
-
-fn cmd_show(filter: &str, hash: bool) -> i32 {
-    // Normalize: strip ".toml" suffix if present
-    let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
-
-    let Ok(filters) = resolve::discover_filters(false) else {
-        eprintln!("[tokf] error: failed to discover filters");
-        return 1;
-    };
-
-    let found = filters
-        .iter()
-        .find(|f| f.relative_path.with_extension("").to_string_lossy() == filter_name);
-
-    let Some(resolved) = found else {
-        eprintln!("[tokf] filter not found: {filter}");
-        return 1;
-    };
-
-    if hash {
-        match tokf_common::hash::canonical_hash(&resolved.config) {
-            Ok(h) => println!("{h}"),
-            Err(e) => {
-                eprintln!("[tokf] error computing hash: {e}");
-                return 1;
-            }
-        }
-        return 0;
-    }
-
-    let content = if resolved.priority == u8::MAX {
-        if let Some(c) = config::get_embedded_filter(&resolved.relative_path) {
-            c.to_string()
-        } else {
-            eprintln!("[tokf] error: embedded filter not readable");
-            return 1;
-        }
-    } else {
-        match std::fs::read_to_string(&resolved.source_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[tokf] error reading filter: {e}");
-                return 1;
-            }
-        }
-    };
-
-    print!("{content}");
-    0
-}
-
-fn cmd_rewrite(command: &str, verbose: bool) -> i32 {
-    let result = rewrite::rewrite(command, verbose);
-    println!("{result}");
-    0
-}
-
-fn cmd_skill_install(global: bool) -> i32 {
-    match skill::install(global) {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("[tokf] error: {e:#}");
-            1
-        }
-    }
-}
-
-fn cmd_hook_handle() -> i32 {
-    hook::handle();
-    0
-}
-
-fn cmd_hook_install(global: bool) -> i32 {
-    match hook::install(global) {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("[tokf] error: {e:#}");
-            1
-        }
-    }
 }

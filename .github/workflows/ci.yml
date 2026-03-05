@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
 
 jobs:
-  check:
-    name: Check
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -21,17 +26,7 @@ jobs:
           toolchain: "1.93.0"
           components: rustfmt, clippy
 
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -45,17 +40,153 @@ jobs:
       - name: Clippy (otel-grpc feature)
         run: cargo clippy -p tokf-cli --features otel-grpc -- -D warnings
 
-      - name: Run tests
-        run: cargo test --workspace
-
-      - name: Run tests (otel feature)
-        run: cargo test -p tokf-cli --features otel
-
-      - name: Run tests (otel-grpc feature)
-        run: cargo test -p tokf-cli --features otel-grpc
-
-      - name: Verify filter test suites
-        run: ./target/debug/tokf verify --require-all
-
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
+
+      - name: Check for code duplication
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-dupes
+
+      - name: Run cargo-dupes check
+        run: cargo dupes check
+
+      - name: Check README is up-to-date
+        run: bash scripts/generate-readme.sh --check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run tests
+        run: cargo nextest run --workspace --exclude e2e-tests --profile ci
+
+      - name: Run tests (otel feature)
+        run: cargo nextest run -p tokf-cli --features otel --profile ci
+
+      - name: Run tests (otel-grpc feature)
+        run: cargo nextest run -p tokf-cli --features otel-grpc --profile ci
+
+      - name: Verify filter test suites
+        id: verify
+        working-directory: ./crates/tokf-cli
+        run: |
+          set +e
+          # JSON for structured parsing (no --require-all to avoid early exit)
+          ../../target/debug/tokf verify --scope stdlib --json > /tmp/verify-results.json
+          JSON_EXIT=$?
+          # Human-readable + require-all for coverage check
+          ../../target/debug/tokf verify --require-all --scope stdlib 2>/tmp/verify-stderr.txt
+          REQUIRE_EXIT=$?
+          set -e
+          EXIT=$(( JSON_EXIT > REQUIRE_EXIT ? JSON_EXIT : REQUIRE_EXIT ))
+          echo "exit_code=$EXIT" >> "$GITHUB_OUTPUT"
+
+      - name: Save verify results for PR comment
+        if: github.event_name == 'pull_request' && always()
+        run: |
+          mkdir -p /tmp/verify-artifact
+          cp /tmp/verify-results.json /tmp/verify-artifact/ 2>/dev/null || true
+          cp /tmp/verify-stderr.txt /tmp/verify-artifact/ 2>/dev/null || true
+          echo "${{ github.event.number }}" > /tmp/verify-artifact/pr-number.txt
+
+      - name: Upload verify results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: verify-results
+          path: /tmp/verify-artifact/
+          retention-days: 1
+
+      - name: Fail if verify failed
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit ${{ steps.verify.outputs.exit_code }}
+
+  db-test:
+    name: DB & E2E Tests
+    runs-on: ubuntu-latest
+    services:
+      cockroach:
+        image: cockroachdb/cockroach:latest-v24.3
+        env:
+          COCKROACH_ARGS: "start-single-node --insecure"
+        ports:
+          - 26257:26257
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/health?ready=1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://root@localhost:26257/tokf_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create CockroachDB test database
+        run: psql "$DATABASE_URL" -c "SELECT 1" 2>/dev/null || psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+
+      - name: Run DB integration tests
+        run: cargo test -p tokf-server -- --ignored
+
+      - name: Run E2E integration tests
+        run: cargo test -p e2e-tests -- --ignored
+
+  check:
+    name: Check
+    if: always()
+    needs: [lint, test, db-test, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "Lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "Test failed"
+            exit 1
+          fi
+          if [[ "${{ needs.db-test.result }}" != "success" ]]; then
+            echo "DB & E2E Tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docker.result }}" != "success" ]]; then
+            echo "Docker build failed"
+            exit 1
+          fi
+          echo "All checks passed"
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

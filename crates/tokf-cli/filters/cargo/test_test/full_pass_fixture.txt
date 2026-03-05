@@ -1,0 +1,1657 @@
+   Compiling tokf v0.2.12 (/Users/mdp/src/github.com/mpecan/tokf/crates/tokf-cli)
+   Compiling e2e-tests v0.1.0 (/Users/mdp/src/github.com/mpecan/tokf/crates/e2e-tests)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.72s
+     Running unittests src/lib.rs (target/debug/deps/crdb_test_macro-789ae407e53c9fe2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/e2e_tests-87312e133171134b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/auth_flow.rs (target/debug/deps/auth_flow-a521251c77d7e768)
+
+running 2 tests
+test auth_then_register_machine_then_sync ... ignored, requires DATABASE_URL to be set
+test device_flow_creates_token ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gain_flow.rs (target/debug/deps/gain_flow-cfd67917932e2aee)
+
+running 3 tests
+test gain_by_filter_breakdown ... ignored, requires DATABASE_URL to be set
+test gain_with_no_events_returns_zeros ... ignored, requires DATABASE_URL to be set
+test global_gain_returns_aggregate ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/machine_flow.rs (target/debug/deps/machine_flow-e10c8ebc07506c2c)
+
+running 2 tests
+test list_machines_returns_registered ... ignored, requires DATABASE_URL to be set
+test register_machine_via_client ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/publish_flow.rs (target/debug/deps/publish_flow-4d6ca0bc1307c156)
+
+running 10 tests
+test double_update_tests_round_trip ... ignored, requires DATABASE_URL to be set
+test duplicate_publish_returns_existing ... ignored, requires DATABASE_URL to be set
+test get_filter_shows_correct_test_count ... ignored, requires DATABASE_URL to be set
+test non_author_update_tests_fails ... ignored, requires DATABASE_URL to be set
+test publish_filter_returns_hash ... ignored, requires DATABASE_URL to be set
+test publish_search_download_lifecycle ... ignored, requires DATABASE_URL to be set
+test publish_with_invalid_test_fails ... ignored, requires DATABASE_URL to be set
+test update_tests_replaces_test_suite ... ignored, requires DATABASE_URL to be set
+test update_tests_unknown_hash_fails ... ignored, requires DATABASE_URL to be set
+test update_with_invalid_test_content_fails ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/rate_limit_flow.rs (target/debug/deps/rate_limit_flow-9031ad23ef433414)
+
+running 4 tests
+test general_rate_limit_returns_429 ... ignored, requires DATABASE_URL to be set
+test publish_rate_limit_returns_429 ... ignored, requires DATABASE_URL to be set
+test search_rate_limit_returns_429 ... ignored, requires DATABASE_URL to be set
+test sync_rate_limit_returns_429 ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sync_flow.rs (target/debug/deps/sync_flow-e6885a5292627368)
+
+running 5 tests
+test sync_multiple_batches_advances_cursor ... ignored, requires DATABASE_URL to be set
+test sync_records_and_uploads_events ... ignored, requires DATABASE_URL to be set
+test sync_replay_is_idempotent ... ignored, requires DATABASE_URL to be set
+test sync_then_gain_reflects_totals ... ignored, requires DATABASE_URL to be set
+test sync_with_invalid_token_returns_error ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf-77b714b4a29e7450)
+
+running 557 tests
+test auth::client::tests::is_safe_browser_uri_checks ... ok
+test auth::client::tests::is_secure_url_checks ... ok
+test auth::client::tests::deserialize_pending_response ... ok
+test auth::client::tests::extract_error_message_from_json ... ok
+test auth::client::tests::extract_error_message_from_json_error_field ... ok
+test auth::client::tests::sanitize_error_text_strips_control_chars ... ok
+test auth::client::tests::extract_error_message_raw_text ... ok
+test auth::client::tests::deserialize_slow_down_response ... ok
+test auth::client::tests::debug_redacts_device_code ... ok
+test auth::client::tests::deserialize_token_response ... ok
+test auth::credentials::tests::is_expired_future ... ok
+test auth::client::tests::sanitize_error_text_truncates ... ok
+test auth::client::tests::deserialize_device_flow_response ... ok
+test auth::client::tests::server_url_default ... ok
+test auth::credentials::tests::is_expired_past ... ok
+test auth::credentials::tests::is_expired_unknown ... ok
+test auth::client::tests::deserialize_device_flow_with_complete_uri ... ok
+test auth::credentials::tests::auth_config_path_returns_some ... ok
+test auth::credentials::tests::load_returns_none_when_no_file ... ok
+test baseline::tests::compute_fallback_on_disallowed ... ok
+test baseline::tests::compute_output_disallowed_command ... ok
+test auth::credentials::tests::stored_auth_missing_expires_at_defaults_to_zero ... ok
+test auth::credentials::tests::stored_auth_mit_license_roundtrip ... ok
+test auth::credentials::tests::stored_auth_roundtrip ... ok
+test config::cache::tests::binary_sentinel_in_mtimes ... ok
+test auth::credentials::tests::save_license_accepted_preserves_other_fields ... ok
+test config::cache::tests::cache_path_project_local ... ok
+test config::cache::tests::stale_on_version_mismatch ... ok
+test config::cache::tests::cached_filter_roundtrip ... ok
+test config::cache::tests::hash_survives_cache_roundtrip ... ok
+test config::cache::tests::roundtrip_serialize_deserialize ... ok
+test config::tests::embedded_stdlib_non_empty ... ok
+test config::tests::test_load_nonexistent_returns_none ... ok
+test config::cache::tests::cache_path_respects_tokf_home ... ok
+test config::tests::test_default_search_dirs_only_local_and_user ... ok
+test config::cache::tests::cache_path_user_fallback ... ok
+test config::tests::test_default_search_dirs_non_empty_and_starts_with_local ... ok
+test config::tests::test_load_real_stdlib_filter ... ok
+test config::tests::all_embedded_toml_parse ... ok
+test config::tests::test_load_valid_toml ... ok
+test config::tests::test_load_invalid_toml ... ok
+test config::tests_discovery::discover_flat_dir ... ok
+test config::tests_discovery::discover_nonexistent_dir_returns_empty ... ok
+test config::tests_discovery::discover_nested_dirs ... ok
+test config::tests_matching::basename_absolute_path ... ok
+test config::tests_matching::basename_empty_string ... ok
+test config::tests_matching::basename_matching ... ok
+test config::tests_matching::basename_plain_word ... ok
+test config::tests_matching::basename_relative_path ... ok
+test config::tests_discovery::discover_skips_hidden_entries ... ok
+test config::tests_matching::basename_root_returns_empty ... ok
+test config::tests::embedded_filters_in_discover_with_no_dirs ... ok
+test config::tests_matching::basename_trailing_separator_returns_empty ... ok
+test config::tests_matching::basename_windows_path ... ok
+test config::tests_matching::empty_pattern_returns_none ... ok
+test config::tests_matching::empty_words_returns_none ... ok
+test config::tests_matching::matches_exact ... ok
+test config::tests_matching::hyphenated_tool_not_ambiguous ... ok
+test config::tests_matching::matches_prefix_with_trailing_args ... ok
+test config::tests_matching::matches_wildcard ... ok
+test config::tests_matching::no_match_different_command ... ok
+test config::tests_matching::no_match_too_short ... ok
+test config::tests_matching::regex_basename_matching ... ok
+test config::tests_matching::regex_from_literal_pattern ... ok
+test config::tests_matching::regex_from_wildcard_pattern ... ok
+test config::tests::local_filter_shadows_embedded ... ok
+test config::cache::tests::write_failure_does_not_propagate ... ok
+test config::tests_discovery::discover_all_specificity_ordering ... ok
+test config::tests_discovery::discover_all_skips_invalid_toml ... ok
+test config::tests_discovery::discover_all_dedup_same_command ... ok
+test config::tests_discovery::discover_all_priority_ordering ... ok
+test config::tests_matching::single_word_pattern_prefix_match ... ok
+test config::tests_matching::skip_flags_combined_form_no_space ... ok
+test config::tests_matching::regex_empty_pattern ... ok
+test config::tests_matching::skip_flags_empty_words ... ok
+test config::tests_matching::skip_flags_flag_only_at_end_no_target ... ok
+test config::tests_matching::skip_flags_flag_value_is_target ... ok
+test config::tests_matching::skip_flags_flag_value_looks_like_flag ... ok
+test config::tests_matching::skip_flags_long_flag_equals_value ... ok
+test config::tests_matching::skip_flags_long_flag_no_value ... ok
+test config::tests_matching::regex_non_flag_between_words_no_match ... ok
+test config::tests_matching::skip_flags_multiple_equals_style_flags ... ok
+test config::tests_matching::regex_transparent_long_flag_no_value ... ok
+test config::tests_matching::skip_flags_non_flag_non_target_blocks ... ok
+test config::tests_matching::skip_flags_multiple_flags ... ok
+test config::tests_matching::skip_flags_short_flag_with_value ... ok
+test config::tests_matching::skip_flags_target_first ... ok
+test config::tests_matching::regex_transparent_combined_with_basename ... ok
+test config::tests_matching::specificity_all_wildcards ... ok
+test config::tests_matching::regex_transparent_short_flag_with_value ... ok
+test config::tests_discovery::discover_all_hyphenated_tool_not_ambiguous ... ok
+test config::tests_matching::specificity_ordering ... ok
+test config::tests_matching::specificity_two_literals ... ok
+test config::tests_matching::specificity_wildcard_counts_less ... ok
+test config::tests_matching::transparent_combined_with_basename ... ok
+test config::tests_matching::transparent_direct_match_unchanged ... ok
+test config::tests_matching::regex_transparent_multiple_flags ... ok
+test config::tests_matching::transparent_flag_equals_value ... ok
+test config::tests_matching::transparent_flags_not_skipped_at_first_word ... ok
+test config::tests_matching::regex_transparent_flag_equals_value ... ok
+test config::tests_matching::transparent_long_flag_no_value ... ok
+test config::tests_matching::transparent_multiple_flags ... ok
+test config::tests_matching::transparent_no_skip_for_non_flags ... ok
+test config::tests_matching::regex_transparent_wildcard_with_flags_before_run ... ok
+test config::tests_matching::transparent_short_flag_with_value ... ok
+test config::tests_matching::transparent_wildcard_with_flags_before_literal ... ok
+test config::tests_matching::wildcard_at_start ... ok
+test config::tests_matching::wildcard_rejects_empty_token ... ok
+test config::types::tests::test_command_pattern_wildcard ... ok
+test config::types::tests::test_command_pattern_single ... ok
+test config::types::tests::test_command_pattern_multiple ... ok
+test config::types::tests::test_deserialize_git_add ... ok
+test config::types::tests::test_deserialize_git_diff ... ok
+test config::types::tests::test_empty_toml_fails ... ok
+test config::types::tests::test_deserialize_parse_config_from_toml ... ok
+test config::types::tests::test_malformed_toml_fails ... ok
+test config::types::tests::test_missing_command_field_fails ... ok
+test config::types::tests::test_minimal_config_only_command ... ok
+test config::types::tests::test_deserialize_cargo_test ... ok
+test config::types::tests::test_deserialize_git_push ... ok
+test config::types::tests::test_deserialize_git_log ... ok
+test config::types::tests::test_multiple_variants ... ok
+test config::types::tests::test_deserialize_git_commit ... ok
+test config::types::tests::test_variant_with_file_detection ... ok
+test config::types::tests::test_variant_with_output_pattern ... ok
+test config::types::tests::test_wrong_type_for_skip_fails ... ok
+test config::types::tests::test_wrong_type_for_tail_fails ... ok
+test baseline::tests::compute_delegates_to_compute_output ... ok
+test config::types::tests::test_deserialize_git_status ... ok
+test baseline::tests::compute_output_head ... ok
+test config::variant::tests::invalid_output_pattern_regex_skips_variant ... ok
+test config::variant::tests::lookup_filter_by_name_works ... ok
+test config::variant::tests::empty_variants_returns_parent_unchanged ... ok
+test config::variant::tests::multiple_deferred_variants_first_match_wins ... ok
+test config::variant::tests::output_variant_filter_not_found_skips ... ok
+test config::variant::tests::toml_ordering_variant_after_top_level_fields ... ok
+test config::variant::tests::file_variant_with_output_pattern_defers_on_no_file_match ... ok
+test history::config_tests::current_project_returns_non_empty_string ... ok
+test config::variant::tests::empty_variant_detect_is_skipped ... ok
+test config::variant::tests::output_pattern_no_match_returns_none ... ok
+test config::variant::tests::output_pattern_matches ... ok
+test baseline::tests::compute_output_tail ... ok
+test baseline::tests::compute_output_grep ... ok
+test history::config_tests::history_config_default_retention ... ok
+test config::variant::tests::no_file_match_falls_through_to_output_variants ... ok
+test config::variant::tests::variant_resolution_debug_impl ... ok
+test config::variant::tests::file_detection_resolves_variant ... ok
+test history::config_tests::sync_config_default ... ok
+test config::variant::tests::missing_variant_filter_skips ... ok
+test history::config_tests::history_config_load_missing_file_falls_back_to_default ... ok
+test history::config_tests::sync_config_falls_back_to_default ... ok
+test fs::tests::write_config_file_creates_file_with_content ... ok
+test history::config_tests::history_config_load_from_global_config_file ... ok
+test config::variant::tests::first_file_match_wins ... ok
+test fs::tests::write_config_file_sets_restrictive_permissions ... ok
+test history::config_tests::try_record_does_not_panic_on_unwritable_db_path ... ok
+test config::cache::tests::stale_on_dir_mtime_change ... ok
+test history::config_tests::try_record_does_not_panic_on_unwritable_db_path_with_debug ... ok
+test history::config_tests::mixed_history_and_sync_config ... ok
+test history::config_tests::history_config_load_falls_back_to_global_when_no_project_config ... ok
+test history::config_tests::history_config_load_malformed_global_config_falls_back_to_default ... ok
+test history::config_tests::sync_config_from_global ... ok
+test history::config_tests::history_config_load_malformed_toml_falls_back_to_default ... ok
+test history::config_tests::history_config_load_from_project_file ... ok
+test history::config_tests::sync_config_from_toml ... ok
+test history::config_tests::sync_config_zero_disables_auto_sync ... ok
+test history::config_tests::history_config_load_project_overrides_global ... ok
+test history::config_tests::sync_config_project_overrides_global ... ok
+test history::tests::project_root_for_falls_back_to_dir ... ok
+test history::tests::project_root_for_finds_git_dir ... ok
+test history::tests::init_history_table_creates_table_and_indexes ... ok
+test history::tests::get_history_entry_not_found ... ok
+test history::tests::init_history_table_idempotent ... ok
+test history::tests::list_history_empty_db ... ok
+test history::tests::project_root_for_finds_tokf_dir ... ok
+test history::tests::init_history_table_migrates_schema_adds_project_column ... ok
+test history::tests::get_history_entry_found ... ok
+test config::cache::tests::stale_cache_triggers_rebuild ... ok
+test history::config_tests::try_record_records_entry_to_db ... ok
+test history::tests::list_history_filters_by_project ... ok
+test history::tests::record_history_all_fields_persisted ... ok
+test history::tests::record_history_inserts_entry ... ok
+test history::tests::list_history_returns_entries_desc ... ok
+test history::tests::record_history_timestamp_iso8601 ... ok
+test history::tests::list_history_respects_limit ... ok
+test hook::codex::tests::embedded_content_is_not_empty ... ok
+test history::tests::record_history_returns_inserted_id ... ok
+test hook::codex::tests::install_to_creates_skill_file ... ok
+test hook::codex::tests::skill_file_has_description ... ok
+test hook::codex::tests::skill_file_has_fail_safe_rule ... ok
+test hook::codex::tests::install_to_is_idempotent ... ok
+test hook::codex::tests::skill_file_has_no_double_prefix_rule ... ok
+test hook::codex::tests::skill_file_mentions_tokf_run ... ok
+test hook::opencode::tests::escape_for_js_string_handles_special_chars ... ok
+test hook::codex::tests::skill_file_has_frontmatter ... ok
+test history::tests_search::search_history_empty_db ... ok
+test hook::opencode::tests::plugin_template_checks_stdout_null ... ok
+test hook::opencode::tests::plugin_template_has_timeout ... ok
+test hook::opencode::tests::plugin_template_logs_errors ... ok
+test hook::opencode::tests::plugin_template_uses_object_export ... ok
+test hook::opencode::tests::install_to_creates_plugin_file ... ok
+test history::tests_clear::clear_history_scopes_to_project ... ok
+test history::tests_clear::clear_history_removes_all_entries ... ok
+test history::tests_search::search_history_by_command ... ok
+test hook::tests::handle_bash_no_command_passes_through ... ok
+test history::config_tests::try_record_returns_id_on_success ... ok
+test hook::tests::handle_empty_input_passes_through ... ok
+test history::tests::record_history_enforces_retention_per_project ... ok
+test history::tests_search::search_history_by_filtered_output ... ok
+test hook::tests::handle_invalid_json_passes_through ... ok
+test hook::opencode::tests::install_to_is_idempotent ... ok
+test hook::opencode::tests::write_plugin_embeds_tokf_path ... ok
+test history::tests_search::search_history_by_raw_output ... ok
+test hook::tests::handle_non_bash_tool_passes_through ... ok
+test hook::tests::handle_json_env_prefixed_tokf_command_not_rewritten ... ok
+test hook::opencode::tests::write_plugin_no_placeholder_remains ... ok
+test hook::opencode::tests::write_plugin_rewrites_bash_tool_name ... ok
+test hook::tests::handle_tokf_command_not_rewritten ... ok
+test history::tests_search::search_history_filters_by_project ... ok
+test history::tests_clear::clear_history_resets_autoincrement ... ok
+test hook::tests::patch_fails_on_corrupt_settings_json ... ok
+test hook::tests::patch_creates_new_settings_file ... ok
+test hook::tests::patch_idempotent_install ... ok
+test hook::tests::install_to_creates_files ... ok
+test hook::tests::install_to_idempotent ... ok
+test hook::tests::patch_preserves_existing_settings ... ok
+test hook::types::tests::deserialize_bash_no_command ... ok
+test hook::types::tests::deserialize_bash_tool_input ... ok
+test hook::types::tests::deserialize_extra_fields_ignored ... ok
+test hook::types::tests::deserialize_non_bash_tool ... ok
+test hook::types::tests::response_round_trip ... ok
+test hook::types::tests::serialize_hook_response ... ok
+test hook::tests::patch_settings_quotes_path_with_spaces ... ok
+test history::tests_search::search_history_respects_limit ... ok
+test hook::tests::patch_preserves_non_tokf_hooks ... ok
+test hook::tests::write_hook_shim_quotes_path ... ok
+test hook::tests::write_hook_shim_creates_executable_script ... ok
+test remote::client::tests::deserialize_machine_info_with_last_sync ... ok
+test remote::client::tests::deserialize_machine_info_with_null_last_sync ... ok
+test remote::client::tests::deserialize_registered_machine ... ok
+test remote::filter_client::tests::deserialize_downloaded_filter ... ok
+test remote::filter_client::tests::deserialize_downloaded_filter_no_tests ... ok
+test remote::filter_client::tests::deserialize_filter_summary ... ok
+test remote::filter_client::tests::deserialize_filter_summary_with_created_at ... ok
+test remote::gain_client::tests::deserialize_gain_response ... ok
+test remote::gain_client::tests::deserialize_gain_response_empty ... ok
+test remote::gain_client::tests::deserialize_global_gain_response ... ok
+test remote::gain_client::tests::filter_gain_entry_null_fields ... ok
+test remote::gain_client::tests::gain_response_roundtrip_json ... ok
+test history::config_tests::try_was_recently_run_returns_false_for_different_command ... ok
+test remote::http::tests::client_base_url_trims_trailing_slash ... ok
+test remote::http::tests::client_base_url_no_trailing_slash ... ok
+test remote::http::tests::client_new_with_token ... ok
+test remote::http::tests::client_unauthenticated_has_no_token ... ok
+test remote::http::tests::resolve_timeout_default ... ok
+test remote::http::tests::url_helper_formats_correctly ... ok
+test remote::publish_client::tests::deserialize_duplicate_response ... ok
+test remote::publish_client::tests::deserialize_publish_response ... ok
+test remote::publish_client::tests::deserialize_update_tests_response ... ok
+test remote::retry::tests::backoff_uses_max_of_computed_and_server_value ... ok
+test remote::retry::tests::does_not_retry_non_429_errors ... ok
+test remote::retry::tests::parses_retry_after_from_structured_error ... ok
+test remote::http::tests::url_helper_panics_on_missing_slash_in_debug - should panic ... ok
+test remote::retry::tests::returns_none_for_non_rate_limit_error ... ok
+test remote::retry::tests::returns_success_on_first_try ... ok
+test history::config_tests::try_was_recently_run_returns_false_on_empty_history ... ok
+test remote::sync_client::tests::deserialize_sync_response ... ok
+test remote::sync_client::tests::serialize_sync_request ... ok
+test remote::tests::is_debug_returns_false_by_default ... ok
+test remote::tests::rate_limited_error_display ... ok
+test remote::tests::remote_error_display_client_error_bad_request ... ok
+test remote::tests::remote_error_display_client_error_no_debug ... ok
+test remote::tests::remote_error_display_rate_limited ... ok
+test remote::tests::remote_error_display_server_error_no_debug ... ok
+test remote::tests::remote_error_display_unauthorized ... ok
+test remote::tests::remote_error_is_transient ... ok
+test remote::tests::remote_error_source_chain ... ok
+test remote::tests::request_error_is_not_transient ... ok
+test rewrite::compound::tests::env_prefix_backslash_escaped_space ... ok
+test rewrite::compound::tests::env_prefix_backslash_in_double_quoted_value ... ok
+test history::config_tests::try_was_recently_run_returns_true_for_repeated_command ... ok
+test paths::tests::all_three_dirs_agree_when_tokf_home_set ... ok
+test paths::tests::user_cache_dir_uses_tokf_home_when_set ... ok
+test paths::tests::user_data_dir_uses_tokf_home_when_set ... ok
+test paths::tests::user_dir_fallback_matches_dirs_crate ... ok
+test paths::tests::user_dir_ignores_empty_tokf_home ... ok
+test paths::tests::user_dir_uses_tokf_home_when_set ... ok
+test rewrite::compound::tests::env_prefix_dollar_var_in_value ... ok
+test rewrite::compound::tests::env_prefix_double_quoted_value ... ok
+test rewrite::compound::tests::env_prefix_empty_value ... ok
+test rewrite::compound::tests::env_prefix_long_path_value ... ok
+test rewrite::compound::tests::env_prefix_none_for_plain_command ... ok
+test rewrite::compound::tests::env_prefix_none_for_command_with_flags ... ok
+test rewrite::compound::tests::env_prefix_multiple_vars ... ok
+test rewrite::compound::tests::env_prefix_equals_in_value ... ok
+test rewrite::compound::tests::has_bare_pipe_bash_stderr_pipe ... ok
+test rewrite::compound::tests::has_bare_pipe_empty_string ... ok
+test rewrite::compound::tests::has_bare_pipe_escaped_quote_does_not_end_double_quote ... ok
+test rewrite::compound::tests::has_bare_pipe_logical_or_only ... ok
+test rewrite::compound::tests::has_bare_pipe_mixed_or_and_pipe ... ok
+test rewrite::compound::tests::env_prefix_numeric_key_not_matched ... ok
+test rewrite::compound::tests::has_bare_pipe_multi_pipe_chain ... ok
+test rewrite::compound::tests::has_bare_pipe_no_pipe ... ok
+test rewrite::compound::tests::has_bare_pipe_only_pipe ... ok
+test rewrite::compound::tests::has_bare_pipe_pipe_after_closing_quote_is_bare ... ok
+test rewrite::compound::tests::has_bare_pipe_pipe_in_double_quotes_ignored ... ok
+test rewrite::compound::tests::has_bare_pipe_pipe_in_single_quotes_ignored ... ok
+test rewrite::compound::tests::has_bare_pipe_single_pipe ... ok
+test rewrite::compound::tests::no_strip_empty_suffix ... ok
+test rewrite::compound::tests::no_strip_grep_count ... ok
+test rewrite::compound::tests::no_strip_grep_files ... ok
+test rewrite::compound::tests::no_strip_grep_no_pattern ... ok
+test rewrite::compound::tests::no_strip_grep_uppercase_l ... ok
+test rewrite::compound::tests::no_strip_head_bytes ... ok
+test rewrite::compound::tests::no_strip_multi_pipe ... ok
+test rewrite::compound::tests::no_strip_multi_pipe_with_tail ... ok
+test rewrite::compound::tests::no_strip_sort ... ok
+test rewrite::compound::tests::no_strip_tail_bytes ... ok
+test rewrite::compound::tests::no_strip_tail_follow ... ok
+test rewrite::compound::tests::no_strip_wc ... ok
+test rewrite::compound::tests::env_prefix_numeric_value ... ok
+test rewrite::compound::tests::env_prefix_real_world_rust ... ok
+test rewrite::compound::tests::env_prefix_single_quote_idiom ... ok
+test rewrite::compound::tests::env_prefix_single_quoted_value ... ok
+test rewrite::compound::tests::env_prefix_single_var ... ok
+test rewrite::compound::tests::env_prefix_underscore_key ... ok
+test rewrite::compound::tests::strip_grep_case_insensitive ... ok
+test rewrite::compound::tests::strip_grep_combined_flags ... ok
+test rewrite::compound::tests::strip_grep_extended ... ok
+test rewrite::compound::tests::strip_grep_invert ... ok
+test rewrite::compound::tests::strip_grep_pattern ... ok
+test rewrite::compound::tests::strip_head_bare ... ok
+test rewrite::compound::tests::strip_head_lines_long_with_space ... ok
+test rewrite::compound::tests::strip_head_n ... ok
+test rewrite::compound::tests::strip_quoted_pipe_in_base ... ok
+test rewrite::compound::tests::strip_tail_bare ... ok
+test rewrite::compound::tests::strip_tail_lines_long ... ok
+test rewrite::compound::tests::strip_tail_n ... ok
+test rewrite::compound::tests::strip_tail_numeric ... ok
+test rewrite::compound::tests::single_segment_when_no_operator ... ok
+test rewrite::compound::tests::splits_and_then_semicolon ... ok
+test rewrite::compound::tests::splits_newline ... ok
+test rewrite::compound::tests::splits_or_operator ... ok
+test rewrite::compound_tests::env_prefix_backslash_escaped_space ... ok
+test rewrite::compound_tests::env_prefix_backslash_in_double_quoted_value ... ok
+test rewrite::compound_tests::env_prefix_double_quoted_value ... ok
+test rewrite::compound_tests::env_prefix_dollar_var_in_value ... ok
+test rewrite::compound_tests::env_prefix_empty_value ... ok
+test rewrite::compound_tests::env_prefix_equals_in_value ... ok
+test rewrite::compound_tests::env_prefix_long_path_value ... ok
+test rewrite::compound_tests::env_prefix_multiple_vars ... ok
+test rewrite::compound_tests::env_prefix_none_for_command_with_flags ... ok
+test rewrite::compound_tests::env_prefix_numeric_key_not_matched ... ok
+test rewrite::compound_tests::has_bare_pipe_bash_stderr_pipe ... ok
+test rewrite::compound_tests::env_prefix_numeric_value ... ok
+test rewrite::compound_tests::env_prefix_none_for_plain_command ... ok
+test rewrite::compound_tests::has_bare_pipe_empty_string ... ok
+test rewrite::compound_tests::has_bare_pipe_escaped_quote_does_not_end_double_quote ... ok
+test rewrite::compound_tests::has_bare_pipe_logical_or_only ... ok
+test rewrite::compound_tests::has_bare_pipe_mixed_or_and_pipe ... ok
+test rewrite::compound_tests::has_bare_pipe_multi_pipe_chain ... ok
+test rewrite::compound_tests::has_bare_pipe_no_pipe ... ok
+test rewrite::compound_tests::has_bare_pipe_only_pipe ... ok
+test rewrite::compound_tests::has_bare_pipe_pipe_after_closing_quote_is_bare ... ok
+test rewrite::compound_tests::has_bare_pipe_pipe_in_double_quotes_ignored ... ok
+test rewrite::compound_tests::has_bare_pipe_pipe_in_single_quotes_ignored ... ok
+test rewrite::compound_tests::has_bare_pipe_single_pipe ... ok
+test rewrite::compound_tests::no_strip_empty_suffix ... ok
+test rewrite::compound_tests::no_strip_grep_count ... ok
+test rewrite::compound_tests::no_strip_grep_files ... ok
+test rewrite::compound_tests::no_strip_grep_no_pattern ... ok
+test rewrite::compound_tests::no_strip_grep_uppercase_l ... ok
+test rewrite::compound_tests::no_strip_head_bytes ... ok
+test rewrite::compound_tests::no_strip_multi_pipe ... ok
+test rewrite::compound_tests::no_strip_multi_pipe_with_tail ... ok
+test rewrite::compound_tests::no_strip_sort ... ok
+test rewrite::compound_tests::no_strip_tail_bytes ... ok
+test rewrite::compound_tests::no_strip_tail_follow ... ok
+test rewrite::compound_tests::no_strip_wc ... ok
+test rewrite::compound_tests::env_prefix_real_world_rust ... ok
+test rewrite::compound_tests::env_prefix_single_quote_idiom ... ok
+test rewrite::compound_tests::strip_grep_case_insensitive ... ok
+test rewrite::compound_tests::strip_grep_combined_flags ... ok
+test rewrite::compound_tests::strip_grep_extended ... ok
+test rewrite::compound_tests::strip_grep_invert ... ok
+test rewrite::compound_tests::env_prefix_single_quoted_value ... ok
+test rewrite::compound_tests::env_prefix_single_var ... ok
+test rewrite::compound_tests::strip_grep_pattern ... ok
+test rewrite::compound_tests::strip_head_bare ... ok
+test rewrite::compound_tests::strip_head_lines_long_with_space ... ok
+test rewrite::compound_tests::strip_head_n ... ok
+test rewrite::compound_tests::strip_quoted_pipe_in_base ... ok
+test rewrite::compound_tests::strip_tail_bare ... ok
+test rewrite::compound_tests::strip_tail_lines_long ... ok
+test rewrite::compound_tests::strip_tail_n ... ok
+test rewrite::compound_tests::strip_tail_numeric ... ok
+test rewrite::compound_tests::env_prefix_underscore_key ... ok
+test rewrite::rules::tests::apply_rules_empty_rules_returns_original ... ok
+test rewrite::rules::tests::apply_rules_no_match_returns_original ... ok
+test rewrite::compound_tests::single_segment_when_no_operator ... ok
+test rewrite::compound_tests::splits_and_then_semicolon ... ok
+test rewrite::compound_tests::splits_newline ... ok
+test rewrite::compound_tests::splits_or_operator ... ok
+test rewrite::rules::tests::apply_rules_first_match_wins ... ok
+test rewrite::rules::tests::apply_rules_capture_groups ... ok
+test rewrite::rules::tests::apply_rules_invalid_regex_skipped ... ok
+test rewrite::rules::tests::skip_invalid_user_pattern_does_not_crash ... ok
+test rewrite::rules::tests::interpolate_rest ... ok
+test rewrite::rules::tests::interpolate_rest_empty ... ok
+test rewrite::rules::tests::interpolate_full_match ... ok
+test rewrite::rules::tests::skip_heredocs ... ok
+test rewrite::rules::tests::skip_tokf_commands ... ok
+test rewrite::rules::tests::no_skip_normal_commands ... ok
+test rewrite::rules::tests::skip_user_patterns ... ok
+test rewrite::tests::build_rules_skips_invalid_filters ... ok
+test rewrite::tests::build_rules_dedup_across_dirs ... ok
+test rewrite::tests::rewrite_builtin_skip_tokf ... ok
+test rewrite::tests::build_rules_multiple_command_patterns ... ok
+test rewrite::tests::build_rules_from_empty_dir ... ok
+test rewrite::tests::build_rules_from_nested_dirs ... ok
+test rewrite::tests::build_rules_from_filter_files ... ok
+test hook::tests::handle_json_rewrites_env_var_with_strippable_pipe ... ok
+test rewrite::tests::rewrite_user_rule_takes_priority ... ok
+test rewrite::tests::rewrite_basename_and_transparent_flags_combined ... ok
+test rewrite::tests::build_rules_wildcard_pattern ... ok
+test rewrite::tests::rewrite_user_skip_prevents_rewrite ... ok
+test hook::tests::handle_json_rewrites_single_env_var_prefix ... ok
+test hook::tests::handle_json_with_config_rewrites_matching_command ... ok
+test hook::tests::handle_json_rewrites_multiple_env_vars_prefix ... ok
+test rewrite::tests::rewrite_basename_full_path ... ok
+test rewrite::tests::rewrite_transparent_global_flag ... ok
+test rewrite::tests::rewrite_with_filter_match_with_args ... ok
+test rewrite::tests::rewrite_with_filter_match ... ok
+test rewrite::tests_compound::rewrite_multi_pipe_chain_not_rewritten ... ok
+test rewrite::tests_compound::rewrite_pipe_grep_quoted_pattern_escaped ... ok
+test rewrite::tests_compound::rewrite_compound_both_segments_match ... ok
+test rewrite::tests_compound::rewrite_compound_then_pipe_stripped ... ok
+test rewrite::tests_compound::rewrite_skip_pattern_wins_over_pipe_guard ... ok
+test rewrite::tests_compound::rewrite_pipe_grep_stripped_when_filter_matches ... ok
+test rewrite::tests_compound::rewrite_pipe_head_stripped_when_filter_matches ... ok
+test rewrite::tests_compound::rewrite_user_rule_wraps_piped_command ... ok
+test rewrite::tests_compound::rewrite_pipe_wc_passes_through ... ok
+test rewrite::tests_env::rewrite_env_prefixed_tokf_command_not_double_wrapped ... ok
+test rewrite::tests_compound::rewrite_pipe_tail_follow_passes_through ... ok
+test rewrite::tests_compound::rewrite_quoted_pipe_is_not_a_bare_pipe ... ok
+test hook::tests::handle_bash_with_no_matching_filter ... ok
+test rewrite::tests_env::rewrite_env_var_with_non_strippable_pipe_passthrough ... ok
+test rewrite::tests_env::rewrite_env_var_with_full_path_command ... ok
+test rewrite::tests_env::rewrite_compound_both_segments_have_env_vars ... ok
+test rewrite::tests_env::rewrite_env_var_with_transparent_global_flags ... ok
+test rewrite::tests_env::rewrite_env_var_with_strippable_pipe ... ok
+test hook::tests::handle_json_with_config_no_match_returns_false ... ok
+test rewrite::tests_env::rewrite_env_var_in_compound_command ... ok
+test rewrite::tests_env::rewrite_multiple_env_vars_prefix ... ok
+test rewrite::tests_env::rewrite_user_skip_pattern_matches_env_stripped_command ... ok
+test rewrite::types::tests::deserialize_empty_config ... ok
+test rewrite::types::tests::deserialize_empty_skip_patterns ... ok
+test rewrite::types::tests::deserialize_full_config ... ok
+test rewrite::types::tests::deserialize_no_pipe_section ... ok
+test rewrite::types::tests::deserialize_pipe_both_fields ... ok
+test rewrite::types::tests::deserialize_pipe_prefer_less_true ... ok
+test rewrite::types::tests::deserialize_pipe_section_defaults ... ok
+test rewrite::types::tests::deserialize_pipe_strip_false ... ok
+test rewrite::types::tests::deserialize_pipe_with_other_sections ... ok
+test rewrite::types::tests::deserialize_rules_only ... ok
+test rewrite::types::tests::deserialize_skip_only ... ok
+test rewrite::user_config::tests::load_config_first_found_wins ... ok
+test rewrite::tests_env::rewrite_single_env_var_prefix ... ok
+test rewrite::user_config::tests::load_config_invalid_toml_returns_none ... ok
+test rewrite::user_config::tests::load_config_nonexistent_returns_none ... ok
+test rewrite::tests::rewrite_no_match_passthrough ... ok
+test rewrite::tests_compound::rewrite_compound_partial_match ... ok
+test rewrite::tests_pipe::rewrite_prefer_less_injects_flag ... ok
+test rewrite::tests_pipe::rewrite_pipe_strip_disabled_non_piped_still_rewritten ... ok
+test rewrite::tests_pipe::rewrite_compound_prefer_less_per_segment ... ok
+test runner::tests::test_combined_interleaving ... ok
+test runner::tests::test_combined_both_streams ... ok
+test runner::tests::test_execute_empty_command ... ok
+test rewrite::tests_pipe::rewrite_pipe_strip_disabled_preserves_pipe ... ok
+test rewrite::tests_compound::rewrite_logical_or_still_rewritten ... ok
+test runner::tests::test_combined_stderr_only ... ok
+test runner::tests::test_combined_both_empty ... ok
+test rewrite::tests_pipe::rewrite_prefer_less_without_pipe_no_effect ... ok
+test rewrite::tests_pipe::rewrite_strip_false_overrides_prefer_less ... ok
+test runner::tests::test_execute_echo ... ok
+test runner::tests::test_combined_stdout_only ... ok
+test runner::tests::test_execute_embedded_and_extra_args ... ok
+test runner::tests::test_execute_args_with_special_characters ... ok
+test runner::tests::test_execute_whitespace_only_command ... ok
+test runner::tests::test_execute_shell_args_empty ... ok
+test runner::tests::test_execute_shell_args_escaped ... ok
+test skill::tests::embedded_content_matches_source_files ... ok
+test runner::tests::test_execute_shell_args_interpolation ... ok
+test runner::tests::test_execute_with_args ... ok
+test runner::tests::test_execute_failure ... ok
+test runner::tests::test_execute_shell_args_with_semicolon ... ok
+test skill::tests::install_to_creates_all_files ... ok
+test skill::tests::install_to_is_idempotent ... ok
+test sync_core::tests::to_sync_event_handles_none_fields ... ok
+test skill::tests::install_to_references_dir_is_created ... ok
+test sync_core::tests::to_sync_event_maps_fields ... ok
+test rewrite::tests_compound::rewrite_pipe_no_filter_preserves_pipe ... ok
+test sync_core::tests::utc_now_iso8601_month_and_day_in_range ... ok
+test tracking::tests::build_event_passthrough_filter_name_none ... ok
+test tracking::tests::build_event_token_estimation ... ok
+test skill::tests::install_to_skill_md_has_frontmatter ... ok
+test runner::tests::test_execute_shell_basic ... ok
+test runner::tests::test_execute_stderr ... ok
+test runner::tests::test_execute_signal_exit_code ... ok
+test runner::tests::test_execute_specific_exit_code ... ok
+test sync_core::tests::utc_now_iso8601_format ... ok
+test runner::tests::test_execute_nonexistent_command ... ok
+test sync_core::tests::sync_lock_acquire_and_release ... ok
+test sync_core::tests::sync_lock_prevents_double_acquire ... ok
+test sync_core::tests::sync_lock_reclaims_stale_lock ... ok
+test tracking::tests::db_path_env_override ... ok
+test tracking::tests::db_path_tokf_db_path_wins_over_tokf_home ... ok
+test tracking::tests::db_path_tokf_home_override ... ok
+test tracking::tests::open_db_idempotent ... ok
+test tracking::tests::filter_hash_none_stored_as_null ... ok
+test tracking::tests::open_db_creates_dir_and_schema ... ok
+test rewrite::tests_env::rewrite_env_var_no_filter_match_passthrough ... ok
+test tracking::tests::filter_hash_stored_and_retrieved ... ok
+test tracking::tests::get_events_since_includes_null_filter_names ... ok
+test tracking::tests::open_db_readonly_file_reports_path ... ok
+test tracking::tests::open_db_migrates_pipe_override_column ... ok
+test tracking::tests::query_by_filter_null_shown_as_passthrough ... ok
+test tracking::tests::query_by_filter_groups_correctly ... ok
+test tracking::tests::get_events_since_filters_correctly ... ok
+test tracking::tests::query_summary_empty_db ... ok
+test tracking::tests::query_by_filter_mixed_null_and_named ... ok
+test rewrite::tests_compound::rewrite_compound_no_match_passthrough ... ok
+test tracking::tests::query_daily_pipe_override_count ... ok
+test tracking::tests::query_daily_groups_by_date ... ok
+test tracking::tests::query_by_filter_ordered_by_savings_desc ... ok
+test tracking::tests::query_summary_accumulates_multiple_events ... ok
+test tracking::tests::query_by_filter_pipe_override_count ... ok
+test tracking::tests::query_summary_pipe_override_count ... ok
+test tracking::tests::query_summary_with_events ... ok
+test tracking::tests::record_event_exit_code_and_filter_time_persisted ... ok
+test tracking::tests::query_summary_zero_input_no_divide_by_zero ... ok
+test tracking::tests::record_event_inserts_row ... ok
+test tracking::tests::record_event_pipe_override_false_persisted ... ok
+test tracking::tests::record_event_all_fields_persisted ... ok
+test tracking::tests_backfill::backfill_reports_not_found_names ... ok
+test tracking::tests::record_event_pipe_override_persisted ... ok
+test tracking::tests::record_event_timestamp_iso8601 ... ok
+test tracking::tests::sync_state_roundtrip ... ok
+test tracking::tests_backfill::backfill_skips_already_hashed_events ... ok
+test tracking::tests_sync_state::pending_count_zero_when_empty ... ok
+test tracking::tests_backfill::filter_hash_migration ... ok
+test tracking::tests_sync_state::last_synced_at_roundtrip ... ok
+test tracking::tests_backfill::backfill_updates_known_filters ... ok
+test tracking::tests_sync_state::pending_count_with_unsynced_events ... ok
+test tracking::tests::get_events_since_respects_limit_500 ... ok
+test remote::retry::tests::succeeds_after_retry ... ok
+test remote::retry::tests::retries_on_429_up_to_max ... ok
+
+test result: ok. 557 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.08s
+
+     Running unittests src/main.rs (target/debug/deps/tokf-58d002ce779a61c8)
+
+running 46 tests
+test gain::tests::cmd_gain_remote_daily_returns_error ... ok
+test gain::tests::cmd_gain_remote_summary_returns_zero ... ok
+test gain::tests::cmd_gain_remote_summary_zero_tokens ... ok
+test gain::tests::cmd_gain_remote_by_filter_returns_zero ... ok
+test gain::tests::format_num_basic ... ok
+test install_cmd::tests::attribution_header_format ... ok
+test install_cmd::tests::command_pattern_to_install_path_single_word ... ok
+test install_cmd::tests::command_pattern_to_install_path_three_words_uses_first_two ... ok
+test info_cmd::tests::check_write_access_read_only_for_readonly_file ... ok
+test install_cmd::tests::command_pattern_to_install_path_two_words ... ok
+test info_cmd::tests::is_writable_true_for_writable_dir ... ok
+test info_cmd::tests::check_write_access_will_create_for_nonexistent_in_writable_dir ... ok
+test info_cmd::tests::check_write_access_parent_read_only_when_dir_not_writable ... ok
+test info_cmd::tests::is_writable_false_for_readonly_dir ... ok
+test info_cmd::tests::check_write_access_writable_for_existing_writable_file ... ok
+test info_cmd::tests::is_writable_false_for_readonly_file ... ok
+test install_cmd::tests::parse_filter_toml_errors_on_invalid_toml ... ok
+test info_cmd::tests::is_writable_true_for_writable_file ... ok
+test install_cmd::tests::parse_filter_toml_extracts_command_pattern ... ok
+test install_cmd::tests::parse_filter_toml_no_lua_for_plain_filter ... ok
+test install_cmd::tests::parse_filter_toml_detects_lua ... ok
+test install_cmd::tests::parse_filter_toml_strips_attribution_comments ... ok
+test install_cmd::tests::safe_test_filenames_accepted ... ok
+test install_cmd::tests::unsafe_command_pattern_path_rejected ... ok
+test install_cmd::tests::unsafe_test_filenames_rejected ... ok
+test install_cmd::tests::conflict_detected_without_force ... ok
+test search_cmd::tests::format_number_small ... ok
+test search_cmd::tests::format_number_thousands ... ok
+test verify_cmd::tests::verify_search_dirs_global_only_has_config ... ok
+test verify_cmd::tests::verify_search_dirs_project_only_has_tokf ... ok
+test verify_cmd::tests::verify_search_dirs_stdlib_only_has_filters ... ok
+test verify_cmd::tests::verify_search_dirs_none_returns_all ... ok
+test publish_cmd::tests::collect_test_files_returns_empty_when_no_test_dir ... ok
+test publish_cmd::tests::inline_lua_script_noop_without_file ... ok
+test publish_cmd::tests::inline_lua_script_hash_stable_when_no_file ... ok
+test publish_cmd::tests::inline_lua_script_empty_file_produces_empty_source ... ok
+test publish_cmd::tests::inline_lua_script_embeds_file_content ... ok
+test publish_cmd::tests::inline_lua_script_rejects_path_traversal ... ok
+test publish_cmd::tests::inline_lua_script_allows_subdirectory ... ok
+test publish_cmd::tests::collect_test_files_from_adjacent_dir ... ok
+test eject_cmd::tests::eject_nonexistent_filter_errors ... ok
+test publish_cmd::tests::resolve_fails_for_unknown_filter ... ok
+test eject_cmd::tests::eject_builtin_filter_writes_toml ... ok
+test eject_cmd::tests::eject_builtin_copies_test_dir ... ok
+test eject_cmd::tests::eject_strips_toml_extension ... ok
+test eject_cmd::tests::eject_refuses_if_target_exists ... ok
+
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/auth_client.rs (target/debug/deps/auth_client-93cdc506ff8023fd)
+
+running 14 tests
+test poll_token_client_error_denied ... ok
+test initiate_device_flow_server_error ... ok
+test poll_token_client_error_expired ... ok
+test poll_token_unknown_error_string ... ok
+test poll_token_success ... ok
+test poll_token_4xx_raw_text_sanitized ... ok
+test poll_token_pending ... ok
+test initiate_device_flow_with_complete_uri ... ok
+test initiate_device_flow_malformed_json ... ok
+test initiate_device_flow_success ... ok
+test poll_token_slow_down ... ok
+test poll_token_server_error_5xx ... ok
+test poll_token_unparseable_200 ... ok
+test initiate_device_flow_unreachable ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/auth_credentials.rs (target/debug/deps/auth_credentials-16d9eb5ffae9b9ce)
+
+running 5 tests
+test loaded_auth_has_named_fields ... ok
+test loaded_auth_expired_detection ... ok
+test config_path_is_well_formed ... ok
+test stored_auth_toml_format ... ok
+test remove_is_idempotent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/cli_auth.rs (target/debug/deps/cli_auth-e18eed789f677748)
+
+running 4 tests
+test auth_status_not_logged_in ... ok
+test auth_help_shows_subcommands ... ok
+test auth_logout_when_not_logged_in ... ok
+test auth_login_unreachable_server ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+     Running tests/cli_baseline.rs (target/debug/deps/cli_baseline-c32c47520ade8a3b)
+
+running 13 tests
+test no_baseline_pipe_records_full_byte_count ... ok
+test baseline_pipe_rejects_unknown_command ... ok
+test prefer_less_without_baseline_pipe_is_noop ... ok
+test baseline_pipe_empty_output ... ok
+test baseline_pipe_does_not_crash_on_pipe_failure ... ok
+test baseline_pipe_grep_records_matching_lines ... ok
+test passthrough_output_bytes_is_full_output ... ok
+test baseline_pipe_records_piped_byte_count ... ok
+test baseline_pipe_head_records_first_lines ... ok
+test prefer_less_passthrough_verbose_warns ... ok
+test prefer_less_uses_filtered_when_smaller ... ok
+test prefer_less_fallback_on_disallowed_pipe ... ok
+test prefer_less_uses_piped_when_smaller ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/cli_cache.rs (target/debug/deps/cli_cache-6cd1832ad91b7a44)
+
+running 6 tests
+test cache_clear_exits_zero_when_no_cache ... ok
+test cache_info_shows_path ... ok
+test no_cache_flag_skips_writing ... ok
+test cache_clear_removes_file ... ok
+test cache_populated_after_run ... ok
+test second_run_hits_cache ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/cli_history.rs (target/debug/deps/cli_history-d2223c38bfcdb5b7)
+
+running 7 tests
+test history_show_raw_not_found_exits_one ... ok
+test history_show_not_found_exits_one ... ok
+test hint_absent_without_show_history_hint ... ok
+test hint_appears_with_show_history_hint_filter ... ok
+test hint_contains_valid_history_id ... ok
+test history_show_default_includes_metadata ... ok
+test history_show_raw_prints_only_raw_output ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/cli_hook.rs (target/debug/deps/cli_hook-f2f3aa153dc7e677)
+
+running 30 tests
+test hook_handle_non_bash_tool_silent ... ok
+test hook_handle_no_command_field_silent ... ok
+test hook_handle_invalid_json_silent ... ok
+test hook_handle_always_exits_zero ... ok
+test hook_handle_fixture_read ... ok
+test hook_handle_empty_stdin_silent ... ok
+test hook_handle_preserves_pipe_to_wc ... ok
+test hook_handle_tokf_command_silent ... ok
+test hook_install_codex_creates_skill_file ... ok
+test hook_handle_multiple_pattern_first_variant ... ok
+test hook_install_codex_has_frontmatter ... ok
+test hook_handle_multiple_pattern_second_variant ... ok
+test hook_install_codex_shows_info_on_stderr ... ok
+test hook_install_creates_files ... ok
+test hook_install_opencode_creates_plugin_file ... ok
+test hook_install_codex_is_idempotent ... ok
+test hook_handle_stdlib_npm_test_rewrites ... ok
+test hook_handle_stdlib_yarn_test_rewrites ... ok
+test hook_handle_rewrites_bash_git_status ... ok
+test hook_install_opencode_embeds_tokf_path ... ok
+test hook_install_preserves_existing_settings ... ok
+test hook_install_shows_info_on_stderr ... ok
+test hook_install_idempotent ... ok
+test hook_install_opencode_is_idempotent ... ok
+test hook_handle_rewrites_bash_with_args ... ok
+test hook_handle_fixture_bash ... ok
+test hook_handle_preserves_pipe_no_filter ... ok
+test hook_handle_multiple_pattern_non_variant_silent ... ok
+test hook_handle_strips_pipe_to_grep ... ok
+test hook_handle_unmatched_command_silent ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/cli_info.rs (target/debug/deps/cli_info-8a3f760384596bea)
+
+running 12 tests
+test info_shows_filter_counts ... ok
+test info_shows_version ... ok
+test info_tokf_db_path_env_override ... ok
+test info_shows_search_directories ... ok
+test info_json_includes_home_override ... ok
+test info_json_includes_access_fields ... ok
+test info_shows_tracking_db ... ok
+test info_json_is_valid ... ok
+test info_tokf_home_shown_in_output ... ok
+test info_human_shows_access_status ... ok
+test info_shows_cache_path ... ok
+test info_tokf_home_redirects_user_filter_dir ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/cli_integration.rs (target/debug/deps/cli_integration-45e3ab89b2f277ec)
+
+running 50 tests
+test check_valid_filter ... ok
+test check_nonexistent_file ... ok
+test check_invalid_toml ... ok
+test ls_exits_zero ... ok
+test ls_verbose_shows_builtin_for_embedded_filter ... ok
+test ls_nested_filter_shows_relative_path ... ok
+test ls_deduplication_first_match_wins ... ok
+test ls_stdlib_contains_all_expected_filters ... ok
+test ls_skips_invalid_toml_silently ... ok
+test ls_verbose_shows_all_patterns_for_multiple ... ok
+test ls_verbose_shows_source ... ok
+test ls_with_repo_local_filters ... ok
+test mask_exit_code_no_error_line_on_success ... ok
+test mask_exit_code_signal_exit_code ... ok
+test run_no_filter_passes_through ... ok
+test mask_exit_code_returns_zero_on_failure ... ok
+test run_no_filter_preserves_failing_exit_code ... ok
+test run_nonexistent_command_exits_with_error ... ok
+test run_timing_shows_duration ... ok
+test run_verbose_shows_resolution_details ... ok
+test mask_exit_code_empty_output_on_failure ... ok
+test run_false_propagates_exit_code ... ok
+test show_cargo_build_nested_embedded_path ... ok
+test mask_exit_code_filtered_failure ... ok
+test show_git_push_prints_toml ... ok
+test show_hash_nonexistent_filter_exits_one ... ok
+test run_timing_with_matched_filter ... ok
+test show_nonexistent_exits_one ... ok
+test show_hash_produces_64_char_lowercase_hex ... ok
+test test_git_push_up_to_date_fixture ... ok
+test show_local_filter_prints_disk_content ... ok
+test test_git_push_failure_with_exit_code ... ok
+test no_mask_exit_code_propagates_exit_code ... ok
+test show_with_toml_extension_works ... ok
+test test_nonexistent_filter_exits_with_error ... ok
+test test_nonexistent_fixture_exits_with_error ... ok
+test test_git_push_success_fixture ... ok
+test run_embedded_filter_from_empty_dir ... ok
+test test_with_timing ... ok
+test show_hash_differs_for_different_filters ... ok
+test show_hash_is_stable_across_two_calls ... ok
+test run_exit_code_42 ... ok
+test test_exit_code_selects_different_branch ... ok
+test run_echo_hello ... ok
+test which_git_push_finds_stdlib ... ok
+test which_git_push_with_trailing_args ... ok
+test which_shows_priority_label ... ok
+test which_shows_local_label_for_local_filter ... ok
+test which_unknown_command_exits_one ... ok
+test which_skips_invalid_toml_silently ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/cli_publish.rs (target/debug/deps/cli_publish-c017c58dae914241)
+
+running 4 tests
+test publish_help_shows_flags ... ok
+test publish_builtin_filter_rejected ... ok
+test publish_nonexistent_filter_fails ... ok
+test publish_dry_run_no_network ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/cli_remote.rs (target/debug/deps/cli_remote-dac92ce77f91c437)
+
+running 3 tests
+test remote_setup_requires_login ... ok
+test remote_status_exits_zero ... ok
+test remote_help_shows_subcommands ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cli_rewrite.rs (target/debug/deps/cli_rewrite-c4eb8eaa2682b4a1)
+
+running 48 tests
+test rewrite_git_status ... ok
+test rewrite_git_status_with_args ... ok
+test rewrite_always_exits_zero ... ok
+test rewrite_git_add ... ok
+test rewrite_git_commit ... ok
+test rewrite_git_push ... ok
+test rewrite_heredoc_unchanged ... ok
+test rewrite_cargo_build ... ok
+test rewrite_cargo_clippy ... ok
+test rewrite_cargo_test_with_args ... ok
+test rewrite_cargo_test ... ok
+test rewrite_golangci_lint_run_matches ... ok
+test rewrite_git_diff ... ok
+test rewrite_golangci_lint_alone_passthrough ... ok
+test rewrite_git_log ... ok
+test rewrite_compound_non_strippable_pipe_passes_through ... ok
+test rewrite_multi_pipe_with_tail_passes_through ... ok
+test rewrite_multi_pipe_chain_passes_through ... ok
+test rewrite_multiple_patterns_second_variant ... ok
+test rewrite_multiple_patterns_first_variant ... ok
+test rewrite_pipe_head_bytes_passes_through ... ok
+test rewrite_compound_then_tail_stripped ... ok
+test rewrite_pipe_tail_follow_passes_through ... ok
+test rewrite_pipe_grep_pattern_stripped ... ok
+test rewrite_compound_pipe_no_filter_preserves_pipe ... ok
+test rewrite_pipe_wc_passes_through ... ok
+test rewrite_ls ... ok
+test rewrite_tokf_command_unchanged ... ok
+test rewrite_user_override ... ok
+test rewrite_user_skip_pattern ... ok
+test rewrite_pipe_head_stripped ... ok
+test rewrite_quoted_pipe_not_treated_as_pipe ... ok
+test rewrite_pipe_grep_stripped ... ok
+test rewrite_wildcard_pattern_matches_any_subcommand ... ok
+test rewrite_pipe_tail_stripped ... ok
+test rewrite_pipe_grep_quoted_pattern_escaped ... ok
+test rewrite_pipe_no_filter_preserves_pipe ... ok
+test rewrite_logical_or_then_pipe_stripped ... ok
+test rewrite_variant_parent_rewrites_npm_test ... ok
+test which_shows_variant_info ... ok
+test rewrite_multiple_patterns_non_variant_passthrough ... ok
+test rewrite_variant_parent_rewrites_yarn_test ... ok
+test rewrite_variant_parent_rewrites_pnpm_test ... ok
+test which_variant_file_match ... ok
+test rewrite_unknown_command_passthrough ... ok
+test rewrite_logical_or_still_rewritten_integration ... ok
+test rewrite_semicolon_compound ... ok
+test rewrite_wildcard_pattern_no_match_without_wildcard_arg ... ok
+
+test result: ok. 48 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/cli_tracking.rs (target/debug/deps/cli_tracking-6e7da8c32ee16764)
+
+running 10 tests
+tokf gain summary
+  total runs:     0
+  input tokens:   0 est.
+  output tokens:  0 est.
+  tokens saved:   0 est. (0.0%)
+test gain_empty_db_exits_zero ... ok
+test gain_json_output_is_valid_json ... ok
+test gain_summary_shows_zeros_on_fresh_db ... ok
+test gain_tokens_saved_positive_after_filtered_run ... ok
+test run_db_write_failure_does_not_block_output ... ok
+test gain_records_run_after_tokf_run ... ok
+test gain_by_filter_shows_filter_name ... ok
+test gain_daily_json_is_array ... ok
+test gain_records_passthrough_when_no_filter_match ... ok
+test gain_by_filter_json_output_is_array ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/cli_verify_scope.rs (target/debug/deps/cli_verify_scope-3161d85ea6d9f1c8)
+
+running 4 tests
+test verify_scope_project_ignores_stdlib ... ok
+test verify_scope_stdlib_finds_stdlib_filters ... ok
+test verify_scope_project_finds_project_filters ... ok
+test verify_no_scope_unchanged ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/config_resolution.rs (target/debug/deps/config_resolution-6aa7fd0f8729303a)
+
+running 17 tests
+test test_pattern_specificity_ordering ... ok
+test test_pattern_matches_prefix_basic ... ok
+test test_try_load_filter_stdlib ... ok
+test test_local_filter_shadows_embedded ... ok
+test test_embedded_filter_priority_label_is_builtin ... ok
+test test_priority_first_match_wins ... ok
+test test_discover_returns_ok_for_nonexistent_dir ... ok
+test test_embedded_filters_available_with_empty_dirs ... ok
+test test_multiple_pattern_match ... ok
+test test_specificity_ordering ... ok
+test test_wildcard_pattern_match ... ok
+test test_nested_dir_discovery ... ok
+test test_discover_git_push_from_stdlib ... ok
+test test_all_stdlib_filters_load ... ok
+test test_single_pattern_match ... ok
+test test_basename_matching ... ok
+test test_discover_nonexistent_command_returns_none ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/engine_gaps.rs (target/debug/deps/engine_gaps-8db954d043e13194)
+
+running 8 tests
+test dedup_window_drops_within_window ... ok
+test dedup_collapses_consecutive ... ok
+test replace_multiple_rules_chain ... ok
+test replace_no_match_passthrough ... ok
+test pipe_lines_and_keep_filter ... ok
+test pipe_where_alias_filters_lines ... ok
+test replace_reformats_columns ... ok
+test pytest_gap5_filter_shows_only_assertion_lines ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/filter_lua.rs (target/debug/deps/filter_lua-724304020c5d73df)
+
+running 5 tests
+test lua_filter_inline_source_replaces_output ... ok
+test lua_filter_nil_passthrough ... ok
+test lua_filter_file_script ... ok
+test lua_filter_exit_code_branching ... ok
+test lua_filter_args_accessible ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/remote_client.rs (target/debug/deps/remote_client-5b503bf80fbe664a)
+
+running 28 tests
+test get_429_returns_rate_limited_error ... ok
+test get_403_returns_client_error ... ok
+test get_404_returns_client_error ... ok
+test list_machines_401_returns_auth_hint ... ok
+test get_does_not_retry_on_404 ... ok
+test get_raw_returns_response ... ok
+test get_429_defaults_retry_after_to_60 ... ok
+test get_does_not_retry_on_401 ... ok
+test auth_header_injected_on_get ... ok
+test get_with_query_passes_params ... ok
+test error_format_mentions_tokf_debug ... ok
+test get_raw_retries_on_5xx ... ok
+test get_retries_once_on_500_then_succeeds ... ok
+test get_retries_once_then_both_fail_returns_second_error ... ok
+test get_502_retries_then_fails ... ok
+test get_with_query_retries_on_5xx ... ok
+test list_machines_empty_list ... ok
+test list_machines_with_entries ... ok
+test no_auth_header_when_no_token ... ok
+test post_does_not_retry_on_500 ... ok
+test put_multipart_returns_raw_response ... ok
+test post_multipart_does_not_retry ... ok
+test post_multipart_returns_raw_response_on_any_status ... ok
+test register_machine_401_returns_auth_hint ... ok
+test register_machine_sends_bearer_token ... ok
+test register_machine_server_error_returns_err ... ok
+test list_machines_server_error_returns_err ... ok
+test register_machine_success ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/remote_machine.rs (target/debug/deps/remote_machine-d23d2953dabf327a)
+
+running 4 tests
+test load_returns_none_when_no_file ... ok
+test machine_config_path_returns_some ... ok
+test stored_machine_toml_has_expected_keys ... ok
+test stored_machine_roundtrip ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_cmd.rs (target/debug/deps/verify_cmd-c7084ea7af9727d7)
+
+running 7 tests
+test verify_all_stdlib_suites_pass ... ignored, covered by the dedicated `tokf verify` CI step
+test verify_cargo_build_passes ... ignored, covered by the dedicated `tokf verify` CI step
+test verify_failing_expectation_exits_1 ... ok
+test verify_missing_filter_exits_2 ... ok
+test verify_rejects_empty_fixture_file ... ok
+test verify_list_shows_suites ... ok
+test verify_json_output_is_valid ... ok
+
+test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf_common-8af18be51ebda064)
+
+running 21 tests
+test multipart::tests::build_body_empty_fields ... ok
+test multipart::tests::build_body_produces_valid_multipart ... ok
+test test_case::validation_tests::validate_rejects_invalid_utf8 ... ok
+test test_case::validation_tests::validate_rejects_invalid_toml ... ok
+test test_case::validation_tests::validate_accepts_multiple_valid_expects ... ok
+test test_case::validation_tests::validate_accepts_valid_test_case ... ok
+test test_case::tests::deserialize_full_test_case ... ok
+test test_case::tests::deserialize_minimal_test_case ... ok
+test test_case::validation_tests::validate_rejects_empty_name ... ok
+test test_case::validation_tests::validate_rejects_missing_expects ... ok
+test test_case::tests::serialize_round_trip ... ok
+test hash::tests::output_is_64_lowercase_hex_chars ... ok
+test test_case::validation_tests::validate_rejects_whitespace_only_name ... ok
+test hash::tests::different_configs_produce_different_hashes ... ok
+test hash::tests::hash_is_stable_across_calls ... ok
+test hash::tests::whitespace_invariance ... ok
+test hash::tests::explicit_defaults_same_as_implicit ... ok
+test hash::tests::label_key_order_invariance ... ok
+test test_case::validation_tests::validate_rejects_invalid_regex_in_not_matches ... ok
+test test_case::validation_tests::validate_rejects_invalid_regex_in_matches ... ok
+test test_case::validation_tests::validate_rejects_second_expect_with_bad_regex ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf_filter-094d7f2958dedf04)
+
+running 258 tests
+test filter::aggregate::tests::missing_section_empty ... ok
+test filter::aggregate::tests::run_aggregates_empty_rules ... ok
+test filter::aggregate::tests::invalid_regex_empty ... ok
+test filter::aggregate::tests::aggregate_over_lines_invalid_regex ... ok
+test filter::aggregate::tests::count_only ... ok
+test filter::aggregate::tests::sum_only ... ok
+test filter::aggregate::tests::aggregate_over_lines_empty_input ... ok
+test filter::aggregate::tests::no_matches_zero ... ok
+test filter::aggregate::tests::sum_and_count_cargo_test_scenario ... ok
+test filter::aggregate::tests::multiple_matches_across_items ... ok
+test filter::aggregate::tests::aggregate_over_lines_no_matches ... ok
+test filter::aggregate::tests::non_numeric_capture_skipped_for_sum ... ok
+test filter::aggregate::tests::aggregate_over_lines_sum_and_count ... ok
+test filter::aggregate::tests::run_aggregates_merges_multiple_rules ... ok
+test filter::chunk::tests::invalid_split_regex_skipped ... ok
+test filter::chunk::tests::invalid_extract_regex_skipped ... ok
+test filter::chunk::tests::carry_forward_disabled_by_default ... ok
+test filter::chunk::tests::chunks_produce_normalized_keys ... ok
+test filter::chunk::tests::carry_forward_fills_missing_extract ... ok
+test filter::chunk::tests::group_by_with_children_single_group ... ok
+test filter::chunk::tests::exclude_header_line ... ok
+test filter::chunk::tests::group_by_without_children_as_remains_flat ... ok
+test filter::chunk::tests::normalize_keys_no_items ... ok
+test filter::chunk::tests::normalize_keys_fills_missing_fields ... ok
+test filter::chunk::tests::normalize_keys_uniform_items_unchanged ... ok
+test filter::chunk::tests::empty_input ... ok
+test filter::chunk::tests::body_extract ... ok
+test filter::cleanup::tests::collapse_empty_lines_empty_input ... ok
+test filter::cleanup::tests::collapse_empty_lines_preserves_trailing_newline ... ok
+test filter::cleanup::tests::all_four_flags_default_false ... ok
+test filter::cleanup::tests::collapse_empty_lines_reduces_consecutive_blanks ... ok
+test filter::cleanup::tests::collapse_empty_lines_single_blank_unchanged ... ok
+test filter::chunk::tests::group_by_with_children_preserves_items ... ok
+test filter::cleanup::tests::collapse_empty_lines_with_leading_blanks ... ok
+test filter::cleanup::tests::collapse_empty_lines_with_whitespace_only_lines ... ok
+test filter::cleanup::tests::line_cleanup_empty_input ... ok
+test filter::cleanup::tests::no_post_process_flags_passthrough ... ok
+test filter::cleanup::tests::no_cleanup_flags_passthrough ... ok
+test filter::cleanup::tests::strip_empty_beats_collapse_when_both_set ... ok
+test filter::chunk::tests::basic_chunk_split_and_extract ... ok
+test filter::cleanup::tests::strip_empty_lines_all_blank ... ok
+test filter::cleanup::tests::strip_empty_lines_empty_input ... ok
+test filter::cleanup::tests::strip_empty_lines_leading_and_trailing_blank ... ok
+test filter::cleanup::tests::strip_empty_lines_no_trailing_newline_unchanged ... ok
+test filter::chunk::tests::invalid_body_extract_regex_skipped ... ok
+test filter::cleanup::tests::strip_empty_lines_preserves_trailing_newline ... ok
+test filter::cleanup::tests::strip_empty_lines_removes_blank_lines ... ok
+test filter::cleanup::tests::trim_lines_preserves_interior_spaces ... ok
+test filter::cleanup::tests::trim_lines_removes_leading_trailing_spaces ... ok
+test filter::dedup::tests::dedup_consecutive_collapsed ... ok
+test filter::chunk::tests::group_by_no_matching_field ... ok
+test filter::dedup::tests::dedup_empty_input ... ok
+test filter::dedup::tests::dedup_no_consecutive ... ok
+test filter::dedup::tests::dedup_non_consecutive_kept ... ok
+test filter::dedup::tests::dedup_single_line ... ok
+test filter::dedup::tests::dedup_window_drops_within_window ... ok
+test filter::dedup::tests::dedup_window_keeps_beyond_window ... ok
+test filter::extract::tests::extract_empty_lines_no_match ... ok
+test filter::chunk::tests::carry_forward_updates_on_new_match ... ok
+test filter::extract::tests::extract_invalid_regex_passthrough ... ok
+test filter::extract::tests::extract_no_match_passthrough ... ok
+test filter::extract::tests::extract_first_match_wins ... ok
+test filter::extract::tests::extract_git_push_pattern ... ok
+test filter::extract::tests::interpolate_missing_group_becomes_empty ... ok
+test filter::extract::tests::interpolate_group_zero_is_full_match ... ok
+test filter::extract::tests::interpolate_reverse_order_prevents_partial_replace ... ok
+test filter::group::tests::collect_groups_invalid_regex ... ok
+test filter::extract::tests::extract_git_commit_pattern ... ok
+test filter::chunk::tests::multiple_aggregate_rules_per_chunk ... ok
+test filter::group::tests::render_group_counts_basic ... ok
+test filter::group::tests::render_group_counts_empty_no_message ... ok
+test filter::group::tests::render_group_counts_empty_with_message ... ok
+test filter::group::tests::collect_groups_basic ... ok
+test filter::chunk::tests::lines_before_first_match_discarded ... ok
+test filter::group::tests::render_group_counts_single ... ok
+test filter::cleanup::tests::strip_ansi_removes_multi_code_sequences ... ok
+test filter::cleanup::tests::strip_ansi_and_trim_both_applied ... ok
+test filter::cleanup::tests::strip_ansi_leaves_plain_text_unchanged ... ok
+test filter::cleanup::tests::strip_ansi_removes_osc_hyperlink ... ok
+test filter::cleanup::tests::strip_ansi_removes_color_codes ... ok
+test filter::group::tests::collect_groups_no_matches ... ok
+test filter::chunk::tests::group_by_merges_same_crate ... ok
+test filter::extract::tests::interpolate_replaces_numbered_groups ... ok
+test filter::lua::tests::load_source_file_not_found_returns_err ... ok
+test filter::lua::tests::load_source_rejects_both_file_and_source ... ok
+test filter::lua::tests::load_source_rejects_neither_file_nor_source ... ok
+test filter::lua::tests::memory_bomb_returns_error ... ignored, memory bomb test is slow — run with --ignored
+test filter::group::tests::collect_groups_empty_lines ... ok
+test filter::group::tests::collect_groups_unknown_key_uses_raw ... ok
+test filter::match_output::tests::case_sensitive ... ok
+test filter::match_output::tests::empty_rules ... ok
+test filter::match_output::tests::first_match_wins ... ok
+test filter::chunk::tests::no_matches ... ok
+test filter::match_output::tests::no_match_returns_none ... ok
+test filter::match_output::tests::no_matching_line_empty_var ... ok
+test filter::match_output::tests::plain_string_passthrough ... ok
+test filter::match_output::tests::resolves_line_containing ... ok
+test filter::match_output::tests::resolves_output_var ... ok
+test filter::lua::tests::invalid_syntax_returns_err ... ok
+test filter::lua::tests::args_global_available ... ok
+test filter::lua::tests::output_global_available ... ok
+test filter::lua::tests::returns_nil_passthrough ... ok
+test filter::lua::tests::exit_code_global_available ... ok
+test filter::lua::tests::returns_string_replaces_output ... ok
+test filter::parse::tests::run_parse_branch_line_out_of_bounds ... ok
+test filter::lua::tests::infinite_loop_returns_error ... ok
+test filter::lua::tests::io_blocked_by_sandbox ... ok
+test filter::lua::tests::os_blocked_by_sandbox ... ok
+test filter::parse::tests::run_parse_invalid_branch_regex ... ok
+test filter::replace::tests::replace_empty_input_returns_empty ... ok
+test filter::parse::tests::render_output_default_config ... ok
+test filter::replace::tests::replace_no_match_passthrough ... ok
+test filter::replace::tests::replace_invalid_regex_skipped ... ok
+test filter::replace::tests::replace_no_rules_passthrough ... ok
+test filter::replace::tests::replace_multiple_rules_chain ... ok
+test filter::parse::tests::render_output_unresolved_vars_cleaned ... ok
+test filter::section::tests::invalid_match_regex_skipped ... ok
+test filter::section::tests::invalid_regex_skipped ... ok
+test filter::section::tests::invalid_exit_regex_skipped ... ok
+test filter::replace::tests::replace_single_rule_matches ... ok
+test filter::section::tests::invalid_split_on_regex_skipped ... ok
+test filter::section::tests::empty_input ... ok
+test filter::section::tests::no_collect_as_ignored ... ok
+test filter::section::tests::section_data_count_blocks ... ok
+test filter::section::tests::enters_but_never_exits ... ok
+test filter::section::tests::section_data_count_lines ... ok
+test filter::parse::tests::run_parse_empty_lines ... ok
+test filter::section::tests::reentry_after_exit ... ok
+test filter::skip::tests::keep_all_invalid_regex_passthrough ... ok
+test filter::section::tests::never_enters ... ok
+test filter::skip::tests::keep_empty_patterns_passthrough ... ok
+test filter::section::tests::stateful_basic ... ok
+test filter::skip::tests::keep_retains_only_matching_lines ... ok
+test filter::section::tests::consecutive_split_separators_no_empty_blocks ... ok
+test filter::skip::tests::skip_all_invalid_regex_passthrough ... ok
+test filter::skip::tests::skip_empty_patterns_passthrough ... ok
+test filter::skip::tests::keep_no_matches_returns_empty ... ok
+test filter::skip::tests::keep_invalid_regex_dropped ... ok
+test filter::parse::tests::run_parse_no_branch_config ... ok
+test filter::template::tests::cargo_test_failure_template ... ok
+test filter::skip::tests::skip_invalid_regex_dropped ... ok
+test filter::skip::tests::skip_no_matches_returns_all ... ok
+test filter::parse::tests::run_parse_collects_groups ... ok
+test filter::template::tests::each_with_index_and_value ... ok
+test filter::template::tests::each_with_truncate_nested ... ok
+test filter::template::tests::cargo_test_success_template ... ok
+test filter::template::tests::empty_collection_empty_string ... ok
+test filter::parse::tests::render_output_normal ... ok
+test filter::section::tests::stateless_match_only ... ok
+test filter::skip::tests::skip_multiple_patterns_all_applied ... ok
+test filter::template::tests::empty_structured_collection ... ok
+test filter::template::tests::full_pipe_chain_each_then_join ... ok
+test filter::template::tests::join_with_newline ... ok
+test filter::template::tests::join_with_separator ... ok
+test filter::template::tests::nested_brace_handling ... ok
+test filter::template::tests::no_expressions_passthrough ... ok
+test filter::template::tests::mixed_vars_and_sections ... ok
+test filter::template::tests::pipe_keep_invalid_regex_passthrough ... ok
+test filter::template::tests::pipe_lines_splits_string ... ok
+test filter::template::tests::pipe_lines_on_collection_passthrough ... ok
+test filter::template::tests::simple_variable_substitution ... ok
+test filter::template::tests::pipe_lines_then_keep_chain ... ok
+test filter::template::tests::property_access_count ... ok
+test filter::template::tests::pipe_keep_filters_collection ... ok
+test filter::section::tests::stateful_with_split_on ... ok
+test filter::template::tests::structured_collection_count ... ok
+test filter::section::tests::stateful_with_match_filter ... ok
+test filter::template::tests::structured_collection_each_with_fields ... ok
+test filter::parse::tests::run_parse_extracts_branch ... ok
+test filter::template::tests::structured_collection_join_without_each ... ok
+test filter::template::tests::pipe_keep_no_match_returns_empty ... ok
+test filter::template::tests::structured_collection_each_with_index ... ok
+test filter::template::tests::pipe_lines_then_keep_then_join_chain ... ok
+test filter::template::tests::pipe_where_is_alias_for_keep ... ok
+test filter::template::tests::structured_collection_truncate_passthrough ... ok
+test filter::parse::tests::render_output_clean_repo ... ok
+test filter::template::tests::structured_collection_keep_filters_by_format ... ok
+test filter::template::tests::tree_collection_count ... ok
+test filter::template::tests::structured_collection_where_alias_for_keep ... ok
+test filter::template::tests::tree_collection_each_with_children ... ok
+test filter::template::tests::tree_collection_join_without_each ... ok
+test filter::template::tests::tree_collection_each_with_fields ... ok
+test filter::skip::tests::skip_removes_matching_lines ... ok
+test filter::template::tests::truncate_long_string_truncated ... ok
+test filter::template::tests::truncate_short_string_unchanged ... ok
+test filter::template::tests::tree_collection_keep_filters_groups ... ok
+test filter::template::tests::unescape_escaped_quote ... ok
+test filter::template::tests::unknown_variable_empty_string ... ok
+test filter::tests::branch_empty_string_returns_empty ... ok
+test filter::tests::branch_fixed_output ... ok
+test filter::tests::branch_head_truncation ... ok
+test filter::tests::branch_head_zero_returns_empty ... ok
+test filter::chunk::tests::single_chunk_boundary ... ok
+test filter::tests::branch_output_template_resolves_output_var ... ok
+test filter::tests::branch_output_template_with_surrounding_text ... ok
+test filter::tests::branch_single_line_no_newline ... ok
+test filter::tests::branch_tail_less_than_lines ... ok
+test filter::tests::branch_tail_then_head ... ok
+test filter::tests::branch_tail_truncation ... ok
+test filter::tests::branch_tail_zero_returns_empty ... ok
+test filter::tests::branch_without_sections_ignores_has_sections_flag ... ok
+test filter::tests::select_branch_failure ... ok
+test filter::tests::select_branch_success ... ok
+test filter::tests::branch_skip_then_join ... ok
+test filter::tests_color::apply_color_empty_input ... ok
+test filter::tests_color::apply_color_flag_with_dedup ... ok
+test filter::tests_color::apply_color_with_fallback_tail ... ok
+test filter::tests_color::apply_color_flag_no_ansi_in_input ... ok
+test filter::tests::branch_extract ... ok
+test filter::tests_color::apply_color_flag_false_unchanged ... ok
+test filter::tests_color::apply_color_flag_with_strip_ansi_true ... ok
+test filter::tests_color::restore_display_all_survive ... ok
+test filter::tests_color::apply_color_with_branch_template ... ok
+test filter::section::tests::multiple_simultaneous_sections ... ok
+test filter::tests_color::apply_color_flag_strips_for_matching_preserves_output ... ok
+test filter::tests_color::apply_color_with_keep ... ok
+test filter::tests_color::restore_display_basic_mapping ... ok
+test filter::tests_color::restore_display_empty_survivors ... ok
+test filter::tests_color::restore_display_first_and_last_removed ... ok
+test filter::tests_color::apply_color_with_trim_lines ... ok
+test filter::tests_color::restore_display_single_line ... ok
+test filter::tests::branch_with_sections_expected_but_empty_returns_none ... ok
+test filter::tests_pipeline::apply_collapse_empty_lines_after_branch ... ok
+test filter::tests_pipeline::apply_failure_branch ... ok
+test filter::tests_pipeline::apply_match_output_overrides_parse ... ok
+test filter::tests_pipeline::apply_match_output_short_circuits ... ok
+test filter::tests_pipeline::apply_output_var_in_failure_branch ... ok
+test filter::tests_pipeline::apply_output_var_passthrough ... ok
+test filter::tests_color::apply_color_all_lines_skipped ... ok
+test filter::tests::branch_with_sections_populated_renders_template ... ok
+test filter::tests_pipeline::apply_output_var_with_skip_prefiltering ... ok
+test filter::tests_pipeline::apply_passthrough_no_branch ... ok
+test filter::tests_pipeline::apply_success_branch ... ok
+test filter::tests_pipeline::apply_strip_empty_lines_after_branch_template ... ok
+test filter::tests_pipeline::apply_strip_ansi_then_dedup ... ok
+test filter::tests_pipeline::apply_output_var_with_sections ... ok
+test filter::tests_pipeline::apply_strip_empty_lines_on_match_output_path ... ok
+test verify::tests::evaluate_contains_pass ... ok
+test verify::tests::evaluate_contains_fail ... ok
+test verify::tests::evaluate_equals_fail ... ok
+test verify::tests::evaluate_equals_pass ... ok
+test filter::tests_pipeline::apply_top_level_keep_affects_branch_path ... ok
+test verify::tests::run_case_in_memory_rejects_missing_inline ... ok
+test filter::tests_pipeline::apply_trim_lines_before_keep ... ok
+test verify::tests::run_case_in_memory_with_exit_code ... ok
+test filter::tests_pipeline::apply_strip_ansi_before_skip ... ok
+test verify::tests::verify_filter_multiple_cases ... ok
+test verify::tests::verify_filter_fails_with_wrong_expectation ... ok
+test verify::tests::verify_filter_passes_with_matching_expectations ... ok
+test filter::chunk::tests::multiple_chunk_configs ... ok
+test filter::tests_color::apply_color_with_replace ... ok
+test filter::tests_pipeline::apply_parse_overrides_on_success ... ok
+test filter::tests_pipeline::apply_parse_overrides_on_failure ... ok
+test filter::tests_pipeline::apply_top_level_skip_affects_parse ... ok
+test filter::tests_pipeline::apply_chunk_processing_success ... ok
+test filter::tests_pipeline::apply_chunk_with_sections_together ... ok
+test filter::tests_pipeline::apply_chunk_processing_with_group_by ... ok
+test filter::tests_pipeline::apply_full_skip_then_extract ... ok
+
+test result: ok. 257 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src/lib.rs (target/debug/deps/tokf_server-59a5b306b8a38ebc)
+
+running 173 tests
+test auth::github::tests::deserializes_github_user ... ok
+test auth::github::tests::deserializes_access_token_success ... ok
+test auth::github::tests::deserializes_device_code_response ... ok
+test auth::github::tests::deserializes_github_orgs ... ok
+test config::tests::empty_env_vars_treated_as_none ... ok
+test config::tests::defaults_to_port_8080 ... ok
+test auth::token::tests::generate_token_is_unique ... ok
+test auth::token::tests::different_tokens_produce_different_hashes ... ok
+test config::tests::r2_endpoint_url_derives_from_account_id ... ok
+test auth::token::tests::generate_token_returns_64_hex_chars ... ok
+test auth::token::tests::hash_token_returns_64_hex_chars ... ok
+test config::tests::r2_endpoint_url_prefers_explicit_endpoint ... ok
+test auth::token::tests::hash_token_is_deterministic ... ok
+test config::tests::invalid_port_falls_back_to_default ... ok
+test config::tests::debug_masks_secrets ... ok
+test config::tests::r2_endpoint_url_returns_none_when_neither_set ... ok
+test auth::github::tests::deserializes_access_token_slow_down ... ok
+test auth::github::tests::deserializes_access_token_pending ... ok
+test config::tests::rate_limits_defaults ... ok
+test config::tests::rate_limits_from_env_json ... ok
+test config::tests::rate_limits_invalid_json_falls_back ... ok
+test config::tests::rate_limits_partial_limit_entry_uses_field_defaults ... ok
+test config::tests::reads_migration_database_url_from_env ... ok
+test config::tests::reads_optional_fields_from_env ... ok
+test config::tests::reads_port_from_env ... ok
+test config::tests::resolve_migration_url_falls_back_to_database_url ... ok
+test config::tests::resolve_migration_url_prefers_migration_url ... ok
+test config::tests::resolve_migration_url_returns_none_when_neither_set ... ok
+test config::tests::resolve_migration_url_works_with_only_migration_url ... ok
+test config::tests::run_migrations_can_be_disabled ... ok
+test config::tests::run_migrations_defaults_to_true ... ok
+test config::tests::safe_window_secs_clamps_zero_to_one ... ok
+test config::tests::safe_window_secs_passes_through_nonzero ... ok
+test rate_limit::tests::allows_calls_within_limit ... ok
+test rate_limit::tests::blocks_calls_over_limit ... ok
+test rate_limit::tests::different_users_are_independent ... ok
+test rate_limit::tests::result_denied_has_zero_remaining ... ok
+test rate_limit::tests::result_remaining_decrements_correctly ... ok
+test rate_limit::tests::result_reset_after_within_window ... ok
+test rate_limit::tests::ip_rate_limiter_basic ... ok
+test error::tests::unauthorized_returns_401 ... ok
+test rate_limit::tests::sync_different_machines_are_independent ... ok
+test db::tests::create_pool_fails_on_invalid_url ... ok
+test error::tests::not_found_returns_404 ... ok
+test rate_limit::tests::sync_rate_limiter_allows_within_limit ... ok
+test routes::filters::publish::tests::publish_filter_creates_record ... ignored, requires DATABASE_URL to be set
+test error::tests::rate_limited_returns_429_with_retry_after ... ok
+test error::tests::conflict_returns_409 ... ok
+test rate_limit::tests::sync_rate_limiter_blocks_over_limit ... ok
+test error::tests::rate_limited_includes_all_headers ... ok
+test routes::filters::publish::tests::publish_filter_duplicate_returns_200 ... ignored, requires DATABASE_URL to be set
+test error::tests::forbidden_returns_403 ... ok
+test error::tests::bad_request_returns_400 ... ok
+test error::tests::internal_error_returns_500 ... ok
+test routes::filters::publish::tests::publish_filter_rate_limits_user ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_failing_tests ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_invalid_toml ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_missing_filter_field ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_missing_mit_acceptance ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_missing_tests ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_oversized_filter ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_rejects_oversized_total ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_requires_auth ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_stores_canonical_command ... ignored, requires DATABASE_URL to be set
+test routes::filters::publish::tests::publish_filter_with_tests_creates_filter_test_rows ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::download_returns_404_for_unknown_hash ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::download_returns_test_files ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::download_returns_toml_content ... ignored, requires DATABASE_URL to be set
+test routes::filters::search::tests::escape_ilike_escapes_wildcards ... ok
+test routes::filters::search_tests::get_filter_returns_404_for_unknown_hash ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::get_filter_returns_details ... ignored, requires DATABASE_URL to be set
+test routes::filters::search::tests::escape_ilike_leaves_normal_text_unchanged ... ok
+test routes::filters::search_tests::search_empty_q_returns_all ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::search_limit_is_respected ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::search_matches_command_pattern ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::search_rejects_oversized_query ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::search_returns_empty_for_empty_registry ... ignored, requires DATABASE_URL to be set
+test routes::filters::search_tests::search_wildcard_injection_does_not_return_all ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::auth_required ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::author_can_update_tests ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::double_update_replaces_fully ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::empty_test_upload_gets_400 ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::invalid_hash_format_gets_400 ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::invalid_test_toml_gets_400 ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::non_author_gets_403 ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::old_storage_objects_cleaned_up ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::returns_updated_filter_details ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::semantically_invalid_test_gets_400 ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::unknown_hash_gets_404 ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::update_tests_rejects_failing_tests ... ignored, requires DATABASE_URL to be set
+test routes::filters::update_tests::tests::zero_to_n_tests_update ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::filter_gain_returns_404_for_unknown ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::get_gain_empty_database_returns_zeros ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::get_gain_requires_auth ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::get_gain_returns_user_events_only ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::global_gain_does_not_expose_hostnames ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::global_gain_empty_database_returns_zeros ... ignored, requires DATABASE_URL to be set
+test routes::gain::tests::global_gain_returns_all_events ... ignored, requires DATABASE_URL to be set
+test routes::ip::tests::extract_ip_returns_peer_when_header_missing ... ok
+test routes::ip::tests::extract_ip_returns_unknown_when_no_header_and_no_peer ... ok
+test routes::ip::tests::extract_ip_returns_unknown_when_trust_proxy_false_and_no_peer ... ok
+test routes::ip::tests::extract_ip_from_forwarded_for_single_ip ... ok
+test routes::ip::tests::extract_ip_from_forwarded_for_multiple_ips ... ok
+test routes::ip::tests::extract_ip_trims_whitespace ... ok
+test routes::ip::tests::extract_ip_uses_peer_when_trust_proxy_false ... ok
+test routes::ip::tests::most_restrictive_equal_remaining_picks_first ... ok
+test routes::ip::tests::most_restrictive_picks_denied_over_allowed ... ok
+test routes::ip::tests::most_restrictive_picks_denied_when_second_is_denied ... ok
+test routes::ip::tests::most_restrictive_picks_fewer_remaining ... ok
+test routes::ip::tests::rate_limit_headers_contains_correct_values ... ok
+test routes::machines::tests::list_machines_only_returns_own_machines ... ignored, requires DATABASE_URL to be set
+test routes::ip::tests::rate_limit_headers_zero_remaining ... ok
+test routes::machines::tests::list_machines_requires_auth ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_creates_record ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_enforces_per_user_limit ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_rejects_cross_user_uuid_conflict ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_rejects_empty_hostname ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_rejects_empty_machine_id ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_rejects_invalid_uuid ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_rejects_missing_fields ... ignored, requires DATABASE_URL to be set
+test routes::machines::tests::register_machine_updates_hostname_returns_200 ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_accepts_empty_batch ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_deduplicates_via_cursor ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_inserts_events_and_advances_cursor ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_null_filter_hash_does_not_create_filter_stats ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rate_limits_machine ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_invalid_recorded_at ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_invalid_uuid ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_negative_input_tokens ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_nonexistent_machine ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_oversized_batch ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_oversized_filter_name ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_rejects_unowned_machine ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_requires_auth ... ignored, requires DATABASE_URL to be set
+test routes::sync::tests::sync_updates_filter_stats_for_known_hash ... ignored, requires DATABASE_URL to be set
+test storage::r2::tests::new_fails_without_bucket ... ok
+test storage::r2::tests::new_fails_without_access_key_id ... ok
+test storage::r2::tests::new_fails_without_endpoint_or_account_id ... ok
+test storage::r2::tests::new_fails_without_secret_access_key ... ok
+test storage::tests::delete_tests_for_hash_empty_slice_is_noop ... ok
+test storage::tests::delete_nonexistent_key_is_ok ... ok
+test storage::tests::delete_removes_existing_key ... ok
+test storage::tests::exists_returns_correct_results ... ok
+test storage::tests::delete_tests_for_hash_removes_all ... ok
+test storage::tests::get_returns_uploaded_bytes ... ok
+test storage::tests::get_returns_none_for_missing_key ... ok
+test storage::tests::upload_filter_creates_correct_key ... ok
+test storage::tests::upload_filter_dedup_skips_second_put ... ok
+test storage::tests::upload_test_creates_correct_key ... ok
+test storage::tests::upload_test_dedup_skips_second_put ... ok
+test storage::tests::upload_test_rejects_backslash_in_filename ... ok
+test storage::tests::upload_test_rejects_path_traversal ... ok
+test storage::tests::upload_test_rejects_slash_in_filename ... ok
+test routes::middleware::tests::adds_headers_on_success ... ok
+test routes::middleware::tests::returns_429_after_exceeding_limit ... ok
+test routes::health::tests::health_returns_status_and_version_fields ... ok
+test routes::middleware::tests::skips_unauthenticated_requests ... ok
+test routes::middleware::tests::body_preserved_on_429 ... ok
+test routes::health::tests::health_always_returns_200 ... ok
+test routes::middleware::tests::does_not_override_handler_headers ... ok
+test routes::middleware::tests::different_tokens_are_independent ... ok
+test verify::tests::server_verify_rejects_fixture_references ... ok
+test verify::tests::server_verify_rejects_lua_file_reference ... ok
+test verify::tests::server_verify_fails_with_wrong_expectations ... ok
+test verify::tests::server_verify_multiple_cases_mixed_results ... ok
+test verify::tests::server_verify_exit_code_branch ... ok
+test storage::r2::tests::new_succeeds_with_full_config ... ok
+test storage::r2::tests::new_succeeds_with_account_id_instead_of_endpoint ... ok
+test verify::tests::server_verify_allows_inline_lua_source ... ok
+test verify::tests::server_verify_passes_with_correct_expectations ... ok
+test db::tests::run_migrations_fails_when_db_unreachable ... ok
+test routes::ready::tests::ready_returns_503_and_degraded_status_when_db_is_down ... ok
+test rate_limit::tests::eviction_removes_expired_entries ... ok
+
+test result: ok. 105 passed; 0 failed; 68 ignored; 0 measured; 0 filtered out; finished in 1.12s
+
+     Running unittests src/main.rs (target/debug/deps/tokf_server-befdfb412238e18d)
+
+running 5 tests
+test tests::build_storage_client_succeeds_with_no_config ... ok
+test tests::build_storage_client_fails_with_partial_config_missing_endpoint ... ok
+test tests::build_storage_client_fails_with_partial_config_bucket_only ... ok
+test tests::build_storage_client_fails_with_partial_config_missing_credentials ... ok
+test tests::build_storage_client_succeeds_with_full_config ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/db_integration.rs (target/debug/deps/db_integration-420992f132b71e6f)
+
+running 21 tests
+test auth_token_with_unknown_device_code_returns_404 ... ignored, requires DATABASE_URL to be set
+test auth_user_extractor_accepts_null_expires_at ... ignored, requires DATABASE_URL to be set
+test auth_user_extractor_rejects_expired_token ... ignored, requires DATABASE_URL to be set
+test auth_user_extractor_rejects_missing_header ... ignored, requires DATABASE_URL to be set
+test auth_user_extractor_with_valid_token ... ignored, requires DATABASE_URL to be set
+test completed_device_code_repoll_issues_new_token ... ignored, requires DATABASE_URL to be set
+test device_flow_table_exists_after_migration ... ignored, requires DATABASE_URL to be set
+test expired_flows_are_cleaned_up_on_initiate ... ignored, requires DATABASE_URL to be set
+test filter_delete_cascades_to_related_tables ... ignored, requires DATABASE_URL to be set
+test filter_test_orphan_insert_fails ... ignored, requires DATABASE_URL to be set
+test full_device_flow_creates_user_and_token ... ignored, requires DATABASE_URL to be set
+test health_returns_200_and_ok_status_with_real_db ... ignored, requires DATABASE_URL to be set
+test machines_uuid_pk_auto_generated ... ignored, requires DATABASE_URL to be set
+test migrations_apply_cleanly_and_all_tables_exist ... ignored, requires DATABASE_URL to be set
+test rate_limit_rejects_11th_device_flow ... ignored, requires DATABASE_URL to be set
+test ready_returns_200_and_ok_status_with_real_db ... ignored, requires DATABASE_URL to be set
+test token_response_includes_expires_in ... ignored, requires DATABASE_URL to be set
+test unknown_github_error_returns_500 ... ignored, requires DATABASE_URL to be set
+test usage_events_check_constraints_reject_negative_values ... ignored, requires DATABASE_URL to be set
+test users_column_defaults_are_applied ... ignored, requires DATABASE_URL to be set
+test users_unique_constraint_enforced ... ignored, requires DATABASE_URL to be set
+
+test result: ok. 0 passed; 0 failed; 21 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/integration.rs (target/debug/deps/integration-6fcba691b7c40066)
+
+running 9 tests
+test get_on_auth_device_returns_405 ... ok
+test unknown_route_returns_404 ... ok
+test post_on_health_returns_405 ... ok
+test delete_on_health_returns_405 ... ok
+test health_always_returns_200 ... ok
+test health_response_contains_required_fields ... ok
+test auth_token_missing_body_returns_422 ... ok
+test ready_returns_503_when_db_is_down ... ok
+test server_binds_to_random_port_and_accepts_http_requests ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests crdb_test_macro
+
+running 1 test
+test crates/crdb-test-macro/src/lib.rs - crdb_test (line 41) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 1.03s; merged doctests compilation took 0.77s
+   Doc-tests e2e_tests
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokf
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokf_common
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokf_filter
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests tokf_server
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

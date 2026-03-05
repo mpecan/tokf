@@ -1,0 +1,72 @@
+use serde::{Deserialize, Serialize};
+
+use super::http::Client;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncEvent {
+    pub id: i64,
+    pub filter_name: Option<String>,
+    pub filter_hash: Option<String>,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub command_count: i32,
+    pub recorded_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncRequest {
+    pub machine_id: String,
+    pub last_event_id: i64,
+    pub events: Vec<SyncEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SyncResponse {
+    pub accepted: usize,
+    pub cursor: i64,
+}
+
+/// Send a batch of usage events to the remote server.
+///
+/// # Errors
+///
+/// Returns an error if the server is unreachable, returns a non-success status,
+/// or the response body cannot be deserialized.
+pub fn sync_events(client: &Client, req: &SyncRequest) -> anyhow::Result<SyncResponse> {
+    client.post("/api/sync", req)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialize_sync_request() {
+        let req = SyncRequest {
+            machine_id: "00000000-0000-0000-0000-000000000001".to_string(),
+            last_event_id: 5,
+            events: vec![SyncEvent {
+                id: 6,
+                filter_name: Some("git/push".to_string()),
+                filter_hash: None,
+                input_tokens: 1000,
+                output_tokens: 200,
+                command_count: 1,
+                recorded_at: "2026-01-01T00:00:00Z".to_string(),
+            }],
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"machine_id\""));
+        assert!(json.contains("\"last_event_id\":5"));
+        assert!(json.contains("\"input_tokens\":1000"));
+    }
+
+    #[test]
+    fn deserialize_sync_response() {
+        let json = r#"{"accepted":3,"cursor":8}"#;
+        let resp: SyncResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.accepted, 3);
+        assert_eq!(resp.cursor, 8);
+    }
+}

@@ -1,6 +1,6 @@
-name = "all status types show correct counts and labels"
+name = "all status types show correct file listing"
 fixture = "all_types.txt"
 exit_code = 0
 
 [[expect]]
-equals = "feature-branch\n  added: 1\n  added+modified: 1\n  conflict: 1\n  deleted: 1\n  deleted (unstaged): 1\n  modified: 2\n  modified (staged+unstaged): 1\n  modified (unstaged): 1\n  renamed: 1\n  untracked: 2"
+equals = "feature-branch [ahead 2]\nA  src/new_module.rs\nAM src/half_staged.rs\nD  old_file.rs\n D src/forgotten.rs\n M src/config.rs\nM  src/main.rs\nM  src/lib.rs\nMM src/both.rs\nR  old_name.rs -> new_name.rs\nUU src/conflict.rs\n?? untracked.txt\n?? scratch.md"

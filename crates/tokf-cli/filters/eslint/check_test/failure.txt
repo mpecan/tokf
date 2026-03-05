@@ -1,0 +1,17 @@
+/Users/dev/project/src/utils.ts
+  10:5  warning  Unexpected let, use const instead  prefer-const
+  15:5  warning  Unexpected let, use const instead  prefer-const
+
+/Users/dev/project/src/api.ts
+  20:10  error  'x' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/dev/project/src/components/Button.tsx
+  5:1   error  'React' is defined but never used  @typescript-eslint/no-unused-vars
+  12:8  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  18:3  warning  Unexpected let, use const instead  prefer-const
+
+/Users/dev/project/src/lib/helpers.ts
+  3:1  warning  'path' is defined but never used  @typescript-eslint/no-unused-vars
+
+7 problems (2 errors, 5 warnings)
+  2 errors and 3 warnings potentially fixable with the `--fix` option.

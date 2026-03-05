@@ -11,6 +11,9 @@ use types::{CommandPattern, FilterConfig};
 
 static STDLIB: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/filters");
 
+/// Priority assigned to embedded stdlib filters — always lower than any user-installed filter.
+pub const STDLIB_PRIORITY: u8 = u8::MAX;
+
 /// Returns the embedded TOML content for a filter, if it exists.
 /// `relative_path` should be like `git/push.toml`.
 pub fn get_embedded_filter(relative_path: &Path) -> Option<&'static str> {
@@ -42,9 +45,9 @@ pub fn default_search_dirs() -> Vec<PathBuf> {
         dirs.push(cwd.join(".tokf/filters"));
     }
 
-    // 2. User-level config dir (platform-native)
-    if let Some(config) = dirs::config_dir() {
-        dirs.push(config.join("tokf/filters"));
+    // 2. User-level config dir (TOKF_HOME if set, else platform-native)
+    if let Some(user) = crate::paths::user_dir() {
+        dirs.push(user.join("filters"));
     }
 
     dirs
@@ -171,14 +174,21 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
             }
             word_idx += 1;
         } else {
-            // For the first word compare basenames, supporting path variants.
+            // For the first word compare basenames, supporting path variants
+            // on both the input word and the pattern word.
             let word_to_match = if pat_idx == 0 {
                 extract_basename(words[word_idx])
             } else {
                 words[word_idx]
             };
 
-            if word_to_match == *pword {
+            let pword_to_match = if pat_idx == 0 {
+                extract_basename(pword)
+            } else {
+                pword
+            };
+
+            if word_to_match == pword_to_match {
                 word_idx += 1;
             } else if pat_idx > 0 {
                 // Between pattern words, try to skip over global flag tokens.
@@ -235,11 +245,13 @@ fn collect_filter_files(dir: &Path, files: &mut Vec<PathBuf>) {
 /// A discovered filter with its config, source path, and priority level.
 pub struct ResolvedFilter {
     pub config: FilterConfig,
+    /// Canonical SHA-256 hash of the filter config (matches `tokf publish` hash).
+    pub hash: String,
     /// Absolute path to the filter file (or `<built-in>/…` for embedded filters).
     pub source_path: PathBuf,
     /// Path relative to its source search dir (for display).
     pub relative_path: PathBuf,
-    /// 0 = repo-local, 1 = user-level, `u8::MAX` = built-in.
+    /// 0 = repo-local, 1 = user-level, [`STDLIB_PRIORITY`] = built-in.
     pub priority: u8,
 }
 
@@ -265,6 +277,11 @@ impl ResolvedFilter {
             .unwrap_or(0)
     }
 
+    /// Check if this filter's display name (relative path without `.toml`) matches `name`.
+    pub fn matches_name(&self, name: &str) -> bool {
+        self.relative_path.with_extension("").to_string_lossy() == name
+    }
+
     /// Human-readable priority label.
     pub const fn priority_label(&self) -> &'static str {
         match self.priority {
@@ -278,7 +295,7 @@ impl ResolvedFilter {
 /// Discover all filters across `search_dirs` plus the embedded stdlib,
 /// sorted by `(priority ASC, specificity DESC)`.
 ///
-/// Embedded stdlib entries are appended at priority `u8::MAX`,
+/// Embedded stdlib entries are appended at priority [`STDLIB_PRIORITY`],
 /// so local (0) and user (1) filters always shadow built-in ones.
 ///
 /// Deduplication: first occurrence of each command pattern (by `first()` string) wins.
@@ -299,9 +316,11 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
             };
 
             let relative_path = path.strip_prefix(dir).unwrap_or(&path).to_path_buf();
+            let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
 
             all_filters.push(ResolvedFilter {
                 config,
+                hash,
                 source_path: path,
                 relative_path,
                 priority: u8::try_from(priority).unwrap_or(u8::MAX),
@@ -309,9 +328,8 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
         }
     }
 
-    // Append embedded stdlib at the lowest priority (u8::MAX ensures it always
-    // sorts after local/user dirs regardless of how many dirs are in the slice).
-    let stdlib_priority = u8::MAX;
+    // Append embedded stdlib at the lowest priority (STDLIB_PRIORITY ensures it
+    // always sorts after local/user dirs regardless of how many dirs are in the slice).
     if let Ok(entries) = STDLIB.find("**/*.toml") {
         for entry in entries {
             if let DirEntry::File(file) = entry {
@@ -320,11 +338,13 @@ pub fn discover_all_filters(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resol
                     continue; // silently skip invalid embedded TOML
                 };
                 let rel = file.path().to_path_buf();
+                let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
                 all_filters.push(ResolvedFilter {
                     config,
+                    hash,
                     source_path: PathBuf::from("<built-in>").join(&rel),
                     relative_path: rel,
-                    priority: stdlib_priority,
+                    priority: STDLIB_PRIORITY,
                 });
             }
         }
@@ -377,20 +397,19 @@ pub fn command_pattern_to_regex(pattern: &str) -> String {
     let mut regex = String::from("^");
 
     for (i, &word) in words.iter().enumerate() {
-        let word_re = if word == "*" {
-            r"\S+".to_string()
-        } else {
-            regex::escape(word)
-        };
-
         if i == 0 {
             if word == "*" {
                 regex.push_str(r"\S+");
             } else {
+                // Strip any path prefix from the pattern word itself (e.g.
+                // `./mvnw` → `mvnw`) so that `command = "./mvnw test"` and
+                // `command = "mvnw test"` produce identical regexes.
+                let basename = extract_basename(word);
                 // Allow an optional leading path prefix (e.g. `/usr/bin/` or
-                // `./`) so that `/usr/bin/git` matches the pattern `git`.
-                regex.push_str(r"(?:[^\s]*/)?");
-                regex.push_str(&word_re);
+                // `./` or `C:\tools\`) so that `/usr/bin/git` and
+                // `C:\tools\git` both match the pattern `git`.
+                regex.push_str(r"(?:[^\s]*[\\/])?");
+                regex.push_str(&regex::escape(basename));
             }
         } else if word == "*" {
             // Wildcard: require exactly one whitespace-separated token.
@@ -408,6 +427,7 @@ pub fn command_pattern_to_regex(pattern: &str) -> String {
             // argument.  When the value would consume the target pattern word,
             // the NFA engine backtracks that optional group (making it empty)
             // so that `\s+{word_re}` can match instead.
+            let word_re = regex::escape(word);
             regex.push_str(r"(?:\s+-[^=\s]+(?:=[^\s]+)?(?:\s+[^-\s]\S*)?)*\s+");
             regex.push_str(&word_re);
         }
@@ -428,3 +448,9 @@ pub fn command_pattern_regexes(command: &CommandPattern) -> Vec<(String, String)
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_basename;
+#[cfg(test)]
+mod tests_discovery;
+#[cfg(test)]
+mod tests_matching;

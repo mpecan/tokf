@@ -1,0 +1,6 @@
+name = "type errors show file references"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "error TS"

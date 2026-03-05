@@ -8,7 +8,7 @@ use rkyv::{Archive, Deserialize, Serialize, rancor};
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 8;
 
 /// A single filter serialized for the binary cache.
 ///
@@ -19,6 +19,8 @@ const CACHE_VERSION: u32 = 5;
 pub struct CachedFilter {
     /// `FilterConfig` serialized as a JSON string.
     pub config_json: String,
+    /// Canonical SHA-256 hash of the filter config (matches `tokf publish` hash).
+    pub hash: String,
     /// `source_path` stored as a UTF-8 string via `to_string_lossy()`. Non-UTF-8 path bytes
     /// are replaced with U+FFFD — filters still work correctly; only the displayed path is affected.
     pub source_path: String,
@@ -38,6 +40,7 @@ pub struct ResolvedManifest {
 fn filter_to_cached(rf: &ResolvedFilter) -> anyhow::Result<CachedFilter> {
     Ok(CachedFilter {
         config_json: serde_json::to_string(&rf.config).context("serialize FilterConfig")?,
+        hash: rf.hash.clone(),
         source_path: rf.source_path.to_string_lossy().into_owned(),
         relative_path: rf.relative_path.to_string_lossy().into_owned(),
         priority: rf.priority,
@@ -48,6 +51,7 @@ fn cached_to_filter(cf: CachedFilter) -> anyhow::Result<ResolvedFilter> {
     Ok(ResolvedFilter {
         config: serde_json::from_str::<FilterConfig>(&cf.config_json)
             .context("deserialize FilterConfig")?,
+        hash: cf.hash,
         source_path: PathBuf::from(cf.source_path),
         relative_path: PathBuf::from(cf.relative_path),
         priority: cf.priority,
@@ -66,7 +70,7 @@ pub fn cache_path(search_dirs: &[PathBuf]) -> Option<PathBuf> {
     {
         return Some(tokf_dir.join("cache/manifest.bin"));
     }
-    dirs::cache_dir().map(|d| d.join("tokf/manifest.bin"))
+    crate::paths::user_cache_dir().map(|d| d.join("manifest.bin"))
 }
 
 /// Return the mtime of `path` as nanoseconds since the Unix epoch, or 0 on error.
@@ -171,7 +175,12 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
 
     let filters = discover_all_filters(search_dirs)?;
     if let Err(e) = write_manifest(&path, &filters, search_dirs) {
-        eprintln!("[tokf] cache write failed: {e:#}");
+        eprintln!("[tokf] cache write failed ({}): {e:#}", path.display());
+        eprintln!(
+            "[tokf] hint: check permissions on {}; use --no-cache to skip, \
+             or set TOKF_HOME to relocate all tokf data",
+            path.parent().unwrap_or(&path).display()
+        );
     }
     Ok(filters)
 }
@@ -187,8 +196,10 @@ mod tests {
 
     fn make_resolved_filter(command: &str, priority: u8) -> ResolvedFilter {
         let config: FilterConfig = toml::from_str(&format!("command = \"{command}\"")).unwrap();
+        let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
         ResolvedFilter {
             config,
+            hash,
             source_path: PathBuf::from(format!("/fake/{command}.toml")),
             relative_path: PathBuf::from(format!("{command}.toml")),
             priority,
@@ -259,16 +270,33 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn cache_path_user_fallback() {
-        // A parent path that definitely doesn't exist on disk
+        // A parent path that definitely doesn't exist on disk.
+        // #[serial] required: reads TOKF_HOME via user_cache_dir() and must not
+        // race with tests that mutate that env var (e.g. cache_path_respects_tokf_home).
         let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
         let path = cache_path(&search_dirs);
 
-        if let Some(user_cache) = dirs::cache_dir() {
-            assert_eq!(path, Some(user_cache.join("tokf/manifest.bin")));
+        if let Some(user_cache) = crate::paths::user_cache_dir() {
+            assert_eq!(path, Some(user_cache.join("manifest.bin")));
         } else {
             assert!(path.is_none());
         }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cache_path_respects_tokf_home() {
+        let _guard = crate::paths::HomeGuard::set("/custom/tokf_home");
+        let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
+        let path = cache_path(&search_dirs);
+
+        assert_eq!(
+            path,
+            Some(PathBuf::from("/custom/tokf_home/manifest.bin")),
+            "cache path should be under TOKF_HOME when set"
+        );
     }
 
     #[test]
@@ -287,8 +315,10 @@ mod tests {
     #[test]
     fn cached_filter_roundtrip() {
         let config: FilterConfig = toml::from_str("command = \"git push\"").unwrap();
+        let hash = tokf_common::hash::canonical_hash(&config).unwrap_or_default();
         let rf = ResolvedFilter {
             config,
+            hash: hash.clone(),
             source_path: PathBuf::from("/some/path/push.toml"),
             relative_path: PathBuf::from("git/push.toml"),
             priority: 1,
@@ -300,6 +330,32 @@ mod tests {
         assert_eq!(rf2.source_path, PathBuf::from("/some/path/push.toml"));
         assert_eq!(rf2.relative_path, PathBuf::from("git/push.toml"));
         assert_eq!(rf2.priority, 1);
+        assert_eq!(rf2.hash, hash);
+    }
+
+    #[test]
+    fn hash_survives_cache_roundtrip() {
+        let config: FilterConfig = toml::from_str("command = \"cargo test\"").unwrap();
+        let expected_hash = tokf_common::hash::canonical_hash(&config).unwrap();
+        let rf = ResolvedFilter {
+            config,
+            hash: expected_hash.clone(),
+            source_path: PathBuf::from("/fake/cargo/test.toml"),
+            relative_path: PathBuf::from("cargo/test.toml"),
+            priority: 0,
+        };
+
+        let cached = filter_to_cached(&rf).unwrap();
+        assert_eq!(
+            cached.hash, expected_hash,
+            "hash must survive filter_to_cached"
+        );
+
+        let rf2 = cached_to_filter(cached).unwrap();
+        assert_eq!(
+            rf2.hash, expected_hash,
+            "hash must survive cached_to_filter"
+        );
     }
 
     #[test]
@@ -320,7 +376,10 @@ mod tests {
 
         // First run: populates cache
         let filters1 = discover_with_cache(&search_dirs).unwrap();
-        let count1 = filters1.iter().filter(|f| f.priority < u8::MAX).count();
+        let count1 = filters1
+            .iter()
+            .filter(|f| f.priority < crate::config::STDLIB_PRIORITY)
+            .count();
         assert_eq!(count1, 1);
 
         // Brief pause then add a new filter (updates dir mtime)
@@ -329,7 +388,10 @@ mod tests {
 
         // Second run: cache is stale, rebuilds with both filters
         let filters2 = discover_with_cache(&search_dirs).unwrap();
-        let count2 = filters2.iter().filter(|f| f.priority < u8::MAX).count();
+        let count2 = filters2
+            .iter()
+            .filter(|f| f.priority < crate::config::STDLIB_PRIORITY)
+            .count();
         assert_eq!(count2, 2);
     }
 }

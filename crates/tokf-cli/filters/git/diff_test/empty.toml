@@ -1,5 +1,5 @@
 name = "empty diff produces no output"
-fixture = "empty.txt"
+inline = ""
 exit_code = 0
 
 [[expect]]

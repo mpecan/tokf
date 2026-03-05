@@ -1,0 +1,6 @@
+name = "success produces ok message"
+inline = ""
+exit_code = 0
+
+[[expect]]
+equals = "✓ cargo fmt: ok"

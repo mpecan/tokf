@@ -11,9 +11,33 @@ git clone https://github.com/mpecan/tokf
 cd tokf
 cargo build
 cargo test
+just install-hooks   # install the pre-commit hook (run once after cloning)
 ```
 
 The project requires a recent stable Rust toolchain. See `rust-toolchain.toml` for the pinned version.
+
+---
+
+## Workspace structure
+
+The repository is a Cargo workspace with six crates:
+
+| Crate | Type | Description |
+|---|---|---|
+| `crates/tokf-cli` | bin + lib | CLI binary (`tokf`) — filter resolution, command execution, tracking, hooks |
+| `crates/tokf-common` | lib | Shared types and utilities (config hash, serde helpers) |
+| `crates/tokf-filter` | lib | Pure filter engine — all TOML-driven processing steps and Lua sandbox |
+| `crates/tokf-server` | bin + lib | Remote server — auth, publishing, sync, gain API (axum + CockroachDB) |
+| `crates/crdb-test-macro` | proc-macro | `#[crdb_test]` attribute macro for CockroachDB integration tests |
+| `crates/e2e-tests` | test-only | End-to-end tests spanning CLI, server, and database |
+
+Build or test individual crates with `-p`:
+
+```sh
+cargo build -p tokf-cli            # build the CLI only
+cargo test -p tokf-filter          # test the filter engine
+cargo clippy -p tokf-server -- -D warnings  # lint the server
+```
 
 ---
 
@@ -47,7 +71,7 @@ Before opening a PR:
 
 ```sh
 cargo fmt
-cargo clippy -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test
 ```
 
@@ -60,6 +84,22 @@ All three must pass clean. The CI runs the same checks.
 - **Test coverage:** minimum 80%, target 90%.
 
 When a limit genuinely harms readability, it can be overridden with `#[allow(...)]` — but document the reason in a comment and get maintainer sign-off.
+
+### Duplication
+
+CI runs [cargo-dupes](https://crates.io/crates/cargo-dupes) to detect code duplication in production code (tests are excluded). Configuration lives in two files:
+
+- **`dupes.toml`** — analysis settings and percentage thresholds (0.5% exact, 0.5% near)
+- **`.dupes-ignore.toml`** — reviewed duplicates with documented reasons for each ignore
+
+If `cargo dupes check` fails on your PR, either extract the shared logic or add an entry to `.dupes-ignore.toml` with a reason explaining why the duplication is acceptable.
+
+```sh
+cargo install cargo-dupes
+cargo dupes              # full report
+cargo dupes stats        # statistics only
+cargo dupes check        # CI gate — fails if thresholds exceeded
+```
 
 ---
 
@@ -91,9 +131,71 @@ Every filter in the stdlib **must** have a `_test/` suite — CI enforces this w
 
 ## Lua filters
 
-For filters that need logic beyond what TOML can express, use the `[lua_script]` section with [Luau](https://luau.org/). The sandbox blocks `io`, `os`, and `package` — scripts cannot access the filesystem or network.
+For filters that need logic beyond what TOML can express, use the `[lua_script]` section with [Luau](https://luau.org/).
 
-See the [README](README.md#lua-escape-hatch) for the full API and the built-in filter library for examples.
+All Lua execution is sandboxed:
+
+- **Blocked libraries:** `io`, `os`, `package` — no filesystem or network access.
+- **Resource limits:** 1 million VM instructions, 16 MB memory (prevents infinite loops and memory exhaustion).
+
+For local development, you can reference external scripts with `lua_script.file = "script.luau"`. For published filters, use inline `source` — `tokf publish` automatically inlines file references before uploading.
+
+See `docs/lua-escape-hatch.md` for the full API, globals, and examples.
+
+---
+
+## Database & end-to-end tests
+
+`tokf-server` uses CockroachDB. The DB integration tests and end-to-end tests are `#[ignore]`d by default — they only run when `DATABASE_URL` is set and you pass `--ignored`.
+
+### Quick start with just
+
+Copy `.env.example` to `.env` and adjust if needed (e.g. change `CONTAINER_RUNTIME` from `podman` to `docker`):
+
+```sh
+cp .env.example .env          # edit to choose podman or docker
+just db-start                  # start CockroachDB
+just db-status                 # verify it's running
+just db-setup                  # create the test database
+just test-db                   # run DB integration tests
+just test-e2e                  # run end-to-end tests
+just test-all                  # unit + DB + e2e tests
+```
+
+### Manual setup
+
+Use Podman (or Docker) with the bundled compose file:
+
+```sh
+podman compose -f crates/tokf-server/docker-compose.yml up -d
+```
+
+This starts a single-node CockroachDB on port `26257` (SQL) and `8080` (admin UI).
+
+```sh
+export DATABASE_URL="postgresql://root@localhost:26257/tokf_test?sslmode=disable"
+psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable" \
+  -c "CREATE DATABASE IF NOT EXISTS tokf_test"
+
+# Unit tests (no database required)
+cargo test --workspace
+
+# DB integration tests (requires DATABASE_URL)
+cargo test -p tokf-server -- --ignored
+
+# End-to-end tests (requires DATABASE_URL)
+cargo test -p e2e-tests -- --ignored
+```
+
+Each `#[crdb_test]` test creates its own isolated database, runs migrations, and cleans up afterwards. Tests can run in parallel without interfering with each other.
+
+### Resetting the database
+
+```sh
+just db-reset                  # or manually:
+podman compose -f crates/tokf-server/docker-compose.yml down -v
+podman compose -f crates/tokf-server/docker-compose.yml up -d
+```
 
 ---
 

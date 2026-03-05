@@ -1,3 +1,5 @@
+pub mod codex;
+pub mod opencode;
 pub mod types;
 
 use std::io::Read;
@@ -76,11 +78,11 @@ pub(crate) fn handle_json_with_config(
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool) -> anyhow::Result<()> {
+pub fn install(global: bool, tokf_bin: &str) -> anyhow::Result<()> {
     let (hook_dir, settings_path) = if global {
-        let config = dirs::config_dir()
+        let user = crate::paths::user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
-        let hook_dir = config.join("tokf/hooks");
+        let hook_dir = user.join("hooks");
         let home = dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
         let settings_path = home.join(".claude/settings.json");
@@ -92,13 +94,17 @@ pub fn install(global: bool) -> anyhow::Result<()> {
         (hook_dir, settings_path)
     };
 
-    install_to(&hook_dir, &settings_path)
+    install_to(&hook_dir, &settings_path, tokf_bin)
 }
 
 /// Core install logic with explicit paths (testable).
-pub(crate) fn install_to(hook_dir: &Path, settings_path: &Path) -> anyhow::Result<()> {
+pub(crate) fn install_to(
+    hook_dir: &Path,
+    settings_path: &Path,
+    tokf_bin: &str,
+) -> anyhow::Result<()> {
     let hook_script = hook_dir.join("pre-tool-use.sh");
-    write_hook_shim(hook_dir, &hook_script)?;
+    write_hook_shim(hook_dir, &hook_script, tokf_bin)?;
     patch_settings(settings_path, &hook_script)?;
 
     eprintln!("[tokf] hook installed");
@@ -109,13 +115,16 @@ pub(crate) fn install_to(hook_dir: &Path, settings_path: &Path) -> anyhow::Resul
 }
 
 /// Write the hook shim script.
-fn write_hook_shim(hook_dir: &Path, hook_script: &Path) -> anyhow::Result<()> {
+fn write_hook_shim(hook_dir: &Path, hook_script: &Path, tokf_bin: &str) -> anyhow::Result<()> {
     std::fs::create_dir_all(hook_dir)?;
 
-    let tokf_path = std::env::current_exe()?;
-    let quoted = runner::shell_escape(&tokf_path.to_string_lossy());
-    let content = format!("#!/bin/sh\nexec {quoted} hook handle\n");
-    std::fs::write(hook_script, &content)?;
+    let escaped_bin = if tokf_bin == "tokf" {
+        tokf_bin.to_string()
+    } else {
+        runner::shell_escape(tokf_bin)
+    };
+    let content = format!("#!/bin/sh\nexec {escaped_bin} hook handle\n");
+    std::fs::write(hook_script, content)?;
 
     // Make executable on Unix
     #[cfg(unix)]
@@ -199,283 +208,4 @@ fn patch_settings(settings_path: &Path, hook_script: &Path) -> anyhow::Result<()
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    // --- handle_json ---
-
-    #[test]
-    fn handle_bash_with_no_matching_filter() {
-        // No filters in search path, so no rewrite should happen
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-cmd"}}"#;
-        assert!(!handle_json(json));
-    }
-
-    #[test]
-    fn handle_non_bash_tool_passes_through() {
-        let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
-        assert!(!handle_json(json));
-    }
-
-    #[test]
-    fn handle_bash_no_command_passes_through() {
-        let json = r#"{"tool_name":"Bash","tool_input":{}}"#;
-        assert!(!handle_json(json));
-    }
-
-    #[test]
-    fn handle_invalid_json_passes_through() {
-        assert!(!handle_json("not json"));
-    }
-
-    #[test]
-    fn handle_empty_input_passes_through() {
-        assert!(!handle_json(""));
-    }
-
-    #[test]
-    fn handle_tokf_command_not_rewritten() {
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"tokf run git status"}}"#;
-        assert!(!handle_json(json));
-    }
-
-    // --- handle_json_with_config (fix #9: test the rewrite path) ---
-
-    #[test]
-    fn handle_json_with_config_rewrites_matching_command() {
-        let dir = tempfile::TempDir::new().unwrap();
-        std::fs::write(
-            dir.path().join("git-status.toml"),
-            "command = \"git status\"",
-        )
-        .unwrap();
-
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
-        let config = RewriteConfig::default();
-        let result = handle_json_with_config(json, &config, &[dir.path().to_path_buf()]);
-        assert!(result, "expected rewrite to occur for matching command");
-    }
-
-    #[test]
-    fn handle_json_with_config_no_match_returns_false() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
-        let config = RewriteConfig::default();
-        let result = handle_json_with_config(json, &config, &[dir.path().to_path_buf()]);
-        assert!(!result);
-    }
-
-    // --- patch_settings ---
-
-    #[test]
-    fn patch_creates_new_settings_file() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let settings = dir.path().join(".claude/settings.json");
-        let hook = dir.path().join("hook.sh");
-
-        patch_settings(&settings, &hook).unwrap();
-
-        let content = std::fs::read_to_string(&settings).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-        let pre_tool = &value["hooks"]["PreToolUse"];
-        assert!(pre_tool.is_array());
-        assert_eq!(pre_tool.as_array().unwrap().len(), 1);
-        assert_eq!(pre_tool[0]["matcher"], "Bash");
-    }
-
-    #[test]
-    fn patch_preserves_existing_settings() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let settings_path = dir.path().join("settings.json");
-        let hook = dir.path().join("hook.sh");
-
-        std::fs::write(
-            &settings_path,
-            r#"{"customKey": "customValue", "hooks": {"PostToolUse": []}}"#,
-        )
-        .unwrap();
-
-        patch_settings(&settings_path, &hook).unwrap();
-
-        let content = std::fs::read_to_string(&settings_path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-        assert_eq!(value["customKey"], "customValue");
-        assert!(value["hooks"]["PostToolUse"].is_array());
-        assert!(value["hooks"]["PreToolUse"].is_array());
-    }
-
-    #[test]
-    fn patch_idempotent_install() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let settings_path = dir.path().join("settings.json");
-        let hook = dir.path().join("tokf-hook.sh");
-
-        // Install twice
-        patch_settings(&settings_path, &hook).unwrap();
-        patch_settings(&settings_path, &hook).unwrap();
-
-        let content = std::fs::read_to_string(&settings_path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-        let arr = value["hooks"]["PreToolUse"].as_array().unwrap();
-        assert_eq!(
-            arr.len(),
-            1,
-            "should have exactly one hook entry after double install"
-        );
-    }
-
-    #[test]
-    fn patch_preserves_non_tokf_hooks() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let settings_path = dir.path().join("settings.json");
-        let hook = dir.path().join("tokf-hook.sh");
-
-        std::fs::write(
-            &settings_path,
-            r#"{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "/other/tool.sh" }]
-      }
-    ]
-  }
-}"#,
-        )
-        .unwrap();
-
-        patch_settings(&settings_path, &hook).unwrap();
-
-        let content = std::fs::read_to_string(&settings_path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-        let arr = value["hooks"]["PreToolUse"].as_array().unwrap();
-        assert_eq!(
-            arr.len(),
-            2,
-            "should have both the existing hook and the new tokf hook"
-        );
-    }
-
-    #[test]
-    fn patch_settings_quotes_path_with_spaces() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let settings_path = dir.path().join("settings.json");
-        // Simulate a hook script path that contains spaces
-        let hook = std::path::Path::new("/Users/my name/.tokf/hooks/pre-tool-use.sh");
-
-        patch_settings(&settings_path, hook).unwrap();
-
-        let content = std::fs::read_to_string(&settings_path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-        let cmd = value["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-            .as_str()
-            .unwrap();
-        assert!(
-            cmd.starts_with('\''),
-            "command should be single-quoted for shell safety, got: {cmd}"
-        );
-        assert!(
-            cmd.contains("my name"),
-            "path with space should be preserved, got: {cmd}"
-        );
-    }
-
-    #[test]
-    fn patch_fails_on_corrupt_settings_json() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let settings_path = dir.path().join("settings.json");
-        let hook = dir.path().join("hook.sh");
-
-        std::fs::write(&settings_path, "not valid json {{{").unwrap();
-
-        let result = patch_settings(&settings_path, &hook);
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("corrupt settings.json"),
-            "expected corrupt error, got: {err}"
-        );
-    }
-
-    // --- write_hook_shim ---
-
-    #[test]
-    fn write_hook_shim_creates_executable_script() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let hook_dir = dir.path().join("hooks");
-        let hook_script = hook_dir.join("pre-tool-use.sh");
-
-        write_hook_shim(&hook_dir, &hook_script).unwrap();
-
-        let content = std::fs::read_to_string(&hook_script).unwrap();
-        assert!(content.starts_with("#!/bin/sh\n"));
-        assert!(
-            content.contains("hook handle"),
-            "expected 'hook handle' in script, got: {content}"
-        );
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::metadata(&hook_script).unwrap().permissions();
-            assert!(perms.mode() & 0o111 != 0, "script should be executable");
-        }
-    }
-
-    #[test]
-    fn write_hook_shim_quotes_path() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let hook_dir = dir.path().join("hooks");
-        let hook_script = hook_dir.join("pre-tool-use.sh");
-
-        write_hook_shim(&hook_dir, &hook_script).unwrap();
-
-        let content = std::fs::read_to_string(&hook_script).unwrap();
-        // The exec line should contain single quotes around the path
-        assert!(
-            content.contains("exec '"),
-            "expected quoted path in script, got: {content}"
-        );
-    }
-
-    // --- install_to (fix #8: test install with explicit paths) ---
-
-    #[test]
-    fn install_to_creates_files() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let hook_dir = dir.path().join("global/tokf/hooks");
-        let settings_path = dir.path().join("global/.claude/settings.json");
-
-        install_to(&hook_dir, &settings_path).unwrap();
-
-        let hook_script = hook_dir.join("pre-tool-use.sh");
-        assert!(hook_script.exists(), "hook script should exist");
-        assert!(settings_path.exists(), "settings.json should exist");
-
-        let settings_content = std::fs::read_to_string(&settings_path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&settings_content).unwrap();
-        assert!(value["hooks"]["PreToolUse"].is_array());
-    }
-
-    #[test]
-    fn install_to_idempotent() {
-        let dir = tempfile::TempDir::new().unwrap();
-        // Path must contain "tokf" and "hook" for idempotency detection
-        let hook_dir = dir.path().join(".tokf/hooks");
-        let settings_path = dir.path().join("settings.json");
-
-        install_to(&hook_dir, &settings_path).unwrap();
-        install_to(&hook_dir, &settings_path).unwrap();
-
-        let content = std::fs::read_to_string(&settings_path).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-        let arr = value["hooks"]["PreToolUse"].as_array().unwrap();
-        assert_eq!(arr.len(), 1, "should have one entry after double install");
-    }
-}
+mod tests;

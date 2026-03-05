@@ -3,7 +3,6 @@ target/
 .gitignore
 .idea/
 .vscode/
-.cargo-husky/
 .tokf/
 tarpaulin-report.html
 examples/

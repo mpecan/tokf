@@ -1,6 +1,6 @@
-name = "normal repo shows branch and grouped file counts"
+name = "normal repo shows branch and file listing"
 fixture = "normal.txt"
 exit_code = 0
 
 [[expect]]
-equals = "main\n  modified: 1\n  modified (unstaged): 1\n  untracked: 2"
+equals = "main\nM  src/main.rs\n M src/lib.rs\n?? new_file.txt\n?? another.txt"

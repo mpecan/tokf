@@ -1,0 +1,21 @@
+name = "test failures show error details and FAIL lines"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+contains = "--- FAIL: TestMultiply"
+
+[[expect]]
+contains = "--- FAIL: TestDivideByZero"
+
+[[expect]]
+contains = "FAIL\texample.com/math"
+
+[[expect]]
+contains = "math_test.go:25"
+
+[[expect]]
+not_contains = "--- PASS:"
+
+[[expect]]
+not_contains = "=== RUN"

@@ -1,9 +1,12 @@
-name = "failing tests show failure details"
+name = "failing tests show failure details with summary"
 fixture = "failure.txt"
 exit_code = 101
 
 [[expect]]
-starts_with = "FAILURES (2):"
+starts_with = "✗ cargo test:"
+
+[[expect]]
+contains = "FAILURES (2):"
 
 [[expect]]
 contains = "branch_fixed_output"

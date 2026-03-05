@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use sha2::{Digest, Sha256};
 
 use crate::config::types::FilterConfig;
@@ -41,7 +43,12 @@ impl From<serde_json::Error> for HashError {
 pub fn canonical_hash(config: &FilterConfig) -> Result<String, HashError> {
     let json = serde_json::to_vec(config)?;
     let digest = Sha256::digest(&json);
-    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+    let mut hex = String::with_capacity(64);
+    for b in &digest {
+        // write! to String is infallible; .ok() silences the unused-Result lint.
+        write!(hex, "{b:02x}").ok();
+    }
+    Ok(hex)
 }
 
 #[cfg(test)]

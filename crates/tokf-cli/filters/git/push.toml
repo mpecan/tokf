@@ -7,7 +7,7 @@ command = "git push"
 # Check full output for special cases first
 match_output = [
   { contains = "Everything up-to-date", output = "ok (up-to-date)" },
-  { contains = "rejected", output = "✗ push rejected (try pulling first)" },
+  { contains = "non-fast-forward", output = "✗ push rejected (try pulling first)" },
 ]
 
 [on_success]
@@ -25,4 +25,10 @@ skip = [
 extract = { pattern = '(\S+)\s*->\s*(\S+)', output = "ok ✓ {2}" }
 
 [on_failure]
+skip = [
+  "^remote:\\s*$",
+  "^To ",
+  "^error: failed to push",
+  "^hint:",
+]
 tail = 10

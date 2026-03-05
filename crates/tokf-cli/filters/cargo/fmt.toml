@@ -1,0 +1,14 @@
+command = "cargo fmt"
+
+# Auto-fixable: formatting diffs detected by "Diff in " header from rustfmt.
+# Shows file list extracted via template pipe from raw output.
+match_output = [
+  { contains = "Diff in ", output = "✗ formatting issues — run `cargo fmt` to fix:\n{output | lines | keep: \"^Diff in \" | join: \"\\n\"}" },
+]
+
+[on_success]
+output = "✓ cargo fmt: ok"
+
+[on_failure]
+# Non-auto-fixable: syntax errors (no "Diff in" in output)
+tail = 20

@@ -1,0 +1,22 @@
+   Compiling tokf v0.1.0 (/Users/dev/tokf)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.20s
+     Running unittests src/lib.rs (target/debug/deps/tokf-abc123)
+
+running 15 tests
+test config::tests::test_minimal_config ... ok
+test config::tests::test_deserialize_git_push ... ok
+test config::tests::test_deserialize_git_status ... ok
+test filter::tests::match_output_first_match_wins ... ok
+test filter::tests::branch_fixed_output ... ok
+test filter::tests::branch_tail_truncation ... ok
+test filter::skip::tests::skip_removes_matching ... ok
+test filter::skip::tests::skip_empty_passthrough ... ok
+test filter::extract::tests::extract_first_match ... ok
+test runner::tests::test_execute_echo ... ok
+test runner::tests::test_execute_failure ... ok
+test runner::tests::test_combined_both_streams ... ok
+test db::tests::pool_connects ... ignored
+test db::tests::migration_runs ... ignored
+test db::tests::insert_and_query ... ignored
+
+test result: ok. 12 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.03s

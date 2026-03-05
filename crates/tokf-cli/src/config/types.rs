@@ -55,7 +55,7 @@ mod tests {
         assert_eq!(cfg.command.first(), "git push");
         assert_eq!(cfg.match_output.len(), 2);
         assert_eq!(cfg.match_output[0].contains, "Everything up-to-date");
-        assert_eq!(cfg.match_output[1].contains, "rejected");
+        assert_eq!(cfg.match_output[1].contains, "non-fast-forward");
 
         let success = cfg.on_success.unwrap();
         assert_eq!(success.skip.len(), 8);
@@ -66,6 +66,7 @@ mod tests {
         assert_eq!(extract.output, "ok \u{2713} {2}");
 
         let failure = cfg.on_failure.unwrap();
+        assert_eq!(failure.skip.len(), 4);
         assert_eq!(failure.tail, Some(10));
     }
 
@@ -74,7 +75,58 @@ mod tests {
         let cfg = load_filter("git/status.toml");
 
         assert_eq!(cfg.command.first(), "git status");
-        assert_eq!(cfg.run.as_deref(), Some("git status --porcelain -b"));
+        let run = cfg.run.unwrap();
+        assert_eq!(run, "git status --porcelain -b");
+
+        // match_output: not-a-git-repo case
+        assert_eq!(cfg.match_output.len(), 1);
+        assert_eq!(cfg.match_output[0].contains, "not a git repository");
+        assert_eq!(cfg.match_output[0].output, "Not a git repository");
+
+        // replace rules: branch line transformations
+        assert_eq!(cfg.replace.len(), 3);
+
+        // Detached HEAD rule
+        assert_eq!(cfg.replace[0].pattern, "^## HEAD \\(no branch\\).*$");
+        assert_eq!(cfg.replace[0].output, "HEAD (detached)");
+
+        // Branch with ahead/behind info
+        assert!(cfg.replace[1].pattern.contains("\\["));
+        assert_eq!(cfg.replace[1].output, "{1} [{2}]");
+
+        // Plain branch (no ahead/behind)
+        assert!(cfg.replace[2].pattern.contains("(?:"));
+        assert_eq!(cfg.replace[2].output, "{1}");
+
+        // history hint is off — files are shown directly
+        assert!(!cfg.show_history_hint);
+
+        // no parse or output sections
+        assert!(cfg.parse.is_none());
+        assert!(cfg.output.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_parse_config_from_toml() {
+        // ParseConfig and OutputConfig have no stdlib filter using them anymore;
+        // verify their TOML deserialization paths still work correctly.
+        let cfg: FilterConfig = toml::from_str(
+            r#"
+command = "legacy cmd"
+
+[parse]
+branch = { line = 1, pattern = '^## (\S+)', output = "{1}" }
+
+[parse.group]
+key = { pattern = '^(.{2}) ', output = "{1}" }
+
+[output]
+format = "{branch}\n{group_counts}"
+group_counts_format = "  {label}: {count}"
+empty = "nothing to show"
+"#,
+        )
+        .unwrap();
 
         let parse = cfg.parse.unwrap();
         let branch = parse.branch.unwrap();
@@ -82,8 +134,7 @@ mod tests {
         assert_eq!(branch.output, "{1}");
 
         let group = parse.group.unwrap();
-        assert!(group.labels.contains_key("??"));
-        assert_eq!(group.labels.get("M ").unwrap(), "modified");
+        assert_eq!(group.key.output, "{1}");
 
         let output = cfg.output.unwrap();
         assert!(output.format.unwrap().contains("{branch}"));
@@ -91,10 +142,7 @@ mod tests {
             output.group_counts_format.as_deref(),
             Some("  {label}: {count}")
         );
-        assert_eq!(
-            output.empty.as_deref(),
-            Some("clean \u{2014} nothing to commit")
-        );
+        assert_eq!(output.empty.as_deref(), Some("nothing to show"));
     }
 
     #[test]
@@ -112,11 +160,15 @@ mod tests {
         assert_eq!(cfg.section[2].name.as_deref(), Some("summary"));
 
         let success = cfg.on_success.unwrap();
-        let agg = success.aggregate.unwrap();
-        assert_eq!(agg.from, "summary_lines");
-        assert_eq!(agg.sum.as_deref(), Some("passed"));
-        assert_eq!(agg.count_as.as_deref(), Some("suites"));
+        assert!(success.aggregate.is_none(), "singular aggregate removed");
+        assert_eq!(success.aggregates.len(), 3);
+        assert_eq!(success.aggregates[0].from, "summary_lines");
+        assert_eq!(success.aggregates[0].sum.as_deref(), Some("passed"));
+        assert_eq!(success.aggregates[0].count_as.as_deref(), Some("suites"));
         assert!(success.output.unwrap().contains("{passed}"));
+
+        assert!(!cfg.chunk.is_empty(), "chunk config present");
+        assert_eq!(cfg.chunk[0].collect_as, "suites_detail");
 
         let failure = cfg.on_failure.unwrap();
         assert!(failure.output.unwrap().contains("FAILURES"));

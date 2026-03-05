@@ -1,0 +1,476 @@
+// Not all test binaries use every harness method — each test file compiles
+// the harness independently, so some items appear unused per-binary.
+#![allow(
+    dead_code,
+    unused_imports,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::missing_panics_doc
+)]
+
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use sqlx::PgPool;
+use tokio::task::JoinHandle;
+
+use tokf::auth::credentials::LoadedAuth;
+use tokf::remote::client::{MachineInfo, RegisteredMachine};
+use tokf::remote::filter_client::{self, DownloadedFilter, FilterDetails, FilterSummary};
+use tokf::remote::gain_client::{GainResponse, GlobalGainResponse};
+use tokf::remote::http::Client;
+use tokf::remote::machine::StoredMachine;
+use tokf::remote::publish_client::{self, PublishResponse, UpdateTestsResponse};
+use tokf::remote::sync_client::{self, SyncEvent, SyncRequest, SyncResponse};
+use tokf::tracking;
+use tokf_server::auth::github::GitHubClient;
+use tokf_server::auth::mock::{NoOpGitHubClient, SuccessGitHubClient};
+use tokf_server::routes::{create_router, test_helpers};
+use tokf_server::storage::mock::InMemoryStorageClient;
+
+/// Reusable test harness that spins up an in-process axum server
+/// backed by a real `CockroachDB` pool and provides helpers for
+/// CLI-level operations.
+pub struct TestHarness {
+    pub server_addr: SocketAddr,
+    pub base_url: String,
+    pub token: String,
+    pub user_id: i64,
+    pub machine_id: uuid::Uuid,
+    pub sqlite_path: PathBuf,
+    pub pool: PgPool,
+    _temp_dir: tempfile::TempDir,
+    server_handle: JoinHandle<()>,
+}
+
+impl Drop for TestHarness {
+    fn drop(&mut self) {
+        self.server_handle.abort();
+    }
+}
+
+impl TestHarness {
+    /// Create a harness with `NoOpGitHubClient` (auth routes won't complete the
+    /// device flow, but pre-created tokens work fine for authenticated calls).
+    pub async fn new(pool: PgPool) -> Self {
+        Self::with_github(pool, Arc::new(NoOpGitHubClient)).await
+    }
+
+    /// Create a harness with `InMemoryStorageClient` so filter publish/download
+    /// operations actually persist bytes in memory (unlike `NoOpStorageClient`).
+    pub async fn with_storage(pool: PgPool) -> Self {
+        Self::with_github_and_storage(
+            pool,
+            Arc::new(NoOpGitHubClient),
+            Arc::new(InMemoryStorageClient::new()),
+        )
+        .await
+    }
+
+    /// Create a harness with `SuccessGitHubClient` (device flow completes
+    /// immediately, useful for auth E2E tests).
+    pub async fn with_github_mock(pool: PgPool) -> Self {
+        Self::with_github(pool, Arc::new(SuccessGitHubClient)).await
+    }
+
+    /// Create a harness with a custom `AppState` mutation closure.
+    /// Useful for overriding specific fields like rate limiters.
+    pub async fn with_custom_state<F>(pool: PgPool, mutate: F) -> Self
+    where
+        F: FnOnce(&mut tokf_server::state::AppState),
+    {
+        Self::build(
+            pool,
+            Arc::new(NoOpGitHubClient),
+            Arc::new(InMemoryStorageClient::new()),
+            Some(mutate),
+        )
+        .await
+    }
+
+    async fn with_github(pool: PgPool, github: Arc<dyn GitHubClient>) -> Self {
+        Self::build::<fn(&mut tokf_server::state::AppState)>(
+            pool,
+            github,
+            Arc::new(tokf_server::storage::noop::NoOpStorageClient),
+            None,
+        )
+        .await
+    }
+
+    async fn with_github_and_storage(
+        pool: PgPool,
+        github: Arc<dyn GitHubClient>,
+        storage: Arc<dyn tokf_server::storage::StorageClient>,
+    ) -> Self {
+        Self::build::<fn(&mut tokf_server::state::AppState)>(pool, github, storage, None).await
+    }
+
+    /// Core builder: creates user/machine, builds state, starts server.
+    async fn build<F>(
+        pool: PgPool,
+        github: Arc<dyn GitHubClient>,
+        storage: Arc<dyn tokf_server::storage::StorageClient>,
+        mutate: Option<F>,
+    ) -> Self
+    where
+        F: FnOnce(&mut tokf_server::state::AppState),
+    {
+        let (user_id, token) = test_helpers::create_user_and_token(&pool).await;
+        let machine_id = test_helpers::create_machine(&pool, user_id).await;
+
+        let mut state = test_helpers::make_state(pool.clone());
+        state.github = github;
+        state.storage = storage;
+        if let Some(f) = mutate {
+            f(&mut state);
+        }
+
+        let (server_addr, base_url, server_handle) = Self::start_server(state).await;
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let sqlite_path = temp_dir.path().join("tracking.db");
+
+        Self {
+            server_addr,
+            base_url,
+            token,
+            user_id,
+            machine_id,
+            sqlite_path,
+            pool,
+            _temp_dir: temp_dir,
+            server_handle,
+        }
+    }
+
+    /// Bind to a random port, spawn the axum server, and wait for readiness.
+    async fn start_server(
+        state: tokf_server::state::AppState,
+    ) -> (SocketAddr, String, JoinHandle<()>) {
+        let app = create_router(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .unwrap();
+        });
+
+        let base_url = format!("http://{addr}");
+        let client = reqwest::Client::new();
+        let mut ready = false;
+        for _ in 0..40 {
+            if client
+                .get(format!("{base_url}/health"))
+                .send()
+                .await
+                .is_ok()
+            {
+                ready = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(ready, "server did not become ready within 200ms");
+
+        (addr, base_url, handle)
+    }
+
+    /// Create a second user+token pair (for testing authorization).
+    pub async fn create_other_user_token(&self) -> String {
+        let (_, token) = test_helpers::create_user_and_token(&self.pool).await;
+        token
+    }
+
+    /// Open (or create) the `SQLite` tracking database.
+    pub fn open_tracking_db(&self) -> rusqlite::Connection {
+        tracking::open_db(&self.sqlite_path).unwrap()
+    }
+
+    /// Record a tracking event in the local `SQLite` database.
+    #[allow(clippy::unused_self, clippy::too_many_arguments)]
+    pub fn record_event(
+        &self,
+        conn: &rusqlite::Connection,
+        command: &str,
+        filter_name: Option<&str>,
+        filter_hash: Option<&str>,
+        input_bytes: usize,
+        output_bytes: usize,
+    ) {
+        let event = tracking::build_event(
+            command,
+            filter_name,
+            filter_hash,
+            input_bytes,
+            output_bytes,
+            0,
+            0,
+            false,
+        );
+        tracking::record_event(conn, &event).unwrap();
+    }
+
+    /// Construct a `LoadedAuth` pointing at this harness's server.
+    pub fn loaded_auth(&self) -> LoadedAuth {
+        LoadedAuth {
+            token: self.token.clone(),
+            username: "testuser".to_string(),
+            server_url: self.base_url.clone(),
+            // Far-future expiry (year ~2554) so the token is always valid.
+            expires_at: 18_446_744_073,
+            mit_license_accepted: None,
+            tos_accepted_version: None,
+        }
+    }
+
+    /// Construct a `StoredMachine` with this harness's machine ID.
+    pub fn stored_machine(&self) -> StoredMachine {
+        StoredMachine {
+            machine_id: self.machine_id.to_string(),
+            hostname: "test-host".to_string(),
+        }
+    }
+
+    // ── Sync request builders ───────────────────────────────────
+
+    /// Build a `SyncRequest` from local `SQLite` events using the harness's machine ID.
+    pub fn build_sync_request(&self, conn: &rusqlite::Connection) -> SyncRequest {
+        self.build_sync_request_for_machine(conn, &self.machine_id.to_string())
+    }
+
+    /// Build a `SyncRequest` from local `SQLite` events using a custom machine ID.
+    #[allow(clippy::unused_self)]
+    pub fn build_sync_request_for_machine(
+        &self,
+        conn: &rusqlite::Connection,
+        machine_id: &str,
+    ) -> SyncRequest {
+        let last_id = tracking::get_last_synced_id(conn).unwrap();
+        let events = tracking::get_events_since(conn, last_id).unwrap();
+        let sync_events: Vec<SyncEvent> = events
+            .iter()
+            .map(|e| SyncEvent {
+                id: e.id,
+                filter_name: e.filter_name.clone(),
+                filter_hash: e.filter_hash.clone(),
+                input_tokens: e.input_tokens_est,
+                output_tokens: e.output_tokens_est,
+                command_count: 1,
+                recorded_at: e.timestamp.clone(),
+            })
+            .collect();
+        SyncRequest {
+            machine_id: machine_id.to_string(),
+            last_event_id: last_id,
+            events: sync_events,
+        }
+    }
+
+    // ── Blocking helpers (wrap spawn_blocking boilerplate) ───────
+    //
+    // IMPORTANT: `reqwest::blocking::Client` creates an internal Tokio runtime.
+    // It must NOT be constructed or dropped in an async context — otherwise the
+    // runtime's `Drop` panics ("Cannot drop a runtime in a context where
+    // blocking is not allowed"). The three `run_blocking*` helpers below
+    // ensure `Client::new()` is always called inside a `spawn_blocking`
+    // closure.
+
+    /// Run `f` on a blocking thread with an authenticated `Client`.
+    async fn run_blocking<T, F>(&self, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce(&Client) -> T + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        let token = self.token.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Client::new(&base_url, Some(&token)).unwrap();
+            f(&client)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Run `f` on a blocking thread with an unauthenticated `Client`.
+    async fn run_blocking_unauthed<T, F>(&self, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce(&Client) -> T + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        tokio::task::spawn_blocking(move || {
+            let client = Client::unauthenticated(&base_url).unwrap();
+            f(&client)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Run `f` on a blocking thread with a `Client` using the given token.
+    async fn run_blocking_with_token<T, F>(&self, token: &str, f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce(&Client) -> T + Send + 'static,
+    {
+        let base_url = self.base_url.clone();
+        let token = token.to_string();
+        tokio::task::spawn_blocking(move || {
+            let client = Client::new(&base_url, Some(&token)).unwrap();
+            f(&client)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Sync a pre-built request to the remote server.
+    pub async fn blocking_sync_request(&self, req: &SyncRequest) -> SyncResponse {
+        let req = req.clone();
+        self.run_blocking(move |c| sync_client::sync_events(c, &req).unwrap())
+            .await
+    }
+
+    /// Attempt sync and return the `Result` (for error-path tests).
+    pub async fn try_sync_with_token(
+        &self,
+        req: &SyncRequest,
+        token: &str,
+    ) -> anyhow::Result<SyncResponse> {
+        let req = req.clone();
+        self.run_blocking_with_token(token, move |c| sync_client::sync_events(c, &req))
+            .await
+    }
+
+    /// Fetch the authenticated user's gain summary.
+    pub async fn blocking_gain(&self) -> GainResponse {
+        self.run_blocking(|c| tokf::remote::gain_client::get_gain(c).unwrap())
+            .await
+    }
+
+    /// Fetch the global (unauthenticated) gain summary.
+    pub async fn blocking_global_gain(&self) -> GlobalGainResponse {
+        self.run_blocking_unauthed(|c| tokf::remote::gain_client::get_global_gain(c).unwrap())
+            .await
+    }
+
+    /// Register a machine via the CLI client function.
+    pub async fn blocking_register_machine(
+        &self,
+        machine_id: &str,
+        hostname: &str,
+    ) -> RegisteredMachine {
+        let machine_id = machine_id.to_string();
+        let hostname = hostname.to_string();
+        self.run_blocking(move |c| {
+            tokf::remote::client::register_machine(c, &machine_id, &hostname).unwrap()
+        })
+        .await
+    }
+
+    /// List machines for the authenticated user.
+    pub async fn blocking_list_machines(&self) -> Vec<MachineInfo> {
+        self.run_blocking(|c| tokf::remote::client::list_machines(c).unwrap())
+            .await
+    }
+
+    /// Fetch gain using a specific token (for auth-flow tests).
+    pub async fn blocking_gain_with_token(&self, token: &str) -> GainResponse {
+        self.run_blocking_with_token(token, |c| tokf::remote::gain_client::get_gain(c).unwrap())
+            .await
+    }
+
+    // ── Filter helpers ──────────────────────────────────────────
+
+    /// Try to publish a filter (returns Result for error-path tests).
+    pub async fn try_publish(
+        &self,
+        filter_bytes: Vec<u8>,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> anyhow::Result<(bool, PublishResponse)> {
+        self.run_blocking(move |c| publish_client::publish_filter(c, &filter_bytes, &test_files))
+            .await
+    }
+
+    /// Publish a filter with optional test files. Returns `(is_new, response)`.
+    pub async fn blocking_publish(
+        &self,
+        filter_bytes: Vec<u8>,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> (bool, PublishResponse) {
+        self.run_blocking(move |c| {
+            publish_client::publish_filter(c, &filter_bytes, &test_files).unwrap()
+        })
+        .await
+    }
+
+    /// Update the test suite for a published filter.
+    pub async fn blocking_update_tests(
+        &self,
+        hash: &str,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> UpdateTestsResponse {
+        let hash = hash.to_string();
+        self.run_blocking(move |c| publish_client::update_tests(c, &hash, &test_files).unwrap())
+            .await
+    }
+
+    /// Try to update tests (returns Result for error-path tests).
+    pub async fn try_update_tests(
+        &self,
+        hash: &str,
+        test_files: Vec<(String, Vec<u8>)>,
+    ) -> anyhow::Result<UpdateTestsResponse> {
+        let hash = hash.to_string();
+        self.run_blocking(move |c| publish_client::update_tests(c, &hash, &test_files))
+            .await
+    }
+
+    /// Try to update tests with a custom token (for auth tests).
+    pub async fn try_update_tests_with_token(
+        &self,
+        hash: &str,
+        test_files: Vec<(String, Vec<u8>)>,
+        token: &str,
+    ) -> anyhow::Result<UpdateTestsResponse> {
+        let hash = hash.to_string();
+        self.run_blocking_with_token(token, move |c| {
+            publish_client::update_tests(c, &hash, &test_files)
+        })
+        .await
+    }
+
+    /// Search the filter registry.
+    pub async fn blocking_search_filters(&self, query: &str, limit: usize) -> Vec<FilterSummary> {
+        let query = query.to_string();
+        self.run_blocking(move |c| filter_client::search_filters(c, &query, limit).unwrap())
+            .await
+    }
+
+    /// Try to search filters (returns Result for error-path tests).
+    pub async fn try_search_filters(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<FilterSummary>> {
+        let query = query.to_string();
+        self.run_blocking(move |c| filter_client::search_filters(c, &query, limit))
+            .await
+    }
+
+    /// Get filter details by hash.
+    pub async fn blocking_get_filter(&self, hash: &str) -> FilterDetails {
+        let hash = hash.to_string();
+        self.run_blocking(move |c| filter_client::get_filter(c, &hash).unwrap())
+            .await
+    }
+
+    /// Download filter TOML + test files by hash.
+    pub async fn blocking_download_filter(&self, hash: &str) -> DownloadedFilter {
+        let hash = hash.to_string();
+        self.run_blocking(move |c| filter_client::download_filter(c, &hash).unwrap())
+            .await
+    }
+}

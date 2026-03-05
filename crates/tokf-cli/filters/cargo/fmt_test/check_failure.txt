@@ -1,0 +1,16 @@
+Diff in /home/user/project/src/main.rs at line 1:
+--- /home/user/project/src/main.rs	2024-01-01 00:00:00.000000000 +0000
++++ /home/user/project/src/main.rs	2024-01-01 00:00:00.000000000 +0000
+@@ -1,5 +1,5 @@
+-fn main()  {
++fn main() {
+     println!("hello");
+ }
+Diff in /home/user/project/src/lib.rs at line 3:
+--- /home/user/project/src/lib.rs	2024-01-01 00:00:00.000000000 +0000
++++ /home/user/project/src/lib.rs	2024-01-01 00:00:00.000000000 +0000
+@@ -3,5 +3,5 @@
+-pub fn add( a: i32,b: i32) -> i32 {
++pub fn add(a: i32, b: i32) -> i32 {
+     a + b
+ }

@@ -5,8 +5,15 @@ mod config;
 mod queries;
 mod types;
 
-pub use config::{HistoryConfig, current_project, project_root_for};
-pub use queries::{clear_history, get_history_entry, list_history, record_history, search_history};
+pub use config::{
+    HistoryConfig, SyncConfig, TokfHistorySection, TokfProjectConfig, TokfSyncSection,
+    current_project, global_config_path, load_project_config, local_config_path, project_root_for,
+    save_project_config, save_upload_stats, save_upload_stats_to_path,
+};
+pub use queries::{
+    clear_history, get_history_entry, get_latest_entry, list_history, record_history,
+    search_history,
+};
 pub use types::{HistoryEntry, HistoryRecord};
 
 /// Return `true` when `command` matches the most recent history entry for the
@@ -108,7 +115,7 @@ pub fn try_record(
     let conn = match open_db(&path) {
         Ok(c) => c,
         Err(e) => {
-            if std::env::var("TOKF_DEBUG").is_ok() {
+            if crate::paths::debug_enabled() {
                 eprintln!("[tokf] history error (db open): {e:#}");
             }
             return None;
@@ -125,7 +132,7 @@ pub fn try_record(
     match record_history(&conn, &record, &config) {
         Ok(id) => Some(id),
         Err(e) => {
-            if std::env::var("TOKF_DEBUG").is_ok() {
+            if crate::paths::debug_enabled() {
                 eprintln!("[tokf] history error (record): {e:#}");
             }
             None
@@ -137,3 +144,7 @@ pub fn try_record(
 mod config_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_clear;
+#[cfg(test)]
+mod tests_search;

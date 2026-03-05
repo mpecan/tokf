@@ -11,6 +11,9 @@ use tempfile::TempDir;
 fn tokf_with_db(db_path: &Path) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
     cmd.env("TOKF_DB_PATH", db_path);
+    // Point TOKF_HOME at a nonexistent dir so the binary never finds a real
+    // auth.toml and never touches the OS keyring during tests.
+    cmd.env("TOKF_HOME", db_path.parent().unwrap().join("tokf-home"));
     cmd
 }
 
@@ -150,7 +153,16 @@ fn gain_tokens_saved_positive_after_filtered_run() {
     use tokf::tracking;
     let path = db.clone();
     let conn = tracking::open_db(&path).expect("open");
-    let ev = tracking::build_event("git status", Some("git status"), 4000, 400, 5, 0);
+    let ev = tracking::build_event(
+        "git status",
+        Some("git status"),
+        None,
+        4000,
+        400,
+        5,
+        0,
+        false,
+    );
     tracking::record_event(&conn, &ev).expect("record");
     drop(conn);
 

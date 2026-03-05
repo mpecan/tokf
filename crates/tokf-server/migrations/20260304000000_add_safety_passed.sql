@@ -1,0 +1,1 @@
+ALTER TABLE filters ADD COLUMN IF NOT EXISTS safety_passed BOOL NOT NULL DEFAULT true;

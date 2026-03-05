@@ -1,6 +1,6 @@
 [package]
 name = "tokf-server"
-version = "0.2.4"
+version = "0.2.25"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -15,7 +15,7 @@ name = "tokf-server"
 path = "src/main.rs"
 
 [dependencies]
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["trace"] }
 serde = { version = "1", features = ["derive"] }
@@ -23,17 +23,36 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+sqlx = { version = "=0.8.6", default-features = false, features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "macros", "migrate"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+sha2 = "0.10"
+rand = "0.8"
+hex = "0.4"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+tokf-common = { path = "../tokf-common", version = "0.2.25", features = ["validation"] }
+tokf-filter = { path = "../tokf-filter", version = "0.2.25" }
+toml = "1.0"
+bytes = "1"
+
+[features]
+default = []
+test-helpers = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+crdb-test-macro = { path = "../crdb-test-macro" }
+ts-rs = "12"
+# Self-dependency to enable test-helpers feature for integration tests
+# (cfg(test) is only set for unit tests, not integration tests)
+# Renamed key to work around release-please cargo-workspace plugin cycle detection
+# (googleapis/release-please#1662) — `package` preserves the real crate identity.
+tokf-server-test = { package = "tokf-server", path = ".", features = ["test-helpers"] }
 
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
-panic = "deny"
-pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-module_name_repetitions = "allow"
-must_use_candidate = "allow"
+[lints]
+workspace = true

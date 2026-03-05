@@ -1,0 +1,15 @@
+name = "panic preserves stack trace and FAIL line"
+fixture = "panic.txt"
+exit_code = 2
+
+[[expect]]
+contains = "panic: runtime error"
+
+[[expect]]
+contains = "store.go:42"
+
+[[expect]]
+contains = "FAIL\texample.com/myapp"
+
+[[expect]]
+not_contains = "=== RUN"

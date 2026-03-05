@@ -1,0 +1,5 @@
+Checking formatting...
+[warn] src/components/ui/button.tsx
+[warn] src/lib/auth/session.ts
+[warn] src/pages/dashboard.tsx
+[warn] Code style issues found in the above file(s). Forgot to run Prettier?
