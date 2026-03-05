@@ -95,14 +95,18 @@ contains = "OK"
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Per-case line should show token stats
+    // Per-case line should show token stats on the specific case line
+    let case_line = stdout
+        .lines()
+        .find(|line| line.contains("reduces output"))
+        .expect("expected case line for 'reduces output' in output");
     assert!(
-        stdout.contains("tokens") && stdout.contains("reduction"),
-        "expected token stats in case output, got:\n{stdout}"
+        case_line.contains("tokens") && case_line.contains("reduction"),
+        "expected token stats in case output line, got:\n{case_line}"
     );
     assert!(
-        stdout.contains("\u{2192}"),
-        "expected arrow in token display, got:\n{stdout}"
+        case_line.contains("\u{2192}"),
+        "expected arrow in case output line, got:\n{case_line}"
     );
 
     // Footer should show overall stats
@@ -134,7 +138,7 @@ output = "OK"
     )
     .unwrap();
 
-    // 40 bytes of input → "OK" (2 bytes) output
+    // 39 bytes of input → "OK" (2 bytes) output
     fs::write(
         suite_dir.join("big.toml"),
         r#"name = "big reduction"

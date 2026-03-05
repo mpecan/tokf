@@ -90,7 +90,10 @@ fn print_results(results: &[SuiteResult], show_safety: bool) {
                     case.name, case.input_tokens, case.output_tokens, case.reduction_pct
                 );
             } else {
-                println!("    \u{2717} {}", case.name);
+                println!(
+                    "    \u{2717} {} ({} \u{2192} {} tokens, {:.1}% reduction)",
+                    case.name, case.input_tokens, case.output_tokens, case.reduction_pct
+                );
                 for failure in &case.failures {
                     for line in failure.lines() {
                         println!("        {line}");
