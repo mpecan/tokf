@@ -84,7 +84,7 @@ pub fn cmd_run(
         reporter.report(&telemetry::TelemetryEvent::new(
             None,
             command_args.join(" "),
-            raw_len,
+            input_bytes,
             raw_len,
             &cmd_result.combined,
             &cmd_result.combined,
