@@ -23,6 +23,11 @@ pub struct CaseResult {
     pub name: String,
     pub passed: bool,
     pub failures: Vec<String>,
+    pub input_lines: usize,
+    pub output_lines: usize,
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+    pub reduction_pct: f64,
 }
 
 #[derive(Serialize)]
@@ -33,6 +38,9 @@ pub struct SuiteResult {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safety: Option<ExamplesSafety>,
+    pub total_input_tokens: usize,
+    pub total_output_tokens: usize,
+    pub overall_reduction_pct: f64,
 }
 
 // --- Output formatting ---
@@ -57,6 +65,8 @@ fn print_results(results: &[SuiteResult], show_safety: bool) {
     let mut total_cases = 0;
     let mut total_passed = 0;
     let mut safety_warnings = 0;
+    let mut grand_input_tokens = 0_usize;
+    let mut grand_output_tokens = 0_usize;
 
     for suite in results {
         if let Some(err) = &suite.error {
@@ -66,15 +76,24 @@ fn print_results(results: &[SuiteResult], show_safety: bool) {
 
         let suite_passed = suite.cases.iter().all(|c| c.passed);
         let icon = if suite_passed { "\u{2713}" } else { "\u{2717}" };
-        println!("{icon} {}", suite.filter_name);
+        println!(
+            "{icon} {} ({:.1}% reduction)",
+            suite.filter_name, suite.overall_reduction_pct
+        );
 
         for case in &suite.cases {
             total_cases += 1;
             if case.passed {
                 total_passed += 1;
-                println!("    \u{2713} {}", case.name);
+                println!(
+                    "    \u{2713} {} ({} \u{2192} {} tokens, {:.1}% reduction)",
+                    case.name, case.input_tokens, case.output_tokens, case.reduction_pct
+                );
             } else {
-                println!("    \u{2717} {}", case.name);
+                println!(
+                    "    \u{2717} {} ({} \u{2192} {} tokens, {:.1}% reduction)",
+                    case.name, case.input_tokens, case.output_tokens, case.reduction_pct
+                );
                 for failure in &case.failures {
                     for line in failure.lines() {
                         println!("        {line}");
@@ -83,27 +102,44 @@ fn print_results(results: &[SuiteResult], show_safety: bool) {
             }
         }
 
-        if show_safety
-            && let Some(safety) = &suite.safety
-            && !safety.passed
-        {
-            for w in &safety.warnings {
-                safety_warnings += 1;
-                let detail = w.detail.as_deref().unwrap_or("");
-                println!(
-                    "    \u{26A0} [{kind}] {msg} {detail}",
-                    kind = w.kind,
-                    msg = w.message,
-                    detail = detail
-                );
-            }
-        }
+        grand_input_tokens += suite.total_input_tokens;
+        grand_output_tokens += suite.total_output_tokens;
+        print_safety_warnings(show_safety, suite, &mut safety_warnings);
     }
 
     println!();
     println!("{total_passed}/{total_cases} passed");
+    let grand_reduction =
+        tokf_common::examples::reduction_pct(grand_input_tokens, grand_output_tokens);
+    println!(
+        "Overall: {grand_input_tokens} \u{2192} {grand_output_tokens} tokens, {grand_reduction:.1}% reduction"
+    );
     if show_safety {
         println!("{safety_warnings} safety warning(s)");
+    }
+}
+
+fn print_safety_warnings(show_safety: bool, suite: &SuiteResult, count: &mut usize) {
+    if show_safety
+        && let Some(safety) = &suite.safety
+        && !safety.passed
+    {
+        for w in &safety.warnings {
+            *count += 1;
+            if let Some(detail) = &w.detail {
+                println!(
+                    "    \u{26A0} [{kind}] {msg} {detail}",
+                    kind = w.kind,
+                    msg = w.message,
+                );
+            } else {
+                println!(
+                    "    \u{26A0} [{kind}] {msg}",
+                    kind = w.kind,
+                    msg = w.message
+                );
+            }
+        }
     }
 }
 
