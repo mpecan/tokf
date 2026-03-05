@@ -35,10 +35,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Clippy (otel feature)
-        run: cargo clippy -p tokf-cli --features otel -- -D warnings
+        run: cargo clippy -p tokf --features otel -- -D warnings
 
       - name: Clippy (otel-grpc feature)
-        run: cargo clippy -p tokf-cli --features otel-grpc -- -D warnings
+        run: cargo clippy -p tokf --features otel-grpc -- -D warnings
 
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
@@ -73,10 +73,10 @@ jobs:
         run: cargo nextest run --workspace --exclude e2e-tests --profile ci
 
       - name: Run tests (otel feature)
-        run: cargo nextest run -p tokf-cli --features otel --profile ci
+        run: cargo nextest run -p tokf --features otel --profile ci
 
       - name: Run tests (otel-grpc feature)
-        run: cargo nextest run -p tokf-cli --features otel-grpc --profile ci
+        run: cargo nextest run -p tokf --features otel-grpc --profile ci
 
       - name: Verify filter test suites
         id: verify
