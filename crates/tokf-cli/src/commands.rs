@@ -81,21 +81,16 @@ pub fn cmd_run(
             false,
         );
         resolve::try_auto_sync();
-        #[allow(clippy::cast_possible_truncation)]
-        let line_count = cmd_result.combined.lines().count() as u64;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-        let token_est = (raw_len / 4) as u64;
-        reporter.report(&telemetry::TelemetryEvent {
-            filter_name: None,
-            command: command_args.join(" "),
-            input_lines: line_count,
-            output_lines: line_count,
-            input_tokens: token_est,
-            output_tokens: token_est,
-            filter_duration_secs: 0.0,
-            exit_code: cmd_result.exit_code,
-            pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
-        });
+        reporter.report(&telemetry::TelemetryEvent::new(
+            None,
+            command_args.join(" "),
+            raw_len,
+            raw_len,
+            &cmd_result.combined,
+            &cmd_result.combined,
+            std::time::Duration::ZERO,
+            cmd_result.exit_code,
+        ));
         if cli.no_mask_exit_code {
             return Ok(cmd_result.exit_code);
         }
@@ -191,25 +186,16 @@ pub fn cmd_run(
         );
     }
 
-    #[allow(clippy::cast_possible_truncation)]
-    let input_lines = cmd_result.combined.lines().count() as u64;
-    #[allow(clippy::cast_possible_truncation)]
-    let output_lines = final_output.lines().count() as u64;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let input_tokens = (input_bytes / 4) as u64;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let output_tokens = (output_bytes / 4) as u64;
-    reporter.report(&telemetry::TelemetryEvent {
-        filter_name: Some(filter_name.to_string()),
-        command: command_str,
-        input_lines,
-        output_lines,
-        input_tokens,
-        output_tokens,
-        filter_duration_secs: elapsed.as_secs_f64(),
-        exit_code: cmd_result.exit_code,
-        pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
-    });
+    reporter.report(&telemetry::TelemetryEvent::new(
+        Some(filter_name.to_string()),
+        command_str,
+        input_bytes,
+        output_bytes,
+        &cmd_result.combined,
+        &final_output,
+        elapsed,
+        cmd_result.exit_code,
+    ));
 
     if cli.no_mask_exit_code {
         Ok(cmd_result.exit_code)

@@ -85,9 +85,10 @@ fn apply_toml(config: &mut TelemetryConfig, table: &toml::Table) {
 pub fn load() -> TelemetryConfig {
     let mut config = TelemetryConfig::default();
 
-    // Load from file (optional)
-    if let Some(cfg_dir) = dirs::config_dir() {
-        let cfg_path = cfg_dir.join("tokf").join("config.toml");
+    // Load from file (optional) — uses the centralized paths module so
+    // TOKF_HOME is respected consistently across all of tokf.
+    if let Some(cfg_dir) = crate::paths::user_dir() {
+        let cfg_path = cfg_dir.join("config.toml");
         if cfg_path.exists()
             && let Ok(content) = std::fs::read_to_string(&cfg_path)
             && let Ok(table) = content.parse::<toml::Table>()
@@ -277,5 +278,28 @@ service_name = "my-service"
         // service_name unchanged — falls back to default
         assert_eq!(cfg.service_name, "tokf");
         unsafe { std::env::remove_var("OTEL_RESOURCE_ATTRIBUTES") };
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_load_reads_config_from_tokf_home() {
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        let cfg_path = tmp.path().join("config.toml");
+        std::fs::write(
+            &cfg_path,
+            "[telemetry]\nenabled = true\nendpoint = \"http://custom:4318\"\n",
+        )
+        .expect("write config");
+
+        let _guard = crate::paths::HomeGuard::set(tmp.path());
+        // Clear env vars that would override the file values.
+        unsafe {
+            std::env::remove_var("TOKF_TELEMETRY_ENABLED");
+            std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        }
+
+        let cfg = load();
+        assert!(cfg.enabled);
+        assert_eq!(cfg.endpoint, "http://custom:4318");
     }
 }

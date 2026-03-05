@@ -49,8 +49,7 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             output_tokens_est INTEGER NOT NULL,
             filter_time_ms    INTEGER NOT NULL,
             exit_code         INTEGER NOT NULL,
-            pipe_override     INTEGER NOT NULL DEFAULT 0,
-            synced_to_otel_at TEXT
+            pipe_override     INTEGER NOT NULL DEFAULT 0
         );",
     )
     .context("create events table")?;
@@ -82,10 +81,6 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
         conn.execute_batch("ALTER TABLE events ADD COLUMN filter_hash TEXT;")
             .context("migrate events table: add filter_hash column")?;
     }
-
-    // Migration: add synced_to_otel_at for databases created before this column existed.
-    // Intentionally ignore error — fails harmlessly if the column already exists.
-    let _ = conn.execute_batch("ALTER TABLE events ADD COLUMN synced_to_otel_at TEXT;");
 
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)",

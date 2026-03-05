@@ -92,12 +92,13 @@ correct choice for tokf for two reasons:
    self-contained measurement for that invocation — no aggregation across the process
    lifetime is needed.
 
-2. **Historical replay compatibility.** The planned `tokf telemetry sync` command (see
-   ADR-referenced `synced_to_otel_at` column) will replay events from SQLite to the OTLP
-   backend. Delta temporality allows each historical row to be replayed as an independent
-   delta at its original timestamp, which is semantically correct and accepted by Datadog,
-   Grafana Mimir, New Relic, and Honeycomb. Cumulative temporality would require tracking
-   running totals across replayed rows, making replay significantly more complex.
+2. **Historical replay compatibility.** If a future `tokf telemetry sync` command is
+   needed, it should use the cursor-based pattern from the `sync_state` table (one
+   `last_synced_id` update per batch) rather than per-row timestamps. Delta temporality
+   allows each historical row to be replayed as an independent delta at its original
+   timestamp, which is semantically correct and accepted by Datadog, Grafana Mimir,
+   New Relic, and Honeycomb. Cumulative temporality would require tracking running
+   totals across replayed rows, making replay significantly more complex.
 
 Prometheus Pushgateway is **not** a supported target for historical sync because it is
 pull-based and rejects historical timestamps.
@@ -107,8 +108,8 @@ pull-based and rejects historical timestamps.
 - **Blocking time is capped at 200 ms** regardless of endpoint health.
 - **No event data is lost.** Every invocation is recorded to SQLite before the
   OTel path is touched. A future `tokf telemetry sync` command can replay any
-  events that were not exported in real time (the `synced_to_otel_at` column
-  already exists for this purpose).
+  events that were not exported in real time, using the cursor-based pattern
+  from the `sync_state` table (`last_synced_id`).
 - **The last invocation's real-time metric may not reach the OTel backend**
   if the endpoint takes longer than 200 ms to respond. This is an acceptable
   trade-off given the SQLite safety net.

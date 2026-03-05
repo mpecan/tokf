@@ -35,6 +35,40 @@ pub struct TelemetryEvent {
     pub pipeline: Option<String>,
 }
 
+impl TelemetryEvent {
+    /// Build a `TelemetryEvent` from raw execution data.
+    ///
+    /// Centralizes the `bytes / 4` token estimation, `.lines().count()`, and
+    /// `TOKF_OTEL_PIPELINE` env-var read so callers don't duplicate these.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::too_many_arguments
+    )]
+    pub fn new(
+        filter_name: Option<String>,
+        command: String,
+        input_bytes: usize,
+        output_bytes: usize,
+        raw_output: &str,
+        filtered_output: &str,
+        filter_duration: std::time::Duration,
+        exit_code: i32,
+    ) -> Self {
+        Self {
+            filter_name,
+            command,
+            input_lines: raw_output.lines().count() as u64,
+            output_lines: filtered_output.lines().count() as u64,
+            input_tokens: (input_bytes / 4) as u64,
+            output_tokens: (output_bytes / 4) as u64,
+            filter_duration_secs: filter_duration.as_secs_f64(),
+            exit_code,
+            pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
+        }
+    }
+}
+
 /// Abstraction over telemetry backends. Implementations must be `Send + Sync`
 /// so the reporter can be held behind a shared reference from `main`.
 pub trait TelemetryReporter: Send + Sync {
@@ -122,21 +156,17 @@ mod tests {
 
     #[test]
     fn test_noop_init_does_not_panic() {
-        // Pass otel_export_requested=false; with no env var, this always returns NoopReporter.
-        // We can't safely mutate env vars in Rust 2024 without an unsafe block, so just verify
-        // the reporter returned from init() is callable without panicking.
         let reporter = NoopReporter;
-        reporter.report(&TelemetryEvent {
-            filter_name: None,
-            command: "ls".to_string(),
-            input_lines: 10,
-            output_lines: 10,
-            input_tokens: 30,
-            output_tokens: 30,
-            filter_duration_secs: 0.0,
-            exit_code: 0,
-            pipeline: None,
-        });
+        reporter.report(&TelemetryEvent::new(
+            None,
+            "ls".to_string(),
+            120,
+            120,
+            "line1\nline2\n",
+            "line1\nline2\n",
+            std::time::Duration::ZERO,
+            0,
+        ));
         let _ = reporter.shutdown();
     }
 
@@ -148,6 +178,50 @@ mod tests {
     #[test]
     fn test_noop_reporter_shutdown_returns_true() {
         assert!(NoopReporter.shutdown());
+    }
+
+    #[test]
+    fn test_telemetry_event_new_computes_fields() {
+        let raw = "line1\nline2\nline3\n";
+        let filtered = "summary\n";
+        let event = TelemetryEvent::new(
+            Some("cargo/build".to_string()),
+            "cargo build".to_string(),
+            400, // input_bytes
+            100, // output_bytes
+            raw,
+            filtered,
+            std::time::Duration::from_millis(5),
+            0,
+        );
+        assert_eq!(event.input_lines, 3);
+        assert_eq!(event.output_lines, 1);
+        assert_eq!(event.input_tokens, 100); // 400 / 4
+        assert_eq!(event.output_tokens, 25); // 100 / 4
+        assert!((event.filter_duration_secs - 0.005).abs() < 0.001);
+        assert_eq!(event.exit_code, 0);
+        assert_eq!(event.filter_name, Some("cargo/build".to_string()));
+        assert_eq!(event.command, "cargo build");
+    }
+
+    #[test]
+    fn test_telemetry_event_new_passthrough() {
+        let output = "hello\nworld\n";
+        let event = TelemetryEvent::new(
+            None,
+            "ls".to_string(),
+            48,
+            48,
+            output,
+            output,
+            std::time::Duration::ZERO,
+            0,
+        );
+        // Passthrough: input == output
+        assert_eq!(event.input_lines, event.output_lines);
+        assert_eq!(event.input_tokens, event.output_tokens);
+        assert!(event.filter_duration_secs.abs() < f64::EPSILON);
+        assert!(event.filter_name.is_none());
     }
 
     /// When compiled without any otel feature, requesting `OTel` export falls back to `NoopReporter`.
