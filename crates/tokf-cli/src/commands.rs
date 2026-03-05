@@ -8,6 +8,7 @@ use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
 use tokf::skill;
+use tokf::telemetry;
 
 use crate::resolve;
 use crate::{Cli, HookTool};
@@ -20,7 +21,7 @@ pub fn or_exit(r: anyhow::Result<i32>) -> i32 {
 }
 
 // NOTE: cmd_run integrates command resolution, execution, output rendering, tracking,
-// and history recording. Splitting would require threading 5+ values through helpers.
+// history recording, and telemetry. Splitting would require threading 6+ values through helpers.
 // Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
 pub fn cmd_run(
@@ -28,6 +29,7 @@ pub fn cmd_run(
     baseline_pipe: Option<&str>,
     prefer_less: bool,
     cli: &Cli,
+    reporter: &dyn telemetry::TelemetryReporter,
 ) -> anyhow::Result<i32> {
     let filter_match = if cli.no_filter {
         None
@@ -79,6 +81,16 @@ pub fn cmd_run(
             false,
         );
         resolve::try_auto_sync();
+        reporter.report(&telemetry::TelemetryEvent::new(
+            None,
+            command_args.join(" "),
+            input_bytes,
+            raw_len,
+            &cmd_result.combined,
+            &cmd_result.combined,
+            std::time::Duration::ZERO,
+            cmd_result.exit_code,
+        ));
         if cli.no_mask_exit_code {
             return Ok(cmd_result.exit_code);
         }
@@ -173,6 +185,17 @@ pub fn cmd_run(
             "[tokf] output filtered — to see what was omitted: `tokf history show --raw {id}`"
         );
     }
+
+    reporter.report(&telemetry::TelemetryEvent::new(
+        Some(filter_name.to_string()),
+        command_str,
+        input_bytes,
+        output_bytes,
+        &cmd_result.combined,
+        &final_output,
+        elapsed,
+        cmd_result.exit_code,
+    ));
 
     if cli.no_mask_exit_code {
         Ok(cmd_result.exit_code)

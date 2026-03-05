@@ -11,6 +11,7 @@ pub mod rewrite;
 pub mod runner;
 pub mod skill;
 pub mod sync_core;
+pub mod telemetry;
 pub mod tracking;
 
 // Re-export the filter engine from tokf-filter so existing consumers

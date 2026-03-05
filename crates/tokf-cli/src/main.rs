@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+use tokf::telemetry;
 #[derive(Parser)]
 #[command(
     name = "tokf",
@@ -62,6 +63,10 @@ pub(crate) struct Cli {
     /// of the child command's existing ANSI codes through the filter pipeline.
     #[arg(long, global = true, env = "TOKF_PRESERVE_COLOR")]
     pub preserve_color: bool,
+
+    /// Export metrics via OpenTelemetry OTLP (requires --features otel)
+    #[arg(long, global = true)]
+    otel_export: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -382,6 +387,7 @@ enum HistoryAction {
     },
 }
 
+// Telemetry init + subcommand dispatch + shutdown added lines — approved to exceed 60-line limit.
 #[allow(clippy::too_many_lines)]
 fn main() {
     use commands::{
@@ -409,6 +415,18 @@ fn main() {
     }
 
     let cli = Cli::parse();
+    let reporter = telemetry::init(cli.otel_export);
+    if cli.verbose {
+        match reporter.endpoint_description() {
+            Some(ref desc) => eprintln!("[tokf] telemetry: enabled (endpoint: {desc})"),
+            None if cli.otel_export => {
+                eprintln!(
+                    "[tokf] telemetry: disabled or unavailable (feature not compiled, or initialization failed)"
+                );
+            }
+            None => {}
+        }
+    }
     let exit_code = match &cli.command {
         Commands::Run {
             command_args,
@@ -419,6 +437,7 @@ fn main() {
             baseline_pipe.as_deref(),
             *prefer_less,
             &cli,
+            reporter.as_ref(),
         )),
         Commands::Completions { shell } => completions_cmd::cmd_completions(*shell),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
@@ -523,5 +542,13 @@ fn main() {
             yes,
         } => install_cmd::cmd_install(filter, *local, *force, *dry_run, *yes),
     };
+    let flushed = reporter.shutdown();
+    if cli.verbose && reporter.endpoint_description().is_some() {
+        if flushed {
+            eprintln!("[tokf] telemetry: metrics exported");
+        } else {
+            eprintln!("[tokf] telemetry: export timed out — events are in local DB");
+        }
+    }
     std::process::exit(exit_code);
 }
