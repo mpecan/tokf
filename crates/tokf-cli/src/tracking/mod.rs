@@ -200,7 +200,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     COALESCE(SUM(input_tokens_est - output_tokens_est),0),
                     COALESCE(SUM(pipe_override),0),
                     COALESCE(SUM(filter_time_ms),0),
-                    COALESCE(SUM(raw_tokens_est),0)
+                    COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
              FROM events",
             [],
             |row| {
@@ -290,7 +290,7 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
                 SUM(input_tokens_est - output_tokens_est),
                 COALESCE(SUM(pipe_override),0),
                 COALESCE(SUM(filter_time_ms),0),
-                COALESCE(SUM(raw_tokens_est),0)
+                COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
          FROM events
          GROUP BY filter_name
          ORDER BY SUM(input_tokens_est - output_tokens_est) DESC",
@@ -341,7 +341,7 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
                 SUM(input_tokens_est - output_tokens_est),
                 COALESCE(SUM(pipe_override),0),
                 COALESCE(SUM(filter_time_ms),0),
-                COALESCE(SUM(raw_tokens_est),0)
+                COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
          FROM events
          GROUP BY substr(timestamp, 1, 10)
          ORDER BY substr(timestamp, 1, 10) DESC",
