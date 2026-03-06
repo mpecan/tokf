@@ -1,4 +1,4 @@
-command = "gh pr checks *"
+command = "gh pr checks"
 run = "gh pr checks {args} --json name,state,workflow"
 
 [json]

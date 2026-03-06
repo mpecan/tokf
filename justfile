@@ -20,6 +20,10 @@ fmt-check:
 test:
     cargo test
 
+# Run declarative filter test suites (tokf verify)
+verify:
+    cd crates/tokf-cli && cargo run --quiet --bin tokf -- verify
+
 # Run clippy
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
