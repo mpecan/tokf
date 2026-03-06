@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use tokf::telemetry::config;
@@ -66,18 +67,36 @@ fn check_endpoint(cfg: &config::TelemetryConfig) -> anyhow::Result<i32> {
     eprintln!("[tokf] checking OTLP endpoint {} ...", cfg.endpoint);
 
     match cfg.protocol {
-        config::Protocol::Http => check_http(&cfg.endpoint),
+        config::Protocol::Http => check_http(&cfg.endpoint, &cfg.headers),
         config::Protocol::Grpc => check_grpc(&cfg.endpoint),
     }
 }
 
-fn check_http(endpoint: &str) -> anyhow::Result<i32> {
+fn build_header_map(
+    headers: &HashMap<String, String>,
+) -> anyhow::Result<reqwest::header::HeaderMap> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+    let mut map = HeaderMap::with_capacity(headers.len());
+    for (k, v) in headers {
+        let name = HeaderName::from_bytes(k.as_bytes())
+            .map_err(|e| anyhow::anyhow!("invalid header name '{k}': {e}"))?;
+        let value = HeaderValue::from_str(v)
+            .map_err(|e| anyhow::anyhow!("invalid header value for '{k}': {e}"))?;
+        map.insert(name, value);
+    }
+    Ok(map)
+}
+
+fn check_http(endpoint: &str, headers: &HashMap<String, String>) -> anyhow::Result<i32> {
     let url = format!("{}/v1/metrics", endpoint.trim_end_matches('/'));
+    let header_map = build_header_map(headers)?;
     let start = Instant::now();
     let result = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()?
         .post(&url)
+        .headers(header_map)
         .send();
 
     match result {
@@ -94,11 +113,16 @@ fn check_http(endpoint: &str) -> anyhow::Result<i32> {
     }
 }
 
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 fn check_grpc(endpoint: &str) -> anyhow::Result<i32> {
-    // Parse host:port from the endpoint URL for a raw TCP connect check.
-    let addr = parse_host_port(endpoint)?;
+    // Resolve + connect under a single timeout so slow DNS can't exceed the budget.
+    let host_port = strip_endpoint(endpoint);
     let start = Instant::now();
-    let result = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(3));
+
+    let addr = resolve_with_timeout(&host_port, CHECK_TIMEOUT)?;
+    let remaining = CHECK_TIMEOUT.saturating_sub(start.elapsed());
+    let result = std::net::TcpStream::connect_timeout(&addr, remaining);
 
     match result {
         Ok(_) => {
@@ -114,22 +138,44 @@ fn check_grpc(endpoint: &str) -> anyhow::Result<i32> {
     }
 }
 
-fn parse_host_port(endpoint: &str) -> anyhow::Result<std::net::SocketAddr> {
-    use std::net::ToSocketAddrs;
-
-    // Strip scheme if present (http:// or https://)
+/// Strip scheme and path from an endpoint URL, returning `host:port`.
+fn strip_endpoint(endpoint: &str) -> String {
     let without_scheme = endpoint
         .strip_prefix("https://")
         .or_else(|| endpoint.strip_prefix("http://"))
         .unwrap_or(endpoint);
-
-    // Strip trailing path
     let host_port = without_scheme.split('/').next().unwrap_or(without_scheme);
+    host_port.to_string()
+}
 
-    host_port
-        .to_socket_addrs()?
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("could not resolve endpoint address: {endpoint}"))
+/// Resolve a `host:port` string to a `SocketAddr` with a bounded timeout,
+/// so slow DNS cannot block indefinitely.
+fn resolve_with_timeout(
+    host_port: &str,
+    timeout: std::time::Duration,
+) -> anyhow::Result<std::net::SocketAddr> {
+    use std::net::ToSocketAddrs;
+
+    let owned = host_port.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let result = owned
+            .to_socket_addrs()
+            .map(|mut addrs| addrs.next())
+            .map_err(|e| e.to_string());
+        let _ = tx.send(result);
+    });
+
+    let result = rx
+        .recv_timeout(timeout)
+        .map_err(|_| anyhow::anyhow!("DNS resolution timed out for {host_port}"))?;
+
+    match result {
+        Ok(Some(addr)) => Ok(addr),
+        Ok(None) => anyhow::bail!("could not resolve endpoint address: {host_port}"),
+        Err(e) => anyhow::bail!("DNS resolution failed for {host_port}: {e}"),
+    }
 }
 
 #[cfg(test)]
@@ -138,44 +184,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_host_port_http() {
-        let addr = parse_host_port("http://127.0.0.1:4317").unwrap();
-        assert_eq!(addr.port(), 4317);
+    fn strip_endpoint_http() {
+        assert_eq!(strip_endpoint("http://127.0.0.1:4317"), "127.0.0.1:4317");
     }
 
     #[test]
-    fn parse_host_port_https() {
-        let addr = parse_host_port("https://127.0.0.1:4318").unwrap();
-        assert_eq!(addr.port(), 4318);
+    fn strip_endpoint_https() {
+        assert_eq!(strip_endpoint("https://127.0.0.1:4318"), "127.0.0.1:4318");
     }
 
     #[test]
-    fn parse_host_port_with_path() {
-        let addr = parse_host_port("http://127.0.0.1:9090/v1/metrics").unwrap();
-        assert_eq!(addr.port(), 9090);
+    fn strip_endpoint_with_path() {
+        assert_eq!(
+            strip_endpoint("http://127.0.0.1:9090/v1/metrics"),
+            "127.0.0.1:9090"
+        );
     }
 
     #[test]
-    fn parse_host_port_no_scheme() {
-        let addr = parse_host_port("127.0.0.1:4317").unwrap();
-        assert_eq!(addr.port(), 4317);
+    fn strip_endpoint_no_scheme() {
+        assert_eq!(strip_endpoint("127.0.0.1:4317"), "127.0.0.1:4317");
     }
 
     #[test]
-    fn parse_host_port_missing_port() {
-        assert!(parse_host_port("http://localhost").is_err());
-    }
-
-    #[test]
-    fn parse_host_port_empty() {
-        assert!(parse_host_port("").is_err());
-    }
-
-    #[test]
-    fn parse_host_port_ipv6() {
-        let addr = parse_host_port("http://[::1]:4317").unwrap();
+    fn resolve_loopback() {
+        let addr =
+            resolve_with_timeout("127.0.0.1:4317", std::time::Duration::from_secs(2)).unwrap();
         assert_eq!(addr.port(), 4317);
         assert!(addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn resolve_missing_port() {
+        assert!(resolve_with_timeout("localhost", std::time::Duration::from_secs(2)).is_err());
+    }
+
+    #[test]
+    fn resolve_empty() {
+        assert!(resolve_with_timeout("", std::time::Duration::from_secs(2)).is_err());
+    }
+
+    #[test]
+    fn resolve_ipv6() {
+        let addr = resolve_with_timeout("[::1]:4317", std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(addr.port(), 4317);
+        assert!(addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn build_header_map_empty() {
+        let map = build_header_map(&HashMap::new()).unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn build_header_map_with_entries() {
+        let mut headers = HashMap::new();
+        headers.insert("x-api-key".to_string(), "secret".to_string());
+        headers.insert("x-team".to_string(), "platform".to_string());
+        let map = build_header_map(&headers).unwrap();
+        assert_eq!(map.get("x-api-key").unwrap(), "secret");
+        assert_eq!(map.get("x-team").unwrap(), "platform");
     }
 
     #[test]
