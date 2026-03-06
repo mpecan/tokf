@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.26](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.25...tokf-filter-v0.2.26) (2026-03-06)
+
+
+### Features
+
+* **filter:** JSON extraction via JSONPath (RFC 9535) ([#255](https://github.com/mpecan/tokf/issues/255)) ([dd2759b](https://github.com/mpecan/tokf/commit/dd2759b615f6d54212c2be501c5f27c5593db95e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.25 to 0.2.26
+
 ## [0.2.25](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.24...tokf-filter-v0.2.25) (2026-03-04)
 
 
