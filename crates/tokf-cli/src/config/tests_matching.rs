@@ -48,8 +48,10 @@ fn matches_prefix_with_trailing_args() {
 
 #[test]
 fn matches_wildcard() {
+    // `*` gates matching (requires an arg) but does not consume it —
+    // the wildcard-matched word stays in remaining_args for {args}.
     let words = ["npm", "run", "build"];
-    assert_eq!(pattern_matches_prefix("npm run *", &words), Some(3));
+    assert_eq!(pattern_matches_prefix("npm run *", &words), Some(2));
 }
 
 #[test]
@@ -91,7 +93,8 @@ fn wildcard_rejects_empty_token() {
 #[test]
 fn wildcard_at_start() {
     let words = ["my-tool", "subcommand"];
-    assert_eq!(pattern_matches_prefix("* subcommand", &words), Some(2));
+    // `*` does not count toward consumed, so only "subcommand" is consumed
+    assert_eq!(pattern_matches_prefix("* subcommand", &words), Some(1));
 }
 
 #[test]
@@ -295,9 +298,10 @@ fn transparent_combined_with_basename() {
 
 #[test]
 fn transparent_wildcard_with_flags_before_literal() {
-    // npm --prefix /path run build  →  pattern "npm run *", consumed = 5
+    // npm --prefix /path run build  →  pattern "npm run *"
+    // consumed = 4: npm(1) + --prefix /path(2) + run(1), wildcard "build" excluded
     let words = ["npm", "--prefix", "/path", "run", "build"];
-    assert_eq!(pattern_matches_prefix("npm run *", &words), Some(5));
+    assert_eq!(pattern_matches_prefix("npm run *", &words), Some(4));
 }
 
 #[test]

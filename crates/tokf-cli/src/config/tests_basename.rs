@@ -94,13 +94,14 @@ fn pattern_absolute_path_only_no_subcommand() {
 
 #[test]
 fn wildcard_first_word_with_path_input() {
+    // `*` does not count toward consumed — only "push" is consumed
     assert_eq!(
         pattern_matches_prefix("* push", &["/usr/bin/git", "push"]),
-        Some(2)
+        Some(1)
     );
     assert_eq!(
         pattern_matches_prefix("* push", &["./git", "push"]),
-        Some(2)
+        Some(1)
     );
 }
 
