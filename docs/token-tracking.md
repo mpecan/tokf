@@ -1,7 +1,7 @@
 ---
 title: Token Savings Tracking
 description: See exactly how much context tokf saves you, run by run.
-order: 4
+order: 5
 ---
 
 tokf records input/output byte counts per run in a local SQLite database:

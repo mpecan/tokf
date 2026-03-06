@@ -1,7 +1,7 @@
 ---
 title: Remote Sharing
 description: Sync token savings across machines and view aggregate stats via the tokf server.
-order: 5
+order: 6
 ---
 
 ## Setup
