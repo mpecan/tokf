@@ -1,0 +1,402 @@
+    Checking cargo-lint-extra v0.1.0 (/Users/mdp/src/github.com/mpecan/cargo-lint-extra)
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:364:20
+    |
+364 |           let code = r#"
+    |  ____________________^
+365 | | fn over_commented() {
+...   |
+372 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+    = note: `-D clippy::needless-raw-string-hashes` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_raw_string_hashes)]`
+help: remove all the hashes around the string literal
+    |
+364 ~         let code = r"
+365 | fn over_commented() {
+...
+371 | }
+372 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:383:20
+    |
+383 |           let code = r#"
+    |  ____________________^
+384 | | fn many_consecutive() {
+385 | |     let x = 1;
+...   |
+394 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+383 ~         let code = r"
+384 | fn many_consecutive() {
+...
+393 | }
+394 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:450:20
+    |
+450 |           let code = r#"
+    |  ____________________^
+451 | | fn outer() {
+452 | |     let a = 1;
+453 | |     let b = 2;
+...   |
+465 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+450 ~         let code = r"
+451 | fn outer() {
+...
+464 | }
+465 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:485:20
+    |
+485 |           let code = r#"
+    |  ____________________^
+486 | | fn with_closure() {
+487 | |     let f = || {
+488 | |         1 + 2
+...   |
+494 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+485 ~         let code = r"
+486 | fn with_closure() {
+...
+493 | }
+494 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:523:20
+    |
+523 |           let code = r#"
+    |  ____________________^
+524 | | fn block_comment_braces() {
+525 | |     /* { } */
+526 | |     let x = 1;
+...   |
+530 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+523 ~         let code = r"
+524 | fn block_comment_braces() {
+...
+529 | }
+530 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:541:20
+    |
+541 |           let code = r#"
+    |  ____________________^
+542 | | fn tiny() {
+...   |
+547 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+541 ~         let code = r"
+542 | fn tiny() {
+...
+546 | }
+547 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:558:20
+    |
+558 |           let code = r#"
+    |  ____________________^
+559 | | trait Foo {
+560 | |     fn bar();
+561 | |     fn baz(x: i32) -> i32;
+562 | | }
+563 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+558 ~         let code = r"
+559 | trait Foo {
+...
+562 | }
+563 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:574:20
+    |
+574 |           let code = r#"
+    |  ____________________^
+575 | | fn multi_line(
+576 | |     x: i32,
+577 | |     y: i32,
+...   |
+585 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+574 ~         let code = r"
+575 | fn multi_line(
+...
+584 | }
+585 ~ ";
+    |
+
+error: unnecessary hashes around raw string literal
+   --> src/rules/text/inline_comments.rs:596:20
+    |
+596 |           let code = r#"
+    |  ____________________^
+597 | | struct Foo;
+598 | |
+599 | | impl Foo {
+...   |
+607 | | "#;
+    | |__^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#needless_raw_string_hashes
+help: remove all the hashes around the string literal
+    |
+596 ~         let code = r"
+597 | struct Foo;
+...
+606 | }
+607 ~ ";
+    |
+
+error: this could be a `const fn`
+  --> src/rules/text/inline_comments.rs:13:5
+   |
+13 | /     pub fn new(config: &InlineCommentsConfig) -> Self {
+14 | |         Self {
+15 | |             level: config.level,
+16 | |             max_ratio: config.max_ratio,
+...  |
+19 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#missing_const_for_fn
+   = note: `-D clippy::missing-const-for-fn` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::missing_const_for_fn)]`
+help: make the function `const`
+   |
+13 |     pub const fn new(config: &InlineCommentsConfig) -> Self {
+   |         +++++
+
+error: this could be a `const fn`
+  --> src/rules/text/inline_comments.rs:33:5
+   |
+33 | /     fn new(fn_line: usize, entry_depth: usize) -> Self {
+34 | |         Self {
+35 | |             fn_line,
+36 | |             entry_depth,
+...  |
+43 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#missing_const_for_fn
+help: make the function `const`
+   |
+33 |     const fn new(fn_line: usize, entry_depth: usize) -> Self {
+   |     +++++
+
+error: this could be a `const fn`
+  --> src/rules/text/inline_comments.rs:45:5
+   |
+45 | /     fn add_comment(&mut self, line_number: usize, max_consecutive: usize) {
+46 | |         self.comment_lines += 1;
+47 | |         self.consecutive_comments += 1;
+48 | |         if self.consecutive_comments > self.max_consecutive_comments {
+...  |
+54 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#missing_const_for_fn
+help: make the function `const`
+   |
+45 |     const fn add_comment(&mut self, line_number: usize, max_consecutive: usize) {
+   |     +++++
+
+error: this could be a `const fn`
+  --> src/rules/text/inline_comments.rs:56:5
+   |
+56 | /     fn add_code(&mut self) {
+57 | |         self.code_lines += 1;
+58 | |         self.consecutive_comments = 0;
+59 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#missing_const_for_fn
+help: make the function `const`
+   |
+56 |     const fn add_code(&mut self) {
+   |     +++++
+
+error: this could be a `const fn`
+  --> src/rules/text/inline_comments.rs:61:5
+   |
+61 | /     fn total_meaningful(&self) -> usize {
+62 | |         self.comment_lines + self.code_lines
+63 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#missing_const_for_fn
+help: make the function `const`
+   |
+61 |     const fn total_meaningful(&self) -> usize {
+   |     +++++
+
+error: casting `usize` to `f64` causes a loss of precision on targets with 64-bit wide pointers (`usize` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+  --> src/rules/text/inline_comments.rs:70:13
+   |
+70 |             self.comment_lines as f64 / total as f64
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_precision_loss
+   = note: `-D clippy::cast-precision-loss` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::cast_precision_loss)]`
+
+error: casting `usize` to `f64` causes a loss of precision on targets with 64-bit wide pointers (`usize` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide)
+  --> src/rules/text/inline_comments.rs:70:41
+   |
+70 |             self.comment_lines as f64 / total as f64
+   |                                         ^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_precision_loss
+
+error: this `if` statement can be collapsed
+   --> src/rules/text/inline_comments.rs:117:17
+    |
+117 | /                 if let Some(scope) = scope_stack.last() {
+118 | |                     if brace_depth == scope.entry_depth {
+119 | |                         let scope = scope_stack.pop().unwrap();
+120 | |                         self.evaluate_scope(&scope, file, &mut diagnostics);
+121 | |                     }
+122 | |                 }
+    | |_________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#collapsible_if
+    = note: `-D clippy::collapsible-if` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+    |
+117 ~                 if let Some(scope) = scope_stack.last()
+118 ~                     && brace_depth == scope.entry_depth {
+119 |                         let scope = scope_stack.pop().unwrap();
+120 |                         self.evaluate_scope(&scope, file, &mut diagnostics);
+121 ~                     }
+    |
+
+error: used `unwrap()` on an `Option` value
+   --> src/rules/text/inline_comments.rs:119:37
+    |
+119 |                         let scope = scope_stack.pop().unwrap();
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: if this value is `None`, it will panic
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#unwrap_used
+    = note: requested on the command line with `-D clippy::unwrap-used`
+
+error: casting `f64` to `usize` may truncate the value
+   --> src/rules/text/inline_comments.rs:150:23
+    |
+150 |             let pct = (ratio * 100.0).round() as usize;
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_possible_truncation
+    = note: `-D clippy::cast-possible-truncation` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::cast_possible_truncation)]`
+
+error: casting `f64` to `usize` may lose the sign of the value
+   --> src/rules/text/inline_comments.rs:150:23
+    |
+150 |             let pct = (ratio * 100.0).round() as usize;
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_sign_loss
+    = note: `-D clippy::cast-sign-loss` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::cast_sign_loss)]`
+
+error: casting `f64` to `usize` may truncate the value
+   --> src/rules/text/inline_comments.rs:151:27
+    |
+151 |             let max_pct = (self.max_ratio * 100.0).round() as usize;
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_possible_truncation
+
+error: casting `f64` to `usize` may lose the sign of the value
+   --> src/rules/text/inline_comments.rs:151:27
+    |
+151 |             let max_pct = (self.max_ratio * 100.0).round() as usize;
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#cast_sign_loss
+
+error: this `if` statement can be collapsed
+   --> src/rules/text/inline_comments.rs:167:9
+    |
+167 | /         if scope.max_consecutive_comments > self.max_consecutive {
+168 | |             if let Some(run_start) = scope.first_long_run_line {
+169 | |                 diagnostics.push(
+170 | |                     Diagnostic::new(
+...   |
+182 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+167 ~         if scope.max_consecutive_comments > self.max_consecutive
+168 ~             && let Some(run_start) = scope.first_long_run_line {
+169 |                 diagnostics.push(
+...
+180 |                 );
+181 ~             }
+    |
+
+error: this function has too many lines (88/60)
+   --> src/rules/text/inline_comments.rs:216:1
+    |
+216 | fn analyze_line(line: &str) -> (usize, usize, bool, bool) {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#too_many_lines
+    = note: `-D clippy::too-many-lines` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::too_many_lines)]`
+
+error: could not compile `cargo-lint-extra` (lib) due to 15 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `cargo-lint-extra` (lib test) due to 24 previous errors

@@ -1,0 +1,34 @@
+name = "full clippy output grouped by lint rule"
+fixture = "clippy_full.txt"
+exit_code = 1
+
+# Duplicate pub(crate) errors are grouped
+[[expect]]
+contains = "error: pub(crate) module inside private module (2 occurrences)"
+
+[[expect]]
+contains = "error: pub(crate) function inside private module (2 occurrences)"
+
+# Unique errors shown without count
+[[expect]]
+contains = "error: redundant clone"
+
+[[expect]]
+contains = "error: this function has too many lines (80/60)"
+
+[[expect]]
+contains = "error: called `map(<f>).unwrap_or_else(<g>)`"
+
+# Locations preserved
+[[expect]]
+contains = "--> crates/tokf-server/src/routes/filters/mod.rs:1:1"
+
+# Noise is stripped
+[[expect]]
+not_contains = "Checking"
+
+[[expect]]
+not_contains = "could not compile"
+
+[[expect]]
+not_contains = "for further information visit"
