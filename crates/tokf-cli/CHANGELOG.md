@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.27](https://github.com/mpecan/tokf/compare/tokf-v0.2.26...tokf-v0.2.27) (2026-03-06)
+
+
+### Bug Fixes
+
+* **filter:** remove wildcard from gh view/checks patterns that consumed {args} ([#260](https://github.com/mpecan/tokf/issues/260)) ([eb6048f](https://github.com/mpecan/tokf/commit/eb6048fc797a2a154b3c81db8c45676fbd5b06c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.26 to 0.2.27
+    * tokf-filter bumped from 0.2.26 to 0.2.27
+
 ## [0.2.26](https://github.com/mpecan/tokf/compare/tokf-v0.2.25...tokf-v0.2.26) (2026-03-06)
 
 
