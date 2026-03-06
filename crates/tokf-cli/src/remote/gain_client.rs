@@ -9,6 +9,8 @@ pub struct MachineGain {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub total_commands: i64,
+    #[serde(default)]
+    pub total_raw_tokens: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -17,6 +19,8 @@ pub struct GlobalMachineGain {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub total_commands: i64,
+    #[serde(default)]
+    pub total_raw_tokens: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -26,6 +30,8 @@ pub struct FilterGainEntry {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub total_commands: i64,
+    #[serde(default)]
+    pub total_raw_tokens: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -33,6 +39,8 @@ pub struct GainResponse {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub total_commands: i64,
+    #[serde(default)]
+    pub total_raw_tokens: i64,
     pub by_machine: Vec<MachineGain>,
     pub by_filter: Vec<FilterGainEntry>,
 }
@@ -42,6 +50,8 @@ pub struct GlobalGainResponse {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub total_commands: i64,
+    #[serde(default)]
+    pub total_raw_tokens: i64,
     pub by_machine: Vec<GlobalMachineGain>,
     pub by_filter: Vec<FilterGainEntry>,
 }
@@ -152,12 +162,14 @@ mod tests {
             total_input_tokens: 1000,
             total_output_tokens: 200,
             total_commands: 5,
+            total_raw_tokens: 1500,
             by_machine: vec![MachineGain {
                 machine_id: "m1".to_string(),
                 hostname: "host".to_string(),
                 total_input_tokens: 1000,
                 total_output_tokens: 200,
                 total_commands: 5,
+                total_raw_tokens: 1500,
             }],
             by_filter: vec![FilterGainEntry {
                 filter_name: Some("git/status".to_string()),
@@ -165,12 +177,30 @@ mod tests {
                 total_input_tokens: 1000,
                 total_output_tokens: 200,
                 total_commands: 5,
+                total_raw_tokens: 1500,
             }],
         };
         let json = serde_json::to_string(&resp).unwrap();
         let back: GainResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(back.total_input_tokens, 1000);
+        assert_eq!(back.total_raw_tokens, 1500);
         assert_eq!(back.by_machine[0].hostname, "host");
+        assert_eq!(back.by_machine[0].total_raw_tokens, 1500);
+        assert_eq!(back.by_filter[0].total_raw_tokens, 1500);
+    }
+
+    /// Backward compatibility: missing `total_raw_tokens` defaults to 0.
+    #[test]
+    fn gain_response_backward_compat_missing_raw_tokens() {
+        let json = r#"{
+            "total_input_tokens": 5000,
+            "total_output_tokens": 1000,
+            "total_commands": 10,
+            "by_machine": [],
+            "by_filter": []
+        }"#;
+        let resp: GainResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.total_raw_tokens, 0);
     }
 
     #[test]

@@ -215,6 +215,32 @@ impl TestHarness {
         tracking::record_event(conn, &event).unwrap();
     }
 
+    /// Record a tracking event with explicit `raw_bytes` (for testing raw != input).
+    #[allow(clippy::unused_self, clippy::too_many_arguments)]
+    pub fn record_event_with_raw(
+        &self,
+        conn: &rusqlite::Connection,
+        command: &str,
+        filter_name: Option<&str>,
+        filter_hash: Option<&str>,
+        input_bytes: usize,
+        output_bytes: usize,
+        raw_bytes: usize,
+    ) {
+        let event = tracking::build_event(
+            command,
+            filter_name,
+            filter_hash,
+            input_bytes,
+            output_bytes,
+            raw_bytes,
+            0,
+            0,
+            false,
+        );
+        tracking::record_event(conn, &event).unwrap();
+    }
+
     /// Construct a `LoadedAuth` pointing at this harness's server.
     pub fn loaded_auth(&self) -> LoadedAuth {
         LoadedAuth {

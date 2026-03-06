@@ -61,6 +61,15 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
     let tokens_saved = resp.total_input_tokens - resp.total_output_tokens;
     let savings_pct = savings_pct_for(resp.total_input_tokens, tokens_saved);
 
+    // Fallback: old servers (pre-raw_tokens) return 0 for total_raw_tokens.
+    // We can't distinguish "genuine zero usage" from "server doesn't support this field",
+    // but zero usage implies zero input too, so falling back to input is safe either way.
+    let total_raw = if resp.total_raw_tokens > 0 {
+        resp.total_raw_tokens
+    } else {
+        resp.total_input_tokens
+    };
+
     let summary = GainSummary {
         total_commands: resp.total_commands,
         total_input_tokens: resp.total_input_tokens,
@@ -70,7 +79,7 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
         pipe_override_count: 0,
         total_filter_time_ms: 0,
         avg_filter_time_ms: 0.0,
-        total_raw_tokens: resp.total_input_tokens,
+        total_raw_tokens: total_raw,
     };
 
     let filters: Vec<FilterGain> = resp
@@ -78,6 +87,12 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
         .iter()
         .map(|e| {
             let saved = e.total_input_tokens - e.total_output_tokens;
+            // Same fallback as summary-level: 0 means old server or no usage.
+            let raw = if e.total_raw_tokens > 0 {
+                e.total_raw_tokens
+            } else {
+                e.total_input_tokens
+            };
             FilterGain {
                 filter_name: e
                     .filter_name
@@ -91,7 +106,7 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
                 pipe_override_count: 0,
                 total_filter_time_ms: 0,
                 avg_filter_time_ms: 0.0,
-                raw_tokens: e.total_input_tokens,
+                raw_tokens: raw,
             }
         })
         .collect();

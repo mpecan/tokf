@@ -510,6 +510,7 @@ fn from_remote_basic() {
         total_input_tokens: 10_000,
         total_output_tokens: 2_000,
         total_commands: 5,
+        total_raw_tokens: 15_000,
         by_machine: vec![],
         by_filter: vec![gain_client::FilterGainEntry {
             filter_name: Some("git/status".to_string()),
@@ -517,14 +518,40 @@ fn from_remote_basic() {
             total_input_tokens: 5_000,
             total_output_tokens: 1_000,
             total_commands: 3,
+            total_raw_tokens: 8_000,
         }],
     };
     let (summary, filters) = from_remote(&resp);
     assert_eq!(summary.total_commands, 5);
     assert_eq!(summary.tokens_saved, 8_000);
     assert_eq!(summary.total_filter_time_ms, 0);
+    assert_eq!(summary.total_raw_tokens, 15_000);
     assert_eq!(filters.len(), 1);
     assert_eq!(filters[0].filter_name, "git/status");
+    assert_eq!(filters[0].raw_tokens, 8_000);
+}
+
+#[test]
+fn from_remote_zero_raw_falls_back_to_input() {
+    let resp = gain_client::GainResponse {
+        total_input_tokens: 10_000,
+        total_output_tokens: 2_000,
+        total_commands: 5,
+        total_raw_tokens: 0, // old server or no raw data
+        by_machine: vec![],
+        by_filter: vec![gain_client::FilterGainEntry {
+            filter_name: Some("git/push".to_string()),
+            filter_hash: None,
+            total_input_tokens: 5_000,
+            total_output_tokens: 1_000,
+            total_commands: 3,
+            total_raw_tokens: 0,
+        }],
+    };
+    let (summary, filters) = from_remote(&resp);
+    // Fallback: raw == input when server returns 0
+    assert_eq!(summary.total_raw_tokens, 10_000);
+    assert_eq!(filters[0].raw_tokens, 5_000);
 }
 
 #[test]
@@ -533,6 +560,7 @@ fn from_remote_renders_without_filter_time() {
         total_input_tokens: 10_000,
         total_output_tokens: 2_000,
         total_commands: 5,
+        total_raw_tokens: 0,
         by_machine: vec![],
         by_filter: vec![],
     };

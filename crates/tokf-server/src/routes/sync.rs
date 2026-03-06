@@ -19,9 +19,7 @@ pub struct SyncEvent {
     pub filter_hash: Option<String>,
     pub input_tokens: i64,
     pub output_tokens: i64,
-    /// Raw tokens before baseline adjustment (forward-compatible, optional).
-    /// Accepted for forward-compatibility but not consumed yet.
-    #[allow(dead_code)]
+    /// Raw tokens before baseline adjustment (optional, defaults to 0).
     #[serde(default)]
     pub raw_tokens: Option<i64>,
     pub command_count: i32,
@@ -98,8 +96,8 @@ async fn persist_events(
 
         sqlx::query(
             "INSERT INTO usage_events
-                (filter_hash, filter_name, machine_id, input_tokens, output_tokens, command_count, recorded_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                (filter_hash, filter_name, machine_id, input_tokens, output_tokens, command_count, recorded_at, raw_tokens)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(event.filter_hash.as_deref())
         .bind(event.filter_name.as_deref())
@@ -108,6 +106,7 @@ async fn persist_events(
         .bind(event.output_tokens)
         .bind(event.command_count)
         .bind(recorded_at)
+        .bind(event.raw_tokens.unwrap_or(0))
         .execute(&mut **tx)
         .await?;
     }
@@ -142,7 +141,7 @@ async fn update_filter_stats(
 ) -> Result<(), AppError> {
     sqlx::query(
         "INSERT INTO filter_stats
-            (filter_hash, total_commands, total_input_tokens, total_output_tokens, savings_pct, last_updated)
+            (filter_hash, total_commands, total_input_tokens, total_output_tokens, savings_pct, total_raw_tokens, last_updated)
          SELECT
             filter_hash,
             SUM(command_count)::INT8,
@@ -151,6 +150,7 @@ async fn update_filter_stats(
             CASE WHEN SUM(input_tokens) > 0
                  THEN (SUM(input_tokens) - SUM(output_tokens))::FLOAT8 / SUM(input_tokens)::FLOAT8 * 100.0
                  ELSE 0.0 END,
+            SUM(raw_tokens)::INT8,
             NOW()
          FROM usage_events WHERE filter_hash = $1
          GROUP BY filter_hash
@@ -159,6 +159,7 @@ async fn update_filter_stats(
              total_input_tokens = EXCLUDED.total_input_tokens,
              total_output_tokens = EXCLUDED.total_output_tokens,
              savings_pct = EXCLUDED.savings_pct,
+             total_raw_tokens = EXCLUDED.total_raw_tokens,
              last_updated = EXCLUDED.last_updated",
     )
     .bind(hash)
@@ -184,6 +185,14 @@ fn validate_events(events: &[SyncEvent]) -> Result<(), AppError> {
         if event.command_count < 0 || event.command_count > MAX_COMMAND_COUNT {
             return Err(AppError::BadRequest(format!(
                 "event {}: command_count out of range [0, {MAX_COMMAND_COUNT}]",
+                event.id
+            )));
+        }
+        if let Some(rt) = event.raw_tokens
+            && !(0..=MAX_TOKENS_PER_EVENT).contains(&rt)
+        {
+            return Err(AppError::BadRequest(format!(
+                "event {}: raw_tokens out of range [0, {MAX_TOKENS_PER_EVENT}]",
                 event.id
             )));
         }
@@ -267,8 +276,13 @@ pub async fn sync_usage(
     ))
 }
 
-// Tests live in a sibling file to keep this file within the 500-line soft limit.
+// Tests live in sibling files to keep this file within the 500-line soft limit.
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "sync_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "sync_validation_tests.rs"]
+mod validation_tests;

@@ -295,6 +295,7 @@ mod tests {
             total_input_tokens: 10_000,
             total_output_tokens: 2_000,
             total_commands: 5,
+            total_raw_tokens: 10_000,
             by_machine: vec![],
             by_filter: vec![gain_client::FilterGainEntry {
                 filter_name: Some("git/status".to_string()),
@@ -302,6 +303,7 @@ mod tests {
                 total_input_tokens: 5_000,
                 total_output_tokens: 1_000,
                 total_commands: 3,
+                total_raw_tokens: 5_000,
             }],
         };
         let (summary, filters) = gain_render::from_remote(&resp);
@@ -319,6 +321,7 @@ mod tests {
             total_input_tokens: 0,
             total_output_tokens: 0,
             total_commands: 0,
+            total_raw_tokens: 0,
             by_machine: vec![],
             by_filter: vec![],
         };
@@ -333,6 +336,7 @@ mod tests {
             total_input_tokens: 100,
             total_output_tokens: 50,
             total_commands: 1,
+            total_raw_tokens: 100,
             by_machine: vec![],
             by_filter: vec![gain_client::FilterGainEntry {
                 filter_name: None,
@@ -340,6 +344,7 @@ mod tests {
                 total_input_tokens: 100,
                 total_output_tokens: 50,
                 total_commands: 1,
+                total_raw_tokens: 100,
             }],
         };
         let (_, filters) = gain_render::from_remote(&resp);
