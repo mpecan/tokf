@@ -6,9 +6,9 @@ use crate::error::AppError;
 
 /// Generates a cryptographically random bearer token (64 hex chars = 32 bytes).
 pub fn generate_token() -> String {
-    use rand::RngCore;
+    use rand::Rng;
     let mut buf = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut buf);
+    rand::rng().fill(&mut buf);
     hex::encode(buf)
 }
 
