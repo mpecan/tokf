@@ -23,13 +23,11 @@ pub fn extract_json(stdout: &str, config: &JsonConfig) -> (HashMap<String, Strin
     let mut chunks = ChunkMap::new();
 
     let Ok(root) = serde_json::from_str::<Value>(stdout) else {
-        eprintln!("[tokf] json: input is not valid JSON, skipping extraction");
         return (vars, chunks);
     };
 
     for rule in &config.extract {
         let Ok(path) = JsonPath::parse(&rule.path) else {
-            eprintln!("[tokf] json: invalid JSONPath {:?}, skipping", rule.path);
             continue;
         };
 
