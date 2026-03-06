@@ -185,6 +185,7 @@ mod tests {
             json: None,
             variant: vec![],
             show_history_hint: false,
+            inject_path: false,
         }
     }
 

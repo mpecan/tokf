@@ -106,21 +106,59 @@ pub fn resolve_phase_b(
     (cfg, hash)
 }
 
+/// Build environment variable overrides for `inject_path` mode.
+///
+/// When the filter has `inject_path = true` and shims exist on disk,
+/// returns env entries that prepend the shims dir to `PATH`, save the
+/// original `PATH` as `TOKF_ORIGINAL_PATH`, and set `SHELL=tokf`.
+fn build_inject_env(filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> {
+    let Some(cfg) = filter_cfg else {
+        return vec![];
+    };
+    if !cfg.inject_path {
+        return vec![];
+    }
+    let Some(shims) = tokf::paths::shims_dir() else {
+        return vec![];
+    };
+    if !shims.exists() {
+        return vec![];
+    }
+    let original_path = std::env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", shims.display(), original_path);
+    let tokf_exe = std::env::current_exe()
+        .unwrap_or_else(|_| "tokf".into())
+        .to_string_lossy()
+        .into_owned();
+
+    vec![
+        ("PATH".to_string(), new_path),
+        ("TOKF_ORIGINAL_PATH".to_string(), original_path),
+        ("SHELL".to_string(), tokf_exe),
+    ]
+}
+
 pub fn run_command(
     filter_cfg: Option<&FilterConfig>,
     words_consumed: usize,
     command_args: &[String],
     remaining_args: &[String],
 ) -> anyhow::Result<runner::CommandResult> {
+    let env_overrides = build_inject_env(filter_cfg);
+    let env_refs: Vec<(&str, &str)> = env_overrides
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
     if let Some(cfg) = filter_cfg
         && let Some(run_cmd) = &cfg.run
     {
-        runner::execute_shell(run_cmd, remaining_args)
+        runner::execute_shell_with_env(run_cmd, remaining_args, &env_refs)
     } else if words_consumed > 0 {
         let cmd_str = command_args[..words_consumed].join(" ");
-        runner::execute(&cmd_str, remaining_args)
+        runner::execute_with_env(&cmd_str, remaining_args, &env_refs)
     } else {
-        runner::execute(&command_args[0], remaining_args)
+        runner::execute_with_env(&command_args[0], remaining_args, &env_refs)
     }
 }
 

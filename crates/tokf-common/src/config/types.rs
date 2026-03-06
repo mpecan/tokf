@@ -165,6 +165,12 @@ pub struct FilterConfig {
     /// available even though tokf has compressed it.
     #[serde(default)]
     pub show_history_hint: bool,
+
+    /// When true, prepend a directory of shim scripts to `PATH` before spawning
+    /// the command. Each shim redirects through `tokf run`, so commands invoked
+    /// by sub-processes (e.g. git hooks) are automatically filtered.
+    #[serde(default)]
+    pub inject_path: bool,
 }
 
 /// A pipeline step that runs a sub-command and captures its output.

@@ -212,6 +212,13 @@ pub fn user_cache_dir() -> Option<PathBuf> {
     resolve_user_path(dirs::cache_dir().map(|d| d.join("tokf")))
 }
 
+/// Returns the directory for generated shim scripts.
+///
+/// Shims are stored under the cache directory at `<cache>/shims/`.
+pub fn shims_dir() -> Option<PathBuf> {
+    user_cache_dir().map(|d| d.join("shims"))
+}
+
 // ---------------------------------------------------------------------------
 // RAII guards for tests — guarantee cleanup even when assertions panic.
 // ---------------------------------------------------------------------------
@@ -350,6 +357,14 @@ mod tests {
         assert_eq!(config, data);
         assert_eq!(data, cache);
         assert_eq!(config, Some(PathBuf::from("/unified/home")));
+    }
+
+    #[test]
+    #[serial]
+    fn shims_dir_uses_tokf_home_when_set() {
+        let _guard = HomeGuard::set("/custom/tokf/home");
+        let result = shims_dir();
+        assert_eq!(result, Some(PathBuf::from("/custom/tokf/home/shims")));
     }
 
     #[test]

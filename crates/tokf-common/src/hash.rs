@@ -153,6 +153,7 @@ strip_ansi = false
 trim_lines = false
 strip_empty_lines = false
 collapse_empty_lines = false
+inject_path = false
 "#,
         );
         assert_eq!(

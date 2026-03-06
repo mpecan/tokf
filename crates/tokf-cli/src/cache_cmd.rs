@@ -29,17 +29,30 @@ fn cmd_cache_clear(search_dirs: &[PathBuf]) -> i32 {
     match std::fs::remove_file(&path) {
         Ok(()) => {
             eprintln!("[tokf] cache cleared: {}", path.display());
-            0
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             eprintln!("[tokf] cache: nothing to clear ({})", path.display());
-            0
         }
         Err(e) => {
             eprintln!("[tokf] cache clear error: {e}");
-            1
+            return 1;
         }
     }
+
+    // Also remove generated shims
+    if let Some(shims) = tokf::paths::shims_dir() {
+        match std::fs::remove_dir_all(&shims) {
+            Ok(()) => {
+                eprintln!("[tokf] shims cleared: {}", shims.display());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                eprintln!("[tokf] shims clear error: {e}");
+            }
+        }
+    }
+
+    0
 }
 
 fn cmd_cache_info(search_dirs: &[PathBuf]) -> i32 {

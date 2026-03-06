@@ -8,7 +8,7 @@ use rkyv::{Archive, Deserialize, Serialize, rancor};
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 
-const CACHE_VERSION: u32 = 8;
+const CACHE_VERSION: u32 = 9;
 
 /// A single filter serialized for the binary cache.
 ///
@@ -145,6 +145,58 @@ fn write_manifest(
     Ok(())
 }
 
+/// Generate shim scripts for all filter command basenames.
+///
+/// Each shim is a small shell script that redirects through `tokf run`,
+/// allowing sub-processes (e.g. git hooks) to benefit from filtering.
+/// The shims directory is wiped and recreated on every call (clean slate).
+pub fn generate_shims(filters: &[ResolvedFilter]) {
+    let Some(shims_dir) = crate::paths::shims_dir() else {
+        return;
+    };
+    let Ok(tokf_path) = std::env::current_exe() else {
+        return;
+    };
+
+    // Collect unique first-word basenames from all filter patterns
+    let mut basenames = std::collections::BTreeSet::new();
+    for filter in filters {
+        for pattern in filter.config.command.patterns() {
+            if let Some(first_word) = pattern.split_whitespace().next() {
+                let basename = std::path::Path::new(first_word)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(first_word);
+                basenames.insert(basename.to_string());
+            }
+        }
+    }
+
+    // Exclude tokf itself to prevent recursion
+    basenames.remove("tokf");
+
+    // Clean slate
+    let _ = std::fs::remove_dir_all(&shims_dir);
+    if std::fs::create_dir_all(&shims_dir).is_err() {
+        return;
+    }
+
+    let tokf_str = tokf_path.to_string_lossy();
+    for cmd in &basenames {
+        let shim_path = shims_dir.join(cmd);
+        let content =
+            format!("#!/bin/sh\nPATH=\"$TOKF_ORIGINAL_PATH\" exec '{tokf_str}' run {cmd} \"$@\"\n");
+        if std::fs::write(&shim_path, &content).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(&shim_path, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+    }
+}
+
 /// Discover all filters using the binary cache when possible.
 ///
 /// Flow:
@@ -174,6 +226,7 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
     }
 
     let filters = discover_all_filters(search_dirs)?;
+    generate_shims(&filters);
     if let Err(e) = write_manifest(&path, &filters, search_dirs) {
         eprintln!("[tokf] cache write failed ({}): {e:#}", path.display());
         eprintln!(
@@ -362,6 +415,106 @@ mod tests {
     fn binary_sentinel_in_mtimes() {
         let mtimes = compute_mtimes(&[]);
         assert!(mtimes.iter().any(|(k, _)| k == "<binary>"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn generate_shims_creates_scripts() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = crate::paths::HomeGuard::set(tmp.path());
+
+        let filters = vec![
+            make_resolved_filter("git push", 0),
+            make_resolved_filter("cargo test", 0),
+            make_resolved_filter("git commit", 0), // git should be deduped
+        ];
+        generate_shims(&filters);
+
+        let shims = crate::paths::shims_dir().unwrap();
+        assert!(shims.exists());
+
+        // git and cargo should have shims
+        let git_shim = shims.join("git");
+        let cargo_shim = shims.join("cargo");
+        assert!(git_shim.exists(), "git shim should exist");
+        assert!(cargo_shim.exists(), "cargo shim should exist");
+
+        // tokf should NOT have a shim
+        assert!(!shims.join("tokf").exists(), "tokf shim must not exist");
+
+        // Check content
+        let content = fs::read_to_string(&git_shim).unwrap();
+        assert!(content.starts_with("#!/bin/sh\n"));
+        assert!(
+            content.contains("run git"),
+            "shim should contain 'run git': {content}"
+        );
+        assert!(content.contains("TOKF_ORIGINAL_PATH"));
+        assert!(content.contains("\"$@\""));
+
+        // Check permissions on unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&git_shim).unwrap().permissions().mode();
+            assert_eq!(mode & 0o755, 0o755, "shim should be executable");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn generate_shims_clean_slate() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = crate::paths::HomeGuard::set(tmp.path());
+
+        // Create a stale shim
+        let shims = crate::paths::shims_dir().unwrap();
+        fs::create_dir_all(&shims).unwrap();
+        fs::write(shims.join("stale_cmd"), "old").unwrap();
+
+        let filters = vec![make_resolved_filter("git push", 0)];
+        generate_shims(&filters);
+
+        // Stale shim should be gone
+        assert!(!shims.join("stale_cmd").exists());
+        assert!(shims.join("git").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn generate_shims_includes_make_and_just() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = crate::paths::HomeGuard::set(tmp.path());
+
+        let filters = vec![
+            make_resolved_filter("make build", 0),
+            make_resolved_filter("just test", 0),
+        ];
+        generate_shims(&filters);
+
+        let shims = crate::paths::shims_dir().unwrap();
+        assert!(shims.join("make").exists(), "make shim should exist");
+        assert!(shims.join("just").exists(), "just shim should exist");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn generate_shims_extracts_basename() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = crate::paths::HomeGuard::set(tmp.path());
+
+        let filters = vec![make_resolved_filter("/usr/bin/git push", 0)];
+        generate_shims(&filters);
+
+        let shims = crate::paths::shims_dir().unwrap();
+        assert!(shims.join("git").exists(), "basename should be extracted");
+        // Only the basename "git" should exist, not "usr" or any other directory
+        let entries: Vec<_> = fs::read_dir(&shims)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(entries, vec!["git"], "only basename shim should exist");
     }
 
     #[test]

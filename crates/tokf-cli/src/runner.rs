@@ -96,6 +96,21 @@ fn run_interleaved(mut child: std::process::Child) -> anyhow::Result<CommandResu
     })
 }
 
+/// Search the current `PATH` for the absolute path of a program name.
+///
+/// This is used when we're about to override `PATH` with a shims directory —
+/// we must resolve the original program first so it doesn't find our own shim.
+pub fn resolve_program(program: &str) -> Option<std::path::PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(program);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 /// Escape a string for safe inclusion in a shell command (single-quote wrapping).
 pub(crate) fn shell_escape(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
@@ -110,20 +125,49 @@ pub(crate) fn shell_escape(arg: &str) -> String {
 ///
 /// Returns an error if the command string is empty or the process fails to spawn.
 pub fn execute(command: &str, args: &[String]) -> anyhow::Result<CommandResult> {
+    execute_with_env(command, args, &[])
+}
+
+/// Execute a command with extra environment variables.
+///
+/// When `extra_env` contains a `PATH` entry, the program is resolved to an
+/// absolute path via the *current* `PATH` before the override is applied.
+/// This prevents the spawned process from finding our own shim.
+///
+/// # Errors
+///
+/// Returns an error if the command string is empty or the process fails to spawn.
+pub fn execute_with_env(
+    command: &str,
+    args: &[String],
+    extra_env: &[(&str, &str)],
+) -> anyhow::Result<CommandResult> {
     let mut parts = command.split_whitespace();
     let program = parts
         .next()
         .ok_or_else(|| anyhow::anyhow!("empty command"))?;
     let base_args: Vec<&str> = parts.collect();
 
-    let child = Command::new(program)
-        .args(&base_args)
+    let has_path_override = extra_env.iter().any(|(k, _)| *k == "PATH");
+    let resolved = if has_path_override {
+        resolve_program(program)
+    } else {
+        None
+    };
+    let actual_program = resolved
+        .as_ref()
+        .map_or(program, |p| p.to_str().unwrap_or(program));
+
+    let mut cmd = Command::new(actual_program);
+    cmd.args(&base_args)
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
 
-    run_interleaved(child)
+    run_interleaved(cmd.spawn()?)
 }
 
 /// Execute a shell command with `{args}` interpolation.
@@ -135,6 +179,19 @@ pub fn execute(command: &str, args: &[String]) -> anyhow::Result<CommandResult> 
 ///
 /// Returns an error if the shell process fails to spawn.
 pub fn execute_shell(run: &str, args: &[String]) -> anyhow::Result<CommandResult> {
+    execute_shell_with_env(run, args, &[])
+}
+
+/// Execute a shell command with extra environment variables.
+///
+/// # Errors
+///
+/// Returns an error if the shell process fails to spawn.
+pub fn execute_shell_with_env(
+    run: &str,
+    args: &[String],
+    extra_env: &[(&str, &str)],
+) -> anyhow::Result<CommandResult> {
     let joined_args = args
         .iter()
         .map(|a| shell_escape(a))
@@ -143,14 +200,16 @@ pub fn execute_shell(run: &str, args: &[String]) -> anyhow::Result<CommandResult
     #[allow(clippy::literal_string_with_formatting_args)]
     let shell_cmd = run.replace("{args}", &joined_args);
 
-    let child = Command::new("sh")
-        .arg("-c")
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c")
         .arg(&shell_cmd)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
 
-    run_interleaved(child)
+    run_interleaved(cmd.spawn()?)
 }
 
 #[cfg(test)]
@@ -319,6 +378,44 @@ mod tests {
         assert!(result.stdout.contains("out2"));
         assert!(result.stderr.contains("err1"));
         assert!(result.stderr.contains("err2"));
+    }
+
+    // --- resolve_program tests ---
+
+    #[test]
+    fn resolve_program_finds_sh() {
+        let result = resolve_program("sh");
+        assert!(result.is_some(), "sh should be on PATH");
+        assert!(result.unwrap().is_absolute());
+    }
+
+    #[test]
+    fn resolve_program_returns_none_for_missing() {
+        let result = resolve_program("nonexistent_program_xyz_abc_123");
+        assert!(result.is_none());
+    }
+
+    // --- execute_with_env tests ---
+
+    #[test]
+    fn test_execute_with_env_propagates_vars() {
+        let env = vec![("TOKF_TEST_VAR", "hello_from_env")];
+        let result =
+            execute_with_env("sh", &["-c".into(), "echo $TOKF_TEST_VAR".into()], &env).unwrap();
+        assert_eq!(result.stdout.trim(), "hello_from_env");
+    }
+
+    #[test]
+    fn test_execute_with_env_empty_env() {
+        let result = execute_with_env("echo", &["hi".into()], &[]).unwrap();
+        assert_eq!(result.stdout.trim(), "hi");
+    }
+
+    #[test]
+    fn test_execute_shell_with_env_propagates_vars() {
+        let env = vec![("TOKF_TEST_VAR2", "shell_env_val")];
+        let result = execute_shell_with_env("echo $TOKF_TEST_VAR2", &[], &env).unwrap();
+        assert_eq!(result.stdout.trim(), "shell_env_val");
     }
 
     // --- signal handling (unix only) ---
