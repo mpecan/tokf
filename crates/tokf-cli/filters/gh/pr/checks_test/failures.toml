@@ -1,9 +1,15 @@
-name = "failing checks skip passing lines"
-inline = "pass  ci/build  1m23s  https://example.com/1\nfail  ci/test   2m45s  https://example.com/2\npass  ci/lint   0m30s  https://example.com/3"
+name = "failing checks shows all check states"
+fixture = "failures.txt"
 exit_code = 1
 
 [[expect]]
-contains = "fail"
+contains = "FAILURE"
 
 [[expect]]
-not_contains = "pass"
+contains = "ci/test"
+
+[[expect]]
+contains = "SUCCESS"
+
+[[expect]]
+contains = "ci/build"

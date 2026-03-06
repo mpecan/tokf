@@ -1,14 +1,50 @@
 command = "gh issue view *"
+run = "gh issue view {args} --json number,title,state,author,labels,assignees,milestone,body"
 
-skip = [
-  "^assignees:\\s*$",
-  "^projects:\\s*$",
-  "^milestone:\\s*$",
-  "^labels:\\s*$",
-]
+[json]
+
+[[json.extract]]
+path = "$.number"
+as = "number"
+
+[[json.extract]]
+path = "$.title"
+as = "title"
+
+[[json.extract]]
+path = "$.state"
+as = "state"
+
+[[json.extract]]
+path = "$.author.login"
+as = "author"
+
+[[json.extract]]
+path = "$.milestone"
+as = "milestone"
+
+[[json.extract]]
+path = "$.body"
+as = "body"
+
+[[json.extract]]
+path = "$.labels[*]"
+as = "labels"
+
+[[json.extract.fields]]
+field = "name"
+as = "name"
+
+[[json.extract]]
+path = "$.assignees[*]"
+as = "assignees"
+
+[[json.extract.fields]]
+field = "login"
+as = "login"
 
 [on_success]
-head = 30
+output = "#{number} {title}\nstate: {state}\nauthor: {author}\nassignees: {assignees | each: \"{login}\" | join: \", \"}\nlabels: {labels | each: \"{name}\" | join: \", \"}\nmilestone: {milestone}\n--\n{body}"
 
 [on_failure]
 tail = 10

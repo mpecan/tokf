@@ -1,21 +1,30 @@
-name = "PR view skips empty metadata"
+name = "PR view extracts JSON fields"
 fixture = "success.txt"
 exit_code = 0
 
 [[expect]]
-contains = "feat: add pnpm support"
+contains = "#12813"
 
 [[expect]]
-contains = "labels:"
+contains = "fix(repo fork): set default repo"
 
 [[expect]]
-not_contains = "assignees:"
+contains = "OPEN"
 
 [[expect]]
-not_contains = "reviewers:"
+contains = "scarf005"
 
 [[expect]]
-not_contains = "projects:"
+contains = "fix/repo-fork"
 
 [[expect]]
-not_contains = "milestone:"
+contains = "trunk"
+
+[[expect]]
+contains = "REVIEW_REQUIRED"
+
+[[expect]]
+contains = "external"
+
+[[expect]]
+contains = "Summary of changes"

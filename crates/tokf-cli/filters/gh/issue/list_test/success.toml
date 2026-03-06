@@ -1,4 +1,4 @@
-name = "issue list strips timestamps"
+name = "issue list extracts JSON fields"
 fixture = "success.txt"
 exit_code = 0
 
@@ -6,10 +6,16 @@ exit_code = 0
 contains = "#42"
 
 [[expect]]
-contains = "bug"
+contains = "Bug: memory leak in filter engine"
 
 [[expect]]
-not_contains = "about 2 days ago"
+contains = "OPEN"
 
 [[expect]]
-not_contains = "about 1 week ago"
+contains = "#38"
+
+[[expect]]
+contains = "#35"
+
+[[expect]]
+contains = "CLOSED"

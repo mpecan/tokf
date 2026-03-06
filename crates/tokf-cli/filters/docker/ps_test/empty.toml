@@ -1,9 +1,9 @@
-name = "no running containers shows header only"
-inline = "NAMES   IMAGE   STATUS   PORTS"
+name = "no running containers shows zero count"
+inline = "[]"
 exit_code = 0
 
 [[expect]]
-contains = "NAMES"
+contains = "Containers (0):"
 
 [[expect]]
-not_contains = "Up"
+line_count = 1

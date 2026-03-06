@@ -1,3 +1,1 @@
-#42	Bug: memory leak in filter engine	OPEN	bug	about 2 days ago
-#38	feat: add JSON output mode	OPEN	enhancement	about 5 days ago
-#35	docs: improve README examples	CLOSED	docs	about 1 week ago
+[{"labels":[{"name":"enhancement"}],"number":42,"state":"OPEN","title":"Bug: memory leak in filter engine"},{"labels":[{"name":"docs"}],"number":38,"state":"OPEN","title":"feat: add JSON output mode"},{"labels":[],"number":35,"state":"CLOSED","title":"docs: improve README examples"}]
