@@ -1,4 +1,4 @@
-command = "gh pr view"
+command = "gh pr view *"
 run = "gh pr view {args} --json number,title,state,author,headRefName,baseRefName,reviewDecision,labels,assignees,milestone,body"
 
 [json]

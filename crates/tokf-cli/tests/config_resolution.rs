@@ -164,8 +164,9 @@ fn test_wildcard_pattern_match() {
         .find(|f| f.config.command.first() == "npm run *")
         .unwrap();
 
-    assert_eq!(npm_run.matches(&["npm", "run", "build"]), Some(3));
-    assert_eq!(npm_run.matches(&["npm", "run", "test"]), Some(3));
+    // `*` gates matching but does not count toward consumed
+    assert_eq!(npm_run.matches(&["npm", "run", "build"]), Some(2));
+    assert_eq!(npm_run.matches(&["npm", "run", "test"]), Some(2));
     // Wildcard requires at least one token after "run"
     assert_eq!(npm_run.matches(&["npm", "run"]), None);
 }

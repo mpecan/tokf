@@ -1,4 +1,4 @@
-command = "gh issue view"
+command = "gh issue view *"
 run = "gh issue view {args} --json number,title,state,author,labels,assignees,milestone,body"
 
 [json]

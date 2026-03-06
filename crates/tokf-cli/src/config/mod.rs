@@ -135,7 +135,11 @@ fn skip_flags_to_match(words: &[&str], target: &str) -> Option<usize> {
 
 /// Returns `words_consumed` if pattern matches a prefix of `words`, else `None`.
 ///
-/// Pattern word `*` matches any single non-empty token.
+/// Pattern word `*` matches any single non-empty token but does **not** count
+/// toward `words_consumed`.  This means wildcard-matched words stay in the
+/// caller's `remaining_args`, making them available for `{args}` substitution
+/// in `run` templates.
+///
 /// Trailing args beyond the pattern length are allowed (prefix semantics).
 /// The first word is matched by basename, so `/usr/bin/git` matches pattern `git`.
 ///
@@ -162,6 +166,10 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
     // word_idx tracks our position in `words`; it advances past both matched
     // pattern tokens and any transparently-skipped flag tokens.
     let mut word_idx = 0;
+    // Count words matched by `*` wildcards — these are excluded from the
+    // returned `words_consumed` so they remain in `remaining_args` and are
+    // available for `{args}` substitution in `run` templates.
+    let mut wildcard_consumed = 0;
 
     for (pat_idx, pword) in pattern_words.iter().enumerate() {
         if word_idx >= words.len() {
@@ -173,6 +181,7 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
                 return None;
             }
             word_idx += 1;
+            wildcard_consumed += 1;
         } else {
             // For the first word compare basenames, supporting path variants
             // on both the input word and the pattern word.
@@ -203,7 +212,7 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
         }
     }
 
-    Some(word_idx)
+    Some(word_idx - wildcard_consumed)
 }
 
 /// Recursively find all `.toml` files under `dir`, sorted by relative path.
