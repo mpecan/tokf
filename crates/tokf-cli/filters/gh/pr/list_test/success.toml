@@ -1,4 +1,4 @@
-name = "PR list strips timestamps"
+name = "PR list extracts JSON fields"
 fixture = "success.txt"
 exit_code = 0
 
@@ -6,10 +6,19 @@ exit_code = 0
 contains = "#69"
 
 [[expect]]
+contains = "refactor: replace filter tests"
+
+[[expect]]
 contains = "OPEN"
 
 [[expect]]
-not_contains = "about 2 hours ago"
+contains = "feat/squash-merge"
 
 [[expect]]
-not_contains = "about 1 day ago"
+contains = "#67"
+
+[[expect]]
+contains = "#61"
+
+[[expect]]
+contains = "MERGED"

@@ -1,11 +1,1 @@
-title:	feat: add pnpm support
-state:	OPEN
-author:	mpecan
-url:	https://github.com/mpecan/tokf/pull/67
-assignees:
-reviewers:
-projects:
-milestone:
-labels:	enhancement
---
-This PR adds pnpm support to the filter engine.
+{"assignees":[],"author":{"login":"scarf005"},"baseRefName":"trunk","body":"Summary of changes...","headRefName":"fix/repo-fork","labels":[{"name":"external"}],"milestone":null,"number":12813,"reviewDecision":"REVIEW_REQUIRED","state":"OPEN","title":"fix(repo fork): set default repo"}

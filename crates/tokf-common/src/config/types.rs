@@ -146,6 +146,9 @@ pub struct FilterConfig {
     #[serde(default)]
     pub chunk: Vec<ChunkConfig>,
 
+    /// JSON extraction: parse stdout as JSON and extract values via `JSONPath`.
+    pub json: Option<JsonConfig>,
+
     /// Variant entries for context-aware filter delegation.
     #[serde(default)]
     pub variant: Vec<Variant>,
@@ -444,4 +447,40 @@ pub struct Variant {
     pub detect: VariantDetect,
     /// Filter name to delegate to (relative path without `.toml`).
     pub filter: String,
+}
+
+/// JSON extraction configuration: parse stdout as JSON and extract values via `JSONPath`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonConfig {
+    /// Extraction rules to apply to the parsed JSON.
+    pub extract: Vec<JsonExtractRule>,
+}
+
+/// A single `JSONPath` extraction rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonExtractRule {
+    /// `JSONPath` expression (RFC 9535).
+    pub path: String,
+
+    /// Variable name to bind the result to.
+    #[serde(rename = "as")]
+    pub as_name: String,
+
+    /// Optional sub-field extraction for each matched object.
+    /// Uses dot-separated paths within each object (not `JSONPath`).
+    #[serde(default)]
+    pub fields: Vec<JsonFieldExtract>,
+}
+
+/// Sub-field extraction within a JSON object matched by a parent rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonFieldExtract {
+    /// Dot-separated field path within each matched object (e.g. "metadata.name").
+    /// Not a `JSONPath` expression — uses simple dot-notation to traverse nested objects.
+    #[serde(alias = "path")]
+    pub field: String,
+
+    /// Variable name for the extracted value.
+    #[serde(rename = "as")]
+    pub as_name: String,
 }

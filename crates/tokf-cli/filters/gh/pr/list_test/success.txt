@@ -1,3 +1,1 @@
-#69	refactor: replace Rust filter tests with declarative verify suites	OPEN	about 2 hours ago
-#67	feat: add pnpm support	OPEN	about 1 day ago
-#61	feat: add tokf verify command	MERGED	about 3 days ago
+[{"headRefName":"feat/squash-merge","number":69,"state":"OPEN","title":"refactor: replace filter tests"},{"headRefName":"feat/pnpm","number":67,"state":"OPEN","title":"feat: add pnpm support"},{"headRefName":"feat/verify","number":61,"state":"MERGED","title":"feat: add verify command"}]

@@ -1,11 +1,30 @@
 command = "gh issue list"
+run = "gh issue list --json number,title,state,labels {args}"
 
-[[replace]]
-pattern = '^(.*?)\tabout .+ ago$'
-output = '{1}'
+[json]
+
+[[json.extract]]
+path = "$[*]"
+as = "issues"
+
+[[json.extract.fields]]
+field = "number"
+as = "number"
+
+[[json.extract.fields]]
+field = "title"
+as = "title"
+
+[[json.extract.fields]]
+field = "state"
+as = "state"
+
+[[json.extract.fields]]
+field = "labels"
+as = "labels"
 
 [on_success]
-head = 40
+output = "{issues | each: \"#{number}  {title}  {state}  {labels}\" | join: \"\\n\"}"
 
 [on_failure]
 tail = 10

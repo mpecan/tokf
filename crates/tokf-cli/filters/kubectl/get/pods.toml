@@ -1,11 +1,34 @@
 command = ["kubectl get pods", "kubectl get pod", "kubectl get po"]
 
-[on_success]
-skip = [
-  "\\s+Completed\\s+",
-  "\\s+Evicted\\s+",
+# Override to get JSON output for structured extraction
+run = "kubectl get pods -o json {args}"
+
+match_output = [
+  { contains = "the server doesn't have a resource type", output = "Error: {line_containing}" },
+  { contains = "Unable to connect to the server", output = "Error: {line_containing}" },
+  { contains = "No resources found", output = "No pods found" },
 ]
-head = 30
+
+[json]
+
+[[json.extract]]
+path = "$.items[*]"
+as = "pods"
+
+[[json.extract.fields]]
+field = "metadata.name"
+as = "name"
+
+[[json.extract.fields]]
+field = "metadata.namespace"
+as = "namespace"
+
+[[json.extract.fields]]
+field = "status.phase"
+as = "phase"
+
+[on_success]
+output = "Pods ({pods_count}):\n{pods | where: \"phase=Running|phase=Pending\" | each: \"  {name} ({namespace}): {phase}\" | join: \"\\n\"}"
 
 [on_failure]
 tail = 10

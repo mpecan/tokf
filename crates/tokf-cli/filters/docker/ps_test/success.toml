@@ -1,15 +1,24 @@
-name = "running containers show compact format"
+name = "running containers show compact list"
 fixture = "success.txt"
 exit_code = 0
 
 [[expect]]
-contains = "NAMES"
+contains = "Containers (3):"
 
 [[expect]]
-contains = "webserver"
+contains = "webserver: docker.io/library/nginx:latest (Up 2 hours)"
 
 [[expect]]
-not_contains = "CONTAINER ID"
+contains = "db: docker.io/library/postgres:16 (Up 3 hours)"
 
 [[expect]]
-not_contains = "COMMAND"
+contains = "redis-cache: docker.io/library/redis:7-alpine (Up 3 hours)"
+
+[[expect]]
+not_contains = "Id"
+
+[[expect]]
+not_contains = "Command"
+
+[[expect]]
+line_count = 4

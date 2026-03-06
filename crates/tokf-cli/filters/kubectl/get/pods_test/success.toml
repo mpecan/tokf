@@ -1,18 +1,30 @@
-name = "skips Completed and Evicted pods"
+name = "JSON pods filtered to running, skips Succeeded and Failed"
 fixture = "success.txt"
 exit_code = 0
 
 [[expect]]
-contains = "NAME"
+contains = "Pods (6)"
 
 [[expect]]
-contains = "Running"
+contains = "nginx-deployment-7fb96c846b (default): Running"
 
 [[expect]]
-not_contains = "Completed"
+contains = "postgres-statefulset-0 (default): Running"
 
 [[expect]]
-not_contains = "Evicted"
+contains = "redis-deployment-5d4c9b8d7f (default): Running"
 
 [[expect]]
-line_count = 4
+not_contains = "migration-job-abc12"
+
+[[expect]]
+not_contains = "old-pod-evicted-xyz"
+
+[[expect]]
+not_contains = "batch-job-def34"
+
+[[expect]]
+not_contains = "Succeeded"
+
+[[expect]]
+not_contains = "Failed"

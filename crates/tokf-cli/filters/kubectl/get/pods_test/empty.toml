@@ -1,0 +1,6 @@
+name = "no pods returns zero count"
+inline = '{"apiVersion":"v1","kind":"PodList","items":[]}'
+exit_code = 0
+
+[[expect]]
+contains = "Pods (0)"

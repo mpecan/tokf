@@ -398,6 +398,84 @@ output = "{suites_detail | each: \"  {crate_name}: {passed} passed\\n{children |
 
 ---
 
+## `[json]`
+
+**Type**: table
+**Required**: no
+**Incompatible with**: `[[section]]`, `[parse]`, `[[chunk]]` (when `[json]` is configured, those steps are skipped)
+
+JSON extraction using `JSONPath` (RFC 9535). For commands that produce JSON output.
+
+```toml
+[json]
+
+[[json.extract]]
+path = "$.version"
+as = "ver"
+
+[[json.extract]]
+path = "$.items[*]"
+as = "pods"
+
+[[json.extract.fields]]
+field = "metadata.name"
+as = "name"
+
+[[json.extract.fields]]
+field = "status.phase"
+as = "phase"
+
+[on_success]
+output = "v{ver} — Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" | join: \"\\n\"}"
+```
+
+**`[[json.extract]]` fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes | `JSONPath` expression (RFC 9535). Examples: `"$.version"` (scalar), `"$.items[*]"` (array), `"$[*]"` (root array). |
+| `as` | string | yes | Variable name to bind the result to. Arrays also generate `{as_name_count}`. |
+| `fields` | array of tables | no | Sub-field extraction rules for each matched object. When absent, objects are auto-flattened (all top-level scalars become fields). |
+
+**`[[json.extract.fields]]` fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `field` | string | yes | Dot-separated path within each matched object (not JSONPath). Supports nested traversal (`"metadata.name"`) and numeric array indices (`"containers.0.name"`). |
+| `as` | string | yes | Variable name for the extracted value. Available in `each` templates. |
+
+**Result mapping**:
+
+| JSONPath result | Behavior |
+|---|---|
+| Single scalar (string/number/bool/null) | Stored as `vars["as_name"]` — use as `{as_name}` in templates |
+| Single array node | Treated as multi-result (items extracted from array elements) |
+| Multiple nodes (array) | Stored as `ChunkData::Flat` collection; auto-generates `{as_name_count}` |
+| Objects without `fields` | All top-level scalar fields auto-flattened into chunk items |
+| Objects with `fields` | Only specified fields extracted per item |
+| Empty array (with `fields`) | Emits `{as_name_count} = "0"` |
+
+**Error handling**:
+
+| Condition | Behavior |
+|---|---|
+| Input is not valid JSON | Extraction skipped entirely; pipeline falls back to raw output (templates are not rendered) |
+| Invalid JSONPath expression | That rule silently skipped; other rules still run |
+| Path matches nothing | No vars/chunks produced for that rule; `{as_name_count} = "0"` when `fields` are specified |
+| Missing sub-field in object | Defaults to empty string |
+
+**Pipeline position**: runs after `lua_script` (step 7 in the processing order). When `[json]` is configured, `[[section]]`, `[parse]`, and `[[chunk]]` are skipped — JSON replaces line-based structural processing. The extracted vars and chunks flow into `[on_success]`/`[on_failure]` template rendering, where they work with all standard template pipes (`each`, `join`, `where`, `truncate`, `lines`).
+
+**Accessing JSON data in templates**:
+
+| Expression | Description |
+|---|---|
+| `{var_name}` | Scalar variable extracted by JSONPath |
+| `{array_name_count}` | Number of items in an extracted array |
+| `{array_name \| each: "..." \| join: "\\n"}` | Iterate over array items with field access |
+
+---
+
 ## `[parse]`
 
 **Type**: table

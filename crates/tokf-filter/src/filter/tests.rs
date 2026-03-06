@@ -44,14 +44,15 @@ fn select_branch_failure() {
 
 /// Helper: call `apply_branch` with empty sections and chunks (non-section path).
 fn branch_apply(branch: &OutputBranch, combined: &str) -> String {
-    apply_branch(
-        branch,
-        combined,
-        &SectionMap::new(),
-        &template::ChunkMap::new(),
-        false,
-    )
-    .unwrap()
+    let ctx = BranchContext {
+        sections: &SectionMap::new(),
+        chunks: &template::ChunkMap::new(),
+        has_sections: false,
+        has_json: false,
+        json_parsed: false,
+        json_vars: &std::collections::HashMap::new(),
+    };
+    apply_branch(branch, combined, &ctx).unwrap()
 }
 
 #[test]
@@ -274,13 +275,15 @@ fn branch_with_sections_expected_but_empty_returns_none() {
             count_as: Some("suites".to_string()),
         }],
     };
-    let result = apply_branch(
-        &branch,
-        "irrelevant",
-        &sections,
-        &template::ChunkMap::new(),
-        true,
-    );
+    let ctx = BranchContext {
+        sections: &sections,
+        chunks: &template::ChunkMap::new(),
+        has_sections: true,
+        has_json: false,
+        json_parsed: false,
+        json_vars: &std::collections::HashMap::new(),
+    };
+    let result = apply_branch(&branch, "irrelevant", &ctx);
     assert!(result.is_none(), "empty sections should trigger fallback");
 }
 
@@ -311,13 +314,15 @@ fn branch_with_sections_populated_renders_template() {
             count_as: Some("suites".to_string()),
         }],
     };
-    let result = apply_branch(
-        &branch,
-        "irrelevant",
-        &sections,
-        &template::ChunkMap::new(),
-        true,
-    );
+    let ctx = BranchContext {
+        sections: &sections,
+        chunks: &template::ChunkMap::new(),
+        has_sections: true,
+        has_json: false,
+        json_parsed: false,
+        json_vars: &std::collections::HashMap::new(),
+    };
+    let result = apply_branch(&branch, "irrelevant", &ctx);
     assert_eq!(result.unwrap(), "20 passed (2 suites)");
 }
 
@@ -333,12 +338,14 @@ fn branch_without_sections_ignores_has_sections_flag() {
         extract: None,
         aggregates: vec![],
     };
-    let result = apply_branch(
-        &branch,
-        "anything",
-        &SectionMap::new(),
-        &template::ChunkMap::new(),
-        false,
-    );
+    let ctx = BranchContext {
+        sections: &SectionMap::new(),
+        chunks: &template::ChunkMap::new(),
+        has_sections: false,
+        has_json: false,
+        json_parsed: false,
+        json_vars: &std::collections::HashMap::new(),
+    };
+    let result = apply_branch(&branch, "anything", &ctx);
     assert_eq!(result.unwrap(), "ok");
 }

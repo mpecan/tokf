@@ -1,3 +1,32 @@
-NAMES        IMAGE      STATUS         PORTS
-webserver    nginx      Up 2 hours     0.0.0.0:80->80/tcp
-db           postgres   Up 3 hours     0.0.0.0:5432->5432/tcp
+[
+  {
+    "Names": ["webserver"],
+    "Image": "docker.io/library/nginx:latest",
+    "State": "running",
+    "Status": "Up 2 hours",
+    "Ports": [{"host_port": 80, "container_port": 80, "protocol": "tcp"}],
+    "Id": "a1b2c3d4e5f6",
+    "Command": ["nginx", "-g", "daemon off;"],
+    "Created": "2026-03-06T10:00:00Z"
+  },
+  {
+    "Names": ["db"],
+    "Image": "docker.io/library/postgres:16",
+    "State": "running",
+    "Status": "Up 3 hours",
+    "Ports": [{"host_port": 5432, "container_port": 5432, "protocol": "tcp"}],
+    "Id": "f6e5d4c3b2a1",
+    "Command": ["docker-entrypoint.sh", "postgres"],
+    "Created": "2026-03-06T09:00:00Z"
+  },
+  {
+    "Names": ["redis-cache"],
+    "Image": "docker.io/library/redis:7-alpine",
+    "State": "running",
+    "Status": "Up 3 hours",
+    "Ports": [{"host_port": 6379, "container_port": 6379, "protocol": "tcp"}],
+    "Id": "1a2b3c4d5e6f",
+    "Command": ["redis-server"],
+    "Created": "2026-03-06T09:00:00Z"
+  }
+]

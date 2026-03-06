@@ -1,11 +1,30 @@
 command = "gh pr list"
+run = "gh pr list --json number,title,state,headRefName {args}"
 
-[[replace]]
-pattern = '^(.*?)\tabout .+ ago$'
-output = '{1}'
+[json]
+
+[[json.extract]]
+path = "$[*]"
+as = "prs"
+
+[[json.extract.fields]]
+field = "number"
+as = "number"
+
+[[json.extract.fields]]
+field = "title"
+as = "title"
+
+[[json.extract.fields]]
+field = "state"
+as = "state"
+
+[[json.extract.fields]]
+field = "headRefName"
+as = "branch"
 
 [on_success]
-head = 40
+output = "{prs | each: \"#{number}  {title}  {state}  {branch}\" | join: \"\\n\"}"
 
 [on_failure]
 tail = 10

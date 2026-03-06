@@ -1,0 +1,6 @@
+name = "empty issue list shows no issues"
+inline = "[]"
+exit_code = 0
+
+[[expect]]
+equals = ""
