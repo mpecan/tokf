@@ -49,11 +49,25 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             output_tokens_est INTEGER NOT NULL,
             filter_time_ms    INTEGER NOT NULL,
             exit_code         INTEGER NOT NULL,
-            pipe_override     INTEGER NOT NULL DEFAULT 0
+            pipe_override     INTEGER NOT NULL DEFAULT 0,
+            raw_bytes         INTEGER NOT NULL DEFAULT 0,
+            raw_tokens_est    INTEGER NOT NULL DEFAULT 0
         );",
     )
     .context("create events table")?;
 
+    run_migrations(&conn)?;
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    )
+    .context("create sync_state table")?;
+
+    Ok(conn)
+}
+
+/// Run schema migrations for the events table.
+fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
     // Migration: add pipe_override column when upgrading from a schema without it.
     let has_pipe_override: i64 = conn
         .query_row(
@@ -82,12 +96,24 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             .context("migrate events table: add filter_hash column")?;
     }
 
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-    )
-    .context("create sync_state table")?;
+    // Migration: add raw_bytes and raw_tokens_est columns.
+    let has_raw_bytes: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='raw_bytes'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_raw_bytes == 0 {
+        conn.execute_batch(
+            "ALTER TABLE events ADD COLUMN raw_bytes INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE events ADD COLUMN raw_tokens_est INTEGER NOT NULL DEFAULT 0;
+             UPDATE events SET raw_bytes = input_bytes, raw_tokens_est = input_tokens_est;",
+        )
+        .context("migrate events table: add raw_bytes columns")?;
+    }
 
-    Ok(conn)
+    Ok(())
 }
 
 /// Pure constructor — no I/O. Computes token estimates from bytes.
@@ -98,6 +124,7 @@ pub fn build_event(
     filter_hash: Option<&str>,
     input_bytes: usize,
     output_bytes: usize,
+    raw_bytes: usize,
     filter_time_ms: u128,
     exit_code: i32,
     pipe_override: bool,
@@ -106,6 +133,8 @@ pub fn build_event(
     let input_tokens_est = (input_bytes / 4) as i64;
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     let output_tokens_est = (output_bytes / 4) as i64;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let raw_tokens_est = (raw_bytes / 4) as i64;
     #[allow(clippy::cast_possible_truncation)]
     let filter_time_ms_i64 = filter_time_ms.min(i64::MAX as u128) as i64;
     TrackingEvent {
@@ -118,6 +147,9 @@ pub fn build_event(
         output_bytes: output_bytes as i64,
         input_tokens_est,
         output_tokens_est,
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        raw_bytes: raw_bytes as i64,
+        raw_tokens_est,
         filter_time_ms: filter_time_ms_i64,
         exit_code,
         pipe_override,
@@ -134,10 +166,11 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
             (timestamp, command, filter_name, filter_hash,
              input_bytes, output_bytes,
              input_tokens_est, output_tokens_est,
+             raw_bytes, raw_tokens_est,
              filter_time_ms, exit_code, pipe_override)
          VALUES
             (strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         rusqlite::params![
             event.command,
             event.filter_name,
@@ -146,6 +179,8 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
             event.output_bytes,
             event.input_tokens_est,
             event.output_tokens_est,
+            event.raw_bytes,
+            event.raw_tokens_est,
             event.filter_time_ms,
             event.exit_code,
             i64::from(event.pipe_override),
@@ -164,7 +199,8 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     COALESCE(SUM(output_tokens_est),0),
                     COALESCE(SUM(input_tokens_est - output_tokens_est),0),
                     COALESCE(SUM(pipe_override),0),
-                    COALESCE(SUM(filter_time_ms),0)
+                    COALESCE(SUM(filter_time_ms),0),
+                    COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
              FROM events",
             [],
             |row| {
@@ -175,6 +211,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     row.get::<_, i64>(3)?,
                     row.get::<_, i64>(4)?,
                     row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
                 ))
             },
         )
@@ -187,6 +224,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         tokens_saved,
         pipe_override_count,
         total_filter_time_ms,
+        total_raw_tokens,
     ) = row;
     let savings_pct = if total_input_tokens == 0 {
         0.0
@@ -211,14 +249,15 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         pipe_override_count,
         total_filter_time_ms,
         avg_filter_time_ms,
+        total_raw_tokens,
     })
 }
 
 /// Row type returned by aggregate queries.
-type AggregateRow = (String, i64, i64, i64, i64, i64, i64);
+type AggregateRow = (String, i64, i64, i64, i64, i64, i64, i64);
 
 /// Shared row mapper for aggregate queries.
-/// Returns `(label, commands, input, output, saved, pipe_overrides, filter_time_ms)`.
+/// Returns `(label, commands, input, output, saved, pipe_overrides, filter_time_ms, raw_tokens)`.
 fn map_aggregate_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AggregateRow> {
     Ok((
         row.get::<_, String>(0)?,
@@ -228,6 +267,7 @@ fn map_aggregate_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AggregateRow> 
         row.get::<_, i64>(4)?,
         row.get::<_, i64>(5)?,
         row.get::<_, i64>(6)?,
+        row.get::<_, i64>(7)?,
     ))
 }
 
@@ -249,7 +289,8 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
                 SUM(input_tokens_est), SUM(output_tokens_est),
                 SUM(input_tokens_est - output_tokens_est),
                 COALESCE(SUM(pipe_override),0),
-                COALESCE(SUM(filter_time_ms),0)
+                COALESCE(SUM(filter_time_ms),0),
+                COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
          FROM events
          GROUP BY filter_name
          ORDER BY SUM(input_tokens_est - output_tokens_est) DESC",
@@ -267,6 +308,7 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
             tokens_saved,
             pipe_override_count,
             total_filter_time_ms,
+            raw_tokens,
         ) = row.context("read filter row")?;
         #[allow(clippy::cast_precision_loss)]
         let avg_filter_time_ms = if commands == 0 {
@@ -284,6 +326,7 @@ pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
             pipe_override_count,
             total_filter_time_ms,
             avg_filter_time_ms,
+            raw_tokens,
         });
     }
     Ok(result)
@@ -297,7 +340,8 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
                 SUM(input_tokens_est), SUM(output_tokens_est),
                 SUM(input_tokens_est - output_tokens_est),
                 COALESCE(SUM(pipe_override),0),
-                COALESCE(SUM(filter_time_ms),0)
+                COALESCE(SUM(filter_time_ms),0),
+                COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
          FROM events
          GROUP BY substr(timestamp, 1, 10)
          ORDER BY substr(timestamp, 1, 10) DESC",
@@ -315,6 +359,7 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
             tokens_saved,
             pipe_override_count,
             total_filter_time_ms,
+            raw_tokens,
         ) = row.context("read daily row")?;
         result.push(DailyGain {
             date,
@@ -325,6 +370,7 @@ pub fn query_daily(conn: &Connection) -> anyhow::Result<Vec<DailyGain>> {
             savings_pct: savings_pct(input_tokens, tokens_saved),
             pipe_override_count,
             total_filter_time_ms,
+            raw_tokens,
         });
     }
     Ok(result)
@@ -409,6 +455,7 @@ pub struct SyncableEvent {
     pub filter_hash: Option<String>,
     pub input_tokens_est: i64,
     pub output_tokens_est: i64,
+    pub raw_tokens_est: i64,
     pub timestamp: String,
 }
 
@@ -460,7 +507,8 @@ pub fn backfill_filter_hashes(
 /// Returns an error if the SQL query fails.
 pub fn get_events_since(conn: &Connection, last_id: i64) -> anyhow::Result<Vec<SyncableEvent>> {
     let mut stmt = conn.prepare(
-        "SELECT id, filter_name, filter_hash, input_tokens_est, output_tokens_est, timestamp
+        "SELECT id, filter_name, filter_hash, input_tokens_est, output_tokens_est,
+                raw_tokens_est, timestamp
          FROM events WHERE id > ?1 ORDER BY id ASC LIMIT 500",
     )?;
     let rows = stmt.query_map(rusqlite::params![last_id], |row| {
@@ -470,7 +518,8 @@ pub fn get_events_since(conn: &Connection, last_id: i64) -> anyhow::Result<Vec<S
             filter_hash: row.get(2)?,
             input_tokens_est: row.get(3)?,
             output_tokens_est: row.get(4)?,
-            timestamp: row.get(5)?,
+            raw_tokens_est: row.get(5)?,
+            timestamp: row.get(6)?,
         })
     })?;
     let mut result = Vec::new();
@@ -485,6 +534,12 @@ mod tests;
 
 #[cfg(test)]
 mod tests_backfill;
+
+#[cfg(test)]
+mod tests_pipe_override;
+
+#[cfg(test)]
+mod tests_raw_bytes;
 
 #[cfg(test)]
 mod tests_sync_state;

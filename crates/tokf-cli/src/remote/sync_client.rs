@@ -9,6 +9,8 @@ pub struct SyncEvent {
     pub filter_hash: Option<String>,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_tokens: Option<i64>,
     pub command_count: i32,
     pub recorded_at: String,
 }
@@ -52,6 +54,7 @@ mod tests {
                 filter_hash: None,
                 input_tokens: 1000,
                 output_tokens: 200,
+                raw_tokens: Some(1000),
                 command_count: 1,
                 recorded_at: "2026-01-01T00:00:00Z".to_string(),
             }],

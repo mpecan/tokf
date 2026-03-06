@@ -23,6 +23,9 @@ pub struct CatalogFilterStats {
     #[cfg_attr(test, ts(type = "number"))]
     pub total_output_tokens: i64,
     pub savings_pct: f64,
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "number"))]
+    pub total_raw_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -52,6 +55,9 @@ pub struct GlobalStats {
     #[cfg_attr(test, ts(type = "number"))]
     pub total_output_tokens: i64,
     pub overall_savings_pct: f64,
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "number"))]
+    pub total_raw_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -130,6 +136,7 @@ pub async fn build_filter_metadata(
                 COALESCE(fs.total_input_tokens, 0) AS total_input_tokens,
                 COALESCE(fs.total_output_tokens, 0) AS total_output_tokens,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
+                COALESCE(fs.total_raw_tokens, 0) AS total_raw_tokens,
                 (SELECT COUNT(*)::BIGINT FROM filter_tests
                  WHERE filter_hash = f.content_hash) AS test_count
          FROM filters f
@@ -157,6 +164,7 @@ async fn fetch_all_entries(pool: &PgPool) -> Result<Vec<CatalogEntry>, crate::er
                 COALESCE(fs.total_input_tokens, 0) AS total_input_tokens,
                 COALESCE(fs.total_output_tokens, 0) AS total_output_tokens,
                 COALESCE(fs.savings_pct, 0.0) AS savings_pct,
+                COALESCE(fs.total_raw_tokens, 0) AS total_raw_tokens,
                 (SELECT COUNT(*)::BIGINT FROM filter_tests
                  WHERE filter_hash = f.content_hash) AS test_count
          FROM filters f
@@ -185,7 +193,8 @@ async fn fetch_global_stats(pool: &PgPool) -> Result<GlobalStats, crate::error::
             CASE WHEN SUM(total_input_tokens) > 0
                  THEN (SUM(total_input_tokens) - SUM(total_output_tokens))::FLOAT8
                       / SUM(total_input_tokens)::FLOAT8 * 100.0
-                 ELSE 0.0 END AS overall_savings_pct
+                 ELSE 0.0 END AS overall_savings_pct,
+            COALESCE(SUM(total_raw_tokens), 0)::BIGINT AS total_raw_tokens
          FROM filter_stats",
     )
     .fetch_one(pool)
@@ -202,6 +211,7 @@ fn map_global_stats_row(row: &sqlx::postgres::PgRow) -> Result<GlobalStats, sqlx
         total_input_tokens: row.try_get("total_input_tokens")?,
         total_output_tokens: row.try_get("total_output_tokens")?,
         overall_savings_pct: row.try_get("overall_savings_pct")?,
+        total_raw_tokens: row.try_get("total_raw_tokens")?,
     })
 }
 
@@ -224,6 +234,7 @@ fn map_entry_row(row: &sqlx::postgres::PgRow) -> Result<CatalogEntry, sqlx::Erro
             total_input_tokens: row.try_get("total_input_tokens")?,
             total_output_tokens: row.try_get("total_output_tokens")?,
             savings_pct: row.try_get("savings_pct")?,
+            total_raw_tokens: row.try_get("total_raw_tokens")?,
         },
     })
 }
@@ -432,6 +443,7 @@ mod tests {
                 total_input_tokens: 5000,
                 total_output_tokens: 2000,
                 savings_pct: 60.0,
+                total_raw_tokens: 5000,
             },
         };
         let json = serde_json::to_string(&entry).unwrap();
@@ -451,6 +463,7 @@ mod tests {
                 total_input_tokens: 0,
                 total_output_tokens: 0,
                 overall_savings_pct: 0.0,
+                total_raw_tokens: 0,
             },
         };
         let json = serde_json::to_string(&index).unwrap();
@@ -471,6 +484,7 @@ mod tests {
                 total_input_tokens: 0,
                 total_output_tokens: 0,
                 overall_savings_pct: 0.0,
+                total_raw_tokens: 0,
             },
         };
 
@@ -521,6 +535,7 @@ mod tests {
                 total_input_tokens: 500,
                 total_output_tokens: 200,
                 savings_pct: 60.0,
+                total_raw_tokens: 500,
             },
         };
 

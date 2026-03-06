@@ -76,6 +76,7 @@ pub fn cmd_run(
             None,
             input_bytes,
             raw_len,
+            raw_len,
             0,
             cmd_result.exit_code,
             false,
@@ -85,6 +86,7 @@ pub fn cmd_run(
             None,
             command_args.join(" "),
             input_bytes,
+            raw_len,
             raw_len,
             &cmd_result.combined,
             &cmd_result.combined,
@@ -144,6 +146,13 @@ pub fn cmd_run(
 
     let filter_name = cfg.command.first();
     let command_str = command_args.join(" ");
+    let raw_bytes = cmd_result.combined.len();
+
+    if cli.verbose {
+        eprintln!(
+            "[tokf] accounting: raw={raw_bytes}B baseline={input_bytes}B filtered={output_bytes}B"
+        );
+    }
 
     resolve::record_run(
         command_args,
@@ -151,6 +160,7 @@ pub fn cmd_run(
         Some(&filter_hash),
         input_bytes,
         output_bytes,
+        raw_bytes,
         elapsed.as_millis(),
         cmd_result.exit_code,
         pipe_override,
@@ -191,6 +201,7 @@ pub fn cmd_run(
         command_str,
         input_bytes,
         output_bytes,
+        raw_bytes,
         &cmd_result.combined,
         &final_output,
         elapsed,

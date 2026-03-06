@@ -159,6 +159,7 @@ fn gain_tokens_saved_positive_after_filtered_run() {
         None,
         4000,
         400,
+        4000,
         5,
         0,
         false,

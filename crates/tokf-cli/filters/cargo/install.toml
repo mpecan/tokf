@@ -8,7 +8,7 @@ skip = [
 ]
 
 [on_success]
-output = "{output}"
+tail = 5
 
 [on_failure]
 tail = 10

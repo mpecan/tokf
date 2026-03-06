@@ -14,7 +14,7 @@ skip = [
 ]
 
 [on_success]
-output = "{output}"
+tail = 15
 
 [on_failure]
 tail = 30

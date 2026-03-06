@@ -61,6 +61,15 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
     let tokens_saved = resp.total_input_tokens - resp.total_output_tokens;
     let savings_pct = savings_pct_for(resp.total_input_tokens, tokens_saved);
 
+    // Fallback: old servers (pre-raw_tokens) return 0 for total_raw_tokens.
+    // We can't distinguish "genuine zero usage" from "server doesn't support this field",
+    // but zero usage implies zero input too, so falling back to input is safe either way.
+    let total_raw = if resp.total_raw_tokens > 0 {
+        resp.total_raw_tokens
+    } else {
+        resp.total_input_tokens
+    };
+
     let summary = GainSummary {
         total_commands: resp.total_commands,
         total_input_tokens: resp.total_input_tokens,
@@ -70,6 +79,7 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
         pipe_override_count: 0,
         total_filter_time_ms: 0,
         avg_filter_time_ms: 0.0,
+        total_raw_tokens: total_raw,
     };
 
     let filters: Vec<FilterGain> = resp
@@ -77,6 +87,12 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
         .iter()
         .map(|e| {
             let saved = e.total_input_tokens - e.total_output_tokens;
+            // Same fallback as summary-level: 0 means old server or no usage.
+            let raw = if e.total_raw_tokens > 0 {
+                e.total_raw_tokens
+            } else {
+                e.total_input_tokens
+            };
             FilterGain {
                 filter_name: e
                     .filter_name
@@ -90,6 +106,7 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
                 pipe_override_count: 0,
                 total_filter_time_ms: 0,
                 avg_filter_time_ms: 0.0,
+                raw_tokens: raw,
             }
         })
         .collect();
@@ -253,14 +270,7 @@ pub fn render_summary_tty(
         );
     }
 
-    // -- Reduction bar --
-    let _ = writeln!(out);
-    let bar = render_bar(summary.savings_pct, 50, green, dim, reset);
-    let _ = writeln!(
-        out,
-        "  Reduction   {bar}  {green}{:.1}%{reset}",
-        summary.savings_pct
-    );
+    render_raw_baseline_section(&mut out, summary, colors);
 
     // -- Filter Time section (only when data is available) --
     if summary.total_filter_time_ms > 0 || summary.avg_filter_time_ms > 0.0 {
@@ -278,6 +288,54 @@ pub fn render_summary_tty(
 
     render_top_filters_table(&mut out, filters, top, colors);
     out
+}
+
+/// Render raw vs baseline breakdown and reduction bars.
+fn render_raw_baseline_section(out: &mut String, summary: &GainSummary, colors: &ColorMode) {
+    let ColorMode {
+        reset,
+        dim,
+        green,
+        cyan,
+        ..
+    } = colors;
+
+    // Raw vs baseline line (only when baseline adjustment occurred)
+    if summary.total_raw_tokens > summary.total_input_tokens {
+        let _ = writeln!(
+            out,
+            "  {dim}{}{reset} intercepted \u{2192} {dim}{}{reset} baseline \u{2192} {dim}{}{reset} delivered",
+            format_num(summary.total_raw_tokens),
+            format_num(summary.total_input_tokens),
+            format_num(summary.total_output_tokens),
+        );
+    }
+
+    // Reduction bar
+    let _ = writeln!(out);
+    let bar = render_bar(summary.savings_pct, 50, green, dim, reset);
+    let _ = writeln!(
+        out,
+        "  Reduction   {bar}  {green}{:.1}%{reset}",
+        summary.savings_pct
+    );
+
+    // Reduction vs raw bar (only when baseline adjustment occurred)
+    if summary.total_raw_tokens > summary.total_input_tokens {
+        #[allow(clippy::cast_precision_loss)]
+        let raw_savings_pct = if summary.total_raw_tokens == 0 {
+            0.0
+        } else {
+            (summary.total_raw_tokens - summary.total_output_tokens) as f64
+                / summary.total_raw_tokens as f64
+                * 100.0
+        };
+        let raw_bar = render_bar(raw_savings_pct, 50, cyan, dim, reset);
+        let _ = writeln!(
+            out,
+            "  vs raw      {raw_bar}  {cyan}{raw_savings_pct:.1}%{reset}"
+        );
+    }
 }
 
 /// Render the top-N filters table section for TTY output.
@@ -317,13 +375,23 @@ fn render_top_filters_table(
     for f in &display_filters {
         let name = truncate_name(&f.filter_name, 20);
         let bar = render_proportional_bar(f.tokens_saved, max_saved, 38, magenta, dim, reset);
-        let _ = writeln!(
-            out,
-            "  {yellow}{:<20}{reset}  {bar}  {green}{:>7}{reset}  {green}{:>4.1}%{reset}",
-            name,
-            format_num(f.tokens_saved),
-            f.savings_pct
-        );
+        if f.savings_pct < 0.0 {
+            let _ = writeln!(
+                out,
+                "  {yellow}{:<20}{reset}  {bar}  {yellow}{:>7}{reset}  {yellow}{:>4.1}%{reset} {yellow}(overhead){reset}",
+                name,
+                format_num(f.tokens_saved),
+                f.savings_pct
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "  {yellow}{:<20}{reset}  {bar}  {green}{:>7}{reset}  {green}{:>4.1}%{reset}",
+                name,
+                format_num(f.tokens_saved),
+                f.savings_pct
+            );
+        }
     }
 }
 
@@ -349,6 +417,13 @@ pub fn render_summary_plain(summary: &GainSummary, filters: &[FilterGain], top: 
         format_num(summary.tokens_saved),
         summary.savings_pct
     );
+    if summary.total_raw_tokens > summary.total_input_tokens {
+        let _ = writeln!(
+            out,
+            "  raw tokens:     {} est. (before baseline)",
+            format_num(summary.total_raw_tokens)
+        );
+    }
     if summary.pipe_override_count > 0 {
         let _ = writeln!(
             out,
@@ -368,26 +443,31 @@ pub fn render_summary_plain(summary: &GainSummary, filters: &[FilterGain], top: 
         );
     }
 
-    // Top filters
-    if !filters.is_empty() {
-        let _ = writeln!(out);
-        let _ = writeln!(out, "tokf gain by filter (top {})", top.min(filters.len()));
-        for f in filters.iter().take(top) {
-            let override_note = if f.pipe_override_count > 0 {
-                format!("  pipe: {}", f.pipe_override_count)
-            } else {
-                String::new()
-            };
-            let _ = writeln!(
-                out,
-                "  {:30}  runs: {:4}  saved: {} est. ({:.1}%){override_note}",
-                f.filter_name,
-                f.commands,
-                format_num(f.tokens_saved),
-                f.savings_pct
-            );
-        }
-    }
+    render_plain_filters(&mut out, filters, top);
 
     out
+}
+
+/// Render the top-N filters section for plain-text output.
+fn render_plain_filters(out: &mut String, filters: &[FilterGain], top: usize) {
+    if filters.is_empty() {
+        return;
+    }
+    let _ = writeln!(out);
+    let _ = writeln!(out, "tokf gain by filter (top {})", top.min(filters.len()));
+    for f in filters.iter().take(top) {
+        let override_note = if f.pipe_override_count > 0 {
+            format!("  pipe: {}", f.pipe_override_count)
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "  {:30}  runs: {:4}  saved: {} est. ({:.1}%){override_note}",
+            f.filter_name,
+            f.commands,
+            format_num(f.tokens_saved),
+            f.savings_pct
+        );
+    }
 }
