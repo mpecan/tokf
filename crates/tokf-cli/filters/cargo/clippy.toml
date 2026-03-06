@@ -1,12 +1,85 @@
 command = "cargo clippy"
+strip_empty_lines = true
+
+# First, skip removes noise summary lines.
+# Then, keep retains only the essential diagnostic lines:
+#   error: <description>         — what went wrong
+#   warning: <description>       — lint warnings
+#   --> <file>:<line>:<col>      — where it is
+#   help: <suggestion>           — how to fix it
+# Everything else (source code, gutter lines, URLs, notes) is stripped.
+# Finally, the Lua script groups identical errors together.
 skip = [
-  "^   Compiling ",
-  "^    Checking ",
-  "^     Locking ",
+  "^error: could not compile",
+  "^warning: build failed",
+  "^warning: \\d+ warnings?\\b",
 ]
+
+keep = [
+  "^error:",
+  "^warning:",
+  "^\\s+-->",
+  "^help:",
+]
+
+[lua_script]
+lang = "luau"
+source = '''
+if exit_code == 0 then return nil end
+
+-- Parse keep-filtered output into error/warning blocks
+local blocks = {}
+local cur = nil
+for line in output:gmatch("[^\n]+") do
+  if line:match("^error:") or line:match("^warning:") then
+    if cur then table.insert(blocks, cur) end
+    cur = { desc = line, locs = {}, help = nil }
+  elseif cur and line:match("^%s+%-%->[%s]") then
+    local loc = line:match("^%s+%-%->[%s]+(.+)")
+    if loc then table.insert(cur.locs, loc) end
+  elseif cur and line:match("^help:") then
+    cur.help = line
+  end
+end
+if cur then table.insert(blocks, cur) end
+if #blocks == 0 then return nil end
+
+-- Group by (description, help text)
+local groups = {}
+local order = {}
+for _, b in ipairs(blocks) do
+  local key = b.desc .. "|" .. (b.help or "")
+  if not groups[key] then
+    groups[key] = { desc = b.desc, help = b.help, locs = {}, count = 0 }
+    table.insert(order, key)
+  end
+  groups[key].count = groups[key].count + 1
+  for _, loc in ipairs(b.locs) do
+    table.insert(groups[key].locs, loc)
+  end
+end
+
+-- Format grouped output
+local out = {}
+for _, key in ipairs(order) do
+  local g = groups[key]
+  if g.count > 1 then
+    table.insert(out, g.desc .. " (" .. g.count .. " occurrences)")
+  else
+    table.insert(out, g.desc)
+  end
+  for _, loc in ipairs(g.locs) do
+    table.insert(out, "  --> " .. loc)
+  end
+  if g.help then
+    table.insert(out, g.help)
+  end
+end
+
+return table.concat(out, "\n")
+'''
 
 [on_success]
 output = "ok ✓ no warnings"
 
 [on_failure]
-tail = 30

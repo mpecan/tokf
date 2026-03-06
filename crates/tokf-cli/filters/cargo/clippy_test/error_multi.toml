@@ -1,0 +1,45 @@
+name = "multiple errors grouped by lint rule"
+fixture = "error_multi.txt"
+exit_code = 1
+
+# Repeated errors are grouped with occurrence counts
+[[expect]]
+contains = "error: unnecessary hashes around raw string literal (9 occurrences)"
+
+[[expect]]
+contains = "error: this could be a `const fn` (5 occurrences)"
+
+[[expect]]
+contains = "error: casting `usize` to `f64` causes a loss of precision"
+
+[[expect]]
+contains = "error: this `if` statement can be collapsed (2 occurrences)"
+
+# Locations and help are preserved
+[[expect]]
+contains = "--> src/rules/text/inline_comments.rs:364:20"
+
+[[expect]]
+contains = "help: remove all the hashes around the string literal"
+
+[[expect]]
+contains = "help: make the function `const`"
+
+[[expect]]
+contains = "error: this function has too many lines (88/60)"
+
+# Noise is stripped
+[[expect]]
+not_contains = "Checking"
+
+[[expect]]
+not_contains = "could not compile"
+
+[[expect]]
+not_contains = "for further information visit"
+
+[[expect]]
+not_contains = "implied by"
+
+[[expect]]
+not_contains = "to override"

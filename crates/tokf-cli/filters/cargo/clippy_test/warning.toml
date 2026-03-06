@@ -1,6 +1,18 @@
-name = "warnings show lint output"
+name = "single warning shows condensed diagnostic"
 fixture = "warning.txt"
 exit_code = 1
 
 [[expect]]
-contains = "warning"
+contains = "warning: unused variable"
+
+[[expect]]
+contains = "--> src/main.rs:3:5"
+
+[[expect]]
+not_contains = "Checking"
+
+[[expect]]
+not_contains = "could not compile"
+
+[[expect]]
+not_contains = "= note:"
