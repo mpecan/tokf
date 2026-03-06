@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.26](https://github.com/mpecan/tokf/compare/tokf-v0.2.25...tokf-v0.2.26) (2026-03-06)
+
+
+### Features
+
+* **cli:** add `tokf telemetry status` subcommand ([#87](https://github.com/mpecan/tokf/issues/87)) ([#254](https://github.com/mpecan/tokf/issues/254)) ([f7138c1](https://github.com/mpecan/tokf/commit/f7138c19c4390976641107ff4de7ab8c68d74aa3))
+* **cli:** add reduction stats to tokf verify ([#250](https://github.com/mpecan/tokf/issues/250)) ([ff6bd23](https://github.com/mpecan/tokf/commit/ff6bd230ef9a2059d6bcf0c670a4e6f52ca9a9ac))
+* **filter:** condense cargo clippy error output with grouping ([#256](https://github.com/mpecan/tokf/issues/256)) ([5916a80](https://github.com/mpecan/tokf/commit/5916a8045dc3d4cdd0fe49eef9d1393524695425))
+* **filter:** JSON extraction via JSONPath (RFC 9535) ([#255](https://github.com/mpecan/tokf/issues/255)) ([dd2759b](https://github.com/mpecan/tokf/commit/dd2759b615f6d54212c2be501c5f27c5593db95e))
+* **telemetry:** OpenTelemetry OTLP metrics exporter ([#85](https://github.com/mpecan/tokf/issues/85)) ([#134](https://github.com/mpecan/tokf/issues/134)) ([9b7303d](https://github.com/mpecan/tokf/commit/9b7303dd96b15b4301797a9ee1596b0c294c6e90))
+* **tracking:** track raw_bytes, enhance gain display, fix passthrough filters ([#257](https://github.com/mpecan/tokf/issues/257)) ([718552c](https://github.com/mpecan/tokf/commit/718552c31b715de05024b8b89c6274223da64830))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.25 to 0.2.26
+    * tokf-filter bumped from 0.2.25 to 0.2.26
+
 ## [0.2.25](https://github.com/mpecan/tokf/compare/tokf-v0.2.24...tokf-v0.2.25) (2026-03-04)
 
 

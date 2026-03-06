@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.26](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.25...tokf-common-v0.2.26) (2026-03-06)
+
+
+### Features
+
+* **filter:** JSON extraction via JSONPath (RFC 9535) ([#255](https://github.com/mpecan/tokf/issues/255)) ([dd2759b](https://github.com/mpecan/tokf/commit/dd2759b615f6d54212c2be501c5f27c5593db95e))
+* **tracking:** track raw_bytes, enhance gain display, fix passthrough filters ([#257](https://github.com/mpecan/tokf/issues/257)) ([718552c](https://github.com/mpecan/tokf/commit/718552c31b715de05024b8b89c6274223da64830))
+
 ## [0.2.25](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.24...tokf-common-v0.2.25) (2026-03-04)
 
 

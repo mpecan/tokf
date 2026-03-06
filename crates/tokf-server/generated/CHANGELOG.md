@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.26](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.25...catalog-types-v0.2.26) (2026-03-06)
+
+
+### Features
+
+* **tracking:** track raw_bytes, enhance gain display, fix passthrough filters ([#257](https://github.com/mpecan/tokf/issues/257)) ([718552c](https://github.com/mpecan/tokf/commit/718552c31b715de05024b8b89c6274223da64830))
+
 ## [0.2.25](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.24...catalog-types-v0.2.25) (2026-03-04)
 
 
