@@ -248,10 +248,23 @@ fn apply_internal(
     }
 
     // 2c. JSON extraction — when configured, replaces parse/sections/chunks.
+    // `has_json` = config declares [json]; `json_parsed` = input was valid JSON.
+    // When parsing fails, the pipeline falls through to fallback (raw output)
+    // instead of rendering templates with empty placeholders.
     let has_json = config.json.is_some();
-    let (json_vars, json_chunks) = config.json.as_ref().map_or_else(
-        || (std::collections::HashMap::new(), template::ChunkMap::new()),
-        |json_config| json::extract_json(&result.combined, json_config),
+    let (json_vars, json_chunks, json_parsed) = config.json.as_ref().map_or_else(
+        || {
+            (
+                std::collections::HashMap::new(),
+                template::ChunkMap::new(),
+                false,
+            )
+        },
+        |json_config| {
+            let (vars, chunks) = json::extract_json(&result.combined, json_config);
+            let parsed = !vars.is_empty() || !chunks.is_empty();
+            (vars, chunks, parsed)
+        },
     );
 
     // 3. If parse exists → parse+output pipeline (skipped when json ran)
@@ -313,6 +326,8 @@ fn apply_internal(
                 &sections,
                 &chunks,
                 has_sections,
+                has_json,
+                json_parsed,
                 &json_vars,
             )
             .unwrap_or_else(|| apply_fallback(config, &pre_filtered))
@@ -354,6 +369,8 @@ fn apply_branch(
     sections: &SectionMap,
     chunks: &template::ChunkMap,
     has_sections: bool,
+    has_json: bool,
+    json_parsed: bool,
     extra_vars: &std::collections::HashMap<String, String>,
 ) -> Option<String> {
     // 1. Aggregation — merge singular `aggregate` + plural `aggregates`
@@ -379,6 +396,11 @@ fn apply_branch(
             if !any_collected {
                 return None; // sections expected but empty → fallback
             }
+        }
+        // JSON configured but input wasn't valid JSON → fallback to raw output
+        // instead of rendering templates with empty placeholders.
+        if has_json && !json_parsed {
+            return None;
         }
         let mut vars = vars;
         vars.insert("output".to_string(), combined.to_string());

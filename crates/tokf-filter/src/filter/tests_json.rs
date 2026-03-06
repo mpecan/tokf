@@ -199,8 +199,8 @@ fn json_invalid_input_falls_through() {
         &FilterOptions::default(),
     );
 
-    // {foo} resolves to empty since JSON parsing failed
-    assert_eq!(result.output, "got: ");
+    // JSON parsing failed → fallback to raw output
+    assert_eq!(result.output, "not json");
 }
 
 #[test]
