@@ -38,12 +38,13 @@ Steps execute in this fixed order — **do not rearrange them**:
 3. **`strip_ansi` / `trim_lines`** — per-line cleanup (ANSI stripping, whitespace trimming)
 4. **`skip` / `keep`** — line-level filtering (drop or retain lines by regex)
 5. **`dedup` / `dedup_window`** — collapse duplicate consecutive lines
-6. **`lua_script`** — Luau escape hatch; runs after dedup, before section/parse
-7. **`[[section]]` OR `[parse]`** — structured extraction (these are mutually exclusive; section is a state machine, parse is a declarative grouper)
-8. **`[[chunk]]`** — block-based structured extraction with per-block aggregation, grouping, and tree output (runs on raw output, alongside sections)
-9. **Exit-code branch** — `[on_success]` or `[on_failure]` depending on exit code
-10. **`[fallback]`** — if neither `on_success` nor `on_failure` produced output
-11. **`strip_empty_lines` / `collapse_empty_lines`** — post-processing cleanup on the final output
+6. **`lua_script`** — Luau escape hatch; runs after dedup, before JSON/section/parse
+7. **`[json]`** — JSON extraction via `JSONPath`; when configured, replaces section/parse/chunk
+8. **`[[section]]` OR `[parse]`** — structured extraction (these are mutually exclusive; section is a state machine, parse is a declarative grouper). Skipped when `[json]` is configured.
+9. **`[[chunk]]`** — block-based structured extraction with per-block aggregation, grouping, and tree output (runs on raw output, alongside sections). Skipped when `[json]` is configured.
+10. **Exit-code branch** — `[on_success]` or `[on_failure]` depending on exit code
+11. **`[fallback]`** — if neither `on_success` nor `on_failure` produced output
+12. **`strip_empty_lines` / `collapse_empty_lines`** — post-processing cleanup on the final output
 
 Within `[on_success]` and `[on_failure]`, fields are processed as:
 - `head` / `tail` → trim lines
@@ -68,6 +69,7 @@ Within `[on_success]` and `[on_failure]`, fields are processed as:
 | `strip_ansi` | bool | `false` | Strip ANSI escape sequences before skip/keep. |
 | `trim_lines` | bool | `false` | Trim leading/trailing whitespace from each line. |
 | `lua_script` | table | (absent) | Luau escape hatch. |
+| `[json]` | table | (absent) | JSON extraction via `JSONPath`. When configured, replaces `[[section]]`/`[parse]`/`[[chunk]]`. |
 | `[[section]]` | array of tables | `[]` | State-machine section collectors. |
 | `[[chunk]]` | array of tables | `[]` | Block-based structured extraction with per-block aggregation and grouping. |
 | `[parse]` | table | (absent) | Declarative structured parser (branch + group). |
@@ -214,7 +216,59 @@ The `file` path resolves relative to the current working directory. Exactly one 
 
 ---
 
-### 4.6 `[[section]]` — State-Machine Section Collector
+### 4.6 `[json]` — JSON Extraction via `JSONPath`
+
+For commands that produce JSON output (e.g. `kubectl get pods -o json`, `gh api`, `docker inspect`). Extracts values using `JSONPath` (RFC 9535) queries and produces template variables and structured collections.
+
+```toml
+[json]
+
+[[json.extract]]
+path = "$.items[*]"
+as = "pods"
+
+[[json.extract.fields]]
+field = "metadata.name"
+as = "name"
+
+[[json.extract.fields]]
+field = "status.phase"
+as = "phase"
+
+[on_success]
+output = "Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" | join: \"\\n\"}"
+```
+
+**`[[json.extract]]` fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | yes | `JSONPath` expression (RFC 9535), e.g. `"$.items[*]"`, `"$.version"` |
+| `as` | string | yes | Variable name to bind the result to |
+| `fields` | array of tables | no | Sub-field extraction for each matched object |
+
+**`[[json.extract.fields]]` fields**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `field` | string | yes | Dot-separated path within each object (e.g. `"metadata.name"`, `"containers.0.name"`). Not JSONPath — uses simple dot-notation. Supports numeric array indices. |
+| `as` | string | yes | Variable name for the extracted value |
+
+**Result mapping**:
+- **Single scalar** → `vars["as_name"] = string_value` (no count, no chunk)
+- **Array** → `ChunkData::Flat` collection + `{as_name_count}` variable
+- **Objects without `fields`** → top-level scalars auto-flattened into chunk items
+- **Objects with `fields`** → named fields extracted per item
+
+**Pipeline behavior**: when `[json]` is configured, `[[section]]`, `[parse]`, and `[[chunk]]` are skipped. JSON replaces line-based structural processing. Extracted vars and chunks flow into `[on_success]`/`[on_failure]` template rendering.
+
+**Error handling**: invalid JSON input → extraction skipped (stderr warning), pipeline continues. Invalid JSONPath → rule skipped (stderr warning), other rules still run. Empty array with `fields` → emits `{as_name_count} = "0"`.
+
+**When to use**: when the command produces structured JSON output and you need to extract specific fields. Prefer this over `[parse]` + `skip`/`keep` for JSON-native commands.
+
+---
+
+### 4.7 `[[section]]` — State-Machine Section Collector
 
 The most powerful step. Defines a state machine that collects lines into named variables as it scans top-to-bottom.
 
@@ -254,7 +308,7 @@ collect_as = "summary_lines"
 
 ---
 
-### 4.7 `[[chunk]]` — Block-Based Structured Extraction
+### 4.8 `[[chunk]]` — Block-Based Structured Extraction
 
 Chunks split raw output into repeating structural blocks (e.g., per-crate test suites in a Cargo workspace), extract structured data per-block, and produce named collections for template rendering. Like sections, chunks operate on the raw (unfiltered) command output — skip/keep patterns do not affect chunk processing.
 
@@ -319,7 +373,7 @@ output = """\
 
 ---
 
-### 4.8 `[parse]` — Declarative Structured Parser
+### 4.9 `[parse]` — Declarative Structured Parser
 
 Alternative to `[[section]]` for commands with table-like output. Declaratively extracts a header field and groups remaining lines.
 
@@ -362,7 +416,7 @@ empty = "clean — nothing to commit"
 
 ---
 
-### 4.9 `[on_success]` / `[on_failure]` — Exit Code Branches
+### 4.10 `[on_success]` / `[on_failure]` — Exit Code Branches
 
 These branches run after all top-level steps. They have their own sub-fields:
 
@@ -419,7 +473,7 @@ Both singular `aggregate` and plural `aggregates` can be used together — they 
 
 ---
 
-### 4.10 `[fallback]` — Last Resort
+### 4.11 `[fallback]` — Last Resort
 
 Emits output when neither `[on_success]` nor `[on_failure]` produced anything.
 
@@ -432,7 +486,7 @@ tail = 5
 
 ---
 
-### 4.11 `[[variant]]` — Context-Aware Filter Delegation
+### 4.12 `[[variant]]` — Context-Aware Filter Delegation
 
 Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context.
 
@@ -561,6 +615,7 @@ Ask the user to provide (or capture) example output from the command. If they do
 |---|---|---|
 | Level 1 (simple) | Command produces one-liner outcomes | `match_output`, `skip`, `extract` |
 | Level 2 (structured) | Table-like output needing grouping | `[parse]` + `[output]` |
+| Level 2J (JSON) | Command produces JSON output | `[json]` + `on_success`/`on_failure` templates |
 | Level 3 (stateful) | Multi-section output with nested structure | `[[section]]` + `aggregate` + pipes |
 | Level 4 (chunked) | Repeating blocks with per-block aggregation (workspaces) | `[[chunk]]` + `[[section]]` + `aggregates` + tree templates |
 
@@ -931,7 +986,7 @@ The `_test` suffix makes suite directories immediately identifiable in file list
 
 3. **`match_output` is a short-circuit.** If it matches, nothing else runs. Don't put it at the end expecting it to be a fallback — it runs first.
 
-4. **`[[section]]` and `[parse]` are mutually exclusive.** Use one or the other, not both.
+4. **`[[section]]`, `[parse]`, and `[json]` are mutually exclusive in practice.** `[json]` replaces `[[section]]`/`[parse]`/`[[chunk]]` — when `[json]` is configured, those line-based steps are skipped. Use `[json]` for JSON output, `[[section]]`/`[parse]`/`[[chunk]]` for line-based output.
 
 5. **`{output}` in branch templates is the filtered output text** (after skip/keep/replace/dedup), not the raw command output.
 

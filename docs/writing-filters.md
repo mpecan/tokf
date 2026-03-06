@@ -269,6 +269,53 @@ This produces tree output like:
     tests/cli_basic.rs: 15
 ```
 
+## JSON extraction
+
+When commands produce JSON output (e.g. `kubectl get pods -o json`, `gh api`, `docker inspect`), use the `[json]` block to extract values via `JSONPath` (RFC 9535) instead of line-based parsing.
+
+```toml
+command = "kubectl get pods -o json"
+
+[json]
+
+# Scalar extraction → template variable
+[[json.extract]]
+path = "$.items.length()"
+as = "pod_count"
+
+# Array of objects → structured collection (usable with |each: pipe)
+[[json.extract]]
+path = "$.items[*]"
+as = "pods"
+
+# Sub-field extraction from each matched object (dot-path, not JSONPath)
+[[json.extract.fields]]
+field = "metadata.name"
+as = "name"
+
+[[json.extract.fields]]
+field = "status.phase"
+as = "phase"
+
+[on_success]
+output = "Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" | join: \"\\n\"}"
+```
+
+**Result mapping**:
+
+| JSONPath result | Behavior |
+|---|---|
+| Single scalar (string/number/bool/null) | `vars["as_name"] = string_value` |
+| Array of scalars | `ChunkData::Flat` with `{value}` key per item; auto-generates `{as_name_count}` |
+| Array of objects (with `fields`) | `ChunkData::Flat` with named field keys; auto-generates `{as_name_count}` |
+| Array of objects (without `fields`) | All top-level scalar fields auto-flattened; auto-generates `{as_name_count}` |
+
+**Pipeline position**: JSON extraction runs after `lua_script` (step 2c) and replaces `parse`/`sections`/`chunks` — when `[json]` is configured, those line-based structural steps are skipped. The extracted vars and chunks flow into branch selection (`on_success`/`on_failure`) and template rendering.
+
+**Dot-path syntax** for `[[json.extract.fields]]`: uses simple dot-separated paths (not JSONPath). Supports array indices: `containers.0.name` traverses `obj["containers"][0]["name"]`.
+
+**Error handling**: if the input is not valid JSON, extraction is skipped and the pipeline continues (vars resolve to empty in templates). Invalid JSONPath expressions are skipped with a stderr warning.
+
 ## Filter variants
 
 Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:

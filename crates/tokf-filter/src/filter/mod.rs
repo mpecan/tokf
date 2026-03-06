@@ -4,6 +4,7 @@ mod cleanup;
 mod dedup;
 mod extract;
 mod group;
+pub mod json;
 #[cfg(feature = "lua")]
 pub mod lua;
 mod match_output;
@@ -246,8 +247,15 @@ fn apply_internal(
         }
     }
 
-    // 3. If parse exists → parse+output pipeline
-    if let Some(ref parse_config) = config.parse {
+    // 2c. JSON extraction — when configured, replaces parse/sections/chunks.
+    let has_json = config.json.is_some();
+    let (json_vars, json_chunks) = config.json.as_ref().map_or_else(
+        || (std::collections::HashMap::new(), template::ChunkMap::new()),
+        |json_config| json::extract_json(&result.combined, json_config),
+    );
+
+    // 3. If parse exists → parse+output pipeline (skipped when json ran)
+    if !has_json && let Some(ref parse_config) = config.parse {
         let parse_result = parse::run_parse(parse_config, &lines);
         let output_config = config.output.clone().unwrap_or_default();
         let output = parse::render_output(&output_config, &parse_result);
@@ -256,14 +264,14 @@ fn apply_internal(
         };
     }
 
-    // 4. Collect sections and chunks (both run on raw output — they need
-    //    structural markers like blank lines that skip patterns remove).
+    // 4. Collect sections and chunks (skipped when json ran — JSON replaces
+    //    line-based structural processing).
     //    DESIGN NOTE: section enter/exit regexes match against the original,
     //    unmodified lines. If the command emits ANSI codes in marker lines,
     //    set `strip_ansi = true` AND write patterns that match the raw text,
     //    or configure the command to disable color (e.g. `--no-color`).
-    let has_sections = !config.section.is_empty();
-    let needs_raw_lines = has_sections || !config.chunk.is_empty();
+    let has_sections = !has_json && !config.section.is_empty();
+    let needs_raw_lines = !has_json && (has_sections || !config.chunk.is_empty());
     let raw_lines: Vec<&str> = if needs_raw_lines {
         result.combined.lines().collect()
     } else {
@@ -283,19 +291,31 @@ fn apply_internal(
         lines.join("\n")
     };
 
-    let chunks = if config.chunk.is_empty() {
-        template::ChunkMap::new()
-    } else {
+    let mut chunks = if !has_json && !config.chunk.is_empty() {
         chunk::process_chunks(&config.chunk, &raw_lines)
+    } else {
+        template::ChunkMap::new()
     };
+
+    // Merge JSON-extracted chunks into the chunk map.
+    if has_json {
+        chunks.extend(json_chunks);
+    }
 
     // 5. Select branch by exit code
     let branch = select_branch(config, result.exit_code);
     let output = branch.map_or_else(
         || apply_fallback(config, &pre_filtered),
         |b| {
-            apply_branch(b, &pre_filtered, &sections, &chunks, has_sections)
-                .unwrap_or_else(|| apply_fallback(config, &pre_filtered))
+            apply_branch(
+                b,
+                &pre_filtered,
+                &sections,
+                &chunks,
+                has_sections,
+                &json_vars,
+            )
+            .unwrap_or_else(|| apply_fallback(config, &pre_filtered))
         },
     );
 
@@ -327,12 +347,14 @@ const fn select_branch(config: &FilterConfig, exit_code: i32) -> Option<&OutputB
 /// 3. `skip` patterns
 /// 4. `extract` rule
 /// 5. Remaining lines joined with `\n`
+#[allow(clippy::too_many_arguments)]
 fn apply_branch(
     branch: &OutputBranch,
     combined: &str,
     sections: &SectionMap,
     chunks: &template::ChunkMap,
     has_sections: bool,
+    extra_vars: &std::collections::HashMap<String, String>,
 ) -> Option<String> {
     // 1. Aggregation — merge singular `aggregate` + plural `aggregates`
     let mut all_rules: Vec<&tokf_common::config::types::AggregateRule> =
@@ -360,6 +382,8 @@ fn apply_branch(
         }
         let mut vars = vars;
         vars.insert("output".to_string(), combined.to_string());
+        // Merge JSON-extracted vars into the template context.
+        vars.extend(extra_vars.iter().map(|(k, v)| (k.clone(), v.clone())));
         return Some(template::render_template(
             output_tmpl,
             &vars,
@@ -411,6 +435,9 @@ mod tests_chunk;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_color;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests_json;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_pipeline;

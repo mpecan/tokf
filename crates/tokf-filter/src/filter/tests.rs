@@ -50,6 +50,7 @@ fn branch_apply(branch: &OutputBranch, combined: &str) -> String {
         &SectionMap::new(),
         &template::ChunkMap::new(),
         false,
+        &std::collections::HashMap::new(),
     )
     .unwrap()
 }
@@ -280,6 +281,7 @@ fn branch_with_sections_expected_but_empty_returns_none() {
         &sections,
         &template::ChunkMap::new(),
         true,
+        &std::collections::HashMap::new(),
     );
     assert!(result.is_none(), "empty sections should trigger fallback");
 }
@@ -317,6 +319,7 @@ fn branch_with_sections_populated_renders_template() {
         &sections,
         &template::ChunkMap::new(),
         true,
+        &std::collections::HashMap::new(),
     );
     assert_eq!(result.unwrap(), "20 passed (2 suites)");
 }
@@ -339,6 +342,7 @@ fn branch_without_sections_ignores_has_sections_flag() {
         &SectionMap::new(),
         &template::ChunkMap::new(),
         false,
+        &std::collections::HashMap::new(),
     );
     assert_eq!(result.unwrap(), "ok");
 }
