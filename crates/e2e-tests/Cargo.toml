@@ -15,7 +15,7 @@ tokf-common = { path = "../tokf-common" }
 crdb-test-macro = { path = "../crdb-test-macro" }
 sqlx = { version = "=0.8.6", default-features = false, features = ["postgres", "runtime-tokio-rustls"] }
 tokio = { version = "1", features = ["full", "test-util"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "blocking"] }
 tempfile = "3"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
