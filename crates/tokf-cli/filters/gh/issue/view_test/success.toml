@@ -1,21 +1,21 @@
-name = "issue view skips empty metadata"
+name = "issue view extracts JSON fields"
 fixture = "success.txt"
 exit_code = 0
 
 [[expect]]
-contains = "Bug: memory leak"
+contains = "#42"
+
+[[expect]]
+contains = "Bug: memory leak in filter engine"
 
 [[expect]]
 contains = "OPEN"
 
 [[expect]]
-not_contains = "assignees:"
+contains = "mpecan"
 
 [[expect]]
-not_contains = "projects:"
+contains = "needs-triage"
 
 [[expect]]
-not_contains = "milestone:"
-
-[[expect]]
-not_contains = "labels:"
+contains = "memory usage keeps growing"

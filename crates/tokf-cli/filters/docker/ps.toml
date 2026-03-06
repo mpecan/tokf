@@ -1,12 +1,30 @@
 command = "docker ps"
-run = "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' {args}"
+run = "docker ps --format json {args}"
 
 match_output = [
   { contains = "Cannot connect to the Docker daemon", output = "Docker daemon not running" },
 ]
 
+[json]
+
+[[json.extract]]
+path = "$[*]"
+as = "containers"
+
+[[json.extract.fields]]
+field = "Names.0"
+as = "name"
+
+[[json.extract.fields]]
+field = "Image"
+as = "image"
+
+[[json.extract.fields]]
+field = "Status"
+as = "status"
+
 [on_success]
-head = 30
+output = "Containers ({containers_count}):\n{containers | each: \"  {name}: {image} ({status})\" | join: \"\\n\"}"
 
 [on_failure]
 tail = 10

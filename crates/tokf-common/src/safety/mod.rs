@@ -182,6 +182,7 @@ mod tests {
             collapse_empty_lines: false,
             lua_script: None,
             chunk: vec![],
+            json: None,
             variant: vec![],
             show_history_hint: false,
         }

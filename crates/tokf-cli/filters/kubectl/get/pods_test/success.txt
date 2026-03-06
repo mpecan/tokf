@@ -1,7 +1,461 @@
-NAME                          READY   STATUS      RESTARTS   AGE
-nginx-deployment-7fb96c846b   1/1     Running     0          2d
-postgres-statefulset-0        1/1     Running     0          5d
-redis-deployment-5d4c9b8d7f   1/1     Running     2          12h
-migration-job-abc12           0/1     Completed   0          1d
-old-pod-evicted-xyz           0/1     Evicted     0          3d
-batch-job-def34               0/1     Completed   0          6h
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-03-04T10:00:00Z",
+                "generateName": "nginx-deployment-7fb96c846b-",
+                "labels": {
+                    "app": "nginx",
+                    "pod-template-hash": "7fb96c846b"
+                },
+                "name": "nginx-deployment-7fb96c846b",
+                "namespace": "default",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "nginx-deployment-7fb96c846b",
+                        "uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    }
+                ],
+                "resourceVersion": "123456",
+                "uid": "11111111-1111-1111-1111-111111111111"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "image": "nginx:1.25",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "nginx",
+                        "ports": [
+                            {
+                                "containerPort": 80,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "resources": {}
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeName": "node-1",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-03-04T10:00:05Z",
+                        "status": "True",
+                        "type": "Ready"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://abc123",
+                        "image": "nginx:1.25",
+                        "imageID": "docker.io/library/nginx@sha256:abc123",
+                        "name": "nginx",
+                        "ready": true,
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-03-04T10:00:05Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "10.0.0.1",
+                "phase": "Running",
+                "podIP": "172.17.0.2",
+                "qosClass": "BestEffort",
+                "startTime": "2026-03-04T10:00:00Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-03-01T08:30:00Z",
+                "labels": {
+                    "app": "postgres",
+                    "controller-revision-hash": "postgres-statefulset-7d4f9c8e5a"
+                },
+                "name": "postgres-statefulset-0",
+                "namespace": "default",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "StatefulSet",
+                        "name": "postgres-statefulset",
+                        "uid": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                    }
+                ],
+                "resourceVersion": "123457",
+                "uid": "22222222-2222-2222-2222-222222222222"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "POSTGRES_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "password",
+                                        "name": "postgres-secret"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "postgres:16",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "postgres",
+                        "ports": [
+                            {
+                                "containerPort": 5432,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "resources": {
+                            "limits": {
+                                "memory": "512Mi"
+                            },
+                            "requests": {
+                                "cpu": "250m",
+                                "memory": "256Mi"
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/lib/postgresql/data",
+                                "name": "postgres-data"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeName": "node-2",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-03-01T08:30:10Z",
+                        "status": "True",
+                        "type": "Ready"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://def456",
+                        "image": "postgres:16",
+                        "imageID": "docker.io/library/postgres@sha256:def456",
+                        "name": "postgres",
+                        "ready": true,
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-03-01T08:30:10Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "10.0.0.2",
+                "phase": "Running",
+                "podIP": "172.17.0.3",
+                "qosClass": "Burstable",
+                "startTime": "2026-03-01T08:30:00Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-03-06T00:00:00Z",
+                "generateName": "redis-deployment-5d4c9b8d7f-",
+                "labels": {
+                    "app": "redis",
+                    "pod-template-hash": "5d4c9b8d7f"
+                },
+                "name": "redis-deployment-5d4c9b8d7f",
+                "namespace": "default",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "redis-deployment-5d4c9b8d7f",
+                        "uid": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+                    }
+                ],
+                "resourceVersion": "123458",
+                "uid": "33333333-3333-3333-3333-333333333333"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "image": "redis:7-alpine",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "redis",
+                        "ports": [
+                            {
+                                "containerPort": 6379,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "resources": {}
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeName": "node-1",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-03-06T00:00:08Z",
+                        "status": "True",
+                        "type": "Ready"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://ghi789",
+                        "image": "redis:7-alpine",
+                        "imageID": "docker.io/library/redis@sha256:ghi789",
+                        "name": "redis",
+                        "ready": true,
+                        "restartCount": 2,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-03-06T00:00:08Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "10.0.0.1",
+                "phase": "Running",
+                "podIP": "172.17.0.4",
+                "qosClass": "BestEffort",
+                "startTime": "2026-03-06T00:00:00Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-03-05T10:00:00Z",
+                "labels": {
+                    "batch.kubernetes.io/job-name": "migration-job"
+                },
+                "name": "migration-job-abc12",
+                "namespace": "default",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "migration-job",
+                        "uid": "d4e5f6a7-b8c9-0123-defa-234567890123"
+                    }
+                ],
+                "resourceVersion": "123459",
+                "uid": "44444444-4444-4444-4444-444444444444"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "command": [
+                            "/bin/sh",
+                            "-c",
+                            "run-migrations"
+                        ],
+                        "image": "myapp:latest",
+                        "imagePullPolicy": "Always",
+                        "name": "migration",
+                        "resources": {}
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeName": "node-2",
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-03-05T10:05:00Z",
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://jkl012",
+                        "image": "myapp:latest",
+                        "imageID": "docker.io/myapp@sha256:jkl012",
+                        "name": "migration",
+                        "ready": false,
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "exitCode": 0,
+                                "finishedAt": "2026-03-05T10:05:00Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-03-05T10:00:05Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "10.0.0.2",
+                "phase": "Succeeded",
+                "podIP": "172.17.0.5",
+                "qosClass": "BestEffort",
+                "startTime": "2026-03-05T10:00:00Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-03-03T06:00:00Z",
+                "labels": {
+                    "app": "old-pod"
+                },
+                "name": "old-pod-evicted-xyz",
+                "namespace": "default",
+                "resourceVersion": "123460",
+                "uid": "55555555-5555-5555-5555-555555555555"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "image": "myapp:old",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "app",
+                        "resources": {}
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeName": "node-3",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30
+            },
+            "status": {
+                "message": "The node was low on resource: memory.",
+                "phase": "Failed",
+                "reason": "Evicted",
+                "startTime": "2026-03-03T06:00:00Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-03-06T06:00:00Z",
+                "labels": {
+                    "batch.kubernetes.io/job-name": "batch-job"
+                },
+                "name": "batch-job-def34",
+                "namespace": "default",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "batch-job",
+                        "uid": "e5f6a7b8-c9d0-1234-efab-345678901234"
+                    }
+                ],
+                "resourceVersion": "123461",
+                "uid": "66666666-6666-6666-6666-666666666666"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "command": [
+                            "/bin/sh",
+                            "-c",
+                            "process-batch"
+                        ],
+                        "image": "myapp:latest",
+                        "imagePullPolicy": "Always",
+                        "name": "batch",
+                        "resources": {}
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeName": "node-1",
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-03-06T06:10:00Z",
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://mno345",
+                        "image": "myapp:latest",
+                        "imageID": "docker.io/myapp@sha256:mno345",
+                        "name": "batch",
+                        "ready": false,
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "exitCode": 0,
+                                "finishedAt": "2026-03-06T06:10:00Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-03-06T06:00:05Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "10.0.0.1",
+                "phase": "Succeeded",
+                "podIP": "172.17.0.6",
+                "qosClass": "BestEffort",
+                "startTime": "2026-03-06T06:00:00Z"
+            }
+        }
+    ],
+    "kind": "PodList",
+    "metadata": {
+        "resourceVersion": "999999"
+    }
+}

@@ -1,12 +1,26 @@
 command = "gh pr checks *"
+run = "gh pr checks {args} --json name,state,workflow"
 
-match_output = [
-  { contains = "All checks were successful", output = "all checks passed" },
-]
+[json]
+
+[[json.extract]]
+path = "$[*]"
+as = "checks"
+
+[[json.extract.fields]]
+field = "name"
+as = "name"
+
+[[json.extract.fields]]
+field = "state"
+as = "state"
+
+[[json.extract.fields]]
+field = "workflow"
+as = "workflow"
 
 [on_success]
-head = 20
+output = "all checks passed ({checks_count} checks)"
 
 [on_failure]
-skip = ["^pass"]
-head = 20
+output = "{checks | each: \"{state}  {name}  ({workflow})\" | join: \"\\n\"}"

@@ -1,0 +1,1 @@
+[{"name":"ci/build","state":"SUCCESS","workflow":"CI"},{"name":"ci/test","state":"FAILURE","workflow":"CI"},{"name":"lint","state":"SUCCESS","workflow":"Lint"}]
