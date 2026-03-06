@@ -154,12 +154,14 @@ fn run_filtered(command_args: &[String], filter_match: resolve::FilterMatch, ver
     let output_bytes = filtered.output.len();
 
     // Record tracking event (same as cmd_run).
+    // raw_bytes = input_bytes: shell mode has no baseline pipe adjustment.
     resolve::record_run(
         command_args,
         Some(filter_name),
         Some(&filter_hash),
         input_bytes,
         output_bytes,
+        input_bytes,
         elapsed.as_millis(),
         cmd_result.exit_code,
         false,

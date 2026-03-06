@@ -7,6 +7,10 @@ pub struct TrackingEvent {
     pub output_bytes: i64,
     pub input_tokens_est: i64,
     pub output_tokens_est: i64,
+    /// Raw command output bytes before any baseline adjustment.
+    pub raw_bytes: i64,
+    /// Estimated raw tokens (`raw_bytes / 4`).
+    pub raw_tokens_est: i64,
     pub filter_time_ms: i64,
     pub exit_code: i32,
     /// True when `--prefer-less` chose the piped output over the filtered output.
@@ -23,6 +27,8 @@ pub struct GainSummary {
     pub pipe_override_count: i64,
     pub total_filter_time_ms: i64,
     pub avg_filter_time_ms: f64,
+    /// Total raw tokens intercepted (before baseline adjustment).
+    pub total_raw_tokens: i64,
 }
 
 #[derive(serde::Serialize)]
@@ -35,9 +41,10 @@ pub struct DailyGain {
     pub savings_pct: f64,
     pub pipe_override_count: i64,
     pub total_filter_time_ms: i64,
+    pub raw_tokens: i64,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct FilterGain {
     pub filter_name: String,
     pub commands: i64,
@@ -48,4 +55,5 @@ pub struct FilterGain {
     pub pipe_override_count: i64,
     pub total_filter_time_ms: i64,
     pub avg_filter_time_ms: f64,
+    pub raw_tokens: i64,
 }

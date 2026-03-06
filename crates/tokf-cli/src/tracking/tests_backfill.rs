@@ -38,6 +38,7 @@ fn backfill_updates_known_filters() {
             None,
             400,
             200,
+            400,
             10,
             0,
             false,
@@ -52,6 +53,7 @@ fn backfill_updates_known_filters() {
             None,
             400,
             200,
+            400,
             10,
             0,
             false,
@@ -60,7 +62,7 @@ fn backfill_updates_known_filters() {
     .expect("record");
     record_event(
         &conn,
-        &build_event("echo hi", None, None, 100, 50, 5, 0, false),
+        &build_event("echo hi", None, None, 100, 50, 100, 5, 0, false),
     )
     .expect("record");
 
@@ -96,7 +98,17 @@ fn backfill_reports_not_found_names() {
     let (_dir, conn) = temp_db();
     record_event(
         &conn,
-        &build_event("old cmd", Some("old/cmd"), None, 400, 200, 10, 0, false),
+        &build_event(
+            "old cmd",
+            Some("old/cmd"),
+            None,
+            400,
+            200,
+            400,
+            10,
+            0,
+            false,
+        ),
     )
     .expect("record");
 
@@ -122,6 +134,7 @@ fn backfill_skips_already_hashed_events() {
             Some(&existing_hash),
             400,
             200,
+            400,
             10,
             0,
             false,

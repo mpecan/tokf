@@ -19,6 +19,11 @@ pub struct SyncEvent {
     pub filter_hash: Option<String>,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    /// Raw tokens before baseline adjustment (forward-compatible, optional).
+    /// Accepted for forward-compatibility but not consumed yet.
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub raw_tokens: Option<i64>,
     pub command_count: i32,
     pub recorded_at: String,
 }

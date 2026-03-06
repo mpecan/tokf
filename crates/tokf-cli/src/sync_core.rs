@@ -108,6 +108,7 @@ fn to_sync_event(e: &tracking::SyncableEvent) -> SyncEvent {
         filter_hash: e.filter_hash.clone(),
         input_tokens: e.input_tokens_est,
         output_tokens: e.output_tokens_est,
+        raw_tokens: Some(e.raw_tokens_est),
         command_count: 1,
         recorded_at: e.timestamp.clone(),
     }
@@ -260,6 +261,7 @@ mod tests {
             filter_hash: Some("abc".to_string()),
             input_tokens_est: 1000,
             output_tokens_est: 200,
+            raw_tokens_est: 1000,
             timestamp: "2026-01-01T00:00:00Z".to_string(),
         };
         let result = to_sync_event(&se);
@@ -268,6 +270,7 @@ mod tests {
         assert_eq!(result.filter_hash.as_deref(), Some("abc"));
         assert_eq!(result.input_tokens, 1000);
         assert_eq!(result.output_tokens, 200);
+        assert_eq!(result.raw_tokens, Some(1000));
         assert_eq!(result.command_count, 1);
         assert_eq!(result.recorded_at, "2026-01-01T00:00:00Z");
     }
@@ -280,6 +283,7 @@ mod tests {
             filter_hash: None,
             input_tokens_est: 500,
             output_tokens_est: 500,
+            raw_tokens_est: 500,
             timestamp: "2026-02-01T12:00:00Z".to_string(),
         };
         let result = to_sync_event(&se);

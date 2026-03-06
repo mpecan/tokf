@@ -27,6 +27,8 @@ pub struct TelemetryEvent {
     pub input_tokens: u64,
     /// Estimated output tokens (bytes / 4).
     pub output_tokens: u64,
+    /// Estimated raw tokens before baseline adjustment (`raw_bytes / 4`).
+    pub raw_tokens: u64,
     /// Wall-clock time spent in the filter pipeline (seconds).
     pub filter_duration_secs: f64,
     /// Exit code returned by the underlying command.
@@ -50,6 +52,7 @@ impl TelemetryEvent {
         command: String,
         input_bytes: usize,
         output_bytes: usize,
+        raw_bytes: usize,
         raw_output: &str,
         filtered_output: &str,
         filter_duration: std::time::Duration,
@@ -62,6 +65,7 @@ impl TelemetryEvent {
             output_lines: filtered_output.lines().count() as u64,
             input_tokens: (input_bytes / 4) as u64,
             output_tokens: (output_bytes / 4) as u64,
+            raw_tokens: (raw_bytes / 4) as u64,
             filter_duration_secs: filter_duration.as_secs_f64(),
             exit_code,
             pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
@@ -146,6 +150,7 @@ mod tests {
             output_lines: 50,
             input_tokens: 200,
             output_tokens: 100,
+            raw_tokens: 200,
             filter_duration_secs: 0.01,
             exit_code: 0,
             pipeline: None,
@@ -160,6 +165,7 @@ mod tests {
         reporter.report(&TelemetryEvent::new(
             None,
             "ls".to_string(),
+            120,
             120,
             120,
             "line1\nline2\n",
@@ -189,6 +195,7 @@ mod tests {
             "cargo build".to_string(),
             400, // input_bytes
             100, // output_bytes
+            400, // raw_bytes
             raw,
             filtered,
             std::time::Duration::from_millis(5),
@@ -210,6 +217,7 @@ mod tests {
         let event = TelemetryEvent::new(
             None,
             "ls".to_string(),
+            48,
             48,
             48,
             output,

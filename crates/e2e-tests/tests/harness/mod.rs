@@ -207,6 +207,7 @@ impl TestHarness {
             filter_hash,
             input_bytes,
             output_bytes,
+            input_bytes,
             0,
             0,
             false,
@@ -259,6 +260,7 @@ impl TestHarness {
                 filter_hash: e.filter_hash.clone(),
                 input_tokens: e.input_tokens_est,
                 output_tokens: e.output_tokens_est,
+                raw_tokens: Some(e.raw_tokens_est),
                 command_count: 1,
                 recorded_at: e.timestamp.clone(),
             })

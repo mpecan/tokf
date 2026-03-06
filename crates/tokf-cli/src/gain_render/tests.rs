@@ -260,6 +260,7 @@ fn make_summary(commands: i64, input: i64, output: i64, filter_ms: i64) -> GainS
         pipe_override_count: 0,
         total_filter_time_ms: filter_ms,
         avg_filter_time_ms: avg,
+        total_raw_tokens: input,
     }
 }
 
@@ -281,6 +282,7 @@ fn make_filter(name: &str, input: i64, output: i64, commands: i64) -> FilterGain
         pipe_override_count: 0,
         total_filter_time_ms: 0,
         avg_filter_time_ms: 0.0,
+        raw_tokens: input,
     }
 }
 
@@ -425,6 +427,78 @@ fn render_summary_plain_no_filter_time_when_zero() {
     assert!(
         !output.contains("filter time:"),
         "filter time should be omitted when zero: {output}"
+    );
+}
+
+// -- raw tokens display tests --
+
+#[test]
+fn render_summary_tty_shows_raw_when_different() {
+    let mut summary = make_summary(10, 1000, 200, 100);
+    summary.total_raw_tokens = 5000; // raw > input → baseline adjustment occurred
+    let raw = render_summary_tty(&summary, &[], 10, &ColorMode::new(false));
+    assert!(
+        raw.contains("5,000 intercepted"),
+        "should show raw intercepted: {raw}"
+    );
+    assert!(
+        raw.contains("1,000 baseline"),
+        "should show baseline: {raw}"
+    );
+    assert!(raw.contains("vs raw"), "should show vs raw bar: {raw}");
+}
+
+#[test]
+fn render_summary_tty_hides_raw_when_equal() {
+    let summary = make_summary(10, 1000, 200, 100);
+    // total_raw_tokens == total_input_tokens (default from make_summary)
+    let raw = render_summary_tty(&summary, &[], 10, &ColorMode::new(false));
+    assert!(
+        !raw.contains("intercepted"),
+        "should not show intercepted when equal: {raw}"
+    );
+    assert!(
+        !raw.contains("vs raw"),
+        "should not show vs raw bar when equal: {raw}"
+    );
+}
+
+#[test]
+fn render_top_filters_overhead_highlighted() {
+    // Filter with negative savings (overhead)
+    let f = make_filter("npm/test", 100, 120, 5);
+    // savings_pct is already negative: (100-120)/100 = -20%
+    assert!(f.savings_pct < 0.0);
+    let summary = make_summary(5, 100, 120, 0);
+    let raw = render_summary_tty(&summary, &[f], 10, &ColorMode::new(false));
+    assert!(
+        raw.contains("(overhead)"),
+        "negative savings should show (overhead): {raw}"
+    );
+}
+
+#[test]
+fn render_summary_plain_shows_raw_when_different() {
+    let mut summary = make_summary(10, 1000, 200, 100);
+    summary.total_raw_tokens = 5000;
+    let output = render_summary_plain(&summary, &[], 10);
+    assert!(
+        output.contains("raw tokens:"),
+        "should show raw tokens line: {output}"
+    );
+    assert!(
+        output.contains("5,000"),
+        "should show raw token count: {output}"
+    );
+}
+
+#[test]
+fn render_summary_plain_hides_raw_when_equal() {
+    let summary = make_summary(10, 1000, 200, 100);
+    let output = render_summary_plain(&summary, &[], 10);
+    assert!(
+        !output.contains("raw tokens:"),
+        "should not show raw tokens when equal: {output}"
     );
 }
 
