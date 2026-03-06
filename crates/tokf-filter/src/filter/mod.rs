@@ -274,8 +274,7 @@ fn apply_internal(
             )
         },
         |json_config| {
-            let (vars, chunks) = json::extract_json(&result.combined, json_config);
-            let parsed = !vars.is_empty() || !chunks.is_empty();
+            let (parsed, vars, chunks) = json::extract_json(&result.combined, json_config);
             (vars, chunks, parsed)
         },
     );

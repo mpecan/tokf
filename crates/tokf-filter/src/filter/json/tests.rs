@@ -98,7 +98,7 @@ fn extract_single_scalar_string() {
             fields: vec![],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert_eq!(vars.get("version").unwrap(), "1.2.3");
     assert!(chunks.is_empty());
 }
@@ -113,7 +113,7 @@ fn extract_single_scalar_number() {
             fields: vec![],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     assert_eq!(vars.get("total").unwrap(), "42");
 }
 
@@ -127,7 +127,7 @@ fn extract_single_scalar_bool() {
             fields: vec![],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     assert_eq!(vars.get("is_ready").unwrap(), "true");
 }
 
@@ -143,7 +143,7 @@ fn extract_array_of_strings() {
             fields: vec![],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert_eq!(vars.get("users_count").unwrap(), "3");
     let data = chunks.get("users").unwrap();
     if let ChunkData::Flat(items) = data {
@@ -182,7 +182,7 @@ fn extract_objects_with_fields() {
             ],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert_eq!(vars.get("pods_count").unwrap(), "2");
     let data = chunks.get("pods").unwrap();
     if let ChunkData::Flat(items) = data {
@@ -208,7 +208,7 @@ fn extract_objects_without_fields_flattens() {
             fields: vec![],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert_eq!(vars.get("things_count").unwrap(), "2");
     let data = chunks.get("things").unwrap();
     if let ChunkData::Flat(items) = data {
@@ -232,7 +232,8 @@ fn invalid_json_returns_empty() {
             fields: vec![],
         }],
     };
-    let (vars, chunks) = extract_json("not json at all", &config);
+    let (parsed, vars, chunks) = extract_json("not json at all", &config);
+    assert!(!parsed, "invalid JSON should return parsed=false");
     assert!(vars.is_empty());
     assert!(chunks.is_empty());
 }
@@ -247,7 +248,7 @@ fn invalid_jsonpath_skips_rule() {
             fields: vec![],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert!(vars.is_empty());
     assert!(chunks.is_empty());
 }
@@ -262,7 +263,7 @@ fn missing_path_returns_empty() {
             fields: vec![],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert!(vars.is_empty());
     assert!(chunks.is_empty());
 }
@@ -295,7 +296,7 @@ fn multiple_extraction_rules() {
             },
         ],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert_eq!(vars.get("api").unwrap(), "v1");
     assert_eq!(vars.get("items_count").unwrap(), "2");
     assert!(chunks.contains_key("items"));
@@ -336,7 +337,7 @@ fn extract_single_array_value_becomes_chunk() {
             fields: vec![],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     // The single array node triggers process_multi_result
     assert!(vars.contains_key("tags_count"));
 }
@@ -353,7 +354,7 @@ fn extract_single_object_without_fields_flattens() {
             fields: vec![],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     // Single non-array object → scalar (compact JSON)
     assert!(vars.contains_key("meta"));
 }
@@ -370,7 +371,7 @@ fn extract_null_value() {
             fields: vec![],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     assert_eq!(vars.get("val").unwrap(), "null");
 }
 
@@ -389,7 +390,7 @@ fn extract_from_root_level_array() {
             }],
         }],
     };
-    let (vars, chunks) = extract_json(json, &config);
+    let (_, vars, chunks) = extract_json(json, &config);
     assert_eq!(vars.get("items_count").unwrap(), "2");
     let data = chunks.get("items").unwrap();
     if let ChunkData::Flat(items) = data {
@@ -415,7 +416,7 @@ fn empty_array_with_fields_produces_zero_count() {
             }],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     assert_eq!(vars.get("pods_count").unwrap(), "0");
 }
 
@@ -432,7 +433,7 @@ fn missing_path_with_fields_produces_zero_count() {
             }],
         }],
     };
-    let (vars, _) = extract_json(json, &config);
+    let (_, vars, _) = extract_json(json, &config);
     assert_eq!(vars.get("pods_count").unwrap(), "0");
 }
 
@@ -491,7 +492,7 @@ fn missing_field_subpath_defaults_to_empty() {
             ],
         }],
     };
-    let (_, chunks) = extract_json(json, &config);
+    let (_, _, chunks) = extract_json(json, &config);
     let data = chunks.get("items").unwrap();
     if let ChunkData::Flat(items) = data {
         assert_eq!(items[0].get("name").unwrap(), "a");

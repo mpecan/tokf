@@ -262,7 +262,7 @@ output = "Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" | join: \"\\
 
 **Pipeline behavior**: when `[json]` is configured, `[[section]]`, `[parse]`, and `[[chunk]]` are skipped. JSON replaces line-based structural processing. Extracted vars and chunks flow into `[on_success]`/`[on_failure]` template rendering.
 
-**Error handling**: invalid JSON input → extraction skipped (stderr warning), pipeline continues. Invalid JSONPath → rule skipped (stderr warning), other rules still run. Empty array with `fields` → emits `{as_name_count} = "0"`.
+**Error handling**: invalid JSON input → extraction skipped, pipeline falls back to raw output (templates are not rendered). Invalid JSONPath → rule silently skipped, other rules still run. Empty array with `fields` → emits `{as_name_count} = "0"`.
 
 **When to use**: when the command produces structured JSON output and you need to extract specific fields. Prefer this over `[parse]` + `skip`/`keep` for JSON-native commands.
 

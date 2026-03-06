@@ -546,12 +546,8 @@ command = "kubectl get pods -o json"
 
 [json]
 
-# Scalar extraction → template variable
-[[json.extract]]
-path = "$.items.length()"
-as = "pod_count"
-
 # Array of objects → structured collection (usable with |each: pipe)
+# Auto-generates {pods_count} with the number of matched items.
 [[json.extract]]
 path = "$.items[*]"
 as = "pods"
@@ -582,7 +578,7 @@ output = "Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" | join: \"\\
 
 **Dot-path syntax** for `[[json.extract.fields]]`: uses simple dot-separated paths (not JSONPath). Supports array indices: `containers.0.name` traverses `obj["containers"][0]["name"]`.
 
-**Error handling**: if the input is not valid JSON, extraction is skipped and the pipeline continues (vars resolve to empty in templates). Invalid JSONPath expressions are skipped with a stderr warning.
+**Error handling**: if the input is not valid JSON, extraction is skipped and tokf falls back to raw output (templates are not rendered). Invalid JSONPath or dot-path expressions are silently skipped.
 
 ## Filter variants
 

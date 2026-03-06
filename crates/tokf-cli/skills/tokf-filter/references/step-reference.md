@@ -459,8 +459,8 @@ output = "v{ver} — Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" |
 
 | Condition | Behavior |
 |---|---|
-| Input is not valid JSON | Extraction skipped entirely; stderr warning; pipeline continues (vars resolve to empty in templates) |
-| Invalid JSONPath expression | That rule skipped; stderr warning; other rules still run |
+| Input is not valid JSON | Extraction skipped entirely; pipeline falls back to raw output (templates are not rendered) |
+| Invalid JSONPath expression | That rule silently skipped; other rules still run |
 | Path matches nothing | No vars/chunks produced for that rule; `{as_name_count} = "0"` when `fields` are specified |
 | Missing sub-field in object | Defaults to empty string |
 

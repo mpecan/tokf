@@ -17,13 +17,18 @@ use super::template::ChunkMap;
 ///
 /// Array results also generate a `{as_name}_count` variable.
 ///
-/// Returns `(vars, chunks)` — both empty if the input is not valid JSON.
-pub fn extract_json(stdout: &str, config: &JsonConfig) -> (HashMap<String, String>, ChunkMap) {
+/// Returns `(json_parsed, vars, chunks)` where `json_parsed` indicates whether the
+/// input was valid JSON (regardless of whether any rules matched). This lets the
+/// caller distinguish "not JSON" from "valid JSON with no matches".
+pub fn extract_json(
+    stdout: &str,
+    config: &JsonConfig,
+) -> (bool, HashMap<String, String>, ChunkMap) {
     let mut vars = HashMap::new();
     let mut chunks = ChunkMap::new();
 
     let Ok(root) = serde_json::from_str::<Value>(stdout) else {
-        return (vars, chunks);
+        return (false, vars, chunks);
     };
 
     for rule in &config.extract {
@@ -50,7 +55,7 @@ pub fn extract_json(stdout: &str, config: &JsonConfig) -> (HashMap<String, Strin
         }
     }
 
-    (vars, chunks)
+    (true, vars, chunks)
 }
 
 /// Process a multi-value `JSONPath` result into vars + chunks.
