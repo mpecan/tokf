@@ -1,7 +1,7 @@
 ---
 title: Lua Escape Hatch
 description: Use Luau scripts for filter logic that TOML can't express.
-order: 3
+order: 4
 ---
 
 For logic that TOML can't express — numeric math, multi-line lookahead, conditional branching — embed a [Luau](https://luau.org/) script:
