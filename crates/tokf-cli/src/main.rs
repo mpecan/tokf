@@ -19,6 +19,7 @@ mod search_cmd;
 mod shell;
 mod show_cmd;
 mod sync_cmd;
+mod telemetry_cmd;
 // pub(crate): accessed by install_cmd::run_verify
 pub(crate) mod verify_cmd;
 
@@ -257,6 +258,11 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Telemetry configuration and diagnostics
+    Telemetry {
+        #[command(subcommand)]
+        action: TelemetryAction,
+    },
     /// Install a filter from the community registry
     Install {
         /// Filter hash (64 hex chars) or command pattern to search for
@@ -273,6 +279,16 @@ enum Commands {
         /// Skip confirmation prompts (Lua filters still emit an audit warning)
         #[arg(long, short = 'y')]
         yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum TelemetryAction {
+    /// Show telemetry configuration and connection status
+    Status {
+        /// Test connectivity to the OTLP endpoint
+        #[arg(long)]
+        check: bool,
     },
 }
 
@@ -534,6 +550,11 @@ fn main() {
             token,
             dry_run,
         } => publish_stdlib_cmd::cmd_publish_stdlib(registry_url, token, *dry_run),
+        Commands::Telemetry { action } => or_exit(match action {
+            TelemetryAction::Status { check } => {
+                telemetry_cmd::cmd_telemetry_status(*check, cli.verbose)
+            }
+        }),
         Commands::Install {
             filter,
             local,
