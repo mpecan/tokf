@@ -93,7 +93,7 @@ Available keys: `history.retention`, `sync.auto_sync_threshold`, `sync.upload_st
 
 ## rewrites.toml
 
-Rewrite rules let tokf intercept and transform commands before execution — wrapping task runners, stripping pipes, and injecting baselines. See the [Rewrite Configuration](rewrites-config.md) section for the full reference.
+Rewrite rules let tokf intercept and transform commands before execution — wrapping task runners, stripping pipes, and injecting baselines. See the [Rewrite Configuration](#rewrite-configuration-rewritestoml) section for the full reference.
 
 ---
 
