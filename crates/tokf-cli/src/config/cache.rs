@@ -9,7 +9,7 @@ use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 use crate::runner::shell_escape;
 
-const CACHE_VERSION: u32 = 9;
+const CACHE_VERSION: u32 = 10;
 
 /// A single filter serialized for the binary cache.
 ///
@@ -201,7 +201,7 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
         let shim_path = shims_dir.join(cmd);
         let cmd_escaped = shell_escape(cmd);
         let content = format!(
-            "#!/bin/sh\nPATH=\"$TOKF_ORIGINAL_PATH\" exec {tokf_escaped} run {cmd_escaped} \"$@\"\n"
+            "#!/bin/sh\nPATH=\"$TOKF_ORIGINAL_PATH\" exec {tokf_escaped} run --no-mask-exit-code {cmd_escaped} \"$@\"\n"
         );
         if std::fs::write(&shim_path, &content).is_ok() {
             #[cfg(unix)]
@@ -467,8 +467,8 @@ mod tests {
         let content = fs::read_to_string(&git_shim).unwrap();
         assert!(content.starts_with("#!/bin/sh\n"));
         assert!(
-            content.contains("run 'git'"),
-            "shim should contain escaped command: {content}"
+            content.contains("run --no-mask-exit-code 'git'"),
+            "shim should contain --no-mask-exit-code and escaped command: {content}"
         );
         assert!(content.contains("TOKF_ORIGINAL_PATH"));
         assert!(content.contains("\"$@\""));
