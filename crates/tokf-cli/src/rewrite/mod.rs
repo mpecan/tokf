@@ -188,7 +188,7 @@ fn inject_pipe_flags(rewritten: &str, suffix: &str, prefer_less: bool) -> String
 ///
 /// User-defined skip patterns operate on the full segment (env prefix included),
 /// giving users explicit control over what they skip. The built-in patterns
-/// (`^tokf `, `<<`) are also checked on the env-stripped command so that
+/// (`^tokf `, top-level heredoc) are also checked on the env-stripped command so that
 /// `DEBUG=1 tokf run git status` is correctly identified as already-rewritten
 /// and not double-wrapped.
 fn should_skip_effective(command: &str, user_patterns: &[String]) -> bool {

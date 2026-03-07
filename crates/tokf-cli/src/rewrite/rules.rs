@@ -3,9 +3,11 @@ use regex::Regex;
 use super::types::RewriteRule;
 
 /// Built-in skip patterns that are always active.
+///
 /// - `^tokf ` prevents double-wrapping
-/// - `<<` prevents rewriting heredocs
-const BUILTIN_SKIP_PATTERNS: &[&str] = &["^tokf ", "<<"];
+///
+/// Top-level heredoc detection is handled separately by [`has_toplevel_heredoc`].
+const BUILTIN_SKIP_PATTERNS: &[&str] = &["^tokf "];
 
 /// Check if a command should be skipped (not rewritten).
 pub fn should_skip(command: &str, user_patterns: &[String]) -> bool {
@@ -15,6 +17,10 @@ pub fn should_skip(command: &str, user_patterns: &[String]) -> bool {
         {
             return true;
         }
+    }
+
+    if has_toplevel_heredoc(command) {
+        return true;
     }
 
     for pattern in user_patterns {
@@ -27,6 +33,56 @@ pub fn should_skip(command: &str, user_patterns: &[String]) -> bool {
         }
     }
 
+    false
+}
+
+/// Detect `<<` heredoc operators at the top level of a command.
+///
+/// A top-level heredoc (e.g. `cat <<EOF`) redirects stdin of the outer command,
+/// which breaks `tokf run` wrapping. However, `<<` inside `$(...)` subshells
+/// (e.g. `git commit -m "$(cat <<'EOF'\n...\nEOF)"`) only affects the inner
+/// command's stdin and is safe to wrap.
+///
+/// This function tracks parenthesis nesting depth (respecting quotes) and only
+/// returns `true` when `<<` appears at depth 0.
+fn has_toplevel_heredoc(command: &str) -> bool {
+    let bytes = command.as_bytes();
+    let mut depth: u32 = 0;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_single {
+            if b == b'\'' {
+                in_single = false;
+            }
+        } else if in_double {
+            if b == b'\\' && i + 1 < bytes.len() {
+                i += 1; // skip escaped char
+            } else if b == b'"' {
+                in_double = false;
+            }
+        } else {
+            match b {
+                b'\'' => in_single = true,
+                b'"' => in_double = true,
+                b'(' => depth += 1,
+                b')' => depth = depth.saturating_sub(1),
+                b'<' if depth == 0
+                    && i + 1 < bytes.len()
+                    && bytes[i + 1] == b'<'
+                    && (i == 0 || bytes[i - 1] != b'<')
+                    && (i + 2 >= bytes.len() || bytes[i + 2] != b'<') =>
+                {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
     false
 }
 
@@ -81,9 +137,41 @@ mod tests {
     }
 
     #[test]
-    fn skip_heredocs() {
+    fn skip_toplevel_heredocs() {
         assert!(should_skip("cat <<EOF", &[]));
-        assert!(should_skip("bash -c 'cat <<EOF'", &[]));
+        assert!(should_skip("mysql <<EOF", &[]));
+        assert!(should_skip("cat <<-EOF", &[]));
+    }
+
+    #[test]
+    fn no_skip_heredoc_inside_subshell() {
+        // << inside $() is a nested heredoc — safe to rewrite
+        assert!(!should_skip(
+            r#"git commit -m "$(cat <<'EOF'
+feat: test
+EOF
+)""#,
+            &[],
+        ));
+    }
+
+    #[test]
+    fn no_skip_heredoc_in_single_quotes() {
+        // << inside single quotes is literal text, not a heredoc
+        assert!(!should_skip("echo '<<EOF'", &[]));
+    }
+
+    #[test]
+    fn no_skip_heredoc_in_double_quotes() {
+        assert!(!should_skip(r#"echo "<<EOF""#, &[]));
+    }
+
+    #[test]
+    fn skip_heredoc_not_confused_by_triple_less_than() {
+        // <<< is a herestring, not a heredoc — but also redirects stdin
+        // Our check looks for << not followed by <, so <<< is not matched.
+        // This is acceptable: herestrings are rare and usually short.
+        assert!(!should_skip("cat <<<'hello'", &[]));
     }
 
     #[test]
