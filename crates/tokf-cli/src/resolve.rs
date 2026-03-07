@@ -110,7 +110,8 @@ pub fn resolve_phase_b(
 ///
 /// When the filter has `inject_path = true` and shims exist on disk,
 /// returns env entries that prepend the shims dir to `PATH`, save the
-/// original `PATH` as `TOKF_ORIGINAL_PATH`, and set `SHELL=tokf`.
+/// original `PATH` as `TOKF_ORIGINAL_PATH`, and set `SHELL` to the tokf
+/// executable path.
 ///
 /// **Note:** `ShimsConfig` is loaded with `project_root = None` (global config only).
 /// This is intentional — `build_inject_env` runs in the hot path after every

@@ -201,7 +201,7 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
         let shim_path = shims_dir.join(cmd);
         let cmd_escaped = shell_escape(cmd);
         let content = format!(
-            "#!/bin/sh\nPATH=\"$TOKF_ORIGINAL_PATH\" exec {tokf_escaped} run --no-mask-exit-code {cmd_escaped} \"$@\"\n"
+            "#!/bin/sh\nPATH=\"${{TOKF_ORIGINAL_PATH:-$PATH}}\" exec {tokf_escaped} run --no-mask-exit-code {cmd_escaped} \"$@\"\n"
         );
         if std::fs::write(&shim_path, &content).is_ok() {
             #[cfg(unix)]
@@ -470,7 +470,10 @@ mod tests {
             content.contains("run --no-mask-exit-code 'git'"),
             "shim should contain --no-mask-exit-code and escaped command: {content}"
         );
-        assert!(content.contains("TOKF_ORIGINAL_PATH"));
+        assert!(
+            content.contains("${TOKF_ORIGINAL_PATH:-$PATH}"),
+            "shim should fall back to $PATH when TOKF_ORIGINAL_PATH is unset: {content}"
+        );
         assert!(content.contains("\"$@\""));
 
         // Check permissions on unix

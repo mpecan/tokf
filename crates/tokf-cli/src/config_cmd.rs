@@ -113,13 +113,14 @@ fn cmd_config_show(json: bool) -> i32 {
     0
 }
 
+#[allow(clippy::too_many_lines)]
 fn collect_config_entries(
     global_path: Option<&std::path::Path>,
     local_path: &std::path::Path,
     project_root: &std::path::Path,
 ) -> Vec<ConfigEntry> {
     let history = HistoryConfig::load_from(Some(project_root), global_path);
-    let shims = ShimsConfig::load_from(Some(project_root), global_path);
+    let shims = ShimsConfig::load_from(global_path);
     let sync = SyncConfig::load_from(Some(project_root), global_path);
 
     let local_cfg = local_path
@@ -148,8 +149,18 @@ fn collect_config_entries(
         file: ret_file,
     });
 
-    // shims.enabled
-    let (shims_source, shims_file) = src(|c| c.shims.as_ref().and_then(|s| s.enabled).is_some());
+    // shims.enabled (global-only — skip local config check)
+    let (shims_source, shims_file) = if global_cfg
+        .as_ref()
+        .is_some_and(|c| c.shims.as_ref().and_then(|s| s.enabled).is_some())
+    {
+        (
+            "global".to_string(),
+            global_path.map(|p| p.display().to_string()),
+        )
+    } else {
+        ("default".to_string(), None)
+    };
     entries.push(ConfigEntry {
         key: "shims.enabled".to_string(),
         value: Some(shims.enabled.to_string()),
@@ -245,6 +256,7 @@ fn cmd_config_get(key: &str) -> i32 {
 
 // ── config set ──────────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn cmd_config_set(key: &str, value: &str, local: bool) -> i32 {
     let target_path = if local {
         let cwd = std::env::current_dir().unwrap_or_default();
@@ -271,6 +283,13 @@ fn cmd_config_set(key: &str, value: &str, local: bool) -> i32 {
             },
         ),
         "shims.enabled" => {
+            if local {
+                eprintln!(
+                    "[tokf] shims.enabled is a global-only setting — \
+                     use without --local"
+                );
+                return 1;
+            }
             let rc = set_parsed_field(&target_path, key, value, "true or false", |cfg, b| {
                 cfg.shims
                     .get_or_insert(TokfShimsSection { enabled: None })

@@ -304,7 +304,7 @@ fn sync_config_partial_section_falls_through_to_global() {
     );
 }
 
-// --- ShimsConfig ---
+// --- ShimsConfig (global-only) ---
 
 #[test]
 fn shims_config_default_enabled() {
@@ -313,65 +313,58 @@ fn shims_config_default_enabled() {
 }
 
 #[test]
-fn shims_config_load_from_project_file() {
-    let dir = TempDir::new().expect("tempdir");
-    let tokf_dir = dir.path().join(".tokf");
-    std::fs::create_dir(&tokf_dir).expect("create .tokf");
-    std::fs::write(tokf_dir.join("config.toml"), "[shims]\nenabled = false\n")
-        .expect("write config");
-
-    let config = ShimsConfig::load_from(Some(dir.path()), None);
-    assert!(!config.enabled);
-}
-
-#[test]
 fn shims_config_load_from_global_config_file() {
     let global_dir = TempDir::new().expect("tempdir");
     let global_config = global_dir.path().join("config.toml");
     std::fs::write(&global_config, "[shims]\nenabled = false\n").expect("write global config");
 
-    let config = ShimsConfig::load_from(None, Some(&global_config));
+    let config = ShimsConfig::load_from(Some(&global_config));
     assert!(!config.enabled);
 }
 
 #[test]
-fn shims_config_project_overrides_global() {
-    let project_dir = TempDir::new().expect("tempdir");
-    let tokf_dir = project_dir.path().join(".tokf");
-    std::fs::create_dir(&tokf_dir).expect("create .tokf");
-    std::fs::write(tokf_dir.join("config.toml"), "[shims]\nenabled = false\n")
-        .expect("write project config");
-
+fn shims_config_global_enabled_true() {
     let global_dir = TempDir::new().expect("tempdir");
     let global_config = global_dir.path().join("config.toml");
     std::fs::write(&global_config, "[shims]\nenabled = true\n").expect("write global config");
 
-    let config = ShimsConfig::load_from(Some(project_dir.path()), Some(&global_config));
-    assert!(
-        !config.enabled,
-        "project config should take priority over global"
-    );
+    let config = ShimsConfig::load_from(Some(&global_config));
+    assert!(config.enabled);
 }
 
 #[test]
 fn shims_config_falls_back_to_default() {
-    let dir = TempDir::new().expect("tempdir");
-    let config = ShimsConfig::load_from(Some(dir.path()), None);
+    let config = ShimsConfig::load_from(None);
     assert!(config.enabled, "default should be true");
 }
 
 #[test]
 fn shims_config_malformed_toml_falls_back_to_default() {
     let dir = TempDir::new().expect("tempdir");
-    let tokf_dir = dir.path().join(".tokf");
-    std::fs::create_dir(&tokf_dir).expect("create .tokf");
-    std::fs::write(tokf_dir.join("config.toml"), "not valid toml!!!\n[[[")
-        .expect("write bad config");
+    let bad_config = dir.path().join("config.toml");
+    std::fs::write(&bad_config, "not valid toml!!!\n[[[").expect("write bad config");
 
-    let config = ShimsConfig::load_from(Some(dir.path()), None);
+    let config = ShimsConfig::load_from(Some(&bad_config));
     assert!(
         config.enabled,
         "malformed TOML should fall back to default (true)"
+    );
+}
+
+#[test]
+fn shims_config_ignores_project_root() {
+    // ShimsConfig is global-only — project_root parameter should be ignored
+    let project_dir = TempDir::new().expect("tempdir");
+    let tokf_dir = project_dir.path().join(".tokf");
+    std::fs::create_dir(&tokf_dir).expect("create .tokf");
+    std::fs::write(tokf_dir.join("config.toml"), "[shims]\nenabled = false\n")
+        .expect("write project config");
+
+    // load() ignores project_root, so this should still be true (default)
+    let config = ShimsConfig::load(Some(project_dir.path()));
+    assert!(
+        config.enabled,
+        "project-local shims config should be ignored"
     );
 }
 
