@@ -741,6 +741,25 @@ auto_sync_threshold = 100   # sync after this many unsynced records (default: 10
 upload_usage_stats = true   # upload anonymous usage statistics (default: not set)
 ```
 
+### `[shims]`
+
+Controls PATH-based shim injection for sub-process filtering. When filters use `inject_path = true`, tokf generates shim scripts and prepends them to `PATH` so that sub-processes (e.g. commands inside git hooks) are automatically filtered.
+
+```toml
+[shims]
+enabled = true   # generate and use shims for inject_path filters (default: true)
+```
+
+Set to `false` to disable shim generation and PATH injection globally. This overrides any per-filter `inject_path = true` setting — no shims will be generated or used.
+
+```sh
+tokf config set shims.enabled false
+```
+
+Shim scripts are stored in `~/.cache/tokf/shims/` (or `$TOKF_HOME/shims/`). Disabling shims via `config set` immediately removes any existing shim scripts.
+
+> **Note:** `shims.enabled` is read from the global config only — project-local overrides are not checked, to avoid filesystem scanning on every command invocation.
+
 ### `[telemetry]`
 
 Export metrics via OpenTelemetry OTLP. Disabled by default.
@@ -780,7 +799,7 @@ tokf config print             # print raw config file contents
 tokf config path              # show config file paths with existence status
 ```
 
-Available keys: `history.retention`, `sync.auto_sync_threshold`, `sync.upload_stats`.
+Available keys: `history.retention`, `shims.enabled`, `sync.auto_sync_threshold`, `sync.upload_stats`.
 
 ---
 
@@ -877,7 +896,8 @@ The ejected copy takes priority on subsequent runs. See `tokf eject --help` for 
 └── tracking.db                    # token savings database ($TOKF_DB_PATH overrides)
 
 ~/.cache/tokf/                     # cache directory
-└── manifest.bin                   # binary filter discovery cache
+├── manifest.bin                   # binary filter discovery cache
+└── shims/                         # generated shim scripts for inject_path
 
 <project>/
 └── .tokf/                         # project-local overrides

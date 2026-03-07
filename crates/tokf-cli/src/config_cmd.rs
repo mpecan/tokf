@@ -2,8 +2,9 @@ use clap::Subcommand;
 use serde::Serialize;
 
 use tokf::history::{
-    self, HistoryConfig, SyncConfig, TokfProjectConfig, TokfSyncSection, global_config_path,
-    load_project_config, local_config_path, project_root_for, save_project_config,
+    self, HistoryConfig, ShimsConfig, SyncConfig, TokfProjectConfig, TokfShimsSection,
+    TokfSyncSection, global_config_path, load_project_config, local_config_path, project_root_for,
+    save_project_config,
 };
 
 #[derive(Subcommand)]
@@ -16,12 +17,12 @@ pub enum ConfigAction {
     },
     /// Print a single configuration value (for scripting)
     Get {
-        /// Dotted key (`history.retention`, `sync.auto_sync_threshold`, `sync.upload_stats`)
+        /// Dotted key (`history.retention`, `shims.enabled`, `sync.auto_sync_threshold`, `sync.upload_stats`)
         key: String,
     },
     /// Set a configuration value
     Set {
-        /// Dotted key (`history.retention`, `sync.auto_sync_threshold`, `sync.upload_stats`)
+        /// Dotted key (`history.retention`, `shims.enabled`, `sync.auto_sync_threshold`, `sync.upload_stats`)
         key: String,
         /// Value to set
         value: String,
@@ -56,6 +57,7 @@ pub fn run_config_action(action: &ConfigAction) -> i32 {
 
 const KNOWN_KEYS: &[&str] = &[
     "history.retention",
+    "shims.enabled",
     "sync.auto_sync_threshold",
     "sync.upload_stats",
 ];
@@ -117,6 +119,7 @@ fn collect_config_entries(
     project_root: &std::path::Path,
 ) -> Vec<ConfigEntry> {
     let history = HistoryConfig::load_from(Some(project_root), global_path);
+    let shims = ShimsConfig::load_from(Some(project_root), global_path);
     let sync = SyncConfig::load_from(Some(project_root), global_path);
 
     let local_cfg = local_path
@@ -143,6 +146,16 @@ fn collect_config_entries(
         value: Some(history.retention_count.to_string()),
         source: ret_source,
         file: ret_file,
+    });
+
+    // shims.enabled
+    let (shims_source, shims_file) =
+        src(|c| c.shims.as_ref().and_then(|s| s.enabled).is_some());
+    entries.push(ConfigEntry {
+        key: "shims.enabled".to_string(),
+        value: Some(shims.enabled.to_string()),
+        source: shims_source,
+        file: shims_file,
     });
 
     // sync.auto_sync_threshold
@@ -206,6 +219,10 @@ fn cmd_config_get(key: &str) -> i32 {
             let config = HistoryConfig::load(Some(&project_root));
             println!("{}", config.retention_count);
         }
+        "shims.enabled" => {
+            let config = ShimsConfig::load(Some(&project_root));
+            println!("{}", config.enabled);
+        }
         "sync.auto_sync_threshold" => {
             let config = SyncConfig::load(Some(&project_root));
             println!("{}", config.auto_sync_threshold);
@@ -248,6 +265,18 @@ fn cmd_config_set(key: &str, value: &str, local: bool) -> i32 {
                 .get_or_insert(history::TokfHistorySection { retention: None })
                 .retention = Some(n);
         }),
+        "shims.enabled" => {
+            let rc = set_bool_field(&target_path, key, value, |cfg, b| {
+                cfg.shims
+                    .get_or_insert(TokfShimsSection { enabled: None })
+                    .enabled = Some(b);
+            });
+            // Immediately remove stale shims when disabling
+            if rc == 0 && value == "false" && let Some(dir) = tokf::paths::shims_dir() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            rc
+        }
         "sync.auto_sync_threshold" => set_u32_field(&target_path, key, value, |cfg, n| {
             cfg.sync
                 .get_or_insert(TokfSyncSection {
@@ -278,6 +307,26 @@ fn set_u32_field(
     };
     let mut config = load_project_config(path);
     apply(&mut config, n);
+    if let Err(e) = save_project_config(path, &config) {
+        eprintln!("[tokf] failed to write config: {e:#}");
+        return 1;
+    }
+    0
+}
+
+/// Parse a `bool` value and apply it to the config via the given setter.
+fn set_bool_field(
+    path: &std::path::Path,
+    key: &str,
+    value: &str,
+    apply: fn(&mut TokfProjectConfig, bool),
+) -> i32 {
+    let Ok(b) = value.parse::<bool>() else {
+        eprintln!("[tokf] invalid value for {key}: expected true or false");
+        return 1;
+    };
+    let mut config = load_project_config(path);
+    apply(&mut config, b);
     if let Err(e) = save_project_config(path, &config) {
         eprintln!("[tokf] failed to write config: {e:#}");
         return 1;
@@ -378,7 +427,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let local = dir.path().join(".tokf/config.toml");
         let entries = collect_config_entries(None, &local, dir.path());
-        assert_eq!(entries.len(), 3);
+        assert_eq!(entries.len(), 4);
         assert_eq!(entries[0].key, "history.retention");
         assert_eq!(entries[0].value.as_deref(), Some("10"));
         assert_eq!(entries[0].source, "default");
@@ -405,13 +454,14 @@ mod tests {
         let local = dir.path().join("nonexistent/.tokf/config.toml");
 
         let entries = collect_config_entries(Some(&global), &local, dir.path());
-        assert_eq!(entries[1].value.as_deref(), Some("200"));
-        assert_eq!(entries[1].source, "global");
+        assert_eq!(entries[2].value.as_deref(), Some("200"));
+        assert_eq!(entries[2].source, "global");
     }
 
     #[test]
     fn known_keys_are_valid() {
         assert!(KNOWN_KEYS.contains(&"history.retention"));
+        assert!(KNOWN_KEYS.contains(&"shims.enabled"));
         assert!(KNOWN_KEYS.contains(&"sync.auto_sync_threshold"));
         assert!(KNOWN_KEYS.contains(&"sync.upload_stats"));
     }
@@ -476,6 +526,46 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("config.toml");
         assert_eq!(set_upload_stats(&path, "yes"), 1);
+    }
+
+    #[test]
+    fn set_shims_enabled_valid() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        assert_eq!(
+            set_bool_field(&path, "shims.enabled", "false", |cfg, b| {
+                cfg.shims
+                    .get_or_insert(TokfShimsSection { enabled: None })
+                    .enabled = Some(b);
+            }),
+            0
+        );
+        let cfg = load_project_config(&path);
+        assert_eq!(cfg.shims.unwrap().enabled, Some(false));
+    }
+
+    #[test]
+    fn set_shims_enabled_invalid() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        assert_eq!(
+            set_bool_field(&path, "shims.enabled", "yes", |cfg, b| {
+                cfg.shims
+                    .get_or_insert(TokfShimsSection { enabled: None })
+                    .enabled = Some(b);
+            }),
+            1
+        );
+    }
+
+    #[test]
+    fn collect_config_entries_shims_default() {
+        let dir = TempDir::new().unwrap();
+        let local = dir.path().join(".tokf/config.toml");
+        let entries = collect_config_entries(None, &local, dir.path());
+        let shims_entry = entries.iter().find(|e| e.key == "shims.enabled").unwrap();
+        assert_eq!(shims_entry.value.as_deref(), Some("true"));
+        assert_eq!(shims_entry.source, "default");
     }
 
     #[test]

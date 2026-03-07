@@ -19,6 +19,7 @@ impl Default for HistoryConfig {
 pub struct TokfProjectConfig {
     pub history: Option<TokfHistorySection>,
     pub sync: Option<TokfSyncSection>,
+    pub shims: Option<TokfShimsSection>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -30,6 +31,11 @@ pub struct TokfHistorySection {
 pub struct TokfSyncSection {
     pub auto_sync_threshold: Option<u32>,
     pub upload_usage_stats: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TokfShimsSection {
+    pub enabled: Option<bool>,
 }
 
 /// Read `[history] retention` from a TOML config file path. Returns `None` on any error.
@@ -130,6 +136,49 @@ impl SyncConfig {
             auto_sync_threshold,
             upload_usage_stats,
         }
+    }
+}
+
+/// Configuration for shim generation and PATH injection
+#[derive(Debug, Clone)]
+pub struct ShimsConfig {
+    pub enabled: bool,
+}
+
+impl Default for ShimsConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+impl ShimsConfig {
+    /// Load shims config using auto-detected paths. Priority:
+    /// 1. `{project_root}/.tokf/config.toml` `[shims] enabled`
+    /// 2. `{config_dir}/tokf/config.toml` `[shims] enabled`
+    /// 3. Default: `true`
+    pub fn load(project_root: Option<&std::path::Path>) -> Self {
+        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+        Self::load_from(project_root, global.as_deref())
+    }
+
+    /// Load shims config from explicit paths. Useful for testing.
+    pub fn load_from(
+        project_root: Option<&std::path::Path>,
+        global_config: Option<&std::path::Path>,
+    ) -> Self {
+        let from_project = project_root.and_then(|root| {
+            let path = root.join(".tokf").join("config.toml");
+            let content = std::fs::read_to_string(path).ok()?;
+            let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
+            cfg.shims?.enabled
+        });
+        let from_global = global_config.and_then(|p| {
+            let content = std::fs::read_to_string(p).ok()?;
+            let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
+            cfg.shims?.enabled
+        });
+        let enabled = from_project.or(from_global).unwrap_or(true);
+        Self { enabled }
     }
 }
 

@@ -151,7 +151,21 @@ fn write_manifest(
 /// Each shim is a small shell script that redirects through `tokf run`,
 /// allowing sub-processes (e.g. git hooks) to benefit from filtering.
 /// The shims directory is wiped and recreated on every call (clean slate).
+///
+/// **Note:** `ShimsConfig` is loaded with `project_root = None` (global config only).
+/// This is intentional — `generate_shims` runs during cache rebuild, which happens
+/// at filter discovery time (any `tokf run`). Scanning the filesystem for
+/// `.tokf/config.toml` would add latency. Users who need to disable shims can
+/// set `shims.enabled = false` in their global config.
 pub fn generate_shims(filters: &[ResolvedFilter]) {
+    let shims_config = crate::history::ShimsConfig::load(None);
+    if !shims_config.enabled {
+        // Clean up existing shims if disabled
+        if let Some(dir) = crate::paths::shims_dir() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        return;
+    }
     let Some(shims_dir) = crate::paths::shims_dir() else {
         return;
     };
@@ -522,6 +536,34 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(entries, vec!["git"], "only basename shim should exist");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn generate_shims_cleans_up_when_disabled() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = crate::paths::HomeGuard::set(tmp.path());
+
+        // Create shims directory with existing shim scripts
+        let shims = crate::paths::shims_dir().unwrap();
+        fs::create_dir_all(&shims).unwrap();
+        fs::write(shims.join("git"), "#!/bin/sh\nold shim").unwrap();
+        fs::write(shims.join("cargo"), "#!/bin/sh\nold shim").unwrap();
+        assert!(shims.exists());
+
+        // Write global config disabling shims
+        let config_path = crate::paths::user_dir().unwrap().join("config.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(&config_path, "[shims]\nenabled = false\n").unwrap();
+
+        let filters = vec![make_resolved_filter("git push", 0)];
+        generate_shims(&filters);
+
+        // Shims directory should be removed
+        assert!(
+            !shims.exists(),
+            "shims directory should be removed when disabled"
+        );
     }
 
     #[test]

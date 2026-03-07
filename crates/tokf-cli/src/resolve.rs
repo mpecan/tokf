@@ -111,11 +111,21 @@ pub fn resolve_phase_b(
 /// When the filter has `inject_path = true` and shims exist on disk,
 /// returns env entries that prepend the shims dir to `PATH`, save the
 /// original `PATH` as `TOKF_ORIGINAL_PATH`, and set `SHELL=tokf`.
+///
+/// **Note:** `ShimsConfig` is loaded with `project_root = None` (global config only).
+/// This is intentional — `build_inject_env` runs in the hot path after every
+/// filtered command, so we skip the filesystem walk to locate `.tokf/config.toml`
+/// for performance. Users who need to disable shims can set `shims.enabled = false`
+/// in their global config.
 fn build_inject_env(filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> {
     let Some(cfg) = filter_cfg else {
         return vec![];
     };
     if !cfg.inject_path {
+        return vec![];
+    }
+    let shims_config = tokf::history::ShimsConfig::load(None);
+    if !shims_config.enabled {
         return vec![];
     }
     let Some(shims) = tokf::paths::shims_dir() else {
