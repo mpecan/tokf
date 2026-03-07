@@ -27,6 +27,9 @@ pub struct BackfillVersionsResponse {
     pub skipped: usize,
 }
 
+/// Maximum number of entries in a single backfill request.
+const MAX_BACKFILL_ENTRIES: usize = 500;
+
 /// `POST /api/filters/backfill-versions` — Backfill version data for filters.
 ///
 /// Service-token auth only. Idempotent — repeated runs overwrite with same values.
@@ -36,6 +39,13 @@ pub async fn backfill_versions(
     State(state): State<AppState>,
     Json(req): Json<BackfillVersionsRequest>,
 ) -> Result<(StatusCode, Json<BackfillVersionsResponse>), AppError> {
+    if req.entries.len() > MAX_BACKFILL_ENTRIES {
+        return Err(AppError::BadRequest(format!(
+            "batch size {} exceeds maximum of {MAX_BACKFILL_ENTRIES}",
+            req.entries.len()
+        )));
+    }
+
     tracing::info!(
         count = req.entries.len(),
         "backfill-versions request received"

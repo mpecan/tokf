@@ -196,7 +196,7 @@ pub async fn publish_stdlib(
         }
     }
 
-    // Set introduced_at on newly published filters and run deprecation sweep.
+    // Set introduced_at on newly published filters.
     if let Some(ref version) = req.version {
         for hash in &published_hashes {
             if let Err(e) = sqlx::query(
@@ -212,7 +212,13 @@ pub async fn publish_stdlib(
             }
         }
 
-        run_deprecation_sweep(&state, version, &all_batch_hashes).await;
+        // Only run the deprecation sweep when the batch contains all stdlib
+        // filters. The CLI publishes one-by-one for fault isolation, so a
+        // single-filter request must NOT trigger the sweep (it would
+        // incorrectly deprecate all other stdlib filters).
+        if req.filters.len() > 1 {
+            run_deprecation_sweep(&state, version, &all_batch_hashes).await;
+        }
     }
 
     tracing::info!(
@@ -369,21 +375,37 @@ async fn persist_filter(
     Ok(())
 }
 
+/// Parse a semver string into `(major, minor, patch)` for numeric comparison.
+fn parse_semver(v: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = v.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
 /// Mark stdlib filters not in the current batch as deprecated.
 ///
 /// Skips if the incoming version is older than the latest `introduced_at` in the DB
 /// (prevents backfill runs from triggering false deprecations).
 async fn run_deprecation_sweep(state: &AppState, version: &str, batch_hashes: &[String]) {
     // Guard: skip if version is older than the latest introduced_at.
-    let latest: Option<String> = sqlx::query_scalar(
-        "SELECT MAX(introduced_at) FROM filters WHERE introduced_at IS NOT NULL",
+    let all_versions: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT introduced_at FROM filters WHERE introduced_at IS NOT NULL",
     )
-    .fetch_one(&state.db)
+    .fetch_all(&state.db)
     .await
-    .unwrap_or(None);
+    .unwrap_or_default();
+
+    // Find the latest version using proper semver comparison.
+    let latest = all_versions
+        .iter()
+        .filter_map(|v| parse_semver(v).map(|sv| (sv, v.as_str())))
+        .max_by_key(|(sv, _)| *sv)
+        .map(|(_, v)| v.to_string());
 
     if let Some(ref latest_ver) = latest
-        && version < latest_ver.as_str()
+        && parse_semver(version) < parse_semver(latest_ver)
     {
         tracing::info!(
             version,
@@ -438,22 +460,16 @@ async fn find_successor_in_batch(
     batch_hashes: &[String],
     cmd_pattern: &str,
 ) -> Option<String> {
-    for hash in batch_hashes {
-        let found: Option<String> = sqlx::query_scalar(
-            "SELECT content_hash FROM filters
-             WHERE content_hash = $1 AND command_pattern = $2",
-        )
-        .bind(hash)
-        .bind(cmd_pattern)
-        .fetch_optional(&state.db)
-        .await
-        .unwrap_or(None);
-
-        if found.is_some() {
-            return found;
-        }
-    }
-    None
+    sqlx::query_scalar(
+        "SELECT content_hash FROM filters
+         WHERE content_hash = ANY($1) AND command_pattern = $2
+         LIMIT 1",
+    )
+    .bind(batch_hashes)
+    .bind(cmd_pattern)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None)
 }
 
 /// Best-effort command pattern extraction for error messages.

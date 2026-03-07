@@ -31,13 +31,22 @@ pub async fn refresh_catalog(
 
 /// `GET /api/catalog/grouped` — Return the command-grouped catalog.
 ///
-/// Requires bearer token auth. Builds fresh from DB on each request.
+/// Requires bearer token auth. Serves from R2 cache when available,
+/// falling back to a fresh DB build.
 pub async fn get_grouped_catalog(
     _auth: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<catalog::GroupedCatalog>, AppError> {
-    let catalog = catalog::build_grouped_catalog(&state.db).await?;
-    Ok(Json(catalog))
+    // Try R2 cache first.
+    if let Ok(Some(bytes)) = state.storage.get(catalog::grouped_catalog_key()).await
+        && let Ok(cached) = serde_json::from_slice::<catalog::GroupedCatalog>(&bytes)
+    {
+        return Ok(Json(cached));
+    }
+
+    // Fallback: build fresh from DB.
+    let grouped = catalog::build_grouped_catalog(&state.db).await?;
+    Ok(Json(grouped))
 }
 
 #[cfg(test)]
