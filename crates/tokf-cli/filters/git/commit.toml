@@ -9,4 +9,4 @@ inject_path = true
 extract = { pattern = '^\[(\S+)\s+(\w+)\]', output = "ok ✓ {2}" }
 
 [on_failure]
-tail = 5
+tail = 80
