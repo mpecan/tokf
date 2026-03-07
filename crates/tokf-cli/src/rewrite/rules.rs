@@ -175,6 +175,30 @@ EOF
     }
 
     #[test]
+    fn no_skip_heredoc_parens_in_quotes() {
+        // Parentheses inside quotes should not affect depth tracking
+        assert!(!should_skip(
+            r#"git commit -m "$(echo '()' <<'EOF'
+msg
+EOF
+)""#,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn skip_heredoc_with_dash() {
+        // <<- is a valid heredoc operator (strips leading tabs)
+        assert!(should_skip("cat <<-EOF", &[]));
+    }
+
+    #[test]
+    fn no_skip_nested_subshell_heredoc() {
+        // Multiple levels of nesting
+        assert!(!should_skip("echo $(echo $(cat <<EOF\ntest\nEOF\n))", &[]));
+    }
+
+    #[test]
     fn skip_user_patterns() {
         let patterns = vec!["^my-internal".to_string()];
         assert!(should_skip("my-internal tool", &patterns));

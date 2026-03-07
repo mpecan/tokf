@@ -7,6 +7,7 @@ use rkyv::{Archive, Deserialize, Serialize, rancor};
 
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
+use crate::runner::shell_escape;
 
 const CACHE_VERSION: u32 = 9;
 
@@ -181,11 +182,13 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
         return;
     }
 
-    let tokf_str = tokf_path.to_string_lossy();
+    let tokf_escaped = shell_escape(&tokf_path.to_string_lossy());
     for cmd in &basenames {
         let shim_path = shims_dir.join(cmd);
-        let content =
-            format!("#!/bin/sh\nPATH=\"$TOKF_ORIGINAL_PATH\" exec '{tokf_str}' run {cmd} \"$@\"\n");
+        let cmd_escaped = shell_escape(cmd);
+        let content = format!(
+            "#!/bin/sh\nPATH=\"$TOKF_ORIGINAL_PATH\" exec {tokf_escaped} run {cmd_escaped} \"$@\"\n"
+        );
         if std::fs::write(&shim_path, &content).is_ok() {
             #[cfg(unix)]
             {
@@ -220,6 +223,10 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
         let result: anyhow::Result<Vec<ResolvedFilter>> =
             manifest.filters.into_iter().map(cached_to_filter).collect();
         if let Ok(filters) = result {
+            // Regenerate shims if the directory was manually deleted
+            if crate::paths::shims_dir().is_some_and(|d| !d.exists()) {
+                generate_shims(&filters);
+            }
             return Ok(filters);
         }
         // JSON deserialization failed — fall through to a full rebuild
@@ -446,8 +453,8 @@ mod tests {
         let content = fs::read_to_string(&git_shim).unwrap();
         assert!(content.starts_with("#!/bin/sh\n"));
         assert!(
-            content.contains("run git"),
-            "shim should contain 'run git': {content}"
+            content.contains("run 'git'"),
+            "shim should contain escaped command: {content}"
         );
         assert!(content.contains("TOKF_ORIGINAL_PATH"));
         assert!(content.contains("\"$@\""));
