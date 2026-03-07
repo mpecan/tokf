@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.28](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.27...tokf-common-v0.2.28) (2026-03-07)
+
+
+### Features
+
+* **runner:** PATH-based shim injection for sub-process filtering ([#262](https://github.com/mpecan/tokf/issues/262)) ([2fa1e50](https://github.com/mpecan/tokf/commit/2fa1e5007fe6e2aee1e0d96dde8514754112f81a))
+
 ## [0.2.27](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.26...tokf-common-v0.2.27) (2026-03-06)
 
 

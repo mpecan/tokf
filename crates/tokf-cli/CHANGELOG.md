@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.28](https://github.com/mpecan/tokf/compare/tokf-v0.2.27...tokf-v0.2.28) (2026-03-07)
+
+
+### Features
+
+* **catalog:** filter versioning & grouped catalog ([#265](https://github.com/mpecan/tokf/issues/265)) ([a326481](https://github.com/mpecan/tokf/commit/a3264817594e7377a8a45776755c3ee9a9941a67))
+* **runner:** PATH-based shim injection for sub-process filtering ([#262](https://github.com/mpecan/tokf/issues/262)) ([2fa1e50](https://github.com/mpecan/tokf/commit/2fa1e5007fe6e2aee1e0d96dde8514754112f81a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.27 to 0.2.28
+    * tokf-filter bumped from 0.2.27 to 0.2.28
+
 ## [0.2.27](https://github.com/mpecan/tokf/compare/tokf-v0.2.26...tokf-v0.2.27) (2026-03-06)
 
 
