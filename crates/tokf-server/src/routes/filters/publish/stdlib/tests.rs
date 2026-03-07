@@ -24,6 +24,7 @@ fn make_valid_request() -> StdlibPublishRequest {
             }],
             author_github_username: "testuser".to_string(),
         }],
+        version: None,
     }
 }
 
@@ -138,6 +139,7 @@ async fn publish_stdlib_creates_ghost_user(pool: PgPool) {
             }],
             author_github_username: "ghost-contributor".to_string(),
         }],
+        version: None,
     };
     let resp = post_stdlib(app, &token, &req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -190,6 +192,7 @@ async fn publish_stdlib_reports_failing_filter(pool: PgPool) {
             }],
             author_github_username: "testuser".to_string(),
         }],
+        version: None,
     };
     let resp = post_stdlib(app, &token, &req).await;
 
@@ -219,6 +222,7 @@ async fn publish_stdlib_batch_mixed_results(pool: PgPool) {
             }],
             author_github_username: "testuser".to_string(),
         }],
+        version: None,
     };
     let resp = post_stdlib(app, &token, &seed_req).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -253,6 +257,7 @@ async fn publish_stdlib_batch_mixed_results(pool: PgPool) {
                 author_github_username: "testuser".to_string(),
             },
         ],
+        version: None,
     };
     let resp = post_stdlib(app, &token, &batch_req).await;
 
@@ -284,6 +289,7 @@ async fn publish_stdlib_rejects_invalid_username(pool: PgPool) {
             }],
             author_github_username: "-invalid-".to_string(),
         }],
+        version: None,
     };
     let resp = post_stdlib(app, &token, &req).await;
 

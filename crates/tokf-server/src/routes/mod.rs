@@ -51,8 +51,13 @@ pub fn create_router(state: AppState) -> Router {
             "/api/filters/publish-stdlib",
             post(filters::publish_stdlib).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
+        .route(
+            "/api/filters/backfill-versions",
+            post(filters::backfill_versions),
+        )
         .route("/api/sync", post(sync::sync_usage))
         .route("/api/catalog/refresh", post(catalog::refresh_catalog))
+        .route("/api/catalog/grouped", get(catalog::get_grouped_catalog))
         .route("/api/gain", get(gain::get_gain))
         .route("/api/gain/global", get(gain::get_global_gain))
         .route("/api/gain/filter/{hash}", get(gain::get_filter_gain))

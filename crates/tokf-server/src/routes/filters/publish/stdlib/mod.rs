@@ -17,6 +17,8 @@ use super::{
 #[derive(Debug, Deserialize, Serialize)]
 pub struct StdlibPublishRequest {
     pub filters: Vec<StdlibFilterEntry>,
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -168,14 +170,21 @@ pub async fn publish_stdlib(
     let mut skipped = 0usize;
     let mut failed = Vec::new();
     let mut published_hashes = Vec::new();
+    let mut all_batch_hashes = Vec::new();
 
     for entry in &req.filters {
         match process_entry(&state, entry, &mut skipped).await {
             Ok(Some(hash)) => {
                 published += 1;
+                all_batch_hashes.push(hash.clone());
                 published_hashes.push(hash);
             }
-            Ok(None) => {} // skipped — already counted inside process_entry
+            Ok(None) => {
+                // Skipped — compute hash for deprecation sweep tracking.
+                if let Ok(prepared) = prepare_stdlib_filter(entry) {
+                    all_batch_hashes.push(prepared.content_hash);
+                }
+            }
             Err(e) => {
                 tracing::warn!(
                     command = %e.command_pattern,
@@ -185,6 +194,25 @@ pub async fn publish_stdlib(
                 failed.push(e);
             }
         }
+    }
+
+    // Set introduced_at on newly published filters and run deprecation sweep.
+    if let Some(ref version) = req.version {
+        for hash in &published_hashes {
+            if let Err(e) = sqlx::query(
+                "UPDATE filters SET introduced_at = $2
+                 WHERE content_hash = $1 AND introduced_at IS NULL",
+            )
+            .bind(hash)
+            .bind(version)
+            .execute(&state.db)
+            .await
+            {
+                tracing::warn!(hash = %hash, "failed to set introduced_at: {e}");
+            }
+        }
+
+        run_deprecation_sweep(&state, version, &all_batch_hashes).await;
     }
 
     tracing::info!(
@@ -339,6 +367,93 @@ async fn persist_filter(
 
     insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;
     Ok(())
+}
+
+/// Mark stdlib filters not in the current batch as deprecated.
+///
+/// Skips if the incoming version is older than the latest `introduced_at` in the DB
+/// (prevents backfill runs from triggering false deprecations).
+async fn run_deprecation_sweep(state: &AppState, version: &str, batch_hashes: &[String]) {
+    // Guard: skip if version is older than the latest introduced_at.
+    let latest: Option<String> = sqlx::query_scalar(
+        "SELECT MAX(introduced_at) FROM filters WHERE introduced_at IS NOT NULL",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ref latest_ver) = latest
+        && version < latest_ver.as_str()
+    {
+        tracing::info!(
+            version,
+            latest = %latest_ver,
+            "skipping deprecation sweep: incoming version is older"
+        );
+        return;
+    }
+
+    // Find stdlib filters that are still current but not in this batch.
+    let orphaned: Vec<(String, String)> = sqlx::query_as(
+        "SELECT content_hash, command_pattern FROM filters
+         WHERE is_stdlib = TRUE AND deprecated_at IS NULL",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    for (hash, cmd_pattern) in &orphaned {
+        if batch_hashes.contains(hash) {
+            continue;
+        }
+
+        // Find if a filter in the batch shares the same command_pattern.
+        let successor = find_successor_in_batch(state, batch_hashes, cmd_pattern).await;
+
+        if let Err(e) = sqlx::query(
+            "UPDATE filters SET deprecated_at = $2, successor_hash = $3
+             WHERE content_hash = $1",
+        )
+        .bind(hash)
+        .bind(version)
+        .bind(&successor)
+        .execute(&state.db)
+        .await
+        {
+            tracing::warn!(hash = %hash, "failed to deprecate filter: {e}");
+        } else {
+            tracing::info!(
+                hash = %hash,
+                command = %cmd_pattern,
+                successor = ?successor,
+                "deprecated stdlib filter"
+            );
+        }
+    }
+}
+
+/// Find a batch hash that has the same `command_pattern` as the deprecated filter.
+async fn find_successor_in_batch(
+    state: &AppState,
+    batch_hashes: &[String],
+    cmd_pattern: &str,
+) -> Option<String> {
+    for hash in batch_hashes {
+        let found: Option<String> = sqlx::query_scalar(
+            "SELECT content_hash FROM filters
+             WHERE content_hash = $1 AND command_pattern = $2",
+        )
+        .bind(hash)
+        .bind(cmd_pattern)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
 }
 
 /// Best-effort command pattern extraction for error messages.

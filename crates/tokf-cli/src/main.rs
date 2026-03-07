@@ -1,4 +1,6 @@
 mod auth_cmd;
+#[cfg(feature = "stdlib-publish")]
+mod backfill_cmd;
 mod cache_cmd;
 mod commands;
 mod completions_cmd;
@@ -255,6 +257,19 @@ enum Commands {
         #[arg(long, env = "TOKF_SERVICE_TOKEN")]
         token: String,
         /// Preview the payload without uploading
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Backfill filter version history from git tags (CI only)
+    #[cfg(feature = "stdlib-publish")]
+    BackfillVersions {
+        /// Registry base URL
+        #[arg(long, env = "TOKF_REGISTRY_URL")]
+        registry_url: String,
+        /// Service token for authentication
+        #[arg(long, env = "TOKF_SERVICE_TOKEN")]
+        token: String,
+        /// Print computed timeline without posting to registry
         #[arg(long)]
         dry_run: bool,
     },
@@ -550,6 +565,12 @@ fn main() {
             token,
             dry_run,
         } => publish_stdlib_cmd::cmd_publish_stdlib(registry_url, token, *dry_run),
+        #[cfg(feature = "stdlib-publish")]
+        Commands::BackfillVersions {
+            registry_url,
+            token,
+            dry_run,
+        } => backfill_cmd::cmd_backfill_versions(registry_url, token, *dry_run),
         Commands::Telemetry { action } => or_exit(match action {
             TelemetryAction::Status { check } => {
                 telemetry_cmd::cmd_telemetry_status(*check, cli.verbose)

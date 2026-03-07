@@ -16,6 +16,8 @@ use tokf::remote::http::Client;
 #[derive(Debug, Serialize)]
 struct StdlibPublishRequest {
     filters: Vec<StdlibFilterEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +83,7 @@ async fn stdlib_publish_single_filter(pool: PgPool) {
 
     let req = StdlibPublishRequest {
         filters: vec![make_passthrough_entry("my-tool")],
+        version: None,
     };
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
@@ -120,6 +123,7 @@ async fn stdlib_publish_idempotent(pool: PgPool) {
 
     let req = StdlibPublishRequest {
         filters: vec![make_passthrough_entry("idempotent-tool")],
+        version: None,
     };
 
     // First publish
@@ -128,6 +132,7 @@ async fn stdlib_publish_idempotent(pool: PgPool) {
         let token = service_token.clone();
         let req = StdlibPublishRequest {
             filters: vec![make_passthrough_entry("idempotent-tool")],
+            version: None,
         };
         move || {
             let client = Client::new(&base_url, Some(&token)).unwrap();
@@ -185,6 +190,7 @@ not_contains = "noise"
             }],
             author_github_username: "testuser".to_string(),
         }],
+        version: None,
     };
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
@@ -225,6 +231,7 @@ async fn stdlib_publish_with_backslash_content(pool: PgPool) {
             }],
             author_github_username: "testuser".to_string(),
         }],
+        version: None,
     };
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
@@ -261,6 +268,7 @@ async fn stdlib_publish_one_by_one(pool: PgPool) {
     for cmd in &commands {
         let req = StdlibPublishRequest {
             filters: vec![make_passthrough_entry(cmd)],
+            version: None,
         };
         let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
             let base_url = h.base_url.clone();
@@ -295,6 +303,7 @@ async fn stdlib_publish_rejects_invalid_token(pool: PgPool) {
 
     let req = StdlibPublishRequest {
         filters: vec![make_passthrough_entry("rejected-tool")],
+        version: None,
     };
 
     let result = tokio::task::spawn_blocking({
@@ -324,6 +333,7 @@ async fn stdlib_filter_appears_in_search(pool: PgPool) {
     // Publish via stdlib endpoint
     let req = StdlibPublishRequest {
         filters: vec![make_passthrough_entry("searchable-stdlib")],
+        version: None,
     };
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
