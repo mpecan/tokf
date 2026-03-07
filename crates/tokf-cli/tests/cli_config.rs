@@ -77,6 +77,10 @@ fn config_show_defaults() {
         "expected sync.upload_stats in output:\n{stdout}"
     );
     assert!(
+        stdout.contains("shims.enabled"),
+        "expected shims.enabled in output:\n{stdout}"
+    );
+    assert!(
         stdout.contains("(default)"),
         "expected default source marker:\n{stdout}"
     );
@@ -101,7 +105,7 @@ fn config_show_json_valid() {
         serde_json::from_str(&stdout).expect("config show --json should be valid JSON");
     assert!(parsed.is_array(), "expected JSON array, got: {parsed}");
     let arr = parsed.as_array().unwrap();
-    assert_eq!(arr.len(), 3, "expected 3 config entries");
+    assert_eq!(arr.len(), 4, "expected 4 config entries");
     assert!(arr[0]["key"].is_string());
     assert!(arr[0]["value"].is_string());
     assert!(arr[0]["source"].is_string());
@@ -339,4 +343,42 @@ fn config_set_upload_stats_roundtrip() {
     assert!(get_output.status.success());
     let stdout = String::from_utf8_lossy(&get_output.stdout);
     assert_eq!(stdout.trim(), "true");
+}
+
+#[test]
+fn config_set_shims_enabled_roundtrip() {
+    let tmp = TempDir::new().unwrap();
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+
+    // Default should be true
+    let get_output = tokf()
+        .current_dir(tmp.path())
+        .env("TOKF_HOME", home.to_str().unwrap())
+        .args(["config", "get", "shims.enabled"])
+        .output()
+        .unwrap();
+    assert!(get_output.status.success());
+    let stdout = String::from_utf8_lossy(&get_output.stdout);
+    assert_eq!(stdout.trim(), "true", "default should be true");
+
+    // Set to false
+    let set_output = tokf()
+        .current_dir(tmp.path())
+        .env("TOKF_HOME", home.to_str().unwrap())
+        .args(["config", "set", "shims.enabled", "false"])
+        .output()
+        .unwrap();
+    assert!(set_output.status.success());
+
+    // Get should now return false
+    let get_output = tokf()
+        .current_dir(tmp.path())
+        .env("TOKF_HOME", home.to_str().unwrap())
+        .args(["config", "get", "shims.enabled"])
+        .output()
+        .unwrap();
+    assert!(get_output.status.success());
+    let stdout = String::from_utf8_lossy(&get_output.stdout);
+    assert_eq!(stdout.trim(), "false");
 }

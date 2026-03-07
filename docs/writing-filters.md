@@ -61,6 +61,7 @@ strip_empty_lines = true      # remove all blank lines from the final output
 collapse_empty_lines = true   # collapse consecutive blank lines into one
 
 show_history_hint = true      # append a hint line pointing to the full output in history
+inject_path = true            # inject shims into PATH so sub-processes (e.g. git hooks) are filtered
 
 # Lua escape hatch — for logic TOML can't express (see Lua Escape Hatch section)
 [lua_script]

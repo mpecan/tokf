@@ -3,9 +3,10 @@
 # Filtered: "ok ✓ abc1234"
 
 command = "git commit"
+inject_path = true
 
 [on_success]
 extract = { pattern = '^\[(\S+)\s+(\w+)\]', output = "ok ✓ {2}" }
 
 [on_failure]
-tail = 5
+tail = 80

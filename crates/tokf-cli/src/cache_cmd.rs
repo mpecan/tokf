@@ -22,24 +22,40 @@ pub fn run_cache_action(action: &CacheAction) -> i32 {
 }
 
 fn cmd_cache_clear(search_dirs: &[PathBuf]) -> i32 {
-    let Some(path) = cache::cache_path(search_dirs) else {
+    let mut rc = 0;
+
+    if let Some(path) = cache::cache_path(search_dirs) {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                eprintln!("[tokf] cache cleared: {}", path.display());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("[tokf] cache: nothing to clear ({})", path.display());
+            }
+            Err(e) => {
+                eprintln!("[tokf] cache clear error: {e}");
+                rc = 1;
+            }
+        }
+    } else {
         eprintln!("[tokf] cache: no cache location determined");
-        return 0;
-    };
-    match std::fs::remove_file(&path) {
-        Ok(()) => {
-            eprintln!("[tokf] cache cleared: {}", path.display());
-            0
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("[tokf] cache: nothing to clear ({})", path.display());
-            0
-        }
-        Err(e) => {
-            eprintln!("[tokf] cache clear error: {e}");
-            1
+    }
+
+    // Always attempt shim cleanup, even if cache removal failed
+    if let Some(shims) = tokf::paths::shims_dir() {
+        match std::fs::remove_dir_all(&shims) {
+            Ok(()) => {
+                eprintln!("[tokf] shims cleared: {}", shims.display());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                eprintln!("[tokf] shims clear error: {e}");
+                rc = 1;
+            }
         }
     }
+
+    rc
 }
 
 fn cmd_cache_info(search_dirs: &[PathBuf]) -> i32 {

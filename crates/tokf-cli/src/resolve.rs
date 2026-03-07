@@ -106,21 +106,74 @@ pub fn resolve_phase_b(
     (cfg, hash)
 }
 
+/// Build environment variable overrides for `inject_path` mode.
+///
+/// When the filter has `inject_path = true` and shims exist on disk,
+/// returns env entries that prepend the shims dir to `PATH`, save the
+/// original `PATH` as `TOKF_ORIGINAL_PATH`, and set `SHELL` to the tokf
+/// executable path.
+///
+/// **Note:** `ShimsConfig` is loaded with `project_root = None` (global config only).
+/// This is intentional — `build_inject_env` runs in the hot path after every
+/// filtered command, so we skip the filesystem walk to locate `.tokf/config.toml`
+/// for performance. Users who need to disable shims can set `shims.enabled = false`
+/// in their global config.
+fn build_inject_env(filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> {
+    let Some(cfg) = filter_cfg else {
+        return vec![];
+    };
+    if !cfg.inject_path {
+        return vec![];
+    }
+    let shims_config = tokf::history::ShimsConfig::load(None);
+    if !shims_config.enabled {
+        return vec![];
+    }
+    let Some(shims) = tokf::paths::shims_dir() else {
+        return vec![];
+    };
+    if !shims.exists() {
+        return vec![];
+    }
+    // Use TOKF_ORIGINAL_PATH if already set (nested tokf invocation)
+    // to avoid stacking shims in PATH repeatedly.
+    let original_path = std::env::var("TOKF_ORIGINAL_PATH")
+        .or_else(|_| std::env::var("PATH"))
+        .unwrap_or_default();
+    let new_path = format!("{}:{}", shims.display(), original_path);
+    let tokf_exe = std::env::current_exe()
+        .unwrap_or_else(|_| "tokf".into())
+        .to_string_lossy()
+        .into_owned();
+
+    vec![
+        ("PATH".to_string(), new_path),
+        ("TOKF_ORIGINAL_PATH".to_string(), original_path),
+        ("SHELL".to_string(), tokf_exe),
+    ]
+}
+
 pub fn run_command(
     filter_cfg: Option<&FilterConfig>,
     words_consumed: usize,
     command_args: &[String],
     remaining_args: &[String],
 ) -> anyhow::Result<runner::CommandResult> {
+    let env_overrides = build_inject_env(filter_cfg);
+    let env_refs: Vec<(&str, &str)> = env_overrides
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
     if let Some(cfg) = filter_cfg
         && let Some(run_cmd) = &cfg.run
     {
-        runner::execute_shell(run_cmd, remaining_args)
+        runner::execute_shell_with_env(run_cmd, remaining_args, &env_refs)
     } else if words_consumed > 0 {
         let cmd_str = command_args[..words_consumed].join(" ");
-        runner::execute(&cmd_str, remaining_args)
+        runner::execute_with_env(&cmd_str, remaining_args, &env_refs)
     } else {
-        runner::execute(&command_args[0], remaining_args)
+        runner::execute_with_env(&command_args[0], remaining_args, &env_refs)
     }
 }
 
@@ -231,6 +284,82 @@ pub fn record_run(
         eprintln!(
             "[tokf] tracking error (record) at {}: {e:#}",
             path.display()
+        );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use tokf::config::types::FilterConfig;
+
+    use super::*;
+
+    fn config_with_inject(inject: bool) -> FilterConfig {
+        let toml = format!("command = \"git commit\"\ninject_path = {inject}");
+        toml::from_str(&toml).unwrap()
+    }
+
+    #[test]
+    fn build_inject_env_empty_when_no_config() {
+        assert!(build_inject_env(None).is_empty());
+    }
+
+    #[test]
+    fn build_inject_env_empty_when_disabled() {
+        let cfg = config_with_inject(false);
+        assert!(build_inject_env(Some(&cfg)).is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn build_inject_env_empty_when_shims_dir_missing() {
+        let _guard = tokf::paths::HomeGuard::set("/nonexistent/path/tokf_test");
+        let cfg = config_with_inject(true);
+        // shims_dir exists in theory but the directory doesn't exist on disk
+        assert!(build_inject_env(Some(&cfg)).is_empty());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn build_inject_env_returns_three_vars_when_enabled() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _guard = tokf::paths::HomeGuard::set(tmp.path());
+        let shims = tokf::paths::shims_dir().unwrap();
+        std::fs::create_dir_all(&shims).unwrap();
+
+        let cfg = config_with_inject(true);
+        let env = build_inject_env(Some(&cfg));
+
+        assert_eq!(env.len(), 3);
+        assert_eq!(env[0].0, "PATH");
+        assert!(env[0].1.starts_with(&shims.to_string_lossy().to_string()));
+        assert_eq!(env[1].0, "TOKF_ORIGINAL_PATH");
+        assert_eq!(env[2].0, "SHELL");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn build_inject_env_uses_original_path_when_nested() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _guard = tokf::paths::HomeGuard::set(tmp.path());
+        let shims = tokf::paths::shims_dir().unwrap();
+        std::fs::create_dir_all(&shims).unwrap();
+
+        // Simulate nested invocation: TOKF_ORIGINAL_PATH is already set
+        // SAFETY: test runs serially (#[serial]) so no concurrent access.
+        unsafe { std::env::set_var("TOKF_ORIGINAL_PATH", "/usr/bin:/bin") };
+        let cfg = config_with_inject(true);
+        let env = build_inject_env(Some(&cfg));
+        unsafe { std::env::remove_var("TOKF_ORIGINAL_PATH") };
+
+        // PATH should be shims:/usr/bin:/bin (not shims:shims:/usr/bin:/bin)
+        assert_eq!(env[1].0, "TOKF_ORIGINAL_PATH");
+        assert_eq!(env[1].1, "/usr/bin:/bin");
+        assert!(
+            env[0]
+                .1
+                .starts_with(&format!("{}:/usr/bin:/bin", shims.display()))
         );
     }
 }

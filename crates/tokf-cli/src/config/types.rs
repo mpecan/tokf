@@ -204,7 +204,7 @@ empty = "nothing to show"
         assert_eq!(extract.output, "ok \u{2713} {2}");
 
         let failure = cfg.on_failure.unwrap();
-        assert_eq!(failure.tail, Some(5));
+        assert_eq!(failure.tail, Some(80));
     }
 
     #[test]
