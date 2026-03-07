@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row as _};
 
@@ -75,6 +77,50 @@ pub struct CatalogIndex {
 /// TypeScript consumers (tokf-net imports `FilterMetadata` for per-filter pages).
 pub type FilterMetadata = CatalogEntry;
 
+// ── Versioned catalog types ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../generated/"))]
+pub struct FilterVersionInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub introduced_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub successor_hash: Option<String>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../generated/"))]
+pub struct VersionedCatalogEntry {
+    #[serde(flatten)]
+    pub entry: CatalogEntry,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_info: Option<FilterVersionInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../generated/"))]
+pub struct CommandGroup {
+    pub command_pattern: String,
+    pub canonical_command: String,
+    pub primary_hash: String,
+    pub primary_stats: CatalogFilterStats,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub filter_count: usize,
+    pub filters: Vec<VersionedCatalogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, export_to = "../generated/"))]
+pub struct GroupedCatalog {
+    pub generated_at: String,
+    pub version: u32,
+    pub commands: Vec<CommandGroup>,
+    pub global_stats: GlobalStats,
+}
+
 // ── R2 key helpers ───────────────────────────────────────────────────────────
 
 /// R2 key for the full catalog index.
@@ -92,6 +138,11 @@ pub fn filter_metadata_key(hash: &str) -> String {
 /// Delegates to [`crate::storage::filter_examples_key`] — single source of truth.
 pub fn filter_examples_key(hash: &str) -> String {
     crate::storage::filter_examples_key(hash)
+}
+
+/// R2 key for the grouped catalog.
+pub const fn grouped_catalog_key() -> &'static str {
+    "catalog/grouped.json"
 }
 
 // ── DB queries ───────────────────────────────────────────────────────────────
@@ -152,11 +203,106 @@ pub async fn build_filter_metadata(
     map_entry_row(&row).map_err(|e| crate::error::AppError::Internal(format!("db mapping: {e}")))
 }
 
-async fn fetch_all_entries(pool: &PgPool) -> Result<Vec<CatalogEntry>, crate::error::AppError> {
+/// Build the grouped catalog from the database.
+///
+/// Groups filters by `command_pattern`, selects a primary filter per group
+/// (current stdlib preferred, then highest relevance score), and attaches
+/// version info where available.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn build_grouped_catalog(
+    pool: &PgPool,
+) -> Result<GroupedCatalog, crate::error::AppError> {
+    let entries = fetch_all_versioned_entries(pool).await?;
+    let global_stats = fetch_global_stats(pool).await?;
+    let commands = group_entries(entries);
+
+    Ok(GroupedCatalog {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        version: 2,
+        commands,
+        global_stats,
+    })
+}
+
+/// Normalize a command pattern for grouping: strip trailing wildcard ` *`.
+///
+/// E.g. `"gh issue view *"` → `"gh issue view"`, so that `gh issue view *`
+/// and `gh issue view` end up in the same group.
+fn normalize_command_pattern(pattern: &str) -> &str {
+    pattern.strip_suffix(" *").unwrap_or(pattern)
+}
+
+/// Group versioned entries by normalized `command_pattern` and select primary filter per group.
+fn group_entries(entries: Vec<VersionedCatalogEntry>) -> Vec<CommandGroup> {
+    let mut groups: BTreeMap<String, Vec<VersionedCatalogEntry>> = BTreeMap::new();
+    for entry in entries {
+        let key = normalize_command_pattern(&entry.entry.command_pattern).to_string();
+        groups.entry(key).or_default().push(entry);
+    }
+
+    let mut commands: Vec<CommandGroup> = groups
+        .into_iter()
+        .map(|(command_pattern, filters)| {
+            let primary = select_primary(&filters);
+            CommandGroup {
+                canonical_command: primary.entry.canonical_command.clone(),
+                primary_hash: primary.entry.content_hash.clone(),
+                primary_stats: primary.entry.stats.clone(),
+                filter_count: filters.len(),
+                filters,
+                command_pattern,
+            }
+        })
+        .collect();
+
+    // Sort groups by primary filter relevance (same as flat catalog)
+    #[allow(clippy::cast_precision_loss)]
+    commands.sort_by(|a, b| {
+        let score =
+            |s: &CatalogFilterStats| s.savings_pct * (1.0 + ((s.total_commands + 1) as f64).ln());
+        score(&b.primary_stats)
+            .partial_cmp(&score(&a.primary_stats))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    commands
+}
+
+/// Select the primary filter from a group: current stdlib first, then first
+/// non-deprecated entry by score, then first entry overall.
+fn select_primary(filters: &[VersionedCatalogEntry]) -> &VersionedCatalogEntry {
+    let is_deprecated = |f: &&VersionedCatalogEntry| -> bool {
+        f.version_info
+            .as_ref()
+            .is_some_and(|v| v.deprecated_at.is_some())
+    };
+
+    // Prefer current (non-deprecated) stdlib.
+    if let Some(current_stdlib) = filters
+        .iter()
+        .find(|f| f.entry.is_stdlib && !is_deprecated(f))
+    {
+        return current_stdlib;
+    }
+
+    // Fall back to first non-deprecated entry (by pre-sorted score).
+    filters
+        .iter()
+        .find(|f| !is_deprecated(f))
+        .unwrap_or(&filters[0])
+}
+
+async fn fetch_all_versioned_entries(
+    pool: &PgPool,
+) -> Result<Vec<VersionedCatalogEntry>, crate::error::AppError> {
     let rows = sqlx::query(
         "SELECT f.content_hash, f.command_pattern, f.canonical_command, f.is_stdlib,
                 f.created_at::TEXT AS created_at,
                 f.safety_passed,
+                f.introduced_at, f.deprecated_at, f.successor_hash,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS username,
                 CASE WHEN u.visible THEN COALESCE(u.avatar_url, '') ELSE '' END AS avatar_url,
                 CASE WHEN u.visible THEN COALESCE(u.profile_url, '') ELSE '' END AS profile_url,
@@ -178,9 +324,39 @@ async fn fetch_all_entries(pool: &PgPool) -> Result<Vec<CatalogEntry>, crate::er
     .await?;
 
     rows.iter()
-        .map(map_entry_row)
+        .map(map_versioned_entry_row)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| crate::error::AppError::Internal(format!("db mapping: {e}")))
+}
+
+fn map_versioned_entry_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<VersionedCatalogEntry, sqlx::Error> {
+    let entry = map_entry_row(row)?;
+    let introduced_at: Option<String> = row.try_get("introduced_at")?;
+    let deprecated_at: Option<String> = row.try_get("deprecated_at")?;
+    let successor_hash: Option<String> = row.try_get("successor_hash")?;
+
+    let version_info = if introduced_at.is_some() || deprecated_at.is_some() {
+        Some(FilterVersionInfo {
+            is_current: entry.is_stdlib && deprecated_at.is_none(),
+            introduced_at,
+            deprecated_at,
+            successor_hash,
+        })
+    } else {
+        None
+    };
+
+    Ok(VersionedCatalogEntry {
+        entry,
+        version_info,
+    })
+}
+
+async fn fetch_all_entries(pool: &PgPool) -> Result<Vec<CatalogEntry>, crate::error::AppError> {
+    let versioned = fetch_all_versioned_entries(pool).await?;
+    Ok(versioned.into_iter().map(|v| v.entry).collect())
 }
 
 async fn fetch_global_stats(pool: &PgPool) -> Result<GlobalStats, crate::error::AppError> {
@@ -270,6 +446,20 @@ pub async fn write_filter_metadata_to_r2(
     Ok(())
 }
 
+/// Serialize and write the grouped catalog to R2.
+///
+/// # Errors
+///
+/// Returns an error if serialization or R2 storage fails.
+pub async fn write_grouped_catalog_to_r2(
+    storage: &dyn StorageClient,
+    catalog: &GroupedCatalog,
+) -> anyhow::Result<()> {
+    let json = serde_json::to_vec(catalog)?;
+    storage.put(grouped_catalog_key(), json).await?;
+    Ok(())
+}
+
 /// Write filter examples (before/after pairs) to R2.
 ///
 /// Always overwrites — examples regenerate when tests change.
@@ -314,6 +504,16 @@ pub async fn refresh_catalog(
                 "R2 metadata write failed (continuing): {e}"
             );
         }
+    }
+
+    // Best-effort: write grouped catalog alongside the flat one.
+    match build_grouped_catalog(pool).await {
+        Ok(grouped) => {
+            if let Err(e) = write_grouped_catalog_to_r2(storage, &grouped).await {
+                tracing::warn!("grouped catalog R2 write failed: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("grouped catalog build failed: {e}"),
     }
 
     Ok(index)
@@ -373,6 +573,15 @@ pub fn spawn_batch_catalog_update(
             }
             Err(e) => tracing::warn!("batch catalog index build failed: {e}"),
         }
+        // Best-effort: rebuild grouped catalog too.
+        match build_grouped_catalog(&pool).await {
+            Ok(grouped) => {
+                if let Err(e) = write_grouped_catalog_to_r2(&*storage, &grouped).await {
+                    tracing::warn!("batch grouped catalog write failed: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("batch grouped catalog build failed: {e}"),
+        }
     });
 }
 
@@ -398,158 +607,5 @@ async fn update_filter_and_index(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-    use crate::storage::mock::InMemoryStorageClient;
-
-    #[test]
-    fn catalog_index_key_is_correct() {
-        assert_eq!(catalog_index_key(), "catalog/index.json");
-    }
-
-    #[test]
-    fn filter_metadata_key_format() {
-        assert_eq!(
-            filter_metadata_key("abc123"),
-            "filters/abc123/metadata.json"
-        );
-    }
-
-    #[test]
-    fn filter_examples_key_format() {
-        assert_eq!(
-            filter_examples_key("abc123"),
-            "filters/abc123/examples.json"
-        );
-    }
-
-    #[test]
-    fn serde_round_trip_catalog_entry() {
-        let entry = CatalogEntry {
-            content_hash: "deadbeef".to_string(),
-            command_pattern: "git push".to_string(),
-            canonical_command: "git".to_string(),
-            author: CatalogAuthor {
-                username: "alice".to_string(),
-                avatar_url: "https://github.com/alice.png".to_string(),
-                profile_url: "https://github.com/alice".to_string(),
-            },
-            is_stdlib: false,
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            test_count: 3,
-            safety_passed: true,
-            stats: CatalogFilterStats {
-                total_commands: 100,
-                total_input_tokens: 5000,
-                total_output_tokens: 2000,
-                savings_pct: 60.0,
-                total_raw_tokens: 5000,
-            },
-        };
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: CatalogEntry = serde_json::from_str(&json).unwrap();
-        assert_eq!(entry, deserialized);
-    }
-
-    #[test]
-    fn serde_round_trip_catalog_index() {
-        let index = CatalogIndex {
-            generated_at: "2026-01-01T00:00:00Z".to_string(),
-            version: 1,
-            filters: vec![],
-            global_stats: GlobalStats {
-                total_filters: 0,
-                total_commands: 0,
-                total_input_tokens: 0,
-                total_output_tokens: 0,
-                overall_savings_pct: 0.0,
-                total_raw_tokens: 0,
-            },
-        };
-        let json = serde_json::to_string(&index).unwrap();
-        let deserialized: CatalogIndex = serde_json::from_str(&json).unwrap();
-        assert_eq!(index, deserialized);
-    }
-
-    #[tokio::test]
-    async fn write_catalog_to_r2_stores_valid_json() {
-        let storage = InMemoryStorageClient::new();
-        let index = CatalogIndex {
-            generated_at: "2026-01-01T00:00:00Z".to_string(),
-            version: 1,
-            filters: vec![],
-            global_stats: GlobalStats {
-                total_filters: 0,
-                total_commands: 0,
-                total_input_tokens: 0,
-                total_output_tokens: 0,
-                overall_savings_pct: 0.0,
-                total_raw_tokens: 0,
-            },
-        };
-
-        write_catalog_to_r2(&storage, &index).await.unwrap();
-
-        let bytes = storage.get("catalog/index.json").await.unwrap().unwrap();
-        let deserialized: CatalogIndex = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(deserialized.version, 1);
-        assert!(deserialized.filters.is_empty());
-    }
-
-    #[tokio::test]
-    async fn write_examples_stores_at_correct_key() {
-        let storage = InMemoryStorageClient::new();
-        let examples_json = br#"{"examples":[],"safety":{"passed":true,"warnings":[]}}"#.to_vec();
-
-        write_examples_to_r2(&storage, "abc123", examples_json)
-            .await
-            .unwrap();
-
-        let bytes = storage
-            .get("filters/abc123/examples.json")
-            .await
-            .unwrap()
-            .unwrap();
-        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(parsed["safety"]["passed"].as_bool().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_filter_metadata_stores_at_correct_key() {
-        let storage = InMemoryStorageClient::new();
-        let entry = CatalogEntry {
-            content_hash: "abc123".to_string(),
-            command_pattern: "git push".to_string(),
-            canonical_command: "git".to_string(),
-            author: CatalogAuthor {
-                username: "alice".to_string(),
-                avatar_url: "https://github.com/alice.png".to_string(),
-                profile_url: "https://github.com/alice".to_string(),
-            },
-            is_stdlib: false,
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            test_count: 1,
-            safety_passed: true,
-            stats: CatalogFilterStats {
-                total_commands: 10,
-                total_input_tokens: 500,
-                total_output_tokens: 200,
-                savings_pct: 60.0,
-                total_raw_tokens: 500,
-            },
-        };
-
-        write_filter_metadata_to_r2(&storage, "abc123", &entry)
-            .await
-            .unwrap();
-
-        let bytes = storage
-            .get("filters/abc123/metadata.json")
-            .await
-            .unwrap()
-            .unwrap();
-        let deserialized: CatalogEntry = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(deserialized.content_hash, "abc123");
-        assert_eq!(deserialized.author.username, "alice");
-    }
-}
+#[path = "catalog_tests.rs"]
+mod tests;

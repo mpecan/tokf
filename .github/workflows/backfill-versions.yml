@@ -1,0 +1,26 @@
+name: Backfill Filter Versions
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Backfill version history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run backfill
+        run: cargo run -p tokf --features stdlib-publish -- backfill-versions
+        env:
+          TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
+          TOKF_REGISTRY_URL: https://api.tokf.net

@@ -21,6 +21,7 @@ pub fn cmd_publish_stdlib(registry_url: &str, token: &str, dry_run: bool) -> i32
 #[derive(Debug, Serialize)]
 struct StdlibPublishRequest {
     filters: Vec<StdlibFilterEntry>,
+    version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,15 +69,21 @@ fn publish_stdlib(registry_url: &str, token: &str, dry_run: bool) -> anyhow::Res
         return Ok(0);
     }
 
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    eprintln!("[publish-stdlib] Version: {version}");
+
     if dry_run {
-        let payload = serde_json::to_string_pretty(&StdlibPublishRequest { filters: entries })?;
+        let payload = serde_json::to_string_pretty(&StdlibPublishRequest {
+            filters: entries,
+            version,
+        })?;
         println!("{payload}");
         eprintln!("[publish-stdlib] Dry run — payload printed above.");
         return Ok(0);
     }
 
     let client = Client::new(registry_url, Some(token))?;
-    let tally = publish_entries_one_by_one(&client, entries);
+    let tally = publish_entries_one_by_one(&client, entries, &version);
 
     eprintln!();
     eprintln!("[publish-stdlib] Published: {}", tally.published);
@@ -99,7 +106,11 @@ struct PublishTally {
 }
 
 /// Publish each filter individually so a single failure doesn't mask others.
-fn publish_entries_one_by_one(client: &Client, entries: Vec<StdlibFilterEntry>) -> PublishTally {
+fn publish_entries_one_by_one(
+    client: &Client,
+    entries: Vec<StdlibFilterEntry>,
+    version: &str,
+) -> PublishTally {
     let total = entries.len();
     let mut published = 0usize;
     let mut skipped = 0usize;
@@ -117,6 +128,7 @@ fn publish_entries_one_by_one(client: &Client, entries: Vec<StdlibFilterEntry>) 
 
         let req = StdlibPublishRequest {
             filters: vec![entry],
+            version: version.to_string(),
         };
         match client.post::<_, StdlibPublishResponse>("/api/filters/publish-stdlib", &req) {
             Ok(resp) => {
