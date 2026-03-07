@@ -2,4 +2,9 @@
 import type { CatalogAuthor } from "./CatalogAuthor";
 import type { CatalogFilterStats } from "./CatalogFilterStats";
 
-export type CatalogEntry = { content_hash: string, command_pattern: string, canonical_command: string, author: CatalogAuthor, is_stdlib: boolean, created_at: string, test_count: number, safety_passed: boolean, stats: CatalogFilterStats, };
+export type CatalogEntry = { content_hash: string, command_pattern: string, canonical_command: string, author: CatalogAuthor, is_stdlib: boolean, created_at: string, test_count: number, safety_passed: boolean, stats: CatalogFilterStats, 
+/**
+ * The tokf release version that published this filter (e.g. "0.2.28").
+ * `None` for community filters and stdlib filters published before versioning was introduced.
+ */
+stdlib_version: string | null, };

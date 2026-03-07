@@ -41,6 +41,9 @@ pub struct CatalogEntry {
     pub test_count: i64,
     pub safety_passed: bool,
     pub stats: CatalogFilterStats,
+    /// The tokf release version that published this filter (e.g. "0.2.28").
+    /// `None` for community filters and stdlib filters published before versioning was introduced.
+    pub stdlib_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -129,6 +132,7 @@ pub async fn build_filter_metadata(
         "SELECT f.content_hash, f.command_pattern, f.canonical_command, f.is_stdlib,
                 f.created_at::TEXT AS created_at,
                 f.safety_passed,
+                f.stdlib_version,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS username,
                 CASE WHEN u.visible THEN COALESCE(u.avatar_url, '') ELSE '' END AS avatar_url,
                 CASE WHEN u.visible THEN COALESCE(u.profile_url, '') ELSE '' END AS profile_url,
@@ -157,6 +161,7 @@ async fn fetch_all_entries(pool: &PgPool) -> Result<Vec<CatalogEntry>, crate::er
         "SELECT f.content_hash, f.command_pattern, f.canonical_command, f.is_stdlib,
                 f.created_at::TEXT AS created_at,
                 f.safety_passed,
+                f.stdlib_version,
                 CASE WHEN u.visible THEN u.username ELSE 'tokf' END AS username,
                 CASE WHEN u.visible THEN COALESCE(u.avatar_url, '') ELSE '' END AS avatar_url,
                 CASE WHEN u.visible THEN COALESCE(u.profile_url, '') ELSE '' END AS profile_url,
@@ -224,6 +229,7 @@ fn map_entry_row(row: &sqlx::postgres::PgRow) -> Result<CatalogEntry, sqlx::Erro
         created_at: row.try_get("created_at")?,
         test_count: row.try_get("test_count")?,
         safety_passed: row.try_get("safety_passed")?,
+        stdlib_version: row.try_get("stdlib_version")?,
         author: CatalogAuthor {
             username: row.try_get("username")?,
             avatar_url: row.try_get("avatar_url")?,
@@ -438,6 +444,7 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             test_count: 3,
             safety_passed: true,
+            stdlib_version: None,
             stats: CatalogFilterStats {
                 total_commands: 100,
                 total_input_tokens: 5000,
@@ -530,6 +537,7 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             test_count: 1,
             safety_passed: true,
+            stdlib_version: None,
             stats: CatalogFilterStats {
                 total_commands: 10,
                 total_input_tokens: 500,

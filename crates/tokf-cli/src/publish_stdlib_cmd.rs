@@ -28,6 +28,7 @@ struct StdlibFilterEntry {
     filter_toml: String,
     test_files: Vec<StdlibTestFile>,
     author_github_username: String,
+    tokf_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +63,10 @@ fn publish_stdlib(registry_url: &str, token: &str, dry_run: bool) -> anyhow::Res
 
     let entries = collect_stdlib_entries(filters_dir)?;
     eprintln!("[publish-stdlib] Collected {} filters", entries.len());
+    eprintln!(
+        "[publish-stdlib] tokf version: {}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     if entries.is_empty() {
         eprintln!("[publish-stdlib] No filters found.");
@@ -157,6 +162,7 @@ fn collect_stdlib_entries(filters_dir: &Path) -> anyhow::Result<Vec<StdlibFilter
     filter_paths.sort();
 
     let fallback_author = resolve_fallback_author();
+    let tokf_version = Some(env!("CARGO_PKG_VERSION").to_string());
     let mut entries = Vec::with_capacity(filter_paths.len());
 
     for path in &filter_paths {
@@ -183,6 +189,7 @@ fn collect_stdlib_entries(filters_dir: &Path) -> anyhow::Result<Vec<StdlibFilter
             filter_toml,
             test_files,
             author_github_username: author,
+            tokf_version: tokf_version.clone(),
         });
     }
 

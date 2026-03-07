@@ -24,6 +24,10 @@ pub struct StdlibFilterEntry {
     pub filter_toml: String,
     pub test_files: Vec<StdlibTestFile>,
     pub author_github_username: String,
+    /// The tokf release version that published this filter (e.g. "0.2.28").
+    /// Absent for entries from older CLI versions; stored as NULL in the DB.
+    #[serde(default)]
+    pub tokf_version: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -237,7 +241,7 @@ async fn process_entry(
     let prepared =
         prepare_stdlib_filter(entry).map_err(|e| fail(&cmd_hint, "preparation failed", e))?;
 
-    if check_existing(state, &prepared, skipped).await? {
+    if check_existing(state, &prepared, skipped, entry.tokf_version.as_deref()).await? {
         return Ok(None);
     }
 
@@ -250,9 +254,14 @@ async fn process_entry(
         generate_examples_and_safety(&prepared.config, &prepared.test_cases).await;
 
     let hash = prepared.content_hash.clone();
-    persist_filter(state, &prepared, &entry.author_github_username)
-        .await
-        .map_err(|e| fail(&prepared.command_pattern, "persist failed", e.to_string()))?;
+    persist_filter(
+        state,
+        &prepared,
+        &entry.author_github_username,
+        entry.tokf_version.as_deref(),
+    )
+    .await
+    .map_err(|e| fail(&prepared.command_pattern, "persist failed", e.to_string()))?;
 
     // Upload examples (best-effort) and update safety_passed.
     if let Ok((examples_json, safety_passed)) = examples_result {
@@ -278,11 +287,12 @@ fn fail(command_pattern: &str, phase: &str, error: String) -> StdlibFailure {
     }
 }
 
-/// Returns `Ok(true)` if the filter already exists (and updates `is_stdlib`).
+/// Returns `Ok(true)` if the filter already exists (and updates `is_stdlib` and `stdlib_version`).
 async fn check_existing(
     state: &AppState,
     prepared: &PreparedFilter,
     skipped: &mut usize,
+    tokf_version: Option<&str>,
 ) -> Result<bool, StdlibFailure> {
     let existing: Option<String> =
         sqlx::query_scalar("SELECT content_hash FROM filters WHERE content_hash = $1")
@@ -292,12 +302,16 @@ async fn check_existing(
             .map_err(|e| fail(&prepared.command_pattern, "db lookup", e.to_string()))?;
 
     if existing.is_some() {
-        if let Err(e) = sqlx::query("UPDATE filters SET is_stdlib = TRUE WHERE content_hash = $1")
-            .bind(&prepared.content_hash)
-            .execute(&state.db)
-            .await
+        if let Err(e) = sqlx::query(
+            "UPDATE filters SET is_stdlib = TRUE, stdlib_version = COALESCE($1, stdlib_version)
+             WHERE content_hash = $2",
+        )
+        .bind(tokf_version)
+        .bind(&prepared.content_hash)
+        .execute(&state.db)
+        .await
         {
-            tracing::warn!(hash = %prepared.content_hash, "failed to set is_stdlib: {e}");
+            tracing::warn!(hash = %prepared.content_hash, "failed to set is_stdlib/stdlib_version: {e}");
         }
         *skipped += 1;
         return Ok(true);
@@ -311,6 +325,7 @@ async fn persist_filter(
     state: &AppState,
     prepared: &PreparedFilter,
     author_username: &str,
+    tokf_version: Option<&str>,
 ) -> Result<(), AppError> {
     let author_id = upsert_user_by_username(&state.db, author_username).await?;
 
@@ -325,15 +340,16 @@ async fn persist_filter(
         upload_tests(state, &prepared.content_hash, prepared.test_files.clone()).await?;
 
     sqlx::query(
-        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, is_stdlib)
-         VALUES ($1, $2, $3, $4, $5, TRUE)
-         ON CONFLICT (content_hash) DO UPDATE SET is_stdlib = TRUE",
+        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, is_stdlib, stdlib_version)
+         VALUES ($1, $2, $3, $4, $5, TRUE, $6)
+         ON CONFLICT (content_hash) DO UPDATE SET is_stdlib = TRUE, stdlib_version = COALESCE(EXCLUDED.stdlib_version, filters.stdlib_version)",
     )
     .bind(&prepared.content_hash)
     .bind(&prepared.command_pattern)
     .bind(&prepared.canonical_command)
     .bind(author_id)
     .bind(&r2_key)
+    .bind(tokf_version)
     .execute(&state.db)
     .await?;
 

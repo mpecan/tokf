@@ -23,6 +23,7 @@ fn make_valid_request() -> StdlibPublishRequest {
                     .to_string(),
             }],
             author_github_username: "testuser".to_string(),
+            tokf_version: None,
         }],
     }
 }
@@ -137,6 +138,7 @@ async fn publish_stdlib_creates_ghost_user(pool: PgPool) {
                     .to_string(),
             }],
             author_github_username: "ghost-contributor".to_string(),
+            tokf_version: None,
         }],
     };
     let resp = post_stdlib(app, &token, &req).await;
@@ -189,6 +191,7 @@ async fn publish_stdlib_reports_failing_filter(pool: PgPool) {
                     .to_string(),
             }],
             author_github_username: "testuser".to_string(),
+            tokf_version: None,
         }],
     };
     let resp = post_stdlib(app, &token, &req).await;
@@ -218,6 +221,7 @@ async fn publish_stdlib_batch_mixed_results(pool: PgPool) {
                 content: test_content.to_string(),
             }],
             author_github_username: "testuser".to_string(),
+            tokf_version: None,
         }],
     };
     let resp = post_stdlib(app, &token, &seed_req).await;
@@ -235,6 +239,7 @@ async fn publish_stdlib_batch_mixed_results(pool: PgPool) {
                     content: test_content.to_string(),
                 }],
                 author_github_username: "testuser".to_string(),
+                tokf_version: None,
             },
             StdlibFilterEntry {
                 filter_toml: "command = \"filter-b\"\n".to_string(),
@@ -243,6 +248,7 @@ async fn publish_stdlib_batch_mixed_results(pool: PgPool) {
                     content: test_content.to_string(),
                 }],
                 author_github_username: "testuser".to_string(),
+                tokf_version: None,
             },
             StdlibFilterEntry {
                 filter_toml: "invalid toml [[[".to_string(),
@@ -251,6 +257,7 @@ async fn publish_stdlib_batch_mixed_results(pool: PgPool) {
                     content: test_content.to_string(),
                 }],
                 author_github_username: "testuser".to_string(),
+                tokf_version: None,
             },
         ],
     };
@@ -283,6 +290,7 @@ async fn publish_stdlib_rejects_invalid_username(pool: PgPool) {
                     .to_string(),
             }],
             author_github_username: "-invalid-".to_string(),
+            tokf_version: None,
         }],
     };
     let resp = post_stdlib(app, &token, &req).await;
@@ -295,5 +303,98 @@ async fn publish_stdlib_rejects_invalid_username(pool: PgPool) {
     assert!(
         error.contains("GitHub username"),
         "error should mention username: {error}"
+    );
+}
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn publish_stdlib_stores_version(pool: PgPool) {
+    let token = insert_service_token(&pool, "ci-test").await;
+    let state = make_state(pool.clone());
+    let app = crate::routes::create_router(state);
+
+    let req = StdlibPublishRequest {
+        filters: vec![StdlibFilterEntry {
+            filter_toml: "command = \"versioned-tool\"\n".to_string(),
+            test_files: vec![StdlibTestFile {
+                filename: "default.toml".to_string(),
+                content: "name = \"default\"\ninline = \"\"\n\n[[expect]]\nequals = \"\"\n"
+                    .to_string(),
+            }],
+            author_github_username: "testuser".to_string(),
+            tokf_version: Some("0.2.28".to_string()),
+        }],
+    };
+    let resp = post_stdlib(app, &token, &req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let version: Option<String> = sqlx::query_scalar(
+        "SELECT stdlib_version FROM filters WHERE command_pattern = 'versioned-tool'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        version,
+        Some("0.2.28".to_string()),
+        "stdlib_version should be stored"
+    );
+}
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn publish_stdlib_updates_version_on_repeat(pool: PgPool) {
+    let token = insert_service_token(&pool, "ci-test").await;
+    let test_content = "name = \"default\"\ninline = \"\"\n\n[[expect]]\nequals = \"\"\n";
+    let filter_toml = "command = \"idempotent-tool\"\n";
+
+    // Publish with v0.2.27
+    let state = make_state(pool.clone());
+    let app = crate::routes::create_router(state);
+    let req_old = StdlibPublishRequest {
+        filters: vec![StdlibFilterEntry {
+            filter_toml: filter_toml.to_string(),
+            test_files: vec![StdlibTestFile {
+                filename: "default.toml".to_string(),
+                content: test_content.to_string(),
+            }],
+            author_github_username: "testuser".to_string(),
+            tokf_version: Some("0.2.27".to_string()),
+        }],
+    };
+    let resp = post_stdlib(app, &token, &req_old).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Re-publish with v0.2.28 (same content, same hash — should update the version)
+    let state = make_state(pool.clone());
+    let app = crate::routes::create_router(state);
+    let req_new = StdlibPublishRequest {
+        filters: vec![StdlibFilterEntry {
+            filter_toml: filter_toml.to_string(),
+            test_files: vec![StdlibTestFile {
+                filename: "default.toml".to_string(),
+                content: test_content.to_string(),
+            }],
+            author_github_username: "testuser".to_string(),
+            tokf_version: Some("0.2.28".to_string()),
+        }],
+    };
+    let resp = post_stdlib(app, &token, &req_new).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["skipped"], 1,
+        "same-content re-publish should be skipped"
+    );
+
+    let version: Option<String> = sqlx::query_scalar(
+        "SELECT stdlib_version FROM filters WHERE command_pattern = 'idempotent-tool'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        version,
+        Some("0.2.28".to_string()),
+        "stdlib_version should be updated to the newer version on re-publish"
     );
 }
