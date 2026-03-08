@@ -447,7 +447,7 @@ fn main() {
             shell::cmd_shell(&raw_args[1], &raw_args[2])
         } else {
             // Argv mode: shim sends `tokf -c git status "$@"`
-            shell::cmd_shell_argv(&raw_args[2..])
+            shell::cmd_shell_argv(&raw_args[1], &raw_args[2..])
         };
         std::process::exit(exit_code);
     }

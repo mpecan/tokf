@@ -36,11 +36,30 @@ fn env_verbose() -> bool {
         .is_some_and(|v| matches!(v.as_str(), "1" | "true" | "yes"))
 }
 
+/// Restore the original PATH (without shims) so that delegated commands
+/// resolve real binaries. `build_inject_env` will re-add the shims directory
+/// for sub-processes spawned by `tokf run`.
+///
+/// SAFETY: must only be called very early in `main()`, before any threads are
+/// spawned. The Rust test runner is multi-threaded, but tests that don't set
+/// `TOKF_ORIGINAL_PATH` will skip the unsafe block.
+fn restore_original_path() {
+    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
+        // SAFETY: called from main() before any threads are spawned.
+        unsafe { std::env::set_var("PATH", &original) };
+    }
+}
+
 /// Rewrite a command string and delegate to the real shell.
 ///
 /// Shared logic for both string mode and argv mode. Applies the rewrite
 /// system with `--no-mask-exit-code` so the real exit code propagates.
+///
+/// Restores `TOKF_ORIGINAL_PATH` into `PATH` before delegating so that
+/// both modes are protected from shim recursion.
 fn rewrite_and_delegate(flags: &str, command: &str, verbose: bool) -> i32 {
+    restore_original_path();
+
     if env_no_filter() {
         if verbose {
             eprintln!("[tokf] shell: TOKF_NO_FILTER set, delegating to sh");
@@ -81,17 +100,13 @@ pub fn cmd_shell(flags: &str, command: &str) -> i32 {
 /// Called when tokf is invoked as `tokf -c cmd arg1 arg2 ...` (more than one
 /// argument after `-c`).  This is used by PATH shims which pass the command
 /// and its arguments as separate argv entries.
-pub fn cmd_shell_argv(args: &[String]) -> i32 {
+///
+/// The `flags` parameter is the original shell flag string (e.g. `-c`, `-cu`,
+/// `-ecu`) so that combined flags are forwarded to `sh` consistently with
+/// string mode.
+pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
     if args.is_empty() {
         return 0;
-    }
-
-    // Restore the original PATH so that the delegated command (and any
-    // `tokf run` within it) resolves real binaries instead of shims.
-    // build_inject_env will re-add the shims directory for sub-processes.
-    // SAFETY: runs very early in main(), before any threads are spawned.
-    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
-        unsafe { std::env::set_var("PATH", &original) };
     }
 
     // Build a shell-safe command string from the argv entries.
@@ -101,7 +116,7 @@ pub fn cmd_shell_argv(args: &[String]) -> i32 {
         .collect::<Vec<_>>()
         .join(" ");
 
-    rewrite_and_delegate("-c", &command, env_verbose())
+    rewrite_and_delegate(flags, &command, env_verbose())
 }
 
 /// Delegate to the real system shell, preserving the original flags.
@@ -270,7 +285,7 @@ mod tests {
     fn shell_argv_simple_command() {
         // A simple command that should execute successfully.
         let args: Vec<String> = vec!["true".into()];
-        let code = cmd_shell_argv(&args);
+        let code = cmd_shell_argv("-c", &args);
         assert_eq!(code, 0);
     }
 
@@ -278,7 +293,7 @@ mod tests {
     fn shell_argv_unknown_command_fallback() {
         // An unmatched command should execute directly and return its exit code.
         let args: Vec<String> = vec!["false".into()];
-        let code = cmd_shell_argv(&args);
+        let code = cmd_shell_argv("-c", &args);
         assert_ne!(code, 0);
     }
 
@@ -286,13 +301,13 @@ mod tests {
     fn shell_argv_preserves_arguments() {
         // Arguments with spaces should be preserved as separate argv entries.
         let args: Vec<String> = vec!["echo".into(), "hello world".into()];
-        let code = cmd_shell_argv(&args);
+        let code = cmd_shell_argv("-c", &args);
         assert_eq!(code, 0);
     }
 
     #[test]
     fn shell_argv_empty_args() {
-        let code = cmd_shell_argv(&[]);
+        let code = cmd_shell_argv("-c", &[]);
         assert_eq!(code, 0);
     }
 
@@ -300,7 +315,7 @@ mod tests {
     fn shell_argv_single_quotes_in_args() {
         // Single quotes in arguments must be escaped correctly.
         let args: Vec<String> = vec!["echo".into(), "it's".into()];
-        let code = cmd_shell_argv(&args);
+        let code = cmd_shell_argv("-c", &args);
         assert_eq!(code, 0);
     }
 
@@ -308,7 +323,7 @@ mod tests {
     fn shell_argv_special_chars_in_args() {
         // Dollar signs and backticks should be literal (inside single quotes).
         let args: Vec<String> = vec!["echo".into(), "$HOME `whoami`".into()];
-        let code = cmd_shell_argv(&args);
+        let code = cmd_shell_argv("-c", &args);
         assert_eq!(code, 0);
     }
 }
