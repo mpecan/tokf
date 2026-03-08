@@ -169,9 +169,20 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
     let Some(shims_dir) = crate::paths::shims_dir() else {
         return;
     };
-    let Ok(tokf_path) = std::env::current_exe() else {
-        return;
-    };
+    // Prefer the bare name "tokf" so shims aren't tied to a version-specific
+    // path (e.g. Homebrew Cellar).  Fall back to the full path only when
+    // current_exe doesn't look like a plain "tokf" binary.
+    let tokf_cmd = std::env::current_exe()
+        .ok()
+        .and_then(|p| {
+            let name = p.file_name()?.to_str()?;
+            if name == "tokf" {
+                Some("tokf".to_string())
+            } else {
+                Some(p.to_string_lossy().into_owned())
+            }
+        })
+        .unwrap_or_else(|| "tokf".to_string());
 
     // Collect unique first-word basenames from all filter patterns
     let mut basenames = std::collections::BTreeSet::new();
@@ -196,7 +207,7 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
         return;
     }
 
-    let tokf_escaped = shell_escape(&tokf_path.to_string_lossy());
+    let tokf_escaped = shell_escape(&tokf_cmd);
     for cmd in &basenames {
         let shim_path = shims_dir.join(cmd);
         let cmd_escaped = shell_escape(cmd);
