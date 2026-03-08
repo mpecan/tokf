@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.29](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.28...tokf-common-v0.2.29) (2026-03-08)
+
+
+### Features
+
+* **runner:** migrate shims to use shell mode ([#268](https://github.com/mpecan/tokf/issues/268)) ([0c1b718](https://github.com/mpecan/tokf/commit/0c1b718cf398e405015c239224582840b54c5092))
+
 ## [0.2.28](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.27...tokf-common-v0.2.28) (2026-03-07)
 
 

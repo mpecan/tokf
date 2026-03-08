@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.29](https://github.com/mpecan/tokf/compare/tokf-v0.2.28...tokf-v0.2.29) (2026-03-08)
+
+
+### Features
+
+* **runner:** migrate shims to use shell mode ([#268](https://github.com/mpecan/tokf/issues/268)) ([0c1b718](https://github.com/mpecan/tokf/commit/0c1b718cf398e405015c239224582840b54c5092))
+
+
+### Bug Fixes
+
+* **cli:** isolate cli_cache tests to prevent shim races ([#269](https://github.com/mpecan/tokf/issues/269)) ([9b590f1](https://github.com/mpecan/tokf/commit/9b590f1867b519ff34d2b939c5bd9ba1a5aaf675))
+* **filter:** gh pr checks false positive on failures ([#266](https://github.com/mpecan/tokf/issues/266)) ([c0ef9fd](https://github.com/mpecan/tokf/commit/c0ef9fd9a23835f68480f3a50003d54c8ef91d40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.28 to 0.2.29
+    * tokf-filter bumped from 0.2.28 to 0.2.29
+
 ## [0.2.28](https://github.com/mpecan/tokf/compare/tokf-v0.2.27...tokf-v0.2.28) (2026-03-07)
 
 
