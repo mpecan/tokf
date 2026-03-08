@@ -6,8 +6,12 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
+fn tokf_in(dir: &TempDir) -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+    cmd.current_dir(dir.path());
+    // Isolate shims/cache under the temp dir so parallel tests don't interfere.
+    cmd.env("TOKF_HOME", dir.path().join(".tokf"));
+    cmd
 }
 
 /// Create a temp dir with `.tokf/` so the cache path is predictable.
@@ -24,11 +28,7 @@ fn cache_path(project_dir: &TempDir) -> PathBuf {
 #[test]
 fn cache_clear_exits_zero_when_no_cache() {
     let tmp = setup_project_dir();
-    let output = tokf()
-        .current_dir(tmp.path())
-        .args(["cache", "clear"])
-        .output()
-        .unwrap();
+    let output = tokf_in(&tmp).args(["cache", "clear"]).output().unwrap();
     assert!(
         output.status.success(),
         "expected exit 0, stderr: {}",
@@ -39,11 +39,7 @@ fn cache_clear_exits_zero_when_no_cache() {
 #[test]
 fn cache_info_shows_path() {
     let tmp = setup_project_dir();
-    let output = tokf()
-        .current_dir(tmp.path())
-        .args(["cache", "info"])
-        .output()
-        .unwrap();
+    let output = tokf_in(&tmp).args(["cache", "info"]).output().unwrap();
     assert!(
         output.status.success(),
         "expected exit 0, stderr: {}",
@@ -66,8 +62,7 @@ fn cache_populated_after_run() {
     let cache = cache_path(&tmp);
     assert!(!cache.exists(), "cache should not exist before first run");
 
-    let output = tokf()
-        .current_dir(tmp.path())
+    let output = tokf_in(&tmp)
         .args(["run", "echo", "hello"])
         .output()
         .unwrap();
@@ -80,11 +75,7 @@ fn cache_populated_after_run() {
     );
 
     // Also verify cache info reports it as valid
-    let info = tokf()
-        .current_dir(tmp.path())
-        .args(["cache", "info"])
-        .output()
-        .unwrap();
+    let info = tokf_in(&tmp).args(["cache", "info"]).output().unwrap();
     let stdout = String::from_utf8_lossy(&info.stdout);
     assert!(
         stdout.contains("valid: true"),
@@ -98,19 +89,14 @@ fn cache_clear_removes_file() {
     let cache = cache_path(&tmp);
 
     // Populate cache
-    tokf()
-        .current_dir(tmp.path())
+    tokf_in(&tmp)
         .args(["run", "echo", "hello"])
         .output()
         .unwrap();
     assert!(cache.exists());
 
     // Clear it
-    let output = tokf()
-        .current_dir(tmp.path())
-        .args(["cache", "clear"])
-        .output()
-        .unwrap();
+    let output = tokf_in(&tmp).args(["cache", "clear"]).output().unwrap();
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -124,8 +110,7 @@ fn no_cache_flag_skips_writing() {
     let tmp = setup_project_dir();
     let cache = cache_path(&tmp);
 
-    let output = tokf()
-        .current_dir(tmp.path())
+    let output = tokf_in(&tmp)
         .args(["run", "--no-cache", "echo", "hello"])
         .output()
         .unwrap();
@@ -143,8 +128,7 @@ fn second_run_hits_cache() {
     let cache = cache_path(&tmp);
 
     // First run: populate cache
-    tokf()
-        .current_dir(tmp.path())
+    tokf_in(&tmp)
         .args(["run", "echo", "hello"])
         .output()
         .unwrap();
@@ -156,8 +140,7 @@ fn second_run_hits_cache() {
     std::thread::sleep(std::time::Duration::from_millis(50));
 
     // Second run: should hit cache (no write)
-    tokf()
-        .current_dir(tmp.path())
+    tokf_in(&tmp)
         .args(["run", "echo", "hello"])
         .output()
         .unwrap();
