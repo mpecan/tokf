@@ -41,6 +41,14 @@ pub struct SkipConfig {
     pub patterns: Vec<String>,
 }
 
+/// Options that control how the rewrite system generates `tokf run` commands.
+#[derive(Debug, Clone, Default)]
+pub struct RewriteOptions {
+    /// When true, inject `--no-mask-exit-code` into generated `tokf run` commands.
+    /// Used by shell/shim mode where the real exit code must propagate.
+    pub no_mask_exit_code: bool,
+}
+
 /// A single rewrite rule: match a command and replace it.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RewriteRule {

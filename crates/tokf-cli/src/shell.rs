@@ -120,8 +120,10 @@ pub fn cmd_shell(flags: &str, command: &str) -> i32 {
 /// argument after `-c`).  This is used by PATH shims which pass the command
 /// and its arguments as separate argv entries.
 ///
-/// Unlike string mode, no shell metacharacter detection or `sh` delegation is
-/// needed — arguments are already properly split by the caller.
+/// Rewrites the command via the same rewrite system used by the hook, then
+/// delegates the (possibly rewritten) command to the real shell. This avoids
+/// duplicating the filter pipeline — matched commands become `tokf run ...`
+/// which goes through `cmd_run` like any other invocation.
 pub fn cmd_shell_argv(args: &[String]) -> i32 {
     let verbose = env_verbose();
 
@@ -129,72 +131,41 @@ pub fn cmd_shell_argv(args: &[String]) -> i32 {
         return 0;
     }
 
-    // Restore the original PATH so that command resolution (resolve_program)
-    // finds the real binary instead of the shim.  build_inject_env will
-    // re-add the shims directory for any sub-processes the command spawns.
+    // Restore the original PATH so that the delegated command (and any
+    // `tokf run` within it) resolves real binaries instead of shims.
+    // build_inject_env will re-add the shims directory for sub-processes.
+    // SAFETY: runs very early in main(), before any threads are spawned.
     if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
-        // SAFETY: cmd_shell_argv runs very early in main(), before any threads.
         unsafe { std::env::set_var("PATH", &original) };
     }
 
-    // TOKF_NO_FILTER bypasses all filtering.
+    // Build a shell-safe command string from the argv entries.
+    let command = args
+        .iter()
+        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // TOKF_NO_FILTER bypasses all filtering — run the original command.
     if env_no_filter() {
         if verbose {
             eprintln!("[tokf] shell-argv: TOKF_NO_FILTER set, executing directly");
         }
-        return exec_with_original_path(args);
+        return delegate_to_real_shell("-c", &command);
     }
 
-    // Try to find a matching filter.
-    let filter_match = match resolve::find_filter(args, verbose, false) {
-        Ok(Some(m)) => m,
-        Ok(None) => {
-            if verbose {
-                eprintln!("[tokf] shell-argv: no filter match, executing directly");
-            }
-            return exec_with_original_path(args);
-        }
-        Err(e) => {
-            eprintln!("[tokf] shell-argv: filter discovery error: {e:#}");
-            return exec_with_original_path(args);
-        }
+    // Use the rewrite system to transform the command, with --no-mask-exit-code
+    // so that shell mode propagates the real exit code.
+    let options = tokf::rewrite::types::RewriteOptions {
+        no_mask_exit_code: true,
     };
+    let rewritten = tokf::rewrite::rewrite_with_options(&command, verbose, &options);
 
-    run_filtered(args, filter_match, verbose)
-}
-
-/// Execute a command directly, restoring `TOKF_ORIGINAL_PATH` to avoid
-/// the shims directory being on PATH (which would cause recursion).
-fn exec_with_original_path(args: &[String]) -> i32 {
-    let mut cmd = std::process::Command::new(&args[0]);
-    if args.len() > 1 {
-        cmd.args(&args[1..]);
+    if verbose && rewritten != command {
+        eprintln!("[tokf] shell-argv: rewritten to: {rewritten}");
     }
 
-    // Restore original PATH so the real binary is found instead of the shim.
-    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
-        cmd.env("PATH", &original);
-    }
-
-    match cmd.status() {
-        Ok(status) => {
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::ExitStatusExt;
-                status
-                    .code()
-                    .unwrap_or_else(|| status.signal().map_or(1, |s| 128 + s))
-            }
-            #[cfg(not(unix))]
-            {
-                status.code().unwrap_or(1)
-            }
-        }
-        Err(e) => {
-            eprintln!("[tokf] shell-argv: failed to run {}: {e}", args[0]);
-            127
-        }
-    }
+    delegate_to_real_shell("-c", &rewritten)
 }
 
 /// Run a command through the filter pipeline with real exit code propagation.
