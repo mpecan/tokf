@@ -167,7 +167,7 @@ pub struct FilterConfig {
     pub show_history_hint: bool,
 
     /// When true, prepend a directory of shim scripts to `PATH` before spawning
-    /// the command. Each shim redirects through `tokf run`, so commands invoked
+    /// the command. Each shim redirects through `tokf -c`, so commands invoked
     /// by sub-processes (e.g. git hooks) are automatically filtered.
     #[serde(default)]
     pub inject_path: bool,

@@ -212,3 +212,119 @@ fn inject_pipe_flags_empty_suffix() {
     let r = inject_pipe_flags("tokf run cargo test", "", false);
     assert_eq!(r, "tokf run --baseline-pipe '' cargo test");
 }
+
+// --- inject_pipe_flags_with_options (no_mask_exit_code) ---
+
+#[test]
+fn inject_pipe_flags_no_mask_exit_code() {
+    let opts = types::RewriteOptions {
+        no_mask_exit_code: true,
+    };
+    let r = inject_pipe_flags_with_options(
+        "tokf run --no-mask-exit-code cargo test",
+        "tail -5",
+        false,
+        &opts,
+    );
+    // --no-mask-exit-code should appear exactly once, not duplicated.
+    assert_eq!(
+        r,
+        "tokf run --no-mask-exit-code --baseline-pipe 'tail -5' cargo test"
+    );
+}
+
+#[test]
+fn inject_pipe_flags_no_mask_exit_code_with_prefer_less() {
+    let opts = types::RewriteOptions {
+        no_mask_exit_code: true,
+    };
+    let r = inject_pipe_flags_with_options(
+        "tokf run --no-mask-exit-code cargo test",
+        "head -5",
+        true,
+        &opts,
+    );
+    assert_eq!(
+        r,
+        "tokf run --no-mask-exit-code --baseline-pipe 'head -5' --prefer-less cargo test"
+    );
+}
+
+// --- rewrite_with_config_and_options (no_mask_exit_code) ---
+
+#[test]
+fn rewrite_no_mask_exit_code_simple_match() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("cargo-test.toml"),
+        "command = \"cargo test\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let opts = types::RewriteOptions {
+        no_mask_exit_code: true,
+    };
+    let r = rewrite_with_config_and_options(
+        "cargo test --lib",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+        &opts,
+    );
+    assert_eq!(r, "tokf run --no-mask-exit-code cargo test --lib");
+}
+
+#[test]
+fn rewrite_no_mask_exit_code_piped_no_duplication() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("cargo-test.toml"),
+        "command = \"cargo test\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let opts = types::RewriteOptions {
+        no_mask_exit_code: true,
+    };
+    let r = rewrite_with_config_and_options(
+        "cargo test | tail -5",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+        &opts,
+    );
+    // --no-mask-exit-code must appear exactly once.
+    assert_eq!(
+        r,
+        "tokf run --no-mask-exit-code --baseline-pipe 'tail -5' cargo test"
+    );
+}
+
+#[test]
+fn rewrite_no_mask_exit_code_compound() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("git-add.toml"), "command = \"git add\"").unwrap();
+    fs::write(
+        dir.path().join("cargo-test.toml"),
+        "command = \"cargo test\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let opts = types::RewriteOptions {
+        no_mask_exit_code: true,
+    };
+    let r = rewrite_with_config_and_options(
+        "git add . && cargo test",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+        &opts,
+    );
+    assert_eq!(
+        r,
+        "tokf run --no-mask-exit-code git add . && tokf run --no-mask-exit-code cargo test"
+    );
+}

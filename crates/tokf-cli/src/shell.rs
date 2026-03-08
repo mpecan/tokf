@@ -4,13 +4,10 @@
 //! `$SHELL -c 'recipe_line'`.  When tokf is set as the shell, each recipe
 //! line is individually matched against installed filters.
 //!
-//! Shell mode always propagates the real exit code — no masking, no
-//! "Error: Exit code N" prefix.
-
-use tokf::filter;
-use tokf::history;
-
-use crate::resolve;
+//! Both entry points (`cmd_shell` for string mode, `cmd_shell_argv` for
+//! argv mode) delegate to the rewrite system and then to `sh -c`. Matched
+//! commands become `tokf run --no-mask-exit-code ...` which goes through
+//! the normal `cmd_run` path — no duplicated filter pipeline here.
 
 /// Returns `true` if `flag` looks like a POSIX shell flag containing `-c`.
 ///
@@ -21,31 +18,6 @@ pub fn is_shell_flag(flag: &str) -> bool {
         && !flag.starts_with("--")
         && flag.len() > 1
         && flag.as_bytes()[1..].contains(&b'c')
-}
-
-/// Returns `true` if the command contains shell metacharacters that require
-/// a real shell to interpret.
-///
-/// When a recipe line uses operators, pipes, redirections, subshells, or
-/// quotes, we delegate the entire line to the real shell so that semantics
-/// are preserved.  False positives just mean we delegate to `sh`, which is
-/// always correct — only simple `word arg arg` commands are handled directly.
-fn needs_real_shell(command: &str) -> bool {
-    command.contains("&&")
-        || command.contains("||")
-        || command.contains(';')
-        || command.contains('|')
-        || command.contains('>')
-        || command.contains('<')
-        || command.contains('`')
-        || command.contains('$')
-        || command.contains('(')
-        || command.contains('"')
-        || command.contains('\'')
-        || command.contains('\\')
-        || command.contains('*')
-        || command.contains('?')
-        || command.contains('~')
 }
 
 /// Returns `true` if the `TOKF_NO_FILTER` environment variable is set to a
@@ -64,18 +36,30 @@ fn env_verbose() -> bool {
         .is_some_and(|v| matches!(v.as_str(), "1" | "true" | "yes"))
 }
 
-/// Entry point for shell mode.
+/// Restore the original PATH (without shims) so that delegated commands
+/// resolve real binaries. `build_inject_env` will re-add the shims directory
+/// for sub-processes spawned by `tokf run`.
 ///
-/// Called when tokf is invoked as `tokf -c 'command'` (or `-cu`, `-ec`, etc.).
-/// Returns the process exit code.
-///
-/// Respects environment variables since shell mode has no access to clap flags:
-/// - `TOKF_NO_FILTER=1` — skip filtering, delegate directly to `sh`
-/// - `TOKF_VERBOSE=1` — print filter resolution details to stderr
-pub fn cmd_shell(flags: &str, command: &str) -> i32 {
-    let verbose = env_verbose();
+/// SAFETY: must only be called very early in `main()`, before any threads are
+/// spawned. The Rust test runner is multi-threaded, but tests that don't set
+/// `TOKF_ORIGINAL_PATH` will skip the unsafe block.
+fn restore_original_path() {
+    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
+        // SAFETY: called from main() before any threads are spawned.
+        unsafe { std::env::set_var("PATH", &original) };
+    }
+}
 
-    // TOKF_NO_FILTER bypasses all filtering.
+/// Rewrite a command string and delegate to the real shell.
+///
+/// Shared logic for both string mode and argv mode. Applies the rewrite
+/// system with `--no-mask-exit-code` so the real exit code propagates.
+///
+/// Restores `TOKF_ORIGINAL_PATH` into `PATH` before delegating so that
+/// both modes are protected from shim recursion.
+fn rewrite_and_delegate(flags: &str, command: &str, verbose: bool) -> i32 {
+    restore_original_path();
+
     if env_no_filter() {
         if verbose {
             eprintln!("[tokf] shell: TOKF_NO_FILTER set, delegating to sh");
@@ -83,115 +67,56 @@ pub fn cmd_shell(flags: &str, command: &str) -> i32 {
         return delegate_to_real_shell(flags, command);
     }
 
-    // Commands with shell metacharacters delegate to real shell.
-    if needs_real_shell(command) {
-        if verbose {
-            eprintln!("[tokf] shell: delegating to sh (shell metacharacters)");
-        }
-        return delegate_to_real_shell(flags, command);
-    }
-
-    let words: Vec<String> = command.split_whitespace().map(String::from).collect();
-    if words.is_empty() {
-        return delegate_to_real_shell(flags, command);
-    }
-
-    // Try to find a matching filter.
-    let filter_match = match resolve::find_filter(&words, verbose, false) {
-        Ok(Some(m)) => m,
-        Ok(None) => {
-            if verbose {
-                eprintln!("[tokf] shell: no filter match, delegating to sh");
-            }
-            return delegate_to_real_shell(flags, command);
-        }
-        Err(e) => {
-            eprintln!("[tokf] shell: filter discovery error: {e:#}");
-            return delegate_to_real_shell(flags, command);
-        }
+    let options = tokf::rewrite::types::RewriteOptions {
+        no_mask_exit_code: true,
     };
+    let rewritten = tokf::rewrite::rewrite_with_options(command, verbose, &options);
 
-    run_filtered(&words, filter_match, verbose)
+    if verbose {
+        if rewritten == command {
+            eprintln!("[tokf] shell: no filter match, delegating to sh");
+        } else {
+            eprintln!("[tokf] shell: rewritten to: {rewritten}");
+        }
+    }
+
+    delegate_to_real_shell(flags, &rewritten)
 }
 
-/// Run a command through the filter pipeline with real exit code propagation.
-fn run_filtered(command_args: &[String], filter_match: resolve::FilterMatch, verbose: bool) -> i32 {
-    let words_consumed = filter_match.words_consumed;
-    let remaining_args: Vec<String> = if words_consumed > 0 {
-        command_args[words_consumed..].to_vec()
-    } else if command_args.len() > 1 {
-        command_args[1..].to_vec()
-    } else {
-        vec![]
-    };
+/// Entry point for string shell mode.
+///
+/// Called when tokf is invoked as `tokf -c 'command'` (or `-cu`, `-ec`, etc.).
+/// Task runners send recipe lines this way.  Returns the process exit code.
+///
+/// Respects environment variables since shell mode has no access to clap flags:
+/// - `TOKF_NO_FILTER=1` — skip filtering, delegate directly to `sh`
+/// - `TOKF_VERBOSE=1` — print filter resolution details to stderr
+pub fn cmd_shell(flags: &str, command: &str) -> i32 {
+    rewrite_and_delegate(flags, command, env_verbose())
+}
 
-    let cmd_result = match resolve::run_command(
-        Some(&filter_match.config),
-        words_consumed,
-        command_args,
-        &remaining_args,
-    ) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[tokf] shell: error running command: {e:#}");
-            return 1;
-        }
-    };
-
-    // Phase B: resolve deferred output-pattern variants.
-    let (cfg, filter_hash) = resolve::resolve_phase_b(filter_match, &cmd_result.combined, verbose);
-
-    let input_bytes = cmd_result.combined.len();
-
-    let start = std::time::Instant::now();
-    let filter_opts = filter::FilterOptions {
-        preserve_color: false,
-    };
-    let filtered = filter::apply(&cfg, &cmd_result, &remaining_args, &filter_opts);
-    let elapsed = start.elapsed();
-
-    let filter_name = cfg.command.first();
-    let output_bytes = filtered.output.len();
-
-    // Record tracking event (same as cmd_run).
-    // raw_bytes = input_bytes: shell mode has no baseline pipe adjustment.
-    resolve::record_run(
-        command_args,
-        Some(filter_name),
-        Some(&filter_hash),
-        input_bytes,
-        output_bytes,
-        input_bytes,
-        elapsed.as_millis(),
-        cmd_result.exit_code,
-        false,
-    );
-    resolve::try_auto_sync();
-
-    // Record to history.
-    let command_str = command_args.join(" ");
-    let show_hint = cfg.show_history_hint || history::try_was_recently_run(&command_str);
-    let history_id = history::try_record(
-        &command_str,
-        filter_name,
-        &cmd_result.combined,
-        &filtered.output,
-        cmd_result.exit_code,
-    );
-
-    // Print filtered output — no exit code masking.
-    if !filtered.output.is_empty() {
-        println!("{}", filtered.output);
+/// Entry point for argv shell mode.
+///
+/// Called when tokf is invoked as `tokf -c cmd arg1 arg2 ...` (more than one
+/// argument after `-c`).  This is used by PATH shims which pass the command
+/// and its arguments as separate argv entries.
+///
+/// The `flags` parameter is the original shell flag string (e.g. `-c`, `-cu`,
+/// `-ecu`) so that combined flags are forwarded to `sh` consistently with
+/// string mode.
+pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
+    if args.is_empty() {
+        return 0;
     }
 
-    if show_hint && let Some(id) = history_id {
-        println!(
-            "[tokf] output filtered — to see what was omitted: `tokf history show --raw {id}`"
-        );
-    }
+    // Build a shell-safe command string from the argv entries.
+    let command = args
+        .iter()
+        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ");
 
-    // Always return the real exit code.
-    cmd_result.exit_code
+    rewrite_and_delegate(flags, &command, env_verbose())
 }
 
 /// Delegate to the real system shell, preserving the original flags.
@@ -265,116 +190,6 @@ mod tests {
     #[test]
     fn shell_flag_not_empty_dash() {
         assert!(!is_shell_flag("-"));
-    }
-
-    // --- needs_real_shell ---
-
-    #[test]
-    fn shell_meta_and() {
-        assert!(needs_real_shell("cd src && cargo test"));
-    }
-
-    #[test]
-    fn shell_meta_or() {
-        assert!(needs_real_shell("make test || true"));
-    }
-
-    #[test]
-    fn shell_meta_semicolon() {
-        assert!(needs_real_shell("echo hello; echo world"));
-    }
-
-    #[test]
-    fn shell_meta_pipe() {
-        assert!(needs_real_shell("cargo test | grep FAIL"));
-    }
-
-    #[test]
-    fn shell_meta_redirect_out() {
-        assert!(needs_real_shell("cargo build > /dev/null 2>&1"));
-    }
-
-    #[test]
-    fn shell_meta_redirect_in() {
-        assert!(needs_real_shell("wc -l < file.txt"));
-    }
-
-    #[test]
-    fn shell_meta_variable_expansion() {
-        assert!(needs_real_shell("echo $HOME"));
-    }
-
-    #[test]
-    fn shell_meta_variable_braces() {
-        assert!(needs_real_shell("echo ${HOME}"));
-    }
-
-    #[test]
-    fn shell_meta_subshell_dollar() {
-        assert!(needs_real_shell("echo $(date)"));
-    }
-
-    #[test]
-    fn shell_meta_subshell_paren() {
-        assert!(needs_real_shell("(cd src && cargo test)"));
-    }
-
-    #[test]
-    fn shell_meta_backtick() {
-        assert!(needs_real_shell("echo `date`"));
-    }
-
-    #[test]
-    fn shell_meta_quoted_operators_are_false_positive() {
-        // Quoted operators are detected — this is a safe false positive
-        // because sh handles them correctly.
-        assert!(needs_real_shell("echo 'a && b'"));
-        assert!(needs_real_shell("grep -E 'foo|bar' file"));
-    }
-
-    #[test]
-    fn shell_meta_double_quotes() {
-        assert!(needs_real_shell("echo \"hello world\""));
-    }
-
-    #[test]
-    fn shell_meta_single_quotes() {
-        assert!(needs_real_shell("echo 'hello world'"));
-    }
-
-    #[test]
-    fn shell_meta_backslash() {
-        assert!(needs_real_shell("echo hello\\ world"));
-    }
-
-    #[test]
-    fn shell_meta_glob_star() {
-        assert!(needs_real_shell("ls *.txt"));
-    }
-
-    #[test]
-    fn shell_meta_glob_question() {
-        assert!(needs_real_shell("ls file?.txt"));
-    }
-
-    #[test]
-    fn shell_meta_tilde() {
-        assert!(needs_real_shell("ls ~/Documents"));
-    }
-
-    #[test]
-    fn not_shell_meta_simple() {
-        assert!(!needs_real_shell("cargo test --lib"));
-    }
-
-    #[test]
-    fn not_shell_meta_flags() {
-        assert!(!needs_real_shell("git status --short"));
-    }
-
-    #[test]
-    fn not_shell_meta_path_args() {
-        assert!(!needs_real_shell("cargo test -p tokf-server -- --ignored"));
     }
 
     // --- delegate_to_real_shell ---
@@ -462,5 +277,53 @@ mod tests {
     #[test]
     fn shell_flag_long_c_only() {
         assert!(!is_shell_flag("--c"));
+    }
+
+    // --- cmd_shell_argv ---
+
+    #[test]
+    fn shell_argv_simple_command() {
+        // A simple command that should execute successfully.
+        let args: Vec<String> = vec!["true".into()];
+        let code = cmd_shell_argv("-c", &args);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_unknown_command_fallback() {
+        // An unmatched command should execute directly and return its exit code.
+        let args: Vec<String> = vec!["false".into()];
+        let code = cmd_shell_argv("-c", &args);
+        assert_ne!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_preserves_arguments() {
+        // Arguments with spaces should be preserved as separate argv entries.
+        let args: Vec<String> = vec!["echo".into(), "hello world".into()];
+        let code = cmd_shell_argv("-c", &args);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_empty_args() {
+        let code = cmd_shell_argv("-c", &[]);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_single_quotes_in_args() {
+        // Single quotes in arguments must be escaped correctly.
+        let args: Vec<String> = vec!["echo".into(), "it's".into()];
+        let code = cmd_shell_argv("-c", &args);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_special_chars_in_args() {
+        // Dollar signs and backticks should be literal (inside single quotes).
+        let args: Vec<String> = vec!["echo".into(), "$HOME `whoami`".into()];
+        let code = cmd_shell_argv("-c", &args);
+        assert_eq!(code, 0);
     }
 }

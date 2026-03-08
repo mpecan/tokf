@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::config;
 use compound::{StrippedPipe, has_bare_pipe, split_compound, strip_env_prefix, strip_simple_pipe};
 use rules::{apply_rules, should_skip};
-use types::{RewriteConfig, RewriteRule};
+use types::{RewriteConfig, RewriteOptions, RewriteRule};
 
 pub use user_config::load_user_config;
 
@@ -60,12 +60,26 @@ fn build_wrapper_rules() -> Vec<RewriteRule> {
 ///
 /// Handles `CommandPattern::Multiple` (one rule per pattern string) and
 /// wildcards (`*` → `\S+` in the regex).
+#[cfg(test)]
 pub(crate) fn build_rules_from_filters(search_dirs: &[PathBuf]) -> Vec<RewriteRule> {
+    build_rules_from_filters_with_options(search_dirs, &RewriteOptions::default())
+}
+
+fn build_rules_from_filters_with_options(
+    search_dirs: &[PathBuf],
+    options: &RewriteOptions,
+) -> Vec<RewriteRule> {
     let mut rules = Vec::new();
     let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     let Ok(filters) = config::cache::discover_with_cache(search_dirs) else {
         return rules;
+    };
+
+    let run_prefix = if options.no_mask_exit_code {
+        "tokf run --no-mask-exit-code"
+    } else {
+        "tokf run"
     };
 
     for filter in filters {
@@ -77,7 +91,7 @@ pub(crate) fn build_rules_from_filters(search_dirs: &[PathBuf]) -> Vec<RewriteRu
             let regex_str = config::command_pattern_to_regex(pattern);
             rules.push(RewriteRule {
                 match_pattern: regex_str,
-                replace: "tokf run {0}".to_string(),
+                replace: format!("{run_prefix} {{0}}"),
             });
         }
     }
@@ -87,12 +101,18 @@ pub(crate) fn build_rules_from_filters(search_dirs: &[PathBuf]) -> Vec<RewriteRu
 
 /// Top-level rewrite function. Orchestrates skip check, user rules, and filter rules.
 pub fn rewrite(command: &str, verbose: bool) -> String {
+    rewrite_with_options(command, verbose, &RewriteOptions::default())
+}
+
+/// Top-level rewrite with explicit options (e.g. `no_mask_exit_code` for shim mode).
+pub fn rewrite_with_options(command: &str, verbose: bool, options: &RewriteOptions) -> String {
     let user_config = load_user_config().unwrap_or_default();
-    rewrite_with_config(
+    rewrite_with_config_and_options(
         command,
         &user_config,
         &config::default_search_dirs(),
         verbose,
+        options,
     )
 }
 
@@ -102,6 +122,8 @@ struct SegmentRules<'a> {
     wrapper: &'a [RewriteRule],
     /// Filter-derived rules (tried after pipe handling).
     filter: &'a [RewriteRule],
+    /// Options controlling `tokf run` generation (e.g. `--no-mask-exit-code`).
+    options: &'a RewriteOptions,
 }
 
 /// Rewrite a single command segment, handling pipe stripping and env var
@@ -149,7 +171,8 @@ fn rewrite_segment(
                 if verbose {
                     eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
                 }
-                let injected = inject_pipe_flags(&rewritten, &suffix, prefer_less);
+                let injected =
+                    inject_pipe_flags_with_options(&rewritten, &suffix, prefer_less, rules.options);
                 return format!("{env_prefix}{injected}");
             }
         }
@@ -172,13 +195,31 @@ fn rewrite_segment(
 ///
 /// Single quotes in the suffix are escaped with the `'\''` idiom so the
 /// generated shell command remains valid (e.g. `grep -E 'fail|error'`).
+#[cfg(test)]
 fn inject_pipe_flags(rewritten: &str, suffix: &str, prefer_less: bool) -> String {
+    inject_pipe_flags_with_options(rewritten, suffix, prefer_less, &RewriteOptions::default())
+}
+
+fn inject_pipe_flags_with_options(
+    rewritten: &str,
+    suffix: &str,
+    prefer_less: bool,
+    options: &RewriteOptions,
+) -> String {
     rewritten.strip_prefix("tokf run ").map_or_else(
         || rewritten.to_string(),
         |rest| {
+            // rest may start with --no-mask-exit-code from the rule template;
+            // strip it so we don't duplicate the flag when options also requests it.
+            let rest = rest.strip_prefix("--no-mask-exit-code ").unwrap_or(rest);
             let escaped = suffix.replace('\'', "'\\''");
             let prefer_flag = if prefer_less { " --prefer-less" } else { "" };
-            format!("tokf run --baseline-pipe '{escaped}'{prefer_flag} {rest}")
+            let mask_flag = if options.no_mask_exit_code {
+                " --no-mask-exit-code"
+            } else {
+                ""
+            };
+            format!("tokf run{mask_flag} --baseline-pipe '{escaped}'{prefer_flag} {rest}")
         },
     )
 }
@@ -199,12 +240,29 @@ fn should_skip_effective(command: &str, user_patterns: &[String]) -> bool {
     strip_env_prefix(command).is_some_and(|(_, cmd)| should_skip(&cmd, &[]))
 }
 
-/// Testable version with explicit config and search dirs.
+/// Testable version with explicit config and search dirs (default options).
 pub(crate) fn rewrite_with_config(
     command: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
     verbose: bool,
+) -> String {
+    rewrite_with_config_and_options(
+        command,
+        user_config,
+        search_dirs,
+        verbose,
+        &RewriteOptions::default(),
+    )
+}
+
+/// Testable version with explicit config, search dirs, and rewrite options.
+pub(crate) fn rewrite_with_config_and_options(
+    command: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    verbose: bool,
+    options: &RewriteOptions,
 ) -> String {
     let user_skip_patterns = user_config
         .skip
@@ -225,10 +283,11 @@ pub(crate) fn rewrite_with_config(
     }
 
     let wrapper_rules = build_wrapper_rules();
-    let filter_rules = build_rules_from_filters(search_dirs);
+    let filter_rules = build_rules_from_filters_with_options(search_dirs, options);
     let rules = SegmentRules {
         wrapper: &wrapper_rules,
         filter: &filter_rules,
+        options,
     };
     let segments = split_compound(command);
 

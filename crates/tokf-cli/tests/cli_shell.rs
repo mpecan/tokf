@@ -131,6 +131,59 @@ fn shell_tokf_run_not_double_wrapped() {
     );
 }
 
+// --- argv mode (multiple args after -c) ---
+
+#[test]
+fn shell_argv_mode_simple() {
+    let output = tokf().args(["-c", "echo", "hello"]).output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
+}
+
+#[test]
+fn shell_argv_mode_multiple_args() {
+    let output = tokf()
+        .args(["-c", "echo", "hello", "world"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "hello world"
+    );
+}
+
+#[test]
+fn shell_argv_mode_preserves_spaces_in_args() {
+    let output = tokf().args(["-c", "echo", "hello world"]).output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "hello world"
+    );
+}
+
+#[test]
+fn shell_argv_mode_special_chars() {
+    // Single quotes, dollar signs, backticks should all be preserved as literals.
+    let output = tokf()
+        .args(["-c", "echo", "it's $HOME `whoami`"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("it's $HOME `whoami`"),
+        "special chars should be literal, got: {stdout}"
+    );
+}
+
+#[test]
+fn shell_argv_mode_exit_code() {
+    let output = tokf().args(["-c", "false"]).output().unwrap();
+    assert!(!output.status.success());
+}
+
 // --- environment variable controls ---
 
 #[test]

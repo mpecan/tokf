@@ -442,7 +442,14 @@ fn main() {
             eprintln!("[tokf] shell mode requires a command argument");
             std::process::exit(1);
         }
-        std::process::exit(shell::cmd_shell(&raw_args[1], &raw_args[2]));
+        let exit_code = if raw_args.len() == 3 {
+            // String mode: task runner sends `$SHELL -c 'recipe line'`
+            shell::cmd_shell(&raw_args[1], &raw_args[2])
+        } else {
+            // Argv mode: shim sends `tokf -c git status "$@"`
+            shell::cmd_shell_argv(&raw_args[1], &raw_args[2..])
+        };
+        std::process::exit(exit_code);
     }
 
     let cli = Cli::parse();

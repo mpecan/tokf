@@ -148,7 +148,7 @@ fn write_manifest(
 
 /// Generate shim scripts for all filter command basenames.
 ///
-/// Each shim is a small shell script that redirects through `tokf run`,
+/// Each shim is a small shell script that redirects through `tokf -c`,
 /// allowing sub-processes (e.g. git hooks) to benefit from filtering.
 /// The shims directory is wiped and recreated on every call (clean slate).
 ///
@@ -169,9 +169,20 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
     let Some(shims_dir) = crate::paths::shims_dir() else {
         return;
     };
-    let Ok(tokf_path) = std::env::current_exe() else {
-        return;
-    };
+    // Prefer the bare name "tokf" so shims aren't tied to a version-specific
+    // path (e.g. Homebrew Cellar).  Fall back to the full path only when
+    // current_exe doesn't look like a plain "tokf" binary.
+    let tokf_cmd = std::env::current_exe()
+        .ok()
+        .and_then(|p| {
+            let name = p.file_name()?.to_str()?;
+            if name == "tokf" {
+                Some("tokf".to_string())
+            } else {
+                Some(p.to_string_lossy().into_owned())
+            }
+        })
+        .unwrap_or_else(|| "tokf".to_string());
 
     // Collect unique first-word basenames from all filter patterns
     let mut basenames = std::collections::BTreeSet::new();
@@ -196,13 +207,11 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
         return;
     }
 
-    let tokf_escaped = shell_escape(&tokf_path.to_string_lossy());
+    let tokf_escaped = shell_escape(&tokf_cmd);
     for cmd in &basenames {
         let shim_path = shims_dir.join(cmd);
         let cmd_escaped = shell_escape(cmd);
-        let content = format!(
-            "#!/bin/sh\nPATH=\"${{TOKF_ORIGINAL_PATH:-$PATH}}\" exec {tokf_escaped} run --no-mask-exit-code {cmd_escaped} \"$@\"\n"
-        );
+        let content = format!("#!/bin/sh\nexec {tokf_escaped} -c {cmd_escaped} \"$@\"\n");
         if std::fs::write(&shim_path, &content).is_ok() {
             #[cfg(unix)]
             {
@@ -467,12 +476,8 @@ mod tests {
         let content = fs::read_to_string(&git_shim).unwrap();
         assert!(content.starts_with("#!/bin/sh\n"));
         assert!(
-            content.contains("run --no-mask-exit-code 'git'"),
-            "shim should contain --no-mask-exit-code and escaped command: {content}"
-        );
-        assert!(
-            content.contains("${TOKF_ORIGINAL_PATH:-$PATH}"),
-            "shim should fall back to $PATH when TOKF_ORIGINAL_PATH is unset: {content}"
+            content.contains("-c 'git'"),
+            "shim should use shell mode with escaped command: {content}"
         );
         assert!(content.contains("\"$@\""));
 
