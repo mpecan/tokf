@@ -210,7 +210,8 @@ fn inject_pipe_flags_with_options(
         || rewritten.to_string(),
         |rest| {
             // rest may start with --no-mask-exit-code from the rule template;
-            // preserve it by rebuilding from the stripped remainder.
+            // strip it so we don't duplicate the flag when options also requests it.
+            let rest = rest.strip_prefix("--no-mask-exit-code ").unwrap_or(rest);
             let escaped = suffix.replace('\'', "'\\''");
             let prefer_flag = if prefer_less { " --prefer-less" } else { "" };
             let mask_flag = if options.no_mask_exit_code {

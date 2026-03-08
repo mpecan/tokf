@@ -44,13 +44,15 @@ Shell mode (`tokf -c '...'`) always propagates the **real exit code** — no mas
 
 ### Shell mode (`tokf -c`)
 
-When invoked as `tokf -c 'command'` (or with combined flags like `-cu`, `-ec`), tokf enters shell mode. It tries to match the command against installed filters. If a match is found, the command runs through tokf's filter pipeline and filtered output is printed. If no match is found, the command is delegated to `sh` with the same flags — so unfiltered recipes run normally.
+When invoked as `tokf -c 'command'` (or with combined flags like `-cu`, `-ec`), tokf enters **string mode**. The command string is passed through the rewrite system, which rewrites matching commands to `tokf run --no-mask-exit-code ...`. The rewritten command is then delegated to `sh -c` for execution. If no filter matches, the command is delegated to `sh` unchanged.
 
-This mode is not typically invoked directly; it is called by task runners (make, just) after the rewrite injects tokf as their shell.
+When invoked with multiple arguments after `-c` (e.g. `tokf -c git status`), tokf enters **argv mode**. Each argument is shell-escaped and joined into a command string, which is then processed the same way as string mode. This form is used by PATH shims.
+
+Shell mode is not typically invoked directly; it is called by task runners (make, just) and PATH shims.
 
 ### Compound and complex recipe lines
 
-Recipe lines with shell metacharacters — operators (`&&`, `||`, `;`), pipes (`|`), redirections (`>`, `<`), quotes, globs, or subshells — are delegated to the real shell (`sh`) so that their semantics are preserved. (Operators inside quoted strings may also trigger delegation — this is a safe false positive since `sh` handles them correctly.) Only simple `command arg arg` recipe lines are matched against filters.
+Compound commands (`&&`, `||`, `;`) are split at chain operators and each segment is individually rewritten. This means both halves of `git add . && cargo test` can be filtered. Pipes, redirections, and other shell constructs within each segment are handled by the rewrite system's pipe stripping logic (see [Piped commands](#piped-commands)) or passed through to `sh` unchanged.
 
 ### Debugging task runner rewrites
 

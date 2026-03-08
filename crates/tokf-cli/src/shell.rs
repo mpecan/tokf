@@ -295,4 +295,20 @@ mod tests {
         let code = cmd_shell_argv(&[]);
         assert_eq!(code, 0);
     }
+
+    #[test]
+    fn shell_argv_single_quotes_in_args() {
+        // Single quotes in arguments must be escaped correctly.
+        let args: Vec<String> = vec!["echo".into(), "it's".into()];
+        let code = cmd_shell_argv(&args);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_special_chars_in_args() {
+        // Dollar signs and backticks should be literal (inside single quotes).
+        let args: Vec<String> = vec!["echo".into(), "$HOME `whoami`".into()];
+        let code = cmd_shell_argv(&args);
+        assert_eq!(code, 0);
+    }
 }

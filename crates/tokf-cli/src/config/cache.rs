@@ -148,7 +148,7 @@ fn write_manifest(
 
 /// Generate shim scripts for all filter command basenames.
 ///
-/// Each shim is a small shell script that redirects through `tokf run`,
+/// Each shim is a small shell script that redirects through `tokf -c`,
 /// allowing sub-processes (e.g. git hooks) to benefit from filtering.
 /// The shims directory is wiped and recreated on every call (clean slate).
 ///
