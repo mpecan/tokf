@@ -20,7 +20,7 @@ field = "workflow"
 as = "workflow"
 
 [on_success]
-output = "all checks passed ({checks_count} checks)"
+output = "{checks | each: \"{state}  {name}  ({workflow})\" | join: \"\\n\"}"
 
 [on_failure]
 output = "{checks | each: \"{state}  {name}  ({workflow})\" | join: \"\\n\"}"

@@ -1,9 +1,15 @@
-name = "all checks passed condenses to short message"
+name = "all checks passed shows individual states"
 fixture = "all_pass.txt"
 exit_code = 0
 
 [[expect]]
-contains = "all checks passed"
+contains = "SUCCESS"
 
 [[expect]]
-contains = "3 checks"
+contains = "ci/build"
+
+[[expect]]
+contains = "ci/test"
+
+[[expect]]
+contains = "lint"
