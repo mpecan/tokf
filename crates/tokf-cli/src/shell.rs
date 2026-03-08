@@ -114,6 +114,89 @@ pub fn cmd_shell(flags: &str, command: &str) -> i32 {
     run_filtered(&words, filter_match, verbose)
 }
 
+/// Entry point for argv shell mode.
+///
+/// Called when tokf is invoked as `tokf -c cmd arg1 arg2 ...` (more than one
+/// argument after `-c`).  This is used by PATH shims which pass the command
+/// and its arguments as separate argv entries.
+///
+/// Unlike string mode, no shell metacharacter detection or `sh` delegation is
+/// needed — arguments are already properly split by the caller.
+pub fn cmd_shell_argv(args: &[String]) -> i32 {
+    let verbose = env_verbose();
+
+    if args.is_empty() {
+        return 0;
+    }
+
+    // Restore the original PATH so that command resolution (resolve_program)
+    // finds the real binary instead of the shim.  build_inject_env will
+    // re-add the shims directory for any sub-processes the command spawns.
+    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
+        // SAFETY: cmd_shell_argv runs very early in main(), before any threads.
+        unsafe { std::env::set_var("PATH", &original) };
+    }
+
+    // TOKF_NO_FILTER bypasses all filtering.
+    if env_no_filter() {
+        if verbose {
+            eprintln!("[tokf] shell-argv: TOKF_NO_FILTER set, executing directly");
+        }
+        return exec_with_original_path(args);
+    }
+
+    // Try to find a matching filter.
+    let filter_match = match resolve::find_filter(args, verbose, false) {
+        Ok(Some(m)) => m,
+        Ok(None) => {
+            if verbose {
+                eprintln!("[tokf] shell-argv: no filter match, executing directly");
+            }
+            return exec_with_original_path(args);
+        }
+        Err(e) => {
+            eprintln!("[tokf] shell-argv: filter discovery error: {e:#}");
+            return exec_with_original_path(args);
+        }
+    };
+
+    run_filtered(args, filter_match, verbose)
+}
+
+/// Execute a command directly, restoring `TOKF_ORIGINAL_PATH` to avoid
+/// the shims directory being on PATH (which would cause recursion).
+fn exec_with_original_path(args: &[String]) -> i32 {
+    let mut cmd = std::process::Command::new(&args[0]);
+    if args.len() > 1 {
+        cmd.args(&args[1..]);
+    }
+
+    // Restore original PATH so the real binary is found instead of the shim.
+    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
+        cmd.env("PATH", &original);
+    }
+
+    match cmd.status() {
+        Ok(status) => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                status
+                    .code()
+                    .unwrap_or_else(|| status.signal().map_or(1, |s| 128 + s))
+            }
+            #[cfg(not(unix))]
+            {
+                status.code().unwrap_or(1)
+            }
+        }
+        Err(e) => {
+            eprintln!("[tokf] shell-argv: failed to run {}: {e}", args[0]);
+            127
+        }
+    }
+}
+
 /// Run a command through the filter pipeline with real exit code propagation.
 fn run_filtered(command_args: &[String], filter_match: resolve::FilterMatch, verbose: bool) -> i32 {
     let words_consumed = filter_match.words_consumed;
@@ -462,5 +545,37 @@ mod tests {
     #[test]
     fn shell_flag_long_c_only() {
         assert!(!is_shell_flag("--c"));
+    }
+
+    // --- cmd_shell_argv ---
+
+    #[test]
+    fn shell_argv_simple_command() {
+        // A simple command that should execute successfully.
+        let args: Vec<String> = vec!["true".into()];
+        let code = cmd_shell_argv(&args);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_unknown_command_fallback() {
+        // An unmatched command should execute directly and return its exit code.
+        let args: Vec<String> = vec!["false".into()];
+        let code = cmd_shell_argv(&args);
+        assert_ne!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_preserves_arguments() {
+        // Arguments with spaces should be preserved as separate argv entries.
+        let args: Vec<String> = vec!["echo".into(), "hello world".into()];
+        let code = cmd_shell_argv(&args);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn shell_argv_empty_args() {
+        let code = cmd_shell_argv(&[]);
+        assert_eq!(code, 0);
     }
 }
