@@ -28,7 +28,7 @@ sqlx = { version = "=0.8.6", default-features = false, features = ["postgres", "
 uuid = { version = "1", features = ["v4", "serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
 sha2 = "0.10"
-rand = "0.9"
+rand = "0.10"
 hex = "0.4"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
