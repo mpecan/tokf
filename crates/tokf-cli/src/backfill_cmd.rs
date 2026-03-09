@@ -131,9 +131,13 @@ fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
 ///
 /// Returns `Vec<(content_hash, command_pattern)>`.
 fn list_filters_at_tag(tag: &str) -> anyhow::Result<Vec<(String, String)>> {
-    // Try workspace path first, then pre-workspace path.
-    let paths = list_filter_paths_at_tag(tag, "crates/tokf-cli/filters/")
-        .or_else(|_| list_filter_paths_at_tag(tag, "filters/"))?;
+    // Try workspace path first; fall back to pre-workspace path when empty.
+    // `git ls-tree` returns exit 0 with empty output for non-existent paths,
+    // so we check `is_empty()` rather than relying on `or_else`.
+    let mut paths = list_filter_paths_at_tag(tag, "crates/tokf-cli/filters/")?;
+    if paths.is_empty() {
+        paths = list_filter_paths_at_tag(tag, "filters/")?;
+    }
 
     let mut results = Vec::new();
     for path in &paths {

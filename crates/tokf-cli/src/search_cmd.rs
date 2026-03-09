@@ -73,8 +73,14 @@ impl fmt::Display for SelectableFilter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let r = self.0;
         write!(f, "{}", r.command_pattern)?;
+        if let Some(ref ver) = r.introduced_at {
+            write!(f, " v{ver}")?;
+        }
         if r.is_stdlib {
             write!(f, " [stdlib]")?;
+        }
+        if r.deprecated_at.is_some() {
+            write!(f, " [deprecated]")?;
         }
         write!(f, "  @{}", r.author)?;
         write!(f, "  savings:{:.0}%", r.savings_pct)?;
@@ -97,40 +103,58 @@ fn print_table(results: &[FilterSummary]) {
         .max()
         .unwrap_or(6)
         .max(6);
+    let ver_width = results
+        .iter()
+        .map(|r| display_version(r).len())
+        .max()
+        .unwrap_or(7)
+        .max(7);
 
     eprintln!(
-        "{:<cmd_width$}  {:<author_width$}  {:>8}  {:>5}  {:>8}",
+        "{:<cmd_width$}  {:<ver_width$}  {:<author_width$}  {:>8}  {:>5}  {:>8}",
         "COMMAND",
+        "VERSION",
         "AUTHOR",
         "SAVINGS%",
         "TESTS",
         "RUNS",
         cmd_width = cmd_width,
+        ver_width = ver_width,
         author_width = author_width,
     );
     eprintln!(
-        "{:-<cmd_width$}  {:-<author_width$}  {:->8}  {:->5}  {:->8}",
+        "{:-<cmd_width$}  {:-<ver_width$}  {:-<author_width$}  {:->8}  {:->5}  {:->8}",
+        "",
         "",
         "",
         "",
         "",
         "",
         cmd_width = cmd_width,
+        ver_width = ver_width,
         author_width = author_width,
     );
 
     for r in results {
         eprintln!(
-            "{:<cmd_width$}  {:<author_width$}  {:>7.1}%  {:>5}  {:>8}",
+            "{:<cmd_width$}  {:<ver_width$}  {:<author_width$}  {:>7.1}%  {:>5}  {:>8}",
             display_command(r),
+            display_version(r),
             r.author,
             r.savings_pct,
             r.test_count,
             format_number(r.total_commands),
             cmd_width = cmd_width,
+            ver_width = ver_width,
             author_width = author_width,
         );
     }
+}
+
+fn display_version(r: &FilterSummary) -> String {
+    r.introduced_at
+        .as_deref()
+        .map_or_else(String::new, |v| format!("v{v}"))
 }
 
 fn display_command(r: &FilterSummary) -> String {
@@ -181,6 +205,8 @@ mod tests {
             created_at: String::new(),
             test_count: 0,
             is_stdlib,
+            introduced_at: None,
+            deprecated_at: None,
         }
     }
 
@@ -207,6 +233,8 @@ mod tests {
             created_at: String::new(),
             test_count: 3,
             is_stdlib: true,
+            introduced_at: None,
+            deprecated_at: None,
         };
         let display = format!("{}", SelectableFilter(&summary));
         assert_eq!(
@@ -226,6 +254,8 @@ mod tests {
             created_at: String::new(),
             test_count: 0,
             is_stdlib: false,
+            introduced_at: None,
+            deprecated_at: None,
         };
         let display = format!("{}", SelectableFilter(&summary));
         assert_eq!(
@@ -245,6 +275,8 @@ mod tests {
             created_at: String::new(),
             test_count: 1,
             is_stdlib: false,
+            introduced_at: None,
+            deprecated_at: None,
         };
         let display = format!("{}", SelectableFilter(&summary));
         assert_eq!(display, "npm test  @bob  savings:0%  tests:1  runs:0");
@@ -261,6 +293,8 @@ mod tests {
             created_at: String::new(),
             test_count: 10,
             is_stdlib: true,
+            introduced_at: None,
+            deprecated_at: None,
         };
         let display = format!("{}", SelectableFilter(&summary));
         assert_eq!(
@@ -270,6 +304,49 @@ mod tests {
     }
 
     #[test]
+    fn selectable_filter_display_with_version() {
+        let summary = FilterSummary {
+            content_hash: String::new(),
+            command_pattern: "git push".to_string(),
+            author: "mpecan".to_string(),
+            savings_pct: 45.0,
+            total_commands: 100,
+            created_at: String::new(),
+            test_count: 3,
+            is_stdlib: true,
+            introduced_at: Some("0.2.3".to_string()),
+            deprecated_at: None,
+        };
+        let display = format!("{}", SelectableFilter(&summary));
+        assert_eq!(
+            display,
+            "git push v0.2.3 [stdlib]  @mpecan  savings:45%  tests:3  runs:100"
+        );
+    }
+
+    #[test]
+    fn selectable_filter_display_deprecated() {
+        let summary = FilterSummary {
+            content_hash: String::new(),
+            command_pattern: "git push".to_string(),
+            author: "mpecan".to_string(),
+            savings_pct: 45.0,
+            total_commands: 100,
+            created_at: String::new(),
+            test_count: 3,
+            is_stdlib: true,
+            introduced_at: Some("0.1.0".to_string()),
+            deprecated_at: Some("0.2.3".to_string()),
+        };
+        let display = format!("{}", SelectableFilter(&summary));
+        assert_eq!(
+            display,
+            "git push v0.1.0 [stdlib] [deprecated]  @mpecan  savings:45%  tests:3  runs:100"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
     fn print_table_column_alignment() {
         // Capture output by calling format functions directly — print_table writes
         // to stderr which we can't easily capture, so we verify the building blocks.
@@ -283,6 +360,8 @@ mod tests {
                 created_at: String::new(),
                 test_count: 2,
                 is_stdlib: true,
+                introduced_at: Some("0.2.3".to_string()),
+                deprecated_at: None,
             },
             FilterSummary {
                 content_hash: String::new(),
@@ -293,6 +372,8 @@ mod tests {
                 created_at: String::new(),
                 test_count: 0,
                 is_stdlib: false,
+                introduced_at: None,
+                deprecated_at: None,
             },
         ];
 
@@ -311,23 +392,50 @@ mod tests {
         // "alice" = 5, "bob" = 3, min 6 → 6
         assert_eq!(author_width, 6);
 
+        // Verify ver_width
+        let ver_width = results
+            .iter()
+            .map(|r| display_version(r).len())
+            .max()
+            .unwrap()
+            .max(7);
+        // "v0.2.3" = 6, "" = 0, min 7 → 7
+        assert_eq!(ver_width, 7);
+
         // Verify row formatting produces consistent-width output
         let row1 = format!(
-            "{:<cmd_width$}  {:<author_width$}  {:>7.1}%  {:>5}  {:>8}",
+            "{:<cmd_width$}  {:<ver_width$}  {:<author_width$}  {:>7.1}%  {:>5}  {:>8}",
             display_command(&results[0]),
+            display_version(&results[0]),
             results[0].author,
             results[0].savings_pct,
             results[0].test_count,
             format_number(results[0].total_commands),
         );
         let row2 = format!(
-            "{:<cmd_width$}  {:<author_width$}  {:>7.1}%  {:>5}  {:>8}",
+            "{:<cmd_width$}  {:<ver_width$}  {:<author_width$}  {:>7.1}%  {:>5}  {:>8}",
             display_command(&results[1]),
+            display_version(&results[1]),
             results[1].author,
             results[1].savings_pct,
             results[1].test_count,
             format_number(results[1].total_commands),
         );
         assert_eq!(row1.len(), row2.len(), "rows should have equal width");
+    }
+
+    #[test]
+    fn display_version_with_introduced_at() {
+        let r = FilterSummary {
+            introduced_at: Some("0.2.3".to_string()),
+            ..make_summary("git push", true)
+        };
+        assert_eq!(display_version(&r), "v0.2.3");
+    }
+
+    #[test]
+    fn display_version_without_introduced_at() {
+        let r = make_summary("git push", true);
+        assert_eq!(display_version(&r), "");
     }
 }

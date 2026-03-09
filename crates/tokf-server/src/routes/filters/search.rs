@@ -37,6 +37,10 @@ pub struct FilterSummary {
     pub created_at: String,
     pub test_count: i64,
     pub is_stdlib: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub introduced_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,6 +54,10 @@ pub struct FilterDetails {
     pub test_count: i64,
     pub registry_url: String,
     pub is_stdlib: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub introduced_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,7 +162,9 @@ pub async fn search_filters(
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,
                 {TEST_COUNT_SUBQUERY},
-                f.is_stdlib
+                f.is_stdlib,
+                f.introduced_at,
+                f.deprecated_at
          FROM filters f
          JOIN users u ON u.id = f.author_id
          LEFT JOIN filter_stats fs ON fs.filter_hash = f.content_hash
@@ -184,6 +194,8 @@ pub async fn search_filters(
                 created_at: row.try_get("created_at")?,
                 test_count: row.try_get("test_count")?,
                 is_stdlib: row.try_get("is_stdlib")?,
+                introduced_at: row.try_get("introduced_at")?,
+                deprecated_at: row.try_get("deprecated_at")?,
             })
         })
         .collect::<Result<Vec<_>, _>>()
@@ -225,7 +237,9 @@ pub async fn get_filter(
                 COALESCE(fs.total_commands, 0) AS total_commands,
                 f.created_at::TEXT AS created_at,
                 {TEST_COUNT_SUBQUERY},
-                f.is_stdlib
+                f.is_stdlib,
+                f.introduced_at,
+                f.deprecated_at
          FROM filters f
          JOIN users u ON u.id = f.author_id
          LEFT JOIN filter_stats fs ON fs.filter_hash = f.content_hash
@@ -252,6 +266,8 @@ pub async fn get_filter(
             test_count: row.try_get("test_count")?,
             registry_url,
             is_stdlib: row.try_get("is_stdlib")?,
+            introduced_at: row.try_get("introduced_at")?,
+            deprecated_at: row.try_get("deprecated_at")?,
         })
     })()
     .map_err(|e| AppError::Internal(format!("db mapping error: {e}")))?;

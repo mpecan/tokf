@@ -10,3 +10,7 @@ export type { FilterExamples } from "./FilterExamples";
 export type { FilterExample } from "./FilterExample";
 export type { ExamplesSafety } from "./ExamplesSafety";
 export type { SafetyWarningDto } from "./SafetyWarningDto";
+export type { FilterVersionInfo } from "./FilterVersionInfo";
+export type { VersionedCatalogEntry } from "./VersionedCatalogEntry";
+export type { CommandGroup } from "./CommandGroup";
+export type { GroupedCatalog } from "./GroupedCatalog";
