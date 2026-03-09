@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.29](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.28...tokf-filter-v0.2.29) (2026-03-08)
+
+
+### Miscellaneous
+
+* **tokf-filter:** Synchronize workspace versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.28 to 0.2.29
+
 ## [0.2.28](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.27...tokf-filter-v0.2.28) (2026-03-07)
 
 
