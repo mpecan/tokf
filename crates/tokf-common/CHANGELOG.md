@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.30](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.29...tokf-common-v0.2.30) (2026-03-10)
+
+
+### Miscellaneous
+
+* **tokf-common:** Synchronize workspace versions
+
 ## [0.2.29](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.28...tokf-common-v0.2.29) (2026-03-08)
 
 

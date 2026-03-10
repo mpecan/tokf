@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.30](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.29...tokf-server-v0.2.30) (2026-03-10)
+
+
+### Features
+
+* **filter:** version info in search, backfill fix, per-command deprecation ([#272](https://github.com/mpecan/tokf/issues/272)) ([59ce733](https://github.com/mpecan/tokf/commit/59ce733a0c381c7859f370c1d06ae24443b3f0ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.29 to 0.2.30
+    * tokf-filter bumped from 0.2.29 to 0.2.30
+
 ## [0.2.29](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.28...tokf-server-v0.2.29) (2026-03-08)
 
 
