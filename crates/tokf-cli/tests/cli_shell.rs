@@ -249,6 +249,30 @@ fn shell_argv_mode_no_filter_delegates_safely() {
     );
 }
 
+// --- argv mode: argument boundary preservation ---
+
+#[test]
+fn shell_argv_mode_preserves_arg_boundaries_through_filter() {
+    // When a filter matches in argv mode, the rewritten command must preserve
+    // argument boundaries. Verify by checking that the verbose "rewritten to"
+    // output contains quoted args (e.g. 'git' 'status' '--short').
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", "git", "status", "--short"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to"),
+        "expected filter match, got: {stderr}"
+    );
+    // The rewritten command should contain quoted args, not bare args.
+    assert!(
+        stderr.contains("'git'") && stderr.contains("'status'"),
+        "expected quoted args in rewritten command for boundary safety, got: {stderr}"
+    );
+}
+
 // --- environment variable controls ---
 
 #[test]

@@ -145,10 +145,14 @@ pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
         }
         delegate_to_real_shell(flags, &quote_argv(args))
     } else {
+        // The rewrite matched — substitute the unquoted portion with
+        // quoted args so `sh -c` preserves argument boundaries (e.g.
+        // `-m "hello world"` stays as one arg, not two).
+        let safe_rewritten = rewritten.replacen(&unquoted, &quote_argv(args), 1);
         if verbose {
-            eprintln!("[tokf] shell: rewritten to: {rewritten}");
+            eprintln!("[tokf] shell: rewritten to: {safe_rewritten}");
         }
-        delegate_to_real_shell(flags, &rewritten)
+        delegate_to_real_shell(flags, &safe_rewritten)
     }
 }
 
