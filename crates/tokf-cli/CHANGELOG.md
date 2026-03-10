@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.30](https://github.com/mpecan/tokf/compare/tokf-v0.2.29...tokf-v0.2.30) (2026-03-10)
+
+
+### Features
+
+* **filter:** version info in search, backfill fix, per-command deprecation ([#272](https://github.com/mpecan/tokf/issues/272)) ([59ce733](https://github.com/mpecan/tokf/commit/59ce733a0c381c7859f370c1d06ae24443b3f0ab))
+
+
+### Bug Fixes
+
+* **runner:** use unquoted args for rewrite matching in shell argv mode ([#273](https://github.com/mpecan/tokf/issues/273)) ([ed298a8](https://github.com/mpecan/tokf/commit/ed298a867cb9b3d0867c08d19fa5a875088539f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.29 to 0.2.30
+    * tokf-filter bumped from 0.2.29 to 0.2.30
+
 ## [0.2.29](https://github.com/mpecan/tokf/compare/tokf-v0.2.28...tokf-v0.2.29) (2026-03-08)
 
 
