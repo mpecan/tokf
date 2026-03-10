@@ -212,16 +212,22 @@ pub async fn publish_stdlib(
             }
         }
 
-        // Per-command targeted deprecation: for each newly published filter,
-        // deprecate other stdlib filters with the same command_pattern.
-        // This handles single-filter CI publishes correctly.
-        for hash in &published_hashes {
-            deprecate_same_command(&state, version, hash, &all_batch_hashes).await;
-        }
+        // Compute version currency once to avoid N+1 DB queries inside
+        // deprecation helpers.
+        let version_is_current = is_version_current(&state.db, version).await;
 
-        // Full-batch sweep as a safety net for bulk publishes.
-        if req.filters.len() > 1 {
-            run_deprecation_sweep(&state, version, &all_batch_hashes).await;
+        if version_is_current {
+            // Per-command targeted deprecation: for each newly published filter,
+            // deprecate other stdlib filters with the same command_pattern.
+            // This handles single-filter CI publishes correctly.
+            for hash in &published_hashes {
+                deprecate_same_command(&state, version, hash, &all_batch_hashes).await;
+            }
+
+            // Full-batch sweep as a safety net for bulk publishes.
+            if req.filters.len() > 1 {
+                run_deprecation_sweep(&state, version, &all_batch_hashes).await;
+            }
         }
     }
 
@@ -391,13 +397,25 @@ fn parse_semver(v: &str) -> Option<(u64, u64, u64)> {
 /// Check whether `version` is at least as recent as the latest `introduced_at`
 /// in the DB. Returns `false` (and logs) when the incoming version is older,
 /// which prevents backfill runs from triggering false deprecations.
+///
+/// Also returns `false` if the DB query fails, to avoid proceeding with
+/// deprecations when the guard query is unreliable.
 async fn is_version_current(db: &sqlx::PgPool, version: &str) -> bool {
-    let all_versions: Vec<String> = sqlx::query_scalar(
+    let all_versions: Vec<String> = match sqlx::query_scalar(
         "SELECT DISTINCT introduced_at FROM filters WHERE introduced_at IS NOT NULL",
     )
     .fetch_all(db)
     .await
-    .unwrap_or_default();
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                %version,
+                "failed to query introduced_at versions: {e}; skipping deprecation"
+            );
+            return false;
+        }
+    };
 
     let latest = all_versions
         .iter()
@@ -421,13 +439,9 @@ async fn is_version_current(db: &sqlx::PgPool, version: &str) -> bool {
 
 /// Mark stdlib filters not in the current batch as deprecated.
 ///
-/// Skips if the incoming version is older than the latest `introduced_at` in the DB
-/// (prevents backfill runs from triggering false deprecations).
+/// Caller must check `is_version_current` before calling — this function
+/// assumes the version guard has already passed.
 async fn run_deprecation_sweep(state: &AppState, version: &str, batch_hashes: &[String]) {
-    if !is_version_current(&state.db, version).await {
-        return;
-    }
-
     // Find stdlib filters that are still current but not in this batch.
     let orphaned: Vec<(String, String)> = sqlx::query_as(
         "SELECT content_hash, command_pattern FROM filters
@@ -487,16 +501,15 @@ async fn find_successor_in_batch(
 
 /// Targeted deprecation: deprecate stdlib filters with the same `command_pattern`
 /// as the newly published filter, excluding batch members.
+///
+/// Caller must check `is_version_current` before calling — this function
+/// assumes the version guard has already passed.
 async fn deprecate_same_command(
     state: &AppState,
     version: &str,
     successor_hash: &str,
     batch_hashes: &[String],
 ) {
-    if !is_version_current(&state.db, version).await {
-        return;
-    }
-
     if let Err(e) = sqlx::query(
         "UPDATE filters
          SET deprecated_at = $1, successor_hash = $2
