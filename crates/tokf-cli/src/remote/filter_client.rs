@@ -15,6 +15,10 @@ pub struct FilterSummary {
     pub test_count: i64,
     #[serde(default)]
     pub is_stdlib: bool,
+    #[serde(default)]
+    pub introduced_at: Option<String>,
+    #[serde(default)]
+    pub deprecated_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +34,10 @@ pub struct FilterDetails {
     pub registry_url: String,
     #[serde(default)]
     pub is_stdlib: bool,
+    #[serde(default)]
+    pub introduced_at: Option<String>,
+    #[serde(default)]
+    pub deprecated_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,6 +207,54 @@ mod tests {
         }"#;
         let details: FilterDetails = serde_json::from_str(json).unwrap();
         assert_eq!(details.test_count, 0, "test_count should default to 0");
+    }
+
+    #[test]
+    fn deserialize_filter_summary_with_version_fields() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0,
+            "introduced_at": "0.2.3",
+            "deprecated_at": "0.3.0"
+        }"#;
+        let summary: FilterSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(summary.introduced_at.as_deref(), Some("0.2.3"));
+        assert_eq!(summary.deprecated_at.as_deref(), Some("0.3.0"));
+    }
+
+    #[test]
+    fn deserialize_filter_summary_version_fields_default_none() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0
+        }"#;
+        let summary: FilterSummary = serde_json::from_str(json).unwrap();
+        assert!(summary.introduced_at.is_none());
+        assert!(summary.deprecated_at.is_none());
+    }
+
+    #[test]
+    fn deserialize_filter_details_with_version_fields() {
+        let json = r#"{
+            "content_hash": "abc123",
+            "command_pattern": "git push",
+            "author": "alice",
+            "savings_pct": 0.0,
+            "total_commands": 0,
+            "created_at": "2026-01-01T00:00:00",
+            "registry_url": "https://tokf.net/filters/abc123",
+            "introduced_at": "0.2.3",
+            "deprecated_at": "0.3.0"
+        }"#;
+        let details: FilterDetails = serde_json::from_str(json).unwrap();
+        assert_eq!(details.introduced_at.as_deref(), Some("0.2.3"));
+        assert_eq!(details.deprecated_at.as_deref(), Some("0.3.0"));
     }
 
     #[test]
