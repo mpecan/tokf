@@ -95,11 +95,24 @@ pub fn cmd_shell(flags: &str, command: &str) -> i32 {
     rewrite_and_delegate(flags, command, env_verbose())
 }
 
+/// Build a shell-safe command string by single-quoting each argument.
+fn quote_argv(args: &[String]) -> String {
+    args.iter()
+        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Entry point for argv shell mode.
 ///
 /// Called when tokf is invoked as `tokf -c cmd arg1 arg2 ...` (more than one
 /// argument after `-c`).  This is used by PATH shims which pass the command
 /// and its arguments as separate argv entries.
+///
+/// Unlike string mode, argv mode uses the **unquoted** args for rewrite
+/// pattern matching (so `cargo fmt` matches instead of `'cargo' 'fmt'`),
+/// then falls back to the **quoted** form for safe shell delegation when
+/// no filter matches.
 ///
 /// The `flags` parameter is the original shell flag string (e.g. `-c`, `-cu`,
 /// `-ecu`) so that combined flags are forwarded to `sh` consistently with
@@ -109,14 +122,38 @@ pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
         return 0;
     }
 
-    // Build a shell-safe command string from the argv entries.
-    let command = args
-        .iter()
-        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let verbose = env_verbose();
+    restore_original_path();
 
-    rewrite_and_delegate(flags, &command, env_verbose())
+    if env_no_filter() {
+        if verbose {
+            eprintln!("[tokf] shell: TOKF_NO_FILTER set, delegating to sh");
+        }
+        return delegate_to_real_shell(flags, &quote_argv(args));
+    }
+
+    // Use unquoted args for rewrite pattern matching so filters can match.
+    let unquoted = args.join(" ");
+    let options = tokf::rewrite::types::RewriteOptions {
+        no_mask_exit_code: true,
+    };
+    let rewritten = tokf::rewrite::rewrite_with_options(&unquoted, verbose, &options);
+
+    if rewritten == unquoted {
+        if verbose {
+            eprintln!("[tokf] shell: no filter match, delegating to sh");
+        }
+        delegate_to_real_shell(flags, &quote_argv(args))
+    } else {
+        // The rewrite matched — substitute the unquoted portion with
+        // quoted args so `sh -c` preserves argument boundaries (e.g.
+        // `-m "hello world"` stays as one arg, not two).
+        let safe_rewritten = rewritten.replacen(&unquoted, &quote_argv(args), 1);
+        if verbose {
+            eprintln!("[tokf] shell: rewritten to: {safe_rewritten}");
+        }
+        delegate_to_real_shell(flags, &safe_rewritten)
+    }
 }
 
 /// Delegate to the real system shell, preserving the original flags.
@@ -325,5 +362,61 @@ mod tests {
         let args: Vec<String> = vec!["echo".into(), "$HOME `whoami`".into()];
         let code = cmd_shell_argv("-c", &args);
         assert_eq!(code, 0);
+    }
+
+    // --- quote_argv ---
+
+    #[test]
+    fn quote_argv_simple() {
+        let args: Vec<String> = vec!["cargo".into(), "fmt".into()];
+        assert_eq!(quote_argv(&args), "'cargo' 'fmt'");
+    }
+
+    #[test]
+    fn quote_argv_single_quotes() {
+        let args: Vec<String> = vec!["it's".into()];
+        assert_eq!(quote_argv(&args), "'it'\\''s'");
+    }
+
+    #[test]
+    fn quote_argv_empty() {
+        let args: Vec<String> = vec![];
+        assert_eq!(quote_argv(&args), "");
+    }
+
+    #[test]
+    fn quote_argv_spaces() {
+        let args: Vec<String> = vec!["hello world".into()];
+        assert_eq!(quote_argv(&args), "'hello world'");
+    }
+
+    #[test]
+    fn quote_argv_empty_string_element() {
+        let args: Vec<String> = vec![String::new()];
+        assert_eq!(quote_argv(&args), "''");
+    }
+
+    #[test]
+    fn quote_argv_backslashes() {
+        let args: Vec<String> = vec!["foo\\bar".into()];
+        assert_eq!(quote_argv(&args), "'foo\\bar'");
+    }
+
+    #[test]
+    fn quote_argv_newlines() {
+        let args: Vec<String> = vec!["line1\nline2".into()];
+        assert_eq!(quote_argv(&args), "'line1\nline2'");
+    }
+
+    #[test]
+    fn quote_argv_multiple_single_quotes() {
+        let args: Vec<String> = vec!["'''".into()];
+        assert_eq!(quote_argv(&args), "''\\'''\\'''\\'''");
+    }
+
+    #[test]
+    fn quote_argv_mixed_special_chars() {
+        let args: Vec<String> = vec!["echo".into(), "$HOME".into(), "it's".into()];
+        assert_eq!(quote_argv(&args), "'echo' '$HOME' 'it'\\''s'");
     }
 }
