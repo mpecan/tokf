@@ -273,6 +273,28 @@ fn shell_argv_mode_preserves_arg_boundaries_through_filter() {
     );
 }
 
+#[test]
+fn shell_argv_mode_multiword_arg_stays_single_token() {
+    // An argument containing spaces (e.g. a commit message) must remain a
+    // single quoted token in the rewritten command, not be split by the shell.
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", "git", "log", "--format=hello world"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to"),
+        "expected filter match, got: {stderr}"
+    );
+    // The multi-word arg must appear as a single quoted token, proving
+    // argument boundaries survive the rewrite.
+    assert!(
+        stderr.contains("'--format=hello world'"),
+        "expected multi-word arg as single quoted token, got: {stderr}"
+    );
+}
+
 // --- environment variable controls ---
 
 #[test]
