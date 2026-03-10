@@ -184,6 +184,71 @@ fn shell_argv_mode_exit_code() {
     assert!(!output.status.success());
 }
 
+// --- argv mode: double-dash and flag passthrough ---
+
+#[test]
+fn shell_argv_mode_double_dash_passthrough() {
+    // `tokf -c echo -- hello` should preserve `--` and `hello`.
+    let output = tokf().args(["-c", "echo", "--", "hello"]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("-- hello") || stdout.contains("hello"),
+        "expected -- and hello in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn shell_argv_mode_flags_after_separator() {
+    // `tokf -c echo -- --flag` should preserve `--flag` literally.
+    let output = tokf()
+        .args(["-c", "echo", "--", "--flag"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--flag"),
+        "expected --flag in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn shell_argv_mode_triggers_filtering() {
+    // With TOKF_VERBOSE, a command that has a filter (git status) should show
+    // "rewritten to" in stderr, proving the argv mode fix works.
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", "git", "status", "--short"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to"),
+        "expected 'rewritten to' in stderr (filter should match), got: {stderr}"
+    );
+}
+
+#[test]
+fn shell_argv_mode_no_filter_delegates_safely() {
+    // A command with no filter should show "no filter match" and still work.
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", "echo", "hello", "world"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("no filter match"),
+        "expected 'no filter match' in stderr, got: {stderr}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "hello world"
+    );
+}
+
 // --- environment variable controls ---
 
 #[test]
@@ -194,6 +259,23 @@ fn shell_no_filter_env_delegates() {
         .output()
         .unwrap();
     assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "bypassed");
+}
+
+#[test]
+fn shell_argv_mode_no_filter_env_delegates() {
+    let output = tokf()
+        .env("TOKF_NO_FILTER", "1")
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", "echo", "bypassed"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("TOKF_NO_FILTER set"),
+        "expected TOKF_NO_FILTER message in stderr, got: {stderr}"
+    );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "bypassed");
 }
 
