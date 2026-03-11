@@ -2,6 +2,7 @@ command = ["kubectl get pods", "kubectl get pod", "kubectl get po"]
 
 # Override to get JSON output for structured extraction
 run = "kubectl get pods -o json {args}"
+passthrough_args = ["-o", "--output"]
 
 match_output = [
   { contains = "the server doesn't have a resource type", output = "Error: {line_containing}" },

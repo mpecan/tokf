@@ -142,6 +142,18 @@ impl SafetyCheck for HiddenUnicodeCheck {
                 });
             }
         }
+        for prefix in &config.passthrough_args {
+            for c in find_hidden_unicode(prefix) {
+                warnings.push(SafetyWarning {
+                    kind: WarningKind::HiddenUnicode,
+                    message: format!(
+                        "passthrough_args prefix contains hidden Unicode character U+{:04X}",
+                        c as u32
+                    ),
+                    detail: Some(format!("U+{:04X}", c as u32)),
+                });
+            }
+        }
         warnings
     }
 

@@ -1,5 +1,6 @@
 command = "gh pr view *"
 run = "gh pr view {args} --json number,title,state,author,headRefName,baseRefName,reviewDecision,labels,assignees,milestone,body"
+passthrough_args = ["--web", "-w"]
 
 [json]
 

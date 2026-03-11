@@ -35,6 +35,7 @@ fn default_config() -> FilterConfig {
         variant: vec![],
         show_history_hint: false,
         inject_path: false,
+        passthrough_args: vec![],
     }
 }
 

@@ -1,5 +1,6 @@
 command = "gh pr checks *"
 run = "gh pr checks {args} --json name,state,workflow"
+passthrough_args = ["--watch", "--web", "-w"]
 
 [json]
 

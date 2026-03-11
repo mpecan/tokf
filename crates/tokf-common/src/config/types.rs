@@ -171,6 +171,28 @@ pub struct FilterConfig {
     /// by sub-processes (e.g. git hooks) are automatically filtered.
     #[serde(default)]
     pub inject_path: bool,
+
+    /// Argument prefixes that trigger passthrough mode (skip filter entirely).
+    ///
+    /// When any element in the user's remaining args starts with any prefix in
+    /// this list, tokf runs the original command as-is without applying the
+    /// `run` override or filter pipeline.
+    #[serde(default)]
+    pub passthrough_args: Vec<String>,
+}
+
+impl FilterConfig {
+    /// Returns `true` if any user arg matches a prefix in `passthrough_args`.
+    pub fn should_passthrough(&self, remaining_args: &[String]) -> bool {
+        if self.passthrough_args.is_empty() || remaining_args.is_empty() {
+            return false;
+        }
+        remaining_args.iter().any(|arg| {
+            self.passthrough_args
+                .iter()
+                .any(|prefix| !prefix.is_empty() && arg.starts_with(prefix.as_str()))
+        })
+    }
 }
 
 /// A pipeline step that runs a sub-command and captures its output.
@@ -489,4 +511,107 @@ pub struct JsonFieldExtract {
     /// Variable name for the extracted value.
     #[serde(rename = "as")]
     pub as_name: String,
+}
+
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(toml: &str) -> FilterConfig {
+        toml::from_str(toml).unwrap()
+    }
+
+    fn s(v: &str) -> String {
+        v.to_string()
+    }
+
+    #[test]
+    fn passthrough_empty_list_never_triggers() {
+        let cfg = parse(r#"command = "gh pr checks *""#);
+        assert!(!cfg.should_passthrough(&[s("--watch")]));
+    }
+
+    #[test]
+    fn passthrough_exact_match() {
+        let cfg = parse(
+            r#"
+command = "gh pr checks *"
+passthrough_args = ["--watch", "--web", "-w"]
+"#,
+        );
+        assert!(cfg.should_passthrough(&[s("142"), s("--watch")]));
+    }
+
+    #[test]
+    fn passthrough_prefix_match() {
+        let cfg = parse(
+            r#"
+command = "docker ps"
+passthrough_args = ["--format"]
+"#,
+        );
+        assert!(cfg.should_passthrough(&[s("--format=table")]));
+    }
+
+    #[test]
+    fn passthrough_short_flag_does_not_match_long() {
+        let cfg = parse(
+            r#"
+command = "gh pr checks *"
+passthrough_args = ["--watch"]
+"#,
+        );
+        assert!(!cfg.should_passthrough(&[s("-w")]));
+    }
+
+    #[test]
+    fn passthrough_no_match_returns_false() {
+        let cfg = parse(
+            r#"
+command = "gh pr checks *"
+passthrough_args = ["--watch", "--web"]
+"#,
+        );
+        assert!(!cfg.should_passthrough(&[s("142"), s("--json")]));
+    }
+
+    #[test]
+    fn passthrough_empty_args_never_triggers() {
+        let cfg = parse(
+            r#"
+command = "gh pr checks *"
+passthrough_args = ["--watch"]
+"#,
+        );
+        assert!(!cfg.should_passthrough(&[]));
+    }
+
+    #[test]
+    fn passthrough_args_deserializes_from_toml() {
+        let cfg = parse(
+            r#"
+command = "gh pr checks *"
+passthrough_args = ["--watch", "--web", "-w"]
+"#,
+        );
+        assert_eq!(cfg.passthrough_args, vec!["--watch", "--web", "-w"]);
+    }
+
+    #[test]
+    fn passthrough_args_defaults_to_empty() {
+        let cfg = parse(r#"command = "git push""#);
+        assert!(cfg.passthrough_args.is_empty());
+    }
+
+    #[test]
+    fn passthrough_empty_string_prefix_ignored() {
+        let cfg = parse(
+            r#"
+command = "test"
+passthrough_args = [""]
+"#,
+        );
+        assert!(!cfg.should_passthrough(&[s("--anything")]));
+    }
 }

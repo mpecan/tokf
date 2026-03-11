@@ -1,5 +1,6 @@
 command = "docker ps"
 run = "docker ps --format json {args}"
+passthrough_args = ["--format"]
 
 match_output = [
   { contains = "Cannot connect to the Docker daemon", output = "Docker daemon not running" },

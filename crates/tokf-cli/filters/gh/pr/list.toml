@@ -1,5 +1,6 @@
 command = "gh pr list"
 run = "gh pr list --json number,title,state,headRefName {args}"
+passthrough_args = ["--web", "-w"]
 
 [json]
 

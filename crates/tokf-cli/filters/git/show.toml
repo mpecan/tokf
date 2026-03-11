@@ -2,6 +2,7 @@ command = "git show"
 
 # Override: use --stat for compact summary; full diff can be thousands of lines
 run = "git show --stat {args}"
+passthrough_args = ["-p", "--patch", "--format", "--pretty"]
 
 [on_success]
 output = "{output}"

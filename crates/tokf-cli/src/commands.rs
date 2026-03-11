@@ -46,10 +46,21 @@ pub fn cmd_run(
         vec![]
     };
 
-    let filter_cfg = filter_match.as_ref().map(|m| &m.config);
+    let passthrough = filter_match
+        .as_ref()
+        .is_some_and(|m| m.config.should_passthrough(&remaining_args));
+    if passthrough && cli.verbose {
+        eprintln!("[tokf] passthrough: user args match passthrough_args, skipping filter");
+    }
+    let filter_cfg = if passthrough {
+        None
+    } else {
+        filter_match.as_ref().map(|m| &m.config)
+    };
     let cmd_result =
         resolve::run_command(filter_cfg, words_consumed, command_args, &remaining_args)?;
 
+    let filter_match = if passthrough { None } else { filter_match };
     let Some(filter_match) = filter_match else {
         if prefer_less && cli.verbose {
             eprintln!("[tokf] --prefer-less has no effect: no matching filter found");
