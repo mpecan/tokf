@@ -1,5 +1,6 @@
 command = "gh issue list"
 run = "gh issue list --json number,title,state,labels {args}"
+passthrough_args = ["--web", "-w"]
 
 [json]
 

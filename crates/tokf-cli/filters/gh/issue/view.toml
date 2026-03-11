@@ -1,5 +1,6 @@
 command = "gh issue view *"
 run = "gh issue view {args} --json number,title,state,author,labels,assignees,milestone,body"
+passthrough_args = ["--web", "-w"]
 
 [json]
 

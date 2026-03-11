@@ -186,6 +186,7 @@ mod tests {
             variant: vec![],
             show_history_hint: false,
             inject_path: false,
+            passthrough_args: vec![],
         }
     }
 
@@ -311,6 +312,20 @@ mod tests {
         config.command = CommandPattern::Single("git\u{200B}push".to_string());
         let report = check_config(&config);
         assert!(!report.passed);
+    }
+
+    #[test]
+    fn config_detects_hidden_unicode_in_passthrough_args() {
+        let mut config = minimal_config();
+        config.passthrough_args = vec!["--watch\u{200B}".to_string()];
+        let report = check_config(&config);
+        assert!(!report.passed);
+        assert_eq!(report.warnings[0].kind, WarningKind::HiddenUnicode);
+        assert!(
+            report.warnings[0]
+                .message
+                .contains("passthrough_args prefix")
+        );
     }
 
     #[test]

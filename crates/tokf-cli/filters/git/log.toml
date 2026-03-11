@@ -6,6 +6,7 @@ command = "git log"
 
 # Override to get compact output directly from git
 run = "git log --oneline --no-decorate -n 20 {args}"
+passthrough_args = ["-p", "--patch", "--format", "--pretty", "--graph", "--stat"]
 
 # Nothing to filter — the override command already produces compact output
 # But if args include --stat or --patch, passthrough

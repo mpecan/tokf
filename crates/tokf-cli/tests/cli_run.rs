@@ -241,6 +241,78 @@ fn mask_exit_code_empty_output_on_failure() {
 }
 
 #[test]
+fn passthrough_args_skips_run_override() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    // Filter with `run` override that would change the output, plus passthrough_args
+    std::fs::write(
+        filters_dir.join("echo.toml"),
+        r#"command = "echo"
+run = "echo FILTERED"
+passthrough_args = ["--skip"]
+
+[on_success]
+output = "FILTERED_OUTPUT"
+"#,
+    )
+    .unwrap();
+
+    // Without passthrough arg: filter applies, we get "FILTERED_OUTPUT"
+    let output = tokf()
+        .args(["run", "echo", "hello"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("FILTERED_OUTPUT"),
+        "expected filter to apply without passthrough arg, got: {stdout}"
+    );
+
+    // With passthrough arg: filter skipped, original command runs
+    let output = tokf()
+        .args(["run", "echo", "--skip", "hello"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--skip hello"),
+        "expected original command output with passthrough, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("FILTERED"),
+        "filter should be skipped with passthrough arg, got: {stdout}"
+    );
+}
+
+#[test]
+fn passthrough_args_verbose_shows_message() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    std::fs::write(
+        filters_dir.join("echo.toml"),
+        "command = \"echo\"\npassthrough_args = [\"--skip\"]\n[on_success]\noutput = \"FILTERED\"",
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["run", "--verbose", "echo", "--skip"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("passthrough"),
+        "expected passthrough message in verbose output, got: {stderr}"
+    );
+}
+
+#[test]
 fn no_mask_exit_code_propagates_exit_code() {
     let output = tokf()
         .args([

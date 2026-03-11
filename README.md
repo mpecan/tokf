@@ -331,6 +331,8 @@ collapse_empty_lines = true   # collapse consecutive blank lines into one
 show_history_hint = true      # append a hint line pointing to the full output in history
 inject_path = true            # inject shims into PATH so sub-processes (e.g. git hooks) are filtered
 
+passthrough_args = ["--watch", "--web", "-w"]  # skip filter when user passes these flags
+
 # Lua escape hatch — for logic TOML can't express (see Lua Escape Hatch section)
 [lua_script]
 lang = "luau"
@@ -346,6 +348,27 @@ output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 
 [on_failure]                  # branch for non-zero exit
 tail = 10                     # keep the last N lines
+```
+
+## Passthrough args
+
+Some filters inject flags like `--json` or `--format` via the `run` field. When users pass conflicting flags (e.g. `--watch`), the combined command fails. The `passthrough_args` field declares flag prefixes that trigger passthrough mode — tokf skips the filter entirely and runs the original command as-is.
+
+```toml
+command = "gh pr checks *"
+run = "gh pr checks {args} --json name,state,workflow"
+passthrough_args = ["--watch", "--web", "-w"]
+```
+
+**Matching semantics**: each user arg is checked with `starts_with` against each prefix. This handles `--format=table` matching `--format`, while `-w` does **not** match `--watch` (correct — they are different flags). Short-flag prefixes like `-o` also match concatenated forms like `-oyaml` (common in tools like `kubectl`). Empty-string prefixes are ignored. When any arg matches, no `run` override is applied and no filter pipeline runs.
+
+**Variant interaction**: passthrough is checked on the resolved filter config after file-based variant detection. If a parent filter delegates to a variant via file detection, the variant's own `passthrough_args` apply. Output-pattern variants (post-execution) are not resolved when passthrough is active.
+
+Use `--verbose` to see when passthrough activates:
+
+```
+$ tokf run gh pr checks 142 --watch --verbose
+[tokf] passthrough: user args match passthrough_args, skipping filter
 ```
 
 ## Template pipes

@@ -1,5 +1,6 @@
 command = "docker images"
 run = "docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' {args}"
+passthrough_args = ["--format"]
 skip = ["^<none>:<none>"]
 
 [lua_script]
