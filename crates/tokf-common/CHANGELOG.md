@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.31](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.30...tokf-common-v0.2.31) (2026-03-11)
+
+
+### Features
+
+* **filter:** add passthrough_args to skip filters on flag conflicts ([#275](https://github.com/mpecan/tokf/issues/275)) ([36d43d0](https://github.com/mpecan/tokf/commit/36d43d0dbcf99e7506aa92701a2f78f35906882a))
+
 ## [0.2.30](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.29...tokf-common-v0.2.30) (2026-03-10)
 
 
