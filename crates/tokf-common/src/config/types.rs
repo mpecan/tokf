@@ -179,6 +179,23 @@ pub struct FilterConfig {
     /// `run` override or filter pipeline.
     #[serde(default)]
     pub passthrough_args: Vec<String>,
+
+    /// Human-readable description of what this filter does.
+    /// Used in `tokf ls`, search results, and publishing metadata.
+    pub description: Option<String>,
+
+    /// Maximum character width for output lines. Lines longer than this are
+    /// truncated with a trailing `…` (within the budget). Applied as a final
+    /// post-processing step after all other pipeline stages.
+    pub truncate_lines_at: Option<usize>,
+
+    /// Message to display when the filter produces empty output (all lines
+    /// stripped). Without this, empty output is returned as-is.
+    pub on_empty: Option<String>,
+
+    /// Number of lines to keep from the tail of the output, applied regardless
+    /// of exit code. Branch-level `tail` overrides this when present.
+    pub tail: Option<usize>,
 }
 
 impl FilterConfig {
