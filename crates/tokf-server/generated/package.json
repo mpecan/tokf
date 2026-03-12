@@ -1,6 +1,6 @@
 {
   "name": "@tokf/catalog-types",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "description": "TypeScript types for the tokf filter catalog (auto-generated from Rust via ts-rs)",
   "type": "module",
   "exports": {
