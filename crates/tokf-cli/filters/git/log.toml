@@ -3,6 +3,7 @@
 # Filtered: one-line-per-commit format
 
 command = "git log"
+description = "Show one-line-per-commit format, last 20 entries"
 
 # Override to get compact output directly from git
 run = "git log --oneline --no-decorate -n 20 {args}"

@@ -1,4 +1,5 @@
 command = "cargo clippy"
+description = "Group lint warnings by file with counts"
 strip_empty_lines = true
 
 # First, skip removes noise summary lines.

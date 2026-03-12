@@ -1,4 +1,5 @@
 command = ["npm test", "pnpm test", "yarn test"]
+description = "Strip test runner noise; delegates to vitest/jest variants"
 
 # Parent fallback — used when no variant matches
 strip_ansi = true

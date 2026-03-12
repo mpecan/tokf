@@ -1,4 +1,5 @@
 command = ["docker compose", "docker-compose"]
+description = "Strip container lifecycle noise; show service output"
 skip = [
   "^ +⠿ (Network|Container|Volume|Config|Secret) .* (Created|Starting|Started|Healthy)",
   "^Attaching to ",

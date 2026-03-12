@@ -1,4 +1,5 @@
 command = ["playwright test", "npx playwright test"]
+description = "Strip runner noise; show test results and failure details"
 strip_ansi = true
 skip = [
   "^\\s*$",

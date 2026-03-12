@@ -3,6 +3,7 @@
 # Filtered: "ok ✓ main" (1 line)
 
 command = "git push"
+description = "Strip transfer noise; show branch name or rejection details"
 inject_path = true
 
 # Check full output for special cases first

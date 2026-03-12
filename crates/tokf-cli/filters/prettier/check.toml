@@ -1,4 +1,5 @@
 command = "prettier --check"
+description = "Confirm ok or list files needing formatting"
 strip_ansi = true
 skip = [
   "^Checking formatting",

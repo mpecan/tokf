@@ -1,4 +1,5 @@
 command = "eslint"
+description = "Strip summary counts; show lint errors with file locations"
 strip_ansi = true
 skip = [
   "^\\s*$",

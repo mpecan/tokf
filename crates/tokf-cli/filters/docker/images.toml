@@ -1,4 +1,5 @@
 command = "docker images"
+description = "Compact repo:tag and size listing; hide dangling images"
 run = "docker images --format '{{.Repository}}:{{.Tag}}\t{{.Size}}' {args}"
 passthrough_args = ["--format"]
 skip = ["^<none>:<none>"]

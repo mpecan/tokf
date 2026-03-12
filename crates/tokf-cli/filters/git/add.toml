@@ -3,6 +3,7 @@
 # Filtered: "ok ✓" or error
 
 command = "git add"
+description = "Strip noise; confirm ok or show errors"
 
 match_output = [
   { contains = "fatal:", output = "✗ {line_containing}" },

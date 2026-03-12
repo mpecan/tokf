@@ -1,4 +1,5 @@
 command = "git show"
+description = "Show --stat summary instead of full patch"
 
 # Override: use --stat for compact summary; full diff can be thousands of lines
 run = "git show --stat {args}"

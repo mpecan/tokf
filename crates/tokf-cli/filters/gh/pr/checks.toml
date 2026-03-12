@@ -1,4 +1,5 @@
 command = "gh pr checks *"
+description = "Structured JSON extraction of CI check names and status"
 run = "gh pr checks {args} --json name,state,workflow"
 passthrough_args = ["--watch", "--web", "-w"]
 

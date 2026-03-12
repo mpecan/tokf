@@ -1,4 +1,5 @@
 command = "go build"
+description = "Show only error locations; confirm ok on success"
 keep = ["\\.go:\\d+"]
 
 [on_success]

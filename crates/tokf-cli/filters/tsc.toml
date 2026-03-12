@@ -1,4 +1,5 @@
 command = "tsc"
+description = "Confirm no errors or show diagnostic locations"
 
 match_output = [
   { contains = "Found 0 errors", output = "✓ TypeScript: no errors" },

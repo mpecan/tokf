@@ -3,6 +3,7 @@
 # Filtered: "ok ✓ abc1234"
 
 command = "git commit"
+description = "Extract short SHA from commit output"
 inject_path = true
 
 [on_success]

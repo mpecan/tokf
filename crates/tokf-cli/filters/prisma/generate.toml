@@ -1,4 +1,5 @@
 command = "prisma generate"
+description = "Strip box drawing; show generated client name"
 skip = ["^[┌│└─╔╗╚╝║═]", "^Prisma schema", "Environment variables"]
 
 [on_success]

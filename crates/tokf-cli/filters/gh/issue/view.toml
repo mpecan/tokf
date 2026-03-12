@@ -1,4 +1,5 @@
 command = "gh issue view *"
+description = "Structured JSON extraction of issue details with body"
 run = "gh issue view {args} --json number,title,state,author,labels,assignees,milestone,body"
 passthrough_args = ["--web", "-w"]
 

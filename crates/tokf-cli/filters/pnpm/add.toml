@@ -1,4 +1,5 @@
 command = "pnpm add *"
+description = "Strip download progress; show added packages"
 skip = [
   "^\\s*Progress:",
   "^\\s*Downloading",

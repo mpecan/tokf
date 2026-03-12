@@ -1,4 +1,5 @@
 command = ["gradle test", "./gradlew test"]
+description = "Strip task progress; show test results and failures"
 strip_ansi = true
 collapse_empty_lines = true
 
