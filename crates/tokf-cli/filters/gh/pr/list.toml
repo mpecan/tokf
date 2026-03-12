@@ -1,4 +1,5 @@
 command = "gh pr list"
+description = "Structured JSON extraction of PR number, title, state, and branch"
 run = "gh pr list --json number,title,state,headRefName {args}"
 passthrough_args = ["--web", "-w"]
 

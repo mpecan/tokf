@@ -1,4 +1,5 @@
 command = "docker ps"
+description = "Structured JSON extraction of container name, image, state, and ports"
 run = "docker ps --format json {args}"
 passthrough_args = ["--format"]
 

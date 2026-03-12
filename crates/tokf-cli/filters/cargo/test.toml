@@ -4,6 +4,7 @@
 # Filtered (fail): failure details + summary (no truncation)
 
 command = "cargo test"
+description = "Aggregate test results into pass/fail/ignore summary per suite"
 strip_ansi = true
 
 skip = [

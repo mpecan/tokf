@@ -1,4 +1,5 @@
 command = ["vue-tsc", "npx vue-tsc"]
+description = "Confirm no errors or show diagnostic locations"
 
 match_output = [
   { contains = "Found 0 errors", output = "✓ vue-tsc: no errors" },

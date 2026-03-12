@@ -3,6 +3,7 @@
 # Filtered: compact stat summary (files changed + insertions/deletions)
 
 command = "git diff"
+description = "Show compact --stat summary instead of full diff"
 
 # Override: use --stat for compact summary output
 run = "git diff --stat {args}"

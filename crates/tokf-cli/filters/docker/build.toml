@@ -1,4 +1,5 @@
 command = ["docker build", "docker buildx build"]
+description = "Strip layer transfer noise; show build steps and errors"
 skip = [
   "^ +=> +=> [a-z]",      # Skip transferring, fetching, extracting
   "^ +=> +\\[internal\\]", # Skip metadata loading (noise)

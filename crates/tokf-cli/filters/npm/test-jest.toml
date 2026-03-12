@@ -1,4 +1,5 @@
 command = "jest"
+description = "Strip noise; show test suite summary and failure details"
 strip_ansi = true
 skip = [
   "^\\s*$",

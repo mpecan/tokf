@@ -1,4 +1,5 @@
 command = "next build"
+description = "Strip info lines and telemetry; show build output and errors"
 skip = [
   "^info ",
   "^Attention: Next\\.js now collects",

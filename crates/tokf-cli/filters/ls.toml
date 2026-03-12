@@ -1,4 +1,5 @@
 command = "ls"
+description = "Cap output at 50 lines for large directories"
 
 [on_success]
 head = 50
