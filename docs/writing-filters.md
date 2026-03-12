@@ -63,7 +63,7 @@ collapse_empty_lines = true   # collapse consecutive blank lines into one
 truncate_lines_at = 120       # truncate lines longer than N chars (with trailing …)
 
 tail = 30                     # keep last N lines regardless of exit code (branch tail overrides)
-on_empty = "git push: ok"    # message when filter produces empty output (all lines stripped)
+on_empty = "git push: ok"     # message when filter produces empty output (all lines stripped)
 
 show_history_hint = true      # append a hint line pointing to the full output in history
 inject_path = true            # inject shims into PATH so sub-processes (e.g. git hooks) are filtered
