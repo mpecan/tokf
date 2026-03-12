@@ -1,4 +1,5 @@
 command = ["firebase deploy", "npx firebase deploy"]
+description = "Strip info/debug lines; show deploy targets and errors"
 strip_ansi = true
 skip = [
   "^\\s*$",

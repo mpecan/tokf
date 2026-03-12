@@ -1,4 +1,5 @@
 command = "vite build"
+description = "Strip blank lines and script prefix; show build output and bundle sizes"
 strip_ansi = true
 skip = [
   "^\\s*$",

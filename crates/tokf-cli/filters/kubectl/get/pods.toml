@@ -1,4 +1,5 @@
 command = ["kubectl get pods", "kubectl get pod", "kubectl get po"]
+description = "Structured JSON extraction of pod name, status, and restarts"
 
 # Override to get JSON output for structured extraction
 run = "kubectl get pods -o json {args}"

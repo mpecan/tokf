@@ -1,4 +1,5 @@
 command = "go vet"
+description = "Show only diagnostic locations; confirm ok on success"
 keep = ["\\.go:\\d+"]
 
 [on_success]

@@ -1,4 +1,5 @@
 command = "npm run *"
+description = "Strip npm lifecycle noise; show script output only"
 skip = [
   "^> .+@",
   "^\\s*npm warn",

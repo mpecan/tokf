@@ -1,4 +1,5 @@
 command = "cargo install *"
+description = "Strip compile progress; show installed binary name"
 skip = [
   "^\\s*Compiling ",
   "^\\s*Downloading ",

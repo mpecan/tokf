@@ -1,4 +1,5 @@
 command = ["gradle build", "./gradlew build"]
+description = "Strip task progress and daemon noise; show build result"
 strip_ansi = true
 collapse_empty_lines = true
 

@@ -1,4 +1,5 @@
 command = "cargo check"
+description = "Strip compile progress; show diagnostics only"
 skip = [
   "^\\s*Compiling ",
   "^\\s*Downloading ",

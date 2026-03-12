@@ -1,4 +1,5 @@
 command = "cargo build"
+description = "Strip compile progress; show warnings and errors only"
 skip = [
   "^   Compiling ",
   "^    Checking ",

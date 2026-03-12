@@ -1,4 +1,5 @@
 command = "pnpm install"
+description = "Strip download progress; show lockfile changes and warnings"
 skip = [
   "^\\s*Progress:",
   "^\\s*Downloading",

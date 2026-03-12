@@ -1,4 +1,5 @@
 command = "go test"
+description = "Strip per-test RUN/PASS noise; show failures and summary"
 skip = ["^=== RUN ", "^=== PAUSE ", "^=== CONT ", "--- PASS:", "^PASS$", "^\\?\\s+"]
 
 [on_success]

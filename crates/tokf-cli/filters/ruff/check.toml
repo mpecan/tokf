@@ -1,4 +1,5 @@
 command = "ruff check"
+description = "Strip blank lines; show lint errors with locations"
 strip_ansi = true
 skip = [
   "^\\s*$",

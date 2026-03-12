@@ -1,4 +1,5 @@
 command = "gh issue list"
+description = "Structured JSON extraction of issue number, title, state, and labels"
 run = "gh issue list --json number,title,state,labels {args}"
 passthrough_args = ["--web", "-w"]
 

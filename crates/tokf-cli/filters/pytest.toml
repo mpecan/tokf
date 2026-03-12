@@ -1,4 +1,5 @@
 command = "pytest"
+description = "Run with --tb=short -q; show failures and pass/fail summary"
 run = "pytest --tb=short -q {args}"
 
 [[section]]
