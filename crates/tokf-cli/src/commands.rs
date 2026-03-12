@@ -296,14 +296,19 @@ pub fn cmd_ls(verbose: bool) -> i32 {
     };
 
     for filter in &filters {
-        // Display: relative path without .toml extension  →  command
+        // Display: relative path without .toml extension  →  command  (description)
         let display_name = filter
             .relative_path
             .with_extension("")
             .display()
             .to_string();
+        let desc_suffix = filter
+            .config
+            .description
+            .as_deref()
+            .map_or(String::new(), |d| format!("  ({d})"));
         println!(
-            "{display_name}  \u{2192}  {}",
+            "{display_name}  \u{2192}  {}{desc_suffix}",
             filter.config.command.first()
         );
 

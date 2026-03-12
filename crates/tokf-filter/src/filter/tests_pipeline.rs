@@ -498,3 +498,182 @@ output = "{grand_total} total across {runs.count} runs"
     let filtered = apply(&config, &result, &[], &FilterOptions::default());
     assert_eq!(filtered.output, "40 total across 2 runs");
 }
+
+// --- on_empty tests ---
+
+#[test]
+fn apply_on_empty_when_all_lines_skipped() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+skip = [".*"]
+on_empty = "all clean"
+"#,
+    )
+    .unwrap();
+    let result = make_result("noise\nmore noise", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "all clean"
+    );
+}
+
+#[test]
+fn apply_on_empty_not_triggered_when_output_remains() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+skip = ["^noise"]
+on_empty = "all clean"
+"#,
+    )
+    .unwrap();
+    let result = make_result("noise\nreal line", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "real line"
+    );
+}
+
+#[test]
+fn apply_on_empty_not_set_returns_empty() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+skip = [".*"]
+"#,
+    )
+    .unwrap();
+    let result = make_result("noise", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        ""
+    );
+}
+
+#[test]
+fn apply_on_empty_with_match_output() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+on_empty = "nothing here"
+
+[[match_output]]
+contains = "sentinel"
+output = ""
+"#,
+    )
+    .unwrap();
+    let result = make_result("sentinel found", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "nothing here"
+    );
+}
+
+// --- top-level tail tests ---
+
+#[test]
+fn apply_top_level_tail_no_branch() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+tail = 2
+"#,
+    )
+    .unwrap();
+    let result = make_result("a\nb\nc\nd", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "c\nd"
+    );
+}
+
+#[test]
+fn apply_top_level_tail_with_branch_no_tail() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+tail = 2
+
+[on_success]
+skip = ["^noise"]
+"#,
+    )
+    .unwrap();
+    let result = make_result("a\nb\nc\nd", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "c\nd"
+    );
+}
+
+#[test]
+fn apply_branch_tail_overrides_top_level() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+tail = 2
+
+[on_success]
+tail = 1
+"#,
+    )
+    .unwrap();
+    let result = make_result("a\nb\nc\nd", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "d"
+    );
+}
+
+#[test]
+fn apply_top_level_tail_applies_on_failure() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+tail = 2
+"#,
+    )
+    .unwrap();
+    let result = make_result("a\nb\nc\nd", 1);
+    // No on_failure branch → fallback path, which uses top-level tail
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "c\nd"
+    );
+}
+
+// --- truncate_lines_at integration ---
+
+#[test]
+fn apply_truncate_lines_at_in_pipeline() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+truncate_lines_at = 10
+"#,
+    )
+    .unwrap();
+    let result = make_result("short\nthis is a very long line\nok", 0);
+    let filtered = apply(&config, &result, &[], &FilterOptions::default());
+    assert_eq!(filtered.output, "short\nthis is a\u{2026}\nok");
+}
+
+// --- description is metadata-only ---
+
+#[test]
+fn apply_description_does_not_affect_output() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+description = "A test filter"
+"#,
+    )
+    .unwrap();
+    let result = make_result("hello", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "hello"
+    );
+}

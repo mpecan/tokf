@@ -36,6 +36,10 @@ fn default_config() -> FilterConfig {
         show_history_hint: false,
         inject_path: false,
         passthrough_args: vec![],
+        description: None,
+        truncate_lines_at: None,
+        on_empty: None,
+        tail: None,
     }
 }
 

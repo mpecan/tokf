@@ -9,7 +9,7 @@ use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 use crate::runner::shell_escape;
 
-const CACHE_VERSION: u32 = 10;
+const CACHE_VERSION: u32 = 11;
 
 /// A single filter serialized for the binary cache.
 ///

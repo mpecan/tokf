@@ -42,6 +42,7 @@ The skipped flags are preserved in the command that actually runs — they are o
 ```toml
 command = "git push"          # command pattern to match (supports wildcards and arrays)
 run = "git push {args}"       # override command to actually execute
+description = "Compact git push output"  # human-readable description (shown in `tokf ls`)
 
 skip = ["^Enumerating", "^Counting"]  # drop lines matching these regexes
 keep = ["^error"]                      # keep only lines matching (inverse of skip)
@@ -59,6 +60,10 @@ strip_ansi = true             # strip ANSI escape sequences before processing
 trim_lines = true             # trim leading/trailing whitespace from each line
 strip_empty_lines = true      # remove all blank lines from the final output
 collapse_empty_lines = true   # collapse consecutive blank lines into one
+truncate_lines_at = 120       # truncate lines longer than N chars (with trailing …)
+
+tail = 30                     # keep last N lines regardless of exit code (branch tail overrides)
+on_empty = "git push: ok"     # message when filter produces empty output (all lines stripped)
 
 show_history_hint = true      # append a hint line pointing to the full output in history
 inject_path = true            # inject shims into PATH so sub-processes (e.g. git hooks) are filtered
@@ -79,7 +84,7 @@ match_output = [              # whole-output substring checks, short-circuit the
 output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 
 [on_failure]                  # branch for non-zero exit
-tail = 10                     # keep the last N lines
+tail = 10                     # keep the last N lines (overrides top-level tail)
 ```
 
 ## Passthrough args

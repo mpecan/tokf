@@ -57,6 +57,7 @@ struct BranchContext<'a> {
     has_json: bool,
     json_parsed: bool,
     json_vars: &'a std::collections::HashMap<String, String>,
+    top_level_tail: Option<usize>,
 }
 
 /// Apply a filter configuration to a command result.
@@ -230,7 +231,7 @@ fn apply_internal(
     if let Some(rule) = match_output::find_matching_rule(&config.match_output, &result.combined) {
         let output = match_output::render_output(&rule.output, &rule.contains, &result.combined);
         return FilterResult {
-            output: cleanup::post_process_output(config, output),
+            output: finalize_output(config, output),
         };
     }
 
@@ -255,7 +256,7 @@ fn apply_internal(
         let clean_text = lines.join("\n");
         if let Some(output) = run_lua(script_cfg, &clean_text, result.exit_code, args, lua_limits) {
             return FilterResult {
-                output: cleanup::post_process_output(config, output),
+                output: finalize_output(config, output),
             };
         }
     }
@@ -285,7 +286,7 @@ fn apply_internal(
         let output_config = config.output.clone().unwrap_or_default();
         let output = parse::render_output(&output_config, &parse_result);
         return FilterResult {
-            output: cleanup::post_process_output(config, output),
+            output: finalize_output(config, output),
         };
     }
 
@@ -336,6 +337,7 @@ fn apply_internal(
         has_json,
         json_parsed,
         json_vars: &json_vars,
+        top_level_tail: config.tail,
     };
     let output = branch.map_or_else(
         || apply_fallback(config, &pre_filtered),
@@ -346,8 +348,19 @@ fn apply_internal(
     );
 
     FilterResult {
-        output: cleanup::post_process_output(config, output),
+        output: finalize_output(config, output),
     }
+}
+
+/// Final output processing: post-process (strip/collapse/truncate) then apply `on_empty`.
+fn finalize_output(config: &FilterConfig, output: String) -> String {
+    let output = cleanup::post_process_output(config, output);
+    if let Some(ref msg) = config.on_empty
+        && output.trim().is_empty()
+    {
+        return msg.clone();
+    }
+    output
 }
 
 /// Select the output branch based on exit code.
@@ -419,7 +432,7 @@ fn apply_branch(branch: &OutputBranch, combined: &str, ctx: &BranchContext<'_>) 
     // Non-template path (tail/head/skip/extract)
     let mut lines: Vec<&str> = combined.lines().collect();
 
-    if let Some(tail) = branch.tail
+    if let Some(tail) = branch.tail.or(ctx.top_level_tail)
         && lines.len() > tail
     {
         lines = lines.split_off(lines.len() - tail);
@@ -439,9 +452,12 @@ fn apply_branch(branch: &OutputBranch, combined: &str, ctx: &BranchContext<'_>) 
 
 /// Fallback when no branch matches or sections collected nothing.
 fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
-    if let Some(ref fb) = config.fallback
-        && let Some(tail) = fb.tail
-    {
+    let tail = config
+        .fallback
+        .as_ref()
+        .and_then(|fb| fb.tail)
+        .or(config.tail);
+    if let Some(tail) = tail {
         let lines: Vec<&str> = combined.lines().collect();
         if lines.len() > tail {
             return lines[lines.len() - tail..].join("\n");
