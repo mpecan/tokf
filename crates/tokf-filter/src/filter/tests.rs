@@ -52,6 +52,7 @@ fn branch_apply(branch: &OutputBranch, combined: &str) -> String {
         json_parsed: false,
         json_vars: &std::collections::HashMap::new(),
         top_level_tail: None,
+        top_level_head: None,
     };
     apply_branch(branch, combined, &ctx).unwrap()
 }
@@ -284,6 +285,7 @@ fn branch_with_sections_expected_but_empty_returns_none() {
         json_parsed: false,
         json_vars: &std::collections::HashMap::new(),
         top_level_tail: None,
+        top_level_head: None,
     };
     let result = apply_branch(&branch, "irrelevant", &ctx);
     assert!(result.is_none(), "empty sections should trigger fallback");
@@ -324,6 +326,7 @@ fn branch_with_sections_populated_renders_template() {
         json_parsed: false,
         json_vars: &std::collections::HashMap::new(),
         top_level_tail: None,
+        top_level_head: None,
     };
     let result = apply_branch(&branch, "irrelevant", &ctx);
     assert_eq!(result.unwrap(), "20 passed (2 suites)");
@@ -349,6 +352,7 @@ fn branch_without_sections_ignores_has_sections_flag() {
         json_parsed: false,
         json_vars: &std::collections::HashMap::new(),
         top_level_tail: None,
+        top_level_head: None,
     };
     let result = apply_branch(&branch, "anything", &ctx);
     assert_eq!(result.unwrap(), "ok");

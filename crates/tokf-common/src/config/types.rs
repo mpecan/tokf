@@ -74,11 +74,11 @@ pub struct FilterConfig {
     pub run: Option<String>,
 
     /// Patterns for lines to skip (applied before section parsing).
-    #[serde(default)]
+    #[serde(default, alias = "strip_lines_matching")]
     pub skip: Vec<String>,
 
     /// Patterns for lines to keep (inverse of skip).
-    #[serde(default)]
+    #[serde(default, alias = "keep_lines_matching")]
     pub keep: Vec<String>,
 
     /// Pipeline steps to run before filtering.
@@ -193,9 +193,20 @@ pub struct FilterConfig {
     /// stripped). Without this, empty output is returned as-is.
     pub on_empty: Option<String>,
 
+    /// Number of lines to keep from the head of the output, applied regardless
+    /// of exit code. Branch-level `head` overrides this when present.
+    #[serde(alias = "head_lines")]
+    pub head: Option<usize>,
+
     /// Number of lines to keep from the tail of the output, applied regardless
     /// of exit code. Branch-level `tail` overrides this when present.
+    #[serde(alias = "tail_lines")]
     pub tail: Option<usize>,
+
+    /// Absolute maximum line count for the final output. Applied after all
+    /// other line-limiting stages (head, tail, skip, etc.). Lines beyond
+    /// this limit are silently dropped from the end.
+    pub max_lines: Option<usize>,
 }
 
 impl FilterConfig {
@@ -238,13 +249,43 @@ pub struct ExtractRule {
 }
 
 /// Matches against the full output and short-circuits with a fixed message.
+///
+/// At least one of `contains` (literal substring) or `pattern` (regex) must be
+/// set. When both are present, `contains` is tried first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MatchOutputRule {
     /// Substring to search for in the combined output.
-    pub contains: String,
+    #[serde(default)]
+    pub contains: Option<String>,
 
-    /// Output to emit if the substring is found.
+    /// Regex pattern to match against the combined output (RTK-compatible).
+    /// Used when `contains` is not set, or as a secondary matcher.
+    pub pattern: Option<String>,
+
+    /// Output to emit if the match succeeds.
+    #[serde(alias = "message")]
     pub output: String,
+
+    /// Regex pattern — if this also matches the output, skip this rule.
+    /// Prevents short-circuit rules from swallowing errors (RTK-compatible).
+    pub unless: Option<String>,
+}
+
+impl MatchOutputRule {
+    /// Validate that at least one of `contains` or `pattern` is set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if both `contains` and `pattern` are `None`.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.contains.is_none() && self.pattern.is_none() {
+            return Err(
+                "match_output rule must have at least one of `contains` or `pattern`".to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
 /// A state-machine section that collects lines between enter/exit markers.
@@ -446,11 +487,13 @@ pub struct FallbackConfig {
 /// One per-line regex replacement step.
 ///
 /// Pattern is applied to each line; on match, the line is replaced with the
-/// interpolated output template. Capture groups use `{1}`, `{2}`, … syntax.
-/// Multiple rules run in order.
+/// interpolated output template. Capture groups use `{1}`, `{2}`, … syntax
+/// (tokf-native) or `$1`, `$2` syntax (RTK-compatible). Multiple rules run
+/// in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplaceRule {
     pub pattern: String,
+    #[serde(alias = "replacement")]
     pub output: String,
 }
 

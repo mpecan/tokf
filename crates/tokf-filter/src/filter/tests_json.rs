@@ -39,7 +39,9 @@ fn default_config() -> FilterConfig {
         description: None,
         truncate_lines_at: None,
         on_empty: None,
+        head: None,
         tail: None,
+        max_lines: None,
     }
 }
 
