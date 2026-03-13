@@ -229,10 +229,16 @@ fn apply_internal(
     #[cfg(feature = "lua")] lua_limits: &lua::SandboxLimits,
 ) -> FilterResult {
     // 1. match_output short-circuit
+    // When strip_ansi is enabled, match against cleaned text for consistency.
+    let match_text = if config.strip_ansi {
+        cleanup::strip_ansi_from(&result.combined)
+    } else {
+        result.combined.clone()
+    };
     if let Some((rule, needle)) =
-        match_output::find_matching_rule(&config.match_output, &result.combined)
+        match_output::find_matching_rule(&config.match_output, &match_text)
     {
-        let output = match_output::render_output(&rule.output, &needle, &result.combined);
+        let output = match_output::render_output(&rule.output, &needle, &match_text);
         return FilterResult {
             output: finalize_output(config, output),
         };
