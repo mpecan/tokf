@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.35](https://github.com/mpecan/tokf/compare/tokf-v0.2.34...tokf-v0.2.35) (2026-03-13)
+
+
+### Bug Fixes
+
+* **hook:** support wildcards in any position in permission patterns ([#291](https://github.com/mpecan/tokf/issues/291)) ([99c9181](https://github.com/mpecan/tokf/commit/99c9181686ab5ed3a6a716373395fcd36ad9d66f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.34 to 0.2.35
+    * tokf-filter bumped from 0.2.34 to 0.2.35
+
 ## [0.2.34](https://github.com/mpecan/tokf/compare/tokf-v0.2.33...tokf-v0.2.34) (2026-03-13)
 
 
