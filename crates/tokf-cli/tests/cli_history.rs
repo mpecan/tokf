@@ -312,11 +312,11 @@ fn history_last_all_returns_globally_most_recent() {
 }
 
 /// Extract the history ID from a hint line like:
-///     [tokf] compressed — run `tokf raw 1` for full output
+///     🗜️ compressed — run `tokf raw 1` for full output
 fn extract_hint_id(stdout: &str) -> &str {
     let hint_line = stdout
         .lines()
-        .find(|l| l.starts_with("[tokf] compressed"))
+        .find(|l| l.starts_with("🗜️ compressed"))
         .expect("hint line not found");
     hint_line
         .split('`')
@@ -344,7 +344,7 @@ fn hint_appears_with_show_history_hint_filter() {
 
     assert!(out.status.success());
     assert!(
-        stdout.contains("[tokf] compressed"),
+        stdout.contains("🗜️ compressed"),
         "expected hint in stdout, got: {stdout}"
     );
 }
@@ -364,7 +364,7 @@ fn hint_absent_without_show_history_hint() {
 
     assert!(out.status.success());
     assert!(
-        !stdout.contains("[tokf] compressed"),
+        !stdout.contains("🗜️ compressed"),
         "hint should not appear, got: {stdout}"
     );
 }

@@ -60,7 +60,7 @@ output = "{branch} — {counts}"
 
 ```
 🗜️ ✓ cargo test: 42 passed (2.31s)
-[tokf] compressed — run `tokf raw 99` for full output
+🗜️ compressed — run `tokf raw 99` for full output
 ```
 
 The `🗜️` prefix appears on all filtered output (disable with `tokf config set output.show_indicator false` or `TOKF_SHOW_INDICATOR=false`). The hint line is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line or indicator.

@@ -213,7 +213,7 @@ pub fn cmd_run(
     }
 
     if show_hint && let Some(id) = history_id {
-        println!("[tokf] compressed — run `tokf raw {id}` for full output");
+        println!("🗜️ compressed — run `tokf raw {id}` for full output");
     }
 
     reporter.report(&telemetry::TelemetryEvent::new(

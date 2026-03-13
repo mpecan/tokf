@@ -807,7 +807,7 @@ output = "{branch} — {counts}"
 
 ```
 🗜️ main — modified: 3, untracked: 1
-[tokf] compressed — run `tokf raw 42` for full output
+🗜️ compressed — run `tokf raw 42` for full output
 ```
 
 **Behavior**:
