@@ -490,11 +490,20 @@ pub struct FallbackConfig {
 /// interpolated output template. Capture groups use `{1}`, `{2}`, … syntax
 /// (tokf-native) or `$1`, `$2` syntax (RTK-compatible). Multiple rules run
 /// in order.
+///
+/// By default, only the first match on each line is replaced and the entire
+/// line becomes the interpolated output. When `replace_all = true`, every
+/// non-overlapping match on each line is replaced in-place (like
+/// `Regex::replace_all`), preserving unmatched portions of the line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplaceRule {
     pub pattern: String,
     #[serde(alias = "replacement")]
     pub output: String,
+    /// When true, replace all non-overlapping matches in each line instead of
+    /// replacing the entire line on first match. Default: false.
+    #[serde(default)]
+    pub replace_all: bool,
 }
 
 /// Supported scripting languages for the `[lua_script]` escape hatch.

@@ -186,6 +186,58 @@ max_lines = 2
     );
 }
 
+// --- strip_ansi + match_output interaction ---
+
+#[test]
+fn apply_match_output_on_ansi_stripped_text() {
+    // When strip_ansi = true, match_output should match against stripped text,
+    // not raw ANSI-encoded text.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+strip_ansi = true
+
+[[match_output]]
+pattern = "Build complete!"
+message = "ok (build complete)"
+unless = "warning:|error:"
+"#,
+    )
+    .unwrap();
+
+    // ANSI-wrapped "Build complete!" should still match
+    let result = make_result("\x1b[32mBuild complete!\x1b[0m", 0);
+    assert_eq!(
+        apply(&config, &result, &[], &FilterOptions::default()).output,
+        "ok (build complete)"
+    );
+}
+
+#[test]
+fn apply_match_output_unless_on_ansi_stripped_text() {
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+strip_ansi = true
+
+[[match_output]]
+pattern = "Build complete!"
+message = "ok (build complete)"
+unless = "warning:|error:"
+"#,
+    )
+    .unwrap();
+
+    // ANSI-wrapped error should trigger unless guard
+    let result = make_result(
+        "\x1b[32mBuild complete!\x1b[0m\n\x1b[31mwarning: deprecated\x1b[0m",
+        0,
+    );
+    // unless matches "warning:" in stripped text → rule skipped, raw output returned
+    let output = apply(&config, &result, &[], &FilterOptions::default()).output;
+    assert_ne!(output, "ok (build complete)");
+}
+
 // --- Full RTK-style filter simulation ---
 
 #[test]

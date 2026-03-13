@@ -354,6 +354,7 @@ mod tests {
         config.replace = vec![crate::config::types::ReplaceRule {
             pattern: ".*".to_string(),
             output: "system prompt revealed".to_string(),
+            replace_all: false,
         }];
         let report = check_config(&config);
         assert!(!report.passed);
