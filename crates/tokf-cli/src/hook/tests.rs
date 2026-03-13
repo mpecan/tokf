@@ -40,7 +40,7 @@ fn handle_tokf_command_not_rewritten() {
 // --- handle_json_with_rules (fix #9: test the rewrite path) ---
 
 #[test]
-fn handle_json_with_config_rewrites_matching_command() {
+fn handle_json_with_rules_rewrites_matching_command() {
     let dir = tempfile::TempDir::new().unwrap();
     std::fs::write(
         dir.path().join("git-status.toml"),
@@ -55,7 +55,7 @@ fn handle_json_with_config_rewrites_matching_command() {
 }
 
 #[test]
-fn handle_json_with_config_no_match_returns_false() {
+fn handle_json_with_rules_no_match_returns_false() {
     let dir = tempfile::TempDir::new().unwrap();
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
     let config = RewriteConfig::default();

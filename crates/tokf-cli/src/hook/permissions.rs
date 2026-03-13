@@ -84,13 +84,22 @@ pub(crate) fn load_deny_ask_rules() -> (Vec<String>, Vec<String>) {
 /// JSON cause a fail-closed response: a stderr warning is emitted and a
 /// wildcard `*` ask rule is injected so that the hook never silently
 /// auto-allows when permissions can't be determined.
-fn load_rules_from_paths(paths: &[impl AsRef<std::path::Path>]) -> (Vec<String>, Vec<String>) {
+fn load_rules_from_paths<P: AsRef<std::path::Path>>(paths: &[P]) -> (Vec<String>, Vec<String>) {
     let mut deny_rules = Vec::new();
     let mut ask_rules = Vec::new();
 
     for path in paths {
-        let Ok(content) = std::fs::read_to_string(path) else {
-            continue;
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                eprintln!(
+                    "[tokf] warning: could not read {}: {e} — failing closed (ask for all)",
+                    path.as_ref().display()
+                );
+                ask_rules.push("*".to_string());
+                continue;
+            }
         };
         let json = match serde_json::from_str::<Value>(&content) {
             Ok(v) => v,
@@ -153,7 +162,7 @@ fn get_settings_paths() -> Vec<PathBuf> {
 fn find_project_root() -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
-        if dir.join(".claude").exists() {
+        if dir.join(".claude").is_dir() {
             return Some(dir);
         }
         if !dir.pop() {
@@ -364,6 +373,26 @@ mod tests {
             check_command_from_settings("git status", &[settings.as_path()]),
             PermissionVerdict::Ask
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_settings_fails_closed_as_ask() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        let settings = dir.path().join("settings.json");
+        std::fs::write(&settings, r#"{"permissions":{"deny":["Bash(*)"]}}"#).unwrap();
+        // Make the file unreadable
+        std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        // Unreadable file should fail closed as Ask, not silently skip.
+        assert_eq!(
+            check_command_from_settings("git status", &[settings.as_path()]),
+            PermissionVerdict::Ask
+        );
+
+        // Restore permissions for cleanup
+        std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
 
     #[test]
