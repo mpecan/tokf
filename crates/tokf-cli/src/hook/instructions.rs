@@ -65,7 +65,7 @@ pub fn format_for_cline() -> String {
     format!(
         "---\n\
          description: tokf — compress CLI output to save context tokens\n\
-         globs:\n\
+         globs: []\n\
          alwaysApply: true\n\
          ---\n\n\
          {CORE_INSTRUCTIONS}"

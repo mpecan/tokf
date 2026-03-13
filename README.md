@@ -1162,14 +1162,14 @@ This registers a hook shim in `.gemini/settings.json` (or `~/.gemini/settings.js
 
 ## Cursor
 
-tokf integrates with [Cursor](https://cursor.com) via a `preToolUse` hook that automatically filters `Shell` tool calls.
+tokf integrates with [Cursor](https://cursor.com) via a `beforeShellExecution` hook that automatically filters shell commands.
 
 ```sh
 tokf hook install --tool cursor          # project-local (.cursor/)
 tokf hook install --tool cursor --global # user-level (~/.cursor/)
 ```
 
-This registers a hook in `.cursor/hooks.json` (or `~/.cursor/hooks.json` for `--global`). When `--no-context` is not set, it also creates `.cursor/rules/tokf.md` with context about the compression indicator.
+This registers a hook in `.cursor/hooks.json` (or `~/.cursor/hooks.json` for `--global`). When `--no-context` is not set, it also creates `.cursor/rules/TOKF.md` with context about the compression indicator.
 
 ## Cline
 

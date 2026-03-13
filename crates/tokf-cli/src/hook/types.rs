@@ -51,8 +51,8 @@ impl HookResponse {
 }
 
 // --- Gemini CLI types ---
-// Input types share the same JSON shape as Claude Code (HookInput/ToolInput),
-// so no separate Gemini/Cursor input types are needed.
+// Gemini input types share the same JSON shape as Claude Code (HookInput/ToolInput),
+// so no separate Gemini input type is needed. Cursor uses a different format (CursorInput).
 
 /// Response to send back to Gemini CLI when rewriting a command.
 #[derive(Debug, Clone, Serialize)]
@@ -87,6 +87,14 @@ impl GeminiHookResponse {
 }
 
 // --- Cursor types ---
+// Cursor's `beforeShellExecution` hook sends `command` at the top level,
+// unlike Claude Code / Gemini which nest it under `tool_input`.
+
+/// Cursor `beforeShellExecution` hook input (read from stdin).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CursorInput {
+    pub command: Option<String>,
+}
 
 /// Response to send back to Cursor when rewriting a command.
 #[derive(Debug, Clone, Serialize)]
@@ -173,7 +181,7 @@ mod tests {
     }
 
     // --- Gemini CLI types ---
-    // Gemini and Cursor inputs share the same JSON shape as HookInput,
+    // Gemini inputs share the same JSON shape as HookInput,
     // so deserialization is tested via HookInput above. Only response
     // serialization differs per protocol.
 
@@ -198,6 +206,20 @@ mod tests {
     }
 
     // --- Cursor types ---
+
+    #[test]
+    fn deserialize_cursor_before_shell_execution() {
+        let json = r#"{"conversation_id":"abc","command":"git status","cwd":"/tmp","hook_event_name":"beforeShellExecution"}"#;
+        let input: CursorInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.command.as_deref(), Some("git status"));
+    }
+
+    #[test]
+    fn deserialize_cursor_no_command() {
+        let json = r#"{"conversation_id":"abc","cwd":"/tmp"}"#;
+        let input: CursorInput = serde_json::from_str(json).unwrap();
+        assert!(input.command.is_none());
+    }
 
     #[test]
     fn serialize_cursor_hook_response() {

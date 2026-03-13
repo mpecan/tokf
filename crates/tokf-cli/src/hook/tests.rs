@@ -507,21 +507,16 @@ fn handle_cursor_rewrites_matching_command() {
     )
     .unwrap();
 
-    let json = r#"{"tool_name":"Shell","tool_input":{"command":"cargo test"}}"#;
+    // Cursor's beforeShellExecution sends command at the top level
+    let json = r#"{"command":"cargo test","cwd":"/tmp","hook_event_name":"beforeShellExecution"}"#;
     let config = RewriteConfig::default();
     let result = handle_cursor_json_with_config(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite for Cursor matching command");
 }
 
 #[test]
-fn handle_cursor_non_shell_passes_through() {
-    let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
-    assert!(!handle_cursor_json(json));
-}
-
-#[test]
 fn handle_cursor_no_command_passes_through() {
-    let json = r#"{"tool_name":"Shell","tool_input":{}}"#;
+    let json = r#"{"cwd":"/tmp","hook_event_name":"beforeShellExecution"}"#;
     assert!(!handle_cursor_json(json));
 }
 
@@ -531,6 +526,33 @@ fn handle_cursor_invalid_json_passes_through() {
 }
 
 // --- append_or_replace_section ---
+
+#[test]
+fn append_or_replace_section_missing_end_marker_appends_instead() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("test.md");
+    // File has start marker but no end marker — should NOT truncate
+    std::fs::write(
+        &path,
+        "before\n<!-- tokf:start -->\nold content\nuser data\n",
+    )
+    .unwrap();
+
+    append_or_replace_section(&path, || {
+        "<!-- tokf:start -->\nupdated\n<!-- tokf:end -->".to_string()
+    })
+    .unwrap();
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        content.contains("user data"),
+        "should not truncate content after orphaned start marker, got: {content}"
+    );
+    assert!(
+        content.contains("updated"),
+        "should append new section, got: {content}"
+    );
+}
 
 #[test]
 fn append_or_replace_section_creates_new_file() {

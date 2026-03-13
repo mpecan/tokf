@@ -12,7 +12,7 @@ pub mod windsurf;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use types::{CursorHookResponse, GeminiHookResponse, HookInput, HookResponse};
+use types::{CursorHookResponse, CursorInput, GeminiHookResponse, HookInput, HookResponse};
 
 use crate::rewrite;
 use crate::rewrite::types::RewriteConfig;
@@ -94,6 +94,9 @@ pub fn handle_cursor() -> bool {
 }
 
 /// Core Cursor handle logic operating on a JSON string.
+///
+/// Cursor's `beforeShellExecution` sends `command` at the top level
+/// (not nested under `tool_input` like Claude Code / Gemini).
 pub(crate) fn handle_cursor_json(json: &str) -> bool {
     let user_config = rewrite::load_user_config().unwrap_or_default();
     let search_dirs = crate::config::default_search_dirs();
@@ -106,9 +109,27 @@ pub(crate) fn handle_cursor_json_with_config(
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
 ) -> bool {
-    handle_generic(json, "Shell", user_config, search_dirs, |cmd| {
-        CursorHookResponse::rewrite(cmd)
-    })
+    let Ok(input) = serde_json::from_str::<CursorInput>(json) else {
+        return false;
+    };
+
+    let Some(command) = input.command else {
+        return false;
+    };
+
+    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+
+    if rewritten == command {
+        return false;
+    }
+
+    let response = CursorHookResponse::rewrite(rewritten);
+    if let Ok(json) = serde_json::to_string(&response) {
+        println!("{json}");
+        return true;
+    }
+
+    false
 }
 
 /// Generic handle logic shared across all hook formats.
@@ -403,26 +424,32 @@ pub(crate) fn append_or_replace_section(
         Err(e) => return Err(e.into()),
     };
 
-    if existing.contains(start_marker) {
-        // Replace existing tokf section
-        let before = existing.find(start_marker).map_or("", |i| &existing[..i]);
-        let after = existing
-            .find(end_marker)
-            .map_or("", |i| &existing[i + end_marker.len()..]);
+    let start_pos = existing.find(start_marker);
+    let end_pos = existing.find(end_marker);
 
+    // Only replace when both markers are present and in correct order.
+    // If only the start marker exists (missing end), fall through to append
+    // to avoid truncating user content after the start marker.
+    if let (Some(s), Some(e)) = (start_pos, end_pos)
+        && s < e
+    {
+        let before = &existing[..s];
+        let after = &existing[e + end_marker.len()..];
         let section = content_fn();
         let updated = format!("{before}{section}{after}");
         std::fs::write(path, updated)?;
-    } else {
-        let separator = if existing.is_empty() || existing.ends_with('\n') {
-            ""
-        } else {
-            "\n"
-        };
-        let section = content_fn();
-        let updated = format!("{existing}{separator}\n{section}");
-        std::fs::write(path, updated)?;
+        return Ok(());
     }
+
+    // No valid marker pair found — append the section.
+    let separator = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let section = content_fn();
+    let updated = format!("{existing}{separator}\n{section}");
+    std::fs::write(path, updated)?;
 
     Ok(())
 }

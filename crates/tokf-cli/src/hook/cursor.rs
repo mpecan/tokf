@@ -44,11 +44,12 @@ pub(crate) fn install_to(
     Ok(())
 }
 
-/// Patch Cursor hooks.json to register the `preToolUse` hook.
+/// Patch Cursor hooks.json to register the `beforeShellExecution` hook.
 ///
 /// Cursor uses a different structure from Claude Code / Gemini — each hook entry
-/// is a flat object with `matcher`, `type`, and `command` at the top level
-/// (rather than nested in a `hooks` array), so we use a dedicated function.
+/// is a flat object with `type` and `command` at the top level (rather than nested
+/// in a `hooks` array), and the event name is `beforeShellExecution` (not
+/// `preToolUse`).
 fn patch_hooks_json(hooks_json_path: &Path, hook_script: &Path) -> anyhow::Result<()> {
     let mut config: serde_json::Value = if hooks_json_path.exists() {
         let content = std::fs::read_to_string(hooks_json_path)?;
@@ -66,7 +67,6 @@ fn patch_hooks_json(hooks_json_path: &Path, hook_script: &Path) -> anyhow::Resul
     );
 
     let tokf_hook_entry = serde_json::json!({
-        "matcher": "Shell",
         "type": "command",
         "command": hook_command
     });
@@ -77,15 +77,15 @@ fn patch_hooks_json(hooks_json_path: &Path, hook_script: &Path) -> anyhow::Resul
         .entry("hooks")
         .or_insert_with(|| serde_json::json!({}));
 
-    let pre_tool_use = hooks
+    let before_shell = hooks
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("hooks.json hooks is not an object"))?
-        .entry("preToolUse")
+        .entry("beforeShellExecution")
         .or_insert_with(|| serde_json::json!([]));
 
-    let arr = pre_tool_use
+    let arr = before_shell
         .as_array_mut()
-        .ok_or_else(|| anyhow::anyhow!("hooks.preToolUse is not an array"))?;
+        .ok_or_else(|| anyhow::anyhow!("hooks.beforeShellExecution is not an array"))?;
 
     // Remove existing tokf entries (idempotent install)
     arr.retain(|entry| {
@@ -130,8 +130,13 @@ mod tests {
         let content = std::fs::read_to_string(&hooks_json).unwrap();
         let value: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert_eq!(value["version"], 1);
-        assert!(value["hooks"]["preToolUse"].is_array());
-        assert_eq!(value["hooks"]["preToolUse"][0]["matcher"], "Shell");
+        assert!(value["hooks"]["beforeShellExecution"].is_array());
+        assert!(
+            value["hooks"]["beforeShellExecution"][0]
+                .get("matcher")
+                .is_none(),
+            "beforeShellExecution entries should not have a matcher"
+        );
     }
 
     #[test]
@@ -146,7 +151,7 @@ mod tests {
 
         let content = std::fs::read_to_string(&hooks_json).unwrap();
         let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-        let arr = value["hooks"]["preToolUse"].as_array().unwrap();
+        let arr = value["hooks"]["beforeShellExecution"].as_array().unwrap();
         assert_eq!(arr.len(), 1, "should have one entry after double install");
     }
 
@@ -190,9 +195,8 @@ mod tests {
             r#"{
   "version": 1,
   "hooks": {
-    "preToolUse": [
+    "beforeShellExecution": [
       {
-        "matcher": "Shell",
         "type": "command",
         "command": "/other/tool.sh"
       }
@@ -206,7 +210,7 @@ mod tests {
 
         let content = std::fs::read_to_string(&hooks_json).unwrap();
         let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-        let arr = value["hooks"]["preToolUse"].as_array().unwrap();
+        let arr = value["hooks"]["beforeShellExecution"].as_array().unwrap();
         assert_eq!(arr.len(), 2, "should have both hooks");
     }
 }
