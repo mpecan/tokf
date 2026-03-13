@@ -416,6 +416,8 @@ pub fn cmd_skill_install(global: bool) -> i32 {
 }
 
 pub fn cmd_hook_handle(format: &HookFormat) -> i32 {
+    // Return values (true = rewritten, false = pass-through) are intentionally
+    // discarded: the hook must always exit 0 so it never blocks the IDE's command.
     match format {
         HookFormat::ClaudeCode => {
             hook::handle();

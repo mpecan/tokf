@@ -29,7 +29,7 @@ pub(crate) fn install_to(
     install_context: bool,
 ) -> anyhow::Result<()> {
     let hook_script = hook_dir.join("cursor-pre-tool-use.sh");
-    super::write_hook_shim(hook_dir, &hook_script, tokf_bin, " --format cursor")?;
+    super::write_hook_shim(hook_dir, &hook_script, tokf_bin, "--format cursor")?;
     patch_hooks_json(hooks_json_path, &hook_script)?;
 
     eprintln!("[tokf] Cursor hook installed");
@@ -156,7 +156,7 @@ mod tests {
         let hook_dir = dir.path().join("hooks");
         let hook_script = hook_dir.join("cursor-pre-tool-use.sh");
 
-        super::super::write_hook_shim(&hook_dir, &hook_script, "tokf", " --format cursor").unwrap();
+        super::super::write_hook_shim(&hook_dir, &hook_script, "tokf", "--format cursor").unwrap();
 
         let content = std::fs::read_to_string(&hook_script).unwrap();
         assert!(

@@ -26,7 +26,7 @@ pub(crate) fn install_to(
     install_context: bool,
 ) -> anyhow::Result<()> {
     let hook_script = hook_dir.join("gemini-before-tool.sh");
-    super::write_hook_shim(hook_dir, &hook_script, tokf_bin, " --format gemini")?;
+    super::write_hook_shim(hook_dir, &hook_script, tokf_bin, "--format gemini")?;
     super::patch_json_hook_config(
         settings_path,
         &hook_script,
@@ -100,7 +100,7 @@ mod tests {
         let hook_dir = dir.path().join("hooks");
         let hook_script = hook_dir.join("gemini-before-tool.sh");
 
-        super::super::write_hook_shim(&hook_dir, &hook_script, "tokf", " --format gemini").unwrap();
+        super::super::write_hook_shim(&hook_dir, &hook_script, "tokf", "--format gemini").unwrap();
 
         let content = std::fs::read_to_string(&hook_script).unwrap();
         assert!(

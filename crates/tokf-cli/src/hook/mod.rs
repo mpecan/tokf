@@ -276,7 +276,7 @@ pub(crate) fn patch_md_with_reference(dir: &Path, filename: &str) -> anyhow::Res
 }
 
 /// Write the hook shim script. `extra_args` is appended after `hook handle`
-/// (e.g. `" --format gemini"`).
+/// (e.g. `"--format gemini"`). A space is inserted automatically if non-empty.
 pub(crate) fn write_hook_shim(
     hook_dir: &Path,
     hook_script: &Path,
@@ -290,7 +290,12 @@ pub(crate) fn write_hook_shim(
     } else {
         runner::shell_escape(tokf_bin)
     };
-    let content = format!("#!/bin/sh\nexec {escaped_bin} hook handle{extra_args}\n");
+    let suffix = if extra_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", extra_args.trim())
+    };
+    let content = format!("#!/bin/sh\nexec {escaped_bin} hook handle{suffix}\n");
     std::fs::write(hook_script, content)?;
 
     // Make executable on Unix

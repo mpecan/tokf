@@ -57,12 +57,16 @@ fn patch_aider_conf(conventions_path: &Path) -> anyhow::Result<()> {
     let home =
         dirs::home_dir().ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
     let conf_path = home.join(".aider.conf.yml");
+    patch_aider_conf_at(&conf_path, conventions_path)
+}
 
+/// Testable core: patch the given aider config file.
+pub(crate) fn patch_aider_conf_at(conf_path: &Path, conventions_path: &Path) -> anyhow::Result<()> {
     let conventions_str = conventions_path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("conventions path is not valid UTF-8"))?;
 
-    let existing = match std::fs::read_to_string(&conf_path) {
+    let existing = match std::fs::read_to_string(conf_path) {
         Ok(content) => content,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
@@ -80,7 +84,7 @@ fn patch_aider_conf(conventions_path: &Path) -> anyhow::Result<()> {
     };
 
     let updated = format!("{existing}{separator}read:\n  - {conventions_str}\n");
-    std::fs::write(&conf_path, updated)?;
+    std::fs::write(conf_path, updated)?;
 
     Ok(())
 }
@@ -132,14 +136,42 @@ mod tests {
     #[test]
     fn patch_aider_conf_creates_new_file() {
         let dir = TempDir::new().unwrap();
-        // We can't test patch_aider_conf directly because it uses dirs::home_dir,
-        // but we can test the underlying conventions writing
+        let conf_path = dir.path().join(".aider.conf.yml");
         let conventions_path = dir.path().join("tokf-conventions.md");
-        write_conventions_file(&conventions_path).unwrap();
 
-        let content = std::fs::read_to_string(&conventions_path).unwrap();
-        assert!(content.contains("<!-- tokf:start -->"));
-        assert!(content.contains("tokf run"));
+        patch_aider_conf_at(&conf_path, &conventions_path).unwrap();
+
+        let content = std::fs::read_to_string(&conf_path).unwrap();
+        assert!(content.contains("read:"));
+        assert!(content.contains("tokf-conventions.md"));
+    }
+
+    #[test]
+    fn patch_aider_conf_is_idempotent() {
+        let dir = TempDir::new().unwrap();
+        let conf_path = dir.path().join(".aider.conf.yml");
+        let conventions_path = dir.path().join("tokf-conventions.md");
+
+        patch_aider_conf_at(&conf_path, &conventions_path).unwrap();
+        patch_aider_conf_at(&conf_path, &conventions_path).unwrap();
+
+        let content = std::fs::read_to_string(&conf_path).unwrap();
+        let count = content.matches("read:").count();
+        assert_eq!(count, 1, "should have exactly one read: entry");
+    }
+
+    #[test]
+    fn patch_aider_conf_preserves_existing() {
+        let dir = TempDir::new().unwrap();
+        let conf_path = dir.path().join(".aider.conf.yml");
+        std::fs::write(&conf_path, "model: gpt-4\n").unwrap();
+        let conventions_path = dir.path().join("tokf-conventions.md");
+
+        patch_aider_conf_at(&conf_path, &conventions_path).unwrap();
+
+        let content = std::fs::read_to_string(&conf_path).unwrap();
+        assert!(content.starts_with("model: gpt-4\n"));
+        assert!(content.contains("read:"));
     }
 
     #[test]

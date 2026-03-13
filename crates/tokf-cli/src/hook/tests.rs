@@ -529,3 +529,74 @@ fn handle_cursor_no_command_passes_through() {
 fn handle_cursor_invalid_json_passes_through() {
     assert!(!handle_cursor_json("not json"));
 }
+
+// --- append_or_replace_section ---
+
+#[test]
+fn append_or_replace_section_creates_new_file() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("test.md");
+
+    append_or_replace_section(&path, || {
+        "<!-- tokf:start -->\ntokf content\n<!-- tokf:end -->".to_string()
+    })
+    .unwrap();
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<!-- tokf:start -->"));
+    assert!(content.contains("tokf content"));
+    assert!(content.contains("<!-- tokf:end -->"));
+}
+
+#[test]
+fn append_or_replace_section_appends_to_existing() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("test.md");
+    std::fs::write(&path, "# Existing\n").unwrap();
+
+    append_or_replace_section(&path, || {
+        "<!-- tokf:start -->\nnew section\n<!-- tokf:end -->".to_string()
+    })
+    .unwrap();
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.starts_with("# Existing\n"));
+    assert!(content.contains("new section"));
+}
+
+#[test]
+fn append_or_replace_section_replaces_existing() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("test.md");
+    std::fs::write(
+        &path,
+        "before\n<!-- tokf:start -->\nold\n<!-- tokf:end -->\nafter\n",
+    )
+    .unwrap();
+
+    append_or_replace_section(&path, || {
+        "<!-- tokf:start -->\nupdated\n<!-- tokf:end -->".to_string()
+    })
+    .unwrap();
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("before\n"));
+    assert!(content.contains("updated"));
+    assert!(!content.contains("old"));
+    assert!(content.contains("after"));
+}
+
+#[test]
+fn append_or_replace_section_is_idempotent() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("test.md");
+
+    let section_fn = || "<!-- tokf:start -->\ncontent\n<!-- tokf:end -->".to_string();
+
+    append_or_replace_section(&path, section_fn).unwrap();
+    append_or_replace_section(&path, section_fn).unwrap();
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    let count = content.matches("<!-- tokf:start -->").count();
+    assert_eq!(count, 1, "should have exactly one tokf section");
+}
