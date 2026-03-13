@@ -47,56 +47,47 @@ fn build_wrapper_rules() -> Vec<RewriteRule> {
         .collect()
 }
 
-/// Build rewrite rules by discovering installed filters (recursive walk).
+/// Collect raw filter pattern strings from all discovered filters.
 ///
-/// For each filter pattern, generates a rewrite rule via
-/// [`config::command_pattern_to_regex`].  The resulting regexes honour both
-/// runtime matching behaviours:
-///
-/// - **Basename matching** — the first word allows an optional leading path
-///   prefix, so `/usr/bin/git push` rewrites to `tokf run /usr/bin/git push`.
-/// - **Transparent global flags** — flag-like tokens between pattern words are
-///   tolerated, so `git -C /repo log` rewrites to `tokf run git -C /repo log`.
-///
-/// Handles `CommandPattern::Multiple` (one rule per pattern string) and
-/// wildcards (`*` → `\S+` in the regex).
-#[cfg(test)]
-pub(crate) fn build_rules_from_filters(search_dirs: &[PathBuf]) -> Vec<RewriteRule> {
-    build_rules_from_filters_with_options(search_dirs, &RewriteOptions::default())
+/// These patterns are matched using [`config::pattern_matches_prefix`] — the
+/// same authoritative matching logic used by `tokf run` and `tokf which` — so
+/// that `tokf -c` (shell mode) and `tokf rewrite` produce identical results.
+fn collect_filter_patterns(search_dirs: &[PathBuf]) -> Vec<String> {
+    let mut patterns = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let Ok(filters) = config::cache::discover_with_cache(search_dirs) else {
+        return patterns;
+    };
+    for filter in filters {
+        for pattern in filter.config.command.patterns() {
+            let owned = pattern.clone();
+            if seen.insert(owned.clone()) {
+                patterns.push(owned);
+            }
+        }
+    }
+    patterns
 }
 
-fn build_rules_from_filters_with_options(
-    search_dirs: &[PathBuf],
-    options: &RewriteOptions,
-) -> Vec<RewriteRule> {
-    let mut rules = Vec::new();
-    let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    let Ok(filters) = config::cache::discover_with_cache(search_dirs) else {
-        return rules;
-    };
-
-    let run_prefix = if options.no_mask_exit_code {
+/// Try to match a command against filter patterns using the authoritative
+/// [`config::pattern_matches_prefix`] logic.  Returns a `tokf run` invocation
+/// if matched.
+fn try_filter_match(cmd: &str, patterns: &[String], options: &RewriteOptions) -> Option<String> {
+    let words: Vec<&str> = cmd.split_whitespace().collect();
+    if words.is_empty() {
+        return None;
+    }
+    let prefix = if options.no_mask_exit_code {
         "tokf run --no-mask-exit-code"
     } else {
         "tokf run"
     };
-
-    for filter in filters {
-        for pattern in filter.config.command.patterns() {
-            if !seen_patterns.insert(pattern.clone()) {
-                continue;
-            }
-
-            let regex_str = config::command_pattern_to_regex(pattern);
-            rules.push(RewriteRule {
-                match_pattern: regex_str,
-                replace: format!("{run_prefix} {{0}}"),
-            });
+    for pattern in patterns {
+        if config::pattern_matches_prefix(pattern, &words).is_some() {
+            return Some(format!("{prefix} {cmd}"));
         }
     }
-
-    rules
+    None
 }
 
 /// Top-level rewrite function. Orchestrates skip check, user rules, and filter rules.
@@ -120,8 +111,8 @@ pub fn rewrite_with_options(command: &str, verbose: bool, options: &RewriteOptio
 struct SegmentRules<'a> {
     /// Wrapper rules for task runners (tried first, before pipe handling).
     wrapper: &'a [RewriteRule],
-    /// Filter-derived rules (tried after pipe handling).
-    filter: &'a [RewriteRule],
+    /// Raw filter pattern strings matched via `pattern_matches_prefix`.
+    filter_patterns: &'a [String],
     /// Options controlling `tokf run` generation (e.g. `--no-mask-exit-code`).
     options: &'a RewriteOptions,
 }
@@ -165,16 +156,16 @@ fn rewrite_segment(
     }
 
     if has_bare_pipe(cmd) {
-        if strip_pipes && let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd) {
-            let rewritten = apply_rules(rules.filter, &base);
-            if rewritten != base {
-                if verbose {
-                    eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
-                }
-                let injected =
-                    inject_pipe_flags_with_options(&rewritten, &suffix, prefer_less, rules.options);
-                return format!("{env_prefix}{injected}");
+        if strip_pipes
+            && let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd)
+            && let Some(rewritten) = try_filter_match(&base, rules.filter_patterns, rules.options)
+        {
+            if verbose {
+                eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
             }
+            let injected =
+                inject_pipe_flags_with_options(&rewritten, &suffix, prefer_less, rules.options);
+            return format!("{env_prefix}{injected}");
         }
         if verbose {
             eprintln!("[tokf] skipping rewrite: command contains a pipe");
@@ -182,12 +173,10 @@ fn rewrite_segment(
         return segment.to_string();
     }
 
-    let result = apply_rules(rules.filter, cmd);
-    if result == cmd {
-        segment.to_string()
-    } else {
-        format!("{env_prefix}{result}")
-    }
+    try_filter_match(cmd, rules.filter_patterns, rules.options).map_or_else(
+        || segment.to_string(),
+        |result| format!("{env_prefix}{result}"),
+    )
 }
 
 /// Insert `--baseline-pipe '<suffix>'` (and optionally `--prefer-less`) after
@@ -283,10 +272,10 @@ pub(crate) fn rewrite_with_config_and_options(
     }
 
     let wrapper_rules = build_wrapper_rules();
-    let filter_rules = build_rules_from_filters_with_options(search_dirs, options);
+    let filter_patterns = collect_filter_patterns(search_dirs);
     let rules = SegmentRules {
         wrapper: &wrapper_rules,
-        filter: &filter_rules,
+        filter_patterns: &filter_patterns,
         options,
     };
     let segments = split_compound(command);

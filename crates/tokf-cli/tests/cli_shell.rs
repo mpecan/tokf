@@ -2,8 +2,14 @@
 
 use std::process::Command;
 
+use tempfile::TempDir;
+
 fn tokf() -> Command {
     Command::new(env!("CARGO_BIN_EXE_tokf"))
+}
+
+const fn tokf_path() -> &'static str {
+    env!("CARGO_BIN_EXE_tokf")
 }
 
 // --- shell mode entry ---
@@ -337,5 +343,202 @@ fn shell_verbose_env_prints_to_stderr() {
     assert!(
         stderr.contains("[tokf]"),
         "expected verbose output on stderr, got: {stderr}"
+    );
+}
+
+// --- shell mode filter matching (the #277 bug) ---
+
+#[test]
+fn shell_c_filters_git_status_with_interleaved_flags() {
+    // The #277 bug: `git -C /path status` was not matched by shell mode
+    // because the old regex-based matching didn't handle interleaved flags.
+    let dir = TempDir::new().unwrap();
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Use git -C <dir> status — interleaved flag between "git" and "status".
+    let cmd = format!("git -C {} status", dir.path().display());
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", &cmd])
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to"),
+        "expected `git -C <dir> status` to match filter, stderr: {stderr}"
+    );
+}
+
+#[test]
+fn shell_c_filters_git_no_pager_log() {
+    // Another interleaved-flag case: `git --no-pager log`
+    let dir = TempDir::new().unwrap();
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    // Create an initial commit so `git log` has output.
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", "git --no-pager log --oneline"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to"),
+        "expected `git --no-pager log` to match filter, stderr: {stderr}"
+    );
+}
+
+#[test]
+fn shell_c_filters_full_path_git() {
+    // Full-path invocation: /usr/bin/git status should match "git status".
+    let git_path = Command::new("which")
+        .arg("git")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if git_path.is_empty() {
+        eprintln!("skipping: git not found");
+        return;
+    }
+
+    let dir = TempDir::new().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    let cmd = format!("{git_path} status");
+    let output = tokf()
+        .env("TOKF_VERBOSE", "1")
+        .args(["-c", &cmd])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to"),
+        "expected full-path `{git_path} status` to match filter, stderr: {stderr}"
+    );
+}
+
+// --- make integration (SHELL override) ---
+
+#[test]
+fn make_shell_override_filters_git_status() {
+    if Command::new("make").arg("--version").output().is_err() {
+        eprintln!("skipping: `make` not found in PATH");
+        return;
+    }
+
+    let dir = TempDir::new().unwrap();
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Makefile with multiple recipes to exercise compound commands and
+    // interleaved flags — the exact scenario that broke in #277.
+    let makefile = format!(
+        "SHELL := {tokf}\n\
+         .PHONY: check status\n\
+         check: status\n\
+         \tgit -C {dir} log --oneline -1 2>/dev/null || true\n\
+         status:\n\
+         \tgit -C {dir} status\n",
+        tokf = tokf_path(),
+        dir = dir.path().display()
+    );
+    std::fs::write(dir.path().join("Makefile"), makefile).unwrap();
+
+    // Create a commit so `git log` has output.
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    let output = Command::new("make")
+        .arg("check")
+        .current_dir(dir.path())
+        .env("TOKF_VERBOSE", "1")
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to") || stderr.contains("[tokf]"),
+        "expected tokf to process git commands via SHELL override, stderr: {stderr}"
+    );
+}
+
+// --- just integration (--shell override) ---
+
+#[test]
+fn just_shell_override_filters_git_status() {
+    if Command::new("just").arg("--version").output().is_err() {
+        eprintln!("skipping: `just` not found in PATH");
+        return;
+    }
+
+    let dir = TempDir::new().unwrap();
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Justfile with interleaved flags — exercises the #277 fix.
+    let justfile = format!(
+        "set shell := [\"{tokf}\", \"-cu\"]\n\
+         \n\
+         check: status\n\
+         \tgit -C {dir} log --oneline -1\n\
+         \n\
+         status:\n\
+         \tgit -C {dir} status\n",
+        tokf = tokf_path(),
+        dir = dir.path().display()
+    );
+    std::fs::write(dir.path().join("justfile"), justfile).unwrap();
+
+    let output = Command::new("just")
+        .arg("check")
+        .current_dir(dir.path())
+        .env("TOKF_VERBOSE", "1")
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("rewritten to") || stderr.contains("[tokf]"),
+        "expected tokf to process git commands via just shell override, stderr: {stderr}"
     );
 }
