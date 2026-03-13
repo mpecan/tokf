@@ -6,21 +6,21 @@ use tempfile::TempDir;
 
 use super::*;
 
-// --- build_rules_from_filters ---
+// --- collect_filter_patterns ---
 
 #[test]
-fn build_rules_from_empty_dir() {
+fn collect_patterns_from_empty_dir() {
     let dir = TempDir::new().unwrap();
-    let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
     // Empty disk dir — embedded stdlib is always present
     assert!(
-        !rules.is_empty(),
-        "embedded stdlib should provide built-in rules"
+        !patterns.is_empty(),
+        "embedded stdlib should provide built-in patterns"
     );
 }
 
 #[test]
-fn build_rules_from_filter_files() {
+fn collect_patterns_from_filter_files() {
     let dir = TempDir::new().unwrap();
     fs::write(
         dir.path().join("git-status.toml"),
@@ -33,8 +33,7 @@ fn build_rules_from_filter_files() {
     )
     .unwrap();
 
-    let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-    let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
+    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
 
     let has_cargo = patterns
         .iter()
@@ -44,25 +43,10 @@ fn build_rules_from_filter_files() {
         .any(|p| p.contains("git") && p.contains("status"));
     assert!(has_cargo, "expected cargo test pattern in {patterns:?}");
     assert!(has_git, "expected git status pattern in {patterns:?}");
-
-    let cargo_rule = rules
-        .iter()
-        .find(|r| r.match_pattern.contains("cargo"))
-        .unwrap();
-    let git_rule = rules
-        .iter()
-        .find(|r| r.match_pattern.contains("status"))
-        .unwrap();
-    let re_cargo = regex::Regex::new(&cargo_rule.match_pattern).unwrap();
-    let re_git = regex::Regex::new(&git_rule.match_pattern).unwrap();
-    assert!(re_cargo.is_match("cargo test"));
-    assert!(re_cargo.is_match("cargo test --lib"));
-    assert!(re_git.is_match("git status"));
-    assert!(re_git.is_match("git status --short"));
 }
 
 #[test]
-fn build_rules_dedup_across_dirs() {
+fn collect_patterns_dedup_across_dirs() {
     let dir1 = TempDir::new().unwrap();
     let dir2 = TempDir::new().unwrap();
 
@@ -77,47 +61,42 @@ fn build_rules_dedup_across_dirs() {
     )
     .unwrap();
 
-    let rules = build_rules_from_filters(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
-    let git_status_count = rules
-        .iter()
-        .filter(|r| r.match_pattern.contains("git") && r.match_pattern.contains("status"))
-        .count();
+    let patterns = collect_filter_patterns(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
+    let git_status_count = patterns.iter().filter(|p| *p == "git status").count();
     assert_eq!(
         git_status_count, 1,
-        "git status should be deduped to one rule"
+        "git status should be deduped to one pattern"
     );
 }
 
 #[test]
-fn build_rules_skips_invalid_filters() {
+fn collect_patterns_skips_invalid_filters() {
     let dir = TempDir::new().unwrap();
     fs::write(dir.path().join("bad.toml"), "not valid [[[").unwrap();
     fs::write(dir.path().join("good.toml"), "command = \"my-tool\"").unwrap();
 
-    let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
     assert!(
-        rules.iter().any(|r| r.match_pattern.contains("my\\-tool")),
-        "expected my-tool rule in {:?}",
-        rules.iter().map(|r| &r.match_pattern).collect::<Vec<_>>()
+        patterns.iter().any(|p| p == "my-tool"),
+        "expected my-tool pattern in {patterns:?}",
     );
 }
 
 #[test]
-fn build_rules_from_nested_dirs() {
+fn collect_patterns_from_nested_dirs() {
     let dir = TempDir::new().unwrap();
     let git_dir = dir.path().join("git");
     fs::create_dir_all(&git_dir).unwrap();
     fs::write(git_dir.join("push.toml"), "command = \"git push\"").unwrap();
     fs::write(git_dir.join("status.toml"), "command = \"git status\"").unwrap();
 
-    let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-    let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
+    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
     assert!(patterns.iter().any(|p| p.contains("push")));
     assert!(patterns.iter().any(|p| p.contains("status")));
 }
 
 #[test]
-fn build_rules_multiple_command_patterns() {
+fn collect_patterns_multiple_command_patterns() {
     let dir = TempDir::new().unwrap();
     fs::write(
         dir.path().join("test-runner.toml"),
@@ -125,8 +104,7 @@ fn build_rules_multiple_command_patterns() {
     )
     .unwrap();
 
-    let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-    let patterns: Vec<&str> = rules.iter().map(|r| r.match_pattern.as_str()).collect();
+    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
     assert!(patterns.iter().any(|p| p.contains("pnpm")));
     assert!(
         patterns
@@ -136,19 +114,15 @@ fn build_rules_multiple_command_patterns() {
 }
 
 #[test]
-fn build_rules_wildcard_pattern() {
+fn collect_patterns_wildcard_pattern() {
     let dir = TempDir::new().unwrap();
     fs::write(dir.path().join("npm-run.toml"), r#"command = "npm run *""#).unwrap();
 
-    let rules = build_rules_from_filters(&[dir.path().to_path_buf()]);
-    let npm_run_rule = rules
-        .iter()
-        .find(|r| r.match_pattern.contains("npm") && r.match_pattern.contains("run"))
-        .expect("expected npm run rule");
-    let re = regex::Regex::new(&npm_run_rule.match_pattern).unwrap();
-    assert!(re.is_match("npm run build"));
-    assert!(re.is_match("npm run test"));
-    assert!(!re.is_match("npm install"));
+    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    assert!(
+        patterns.iter().any(|p| p == "npm run *"),
+        "expected raw wildcard pattern in {patterns:?}",
+    );
 }
 
 // --- rewrite_with_config (single command) ---
@@ -303,6 +277,48 @@ fn rewrite_basename_and_transparent_flags_combined() {
         result,
         "tokf run /usr/bin/git --no-pager -C /repo log --oneline"
     );
+}
+
+// --- interleaved flags (the bug fix) ---
+
+#[test]
+fn rewrite_interleaved_flags_pnpm_build() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("pnpm-build.toml"),
+        "command = \"pnpm build\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    // pnpm --dir apps/web build should match pattern "pnpm build"
+    let result = rewrite_with_config(
+        "pnpm --dir apps/web build",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(result, "tokf run pnpm --dir apps/web build");
+}
+
+#[test]
+fn rewrite_interleaved_flags_git_c_status() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    // git -C /some/path status should match pattern "git status"
+    let result = rewrite_with_config(
+        "git -C /some/path status",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(result, "tokf run git -C /some/path status");
 }
 
 // --- built-in wrapper rules (make, just) ---
