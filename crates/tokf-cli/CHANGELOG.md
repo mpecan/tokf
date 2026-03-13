@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.34](https://github.com/mpecan/tokf/compare/tokf-v0.2.33...tokf-v0.2.34) (2026-03-13)
+
+
+### Bug Fixes
+
+* **hook:** respect Claude Code deny/ask permission rules on rewrite ([#289](https://github.com/mpecan/tokf/issues/289)) ([b1255d3](https://github.com/mpecan/tokf/commit/b1255d3d8106d5c2665987d3dbe79275f2f8a2b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.33 to 0.2.34
+    * tokf-filter bumped from 0.2.33 to 0.2.34
+
 ## [0.2.33](https://github.com/mpecan/tokf/compare/tokf-v0.2.32...tokf-v0.2.33) (2026-03-13)
 
 
