@@ -74,13 +74,16 @@ pub(crate) fn check_command_with_rules(
 /// 2. `$PROJECT_ROOT/.claude/settings.local.json`
 /// 3. `~/.claude/settings.json`
 /// 4. `~/.claude/settings.local.json`
-fn load_deny_ask_rules() -> (Vec<String>, Vec<String>) {
+pub(crate) fn load_deny_ask_rules() -> (Vec<String>, Vec<String>) {
     load_rules_from_paths(&get_settings_paths())
 }
 
 /// Load deny and ask Bash rules from the given settings file paths.
 ///
-/// Missing files and malformed JSON are silently skipped.
+/// Missing files are silently skipped. Files that exist but contain malformed
+/// JSON cause a fail-closed response: a stderr warning is emitted and a
+/// wildcard `*` ask rule is injected so that the hook never silently
+/// auto-allows when permissions can't be determined.
 fn load_rules_from_paths(paths: &[impl AsRef<std::path::Path>]) -> (Vec<String>, Vec<String>) {
     let mut deny_rules = Vec::new();
     let mut ask_rules = Vec::new();
@@ -89,8 +92,16 @@ fn load_rules_from_paths(paths: &[impl AsRef<std::path::Path>]) -> (Vec<String>,
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
-        let Ok(json) = serde_json::from_str::<Value>(&content) else {
-            continue;
+        let json = match serde_json::from_str::<Value>(&content) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!(
+                    "[tokf] warning: could not parse {}: {e} — failing closed (ask for all)",
+                    path.as_ref().display()
+                );
+                ask_rules.push("*".to_string());
+                continue;
+            }
         };
         let Some(permissions) = json.get("permissions") else {
             continue;
@@ -134,6 +145,11 @@ fn get_settings_paths() -> Vec<PathBuf> {
 }
 
 /// Locate the project root by walking up from CWD looking for `.claude/`.
+///
+/// Only checks the filesystem for `.claude/` directories — does not spawn
+/// external processes (e.g. `git`), since the hook runs on every tool call
+/// and the fallback would add latency without changing behavior (the derived
+/// settings files still won't exist in projects without `.claude/`).
 fn find_project_root() -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
@@ -143,17 +159,6 @@ fn find_project_root() -> Option<PathBuf> {
         if !dir.pop() {
             break;
         }
-    }
-
-    // Fallback: git toplevel.
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let path = String::from_utf8(output.stdout).ok()?;
-        return Some(PathBuf::from(path.trim()));
     }
 
     None
@@ -345,6 +350,31 @@ mod tests {
         assert_eq!(
             check_command_with_rules("git status && git push --force", &deny, &ask),
             PermissionVerdict::Deny
+        );
+    }
+
+    #[test]
+    fn malformed_settings_fails_closed_as_ask() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let settings = dir.path().join("settings.json");
+        std::fs::write(&settings, "not valid json {{{").unwrap();
+
+        // Malformed JSON should inject a wildcard ask rule, causing Ask verdict.
+        assert_eq!(
+            check_command_from_settings("git status", &[settings.as_path()]),
+            PermissionVerdict::Ask
+        );
+    }
+
+    #[test]
+    fn missing_settings_file_allows() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let settings = dir.path().join("nonexistent.json");
+
+        // Missing file is silently skipped — no rules means Allow.
+        assert_eq!(
+            check_command_from_settings("git status", &[settings.as_path()]),
+            PermissionVerdict::Allow
         );
     }
 

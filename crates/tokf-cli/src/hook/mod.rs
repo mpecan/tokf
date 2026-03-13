@@ -43,22 +43,30 @@ pub(crate) fn handle_from_reader<R: Read>(reader: &mut R) -> bool {
 
 /// Core handle logic operating on a JSON string.
 pub(crate) fn handle_json(json: &str) -> bool {
-    let user_config = rewrite::load_user_config().unwrap_or_default();
-    let search_dirs = crate::config::default_search_dirs();
-    handle_json_with_config(json, &user_config, &search_dirs)
+    handle_with_autodiscovery(
+        json,
+        "Bash",
+        HookResponse::rewrite,
+        HookResponse::rewrite_ask,
+    )
 }
 
-/// Fully injectable handle logic for testing.
-pub(crate) fn handle_json_with_config(
+/// Fully injectable handle logic with explicit permission rules (hermetic).
+#[cfg(test)]
+pub(crate) fn handle_json_with_rules(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
+    deny_rules: &[String],
+    ask_rules: &[String],
 ) -> bool {
     handle_generic(
         json,
         "Bash",
         user_config,
         search_dirs,
+        deny_rules,
+        ask_rules,
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
     )
@@ -75,24 +83,55 @@ pub fn handle_gemini() -> bool {
 
 /// Core Gemini handle logic operating on a JSON string.
 pub(crate) fn handle_gemini_json(json: &str) -> bool {
-    let user_config = rewrite::load_user_config().unwrap_or_default();
-    let search_dirs = crate::config::default_search_dirs();
-    handle_gemini_json_with_config(json, &user_config, &search_dirs)
+    handle_with_autodiscovery(
+        json,
+        "run_shell_command",
+        GeminiHookResponse::rewrite,
+        GeminiHookResponse::rewrite_ask,
+    )
 }
 
-/// Fully injectable Gemini handle logic for testing.
-pub(crate) fn handle_gemini_json_with_config(
+/// Fully injectable Gemini handle logic with explicit permission rules (hermetic).
+#[cfg(test)]
+pub(crate) fn handle_gemini_json_with_rules(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
+    deny_rules: &[String],
+    ask_rules: &[String],
 ) -> bool {
     handle_generic(
         json,
         "run_shell_command",
         user_config,
         search_dirs,
+        deny_rules,
+        ask_rules,
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
+    )
+}
+
+/// Convenience wrapper that loads user config, search dirs, and permission
+/// rules from the filesystem, then delegates to `handle_generic`.
+fn handle_with_autodiscovery<R: serde::Serialize>(
+    json: &str,
+    expected_tool: &str,
+    build_allow: impl FnOnce(String) -> R,
+    build_ask: impl FnOnce(String) -> R,
+) -> bool {
+    let user_config = rewrite::load_user_config().unwrap_or_default();
+    let search_dirs = crate::config::default_search_dirs();
+    let (deny, ask) = permissions::load_deny_ask_rules();
+    handle_generic(
+        json,
+        expected_tool,
+        &user_config,
+        &search_dirs,
+        &deny,
+        &ask,
+        build_allow,
+        build_ask,
     )
 }
 
@@ -112,14 +151,29 @@ pub fn handle_cursor() -> bool {
 pub(crate) fn handle_cursor_json(json: &str) -> bool {
     let user_config = rewrite::load_user_config().unwrap_or_default();
     let search_dirs = crate::config::default_search_dirs();
-    handle_cursor_json_with_config(json, &user_config, &search_dirs)
+    let (deny, ask) = permissions::load_deny_ask_rules();
+    handle_cursor_json_inner(json, &user_config, &search_dirs, &deny, &ask)
 }
 
-/// Fully injectable Cursor handle logic for testing.
-pub(crate) fn handle_cursor_json_with_config(
+/// Fully injectable Cursor handle logic with explicit permission rules (hermetic).
+#[cfg(test)]
+pub(crate) fn handle_cursor_json_with_rules(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
+    deny_rules: &[String],
+    ask_rules: &[String],
+) -> bool {
+    handle_cursor_json_inner(json, user_config, search_dirs, deny_rules, ask_rules)
+}
+
+/// Cursor handle logic with explicit permission rules.
+fn handle_cursor_json_inner(
+    json: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    deny_rules: &[String],
+    ask_rules: &[String],
 ) -> bool {
     let Ok(input) = serde_json::from_str::<CursorInput>(json) else {
         return false;
@@ -136,7 +190,7 @@ pub(crate) fn handle_cursor_json_with_config(
     }
 
     // Check the ORIGINAL command against deny/ask rules before responding.
-    let response = match permissions::check_command(&command) {
+    let response = match permissions::check_command_with_rules(&command, deny_rules, ask_rules) {
         PermissionVerdict::Deny => return false,
         PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(rewritten),
         PermissionVerdict::Allow => CursorHookResponse::rewrite(rewritten),
@@ -168,6 +222,8 @@ fn handle_generic<R: serde::Serialize>(
     expected_tool: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
+    deny_rules: &[String],
+    ask_rules: &[String],
     build_allow: impl FnOnce(String) -> R,
     build_ask: impl FnOnce(String) -> R,
 ) -> bool {
@@ -192,7 +248,7 @@ fn handle_generic<R: serde::Serialize>(
     }
 
     // Check the ORIGINAL command against deny/ask rules before responding.
-    let response = match permissions::check_command(&command) {
+    let response = match permissions::check_command_with_rules(&command, deny_rules, ask_rules) {
         PermissionVerdict::Deny => return false,
         PermissionVerdict::Ask => build_ask(rewritten),
         PermissionVerdict::Allow => build_allow(rewritten),
