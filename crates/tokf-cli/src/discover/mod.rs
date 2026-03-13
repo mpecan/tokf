@@ -190,11 +190,17 @@ fn list_jsonl_files(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Encode an absolute project path for Claude Code's directory naming.
-/// `/Users/foo/project` → `-Users-foo-project`
+/// `/Users/foo/github.com/project` → `-Users-foo-github-com-project`
+///
+/// Claude Code replaces both `/` and `.` with `-` in the encoded path.
 pub fn encode_project_path(path: &Path) -> String {
     let s = path.to_string_lossy();
     let trimmed = s.trim_start_matches('/').trim_end_matches('/');
-    format!("-{}", trimmed.replace('/', "-"))
+    let encoded: String = trimmed
+        .chars()
+        .map(|c| if c == '/' || c == '.' { '-' } else { c })
+        .collect();
+    format!("-{encoded}")
 }
 
 /// Classify a single command against the available filters.

@@ -188,6 +188,15 @@ fn encode_project_path_trailing_slash() {
     assert_eq!(encode_project_path(path), "-Users-foo-project");
 }
 
+#[test]
+fn encode_project_path_dots_replaced() {
+    let path = std::path::Path::new("/home/user/src/github.com/org/repo");
+    assert_eq!(
+        encode_project_path(path),
+        "-home-user-src-github-com-org-repo"
+    );
+}
+
 // --- aggregation integration test ---
 
 #[test]
