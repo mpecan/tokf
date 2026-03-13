@@ -6,12 +6,14 @@ pub mod cursor;
 pub mod gemini;
 pub mod instructions;
 pub mod opencode;
+pub mod permissions;
 pub mod types;
 pub mod windsurf;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use permissions::PermissionVerdict;
 use types::{CursorHookResponse, CursorInput, GeminiHookResponse, HookInput, HookResponse};
 
 use crate::rewrite;
@@ -52,9 +54,14 @@ pub(crate) fn handle_json_with_config(
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
 ) -> bool {
-    handle_generic(json, "Bash", user_config, search_dirs, |cmd| {
-        HookResponse::rewrite(cmd)
-    })
+    handle_generic(
+        json,
+        "Bash",
+        user_config,
+        search_dirs,
+        HookResponse::rewrite,
+        HookResponse::rewrite_ask,
+    )
 }
 
 /// Process a Gemini CLI `BeforeTool` hook invocation.
@@ -79,9 +86,14 @@ pub(crate) fn handle_gemini_json_with_config(
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
 ) -> bool {
-    handle_generic(json, "run_shell_command", user_config, search_dirs, |cmd| {
-        GeminiHookResponse::rewrite(cmd)
-    })
+    handle_generic(
+        json,
+        "run_shell_command",
+        user_config,
+        search_dirs,
+        GeminiHookResponse::rewrite,
+        GeminiHookResponse::rewrite_ask,
+    )
 }
 
 /// Process a Cursor `preToolUse` hook invocation.
@@ -123,7 +135,13 @@ pub(crate) fn handle_cursor_json_with_config(
         return false;
     }
 
-    let response = CursorHookResponse::rewrite(rewritten);
+    // Check the ORIGINAL command against deny/ask rules before responding.
+    let response = match permissions::check_command(&command) {
+        PermissionVerdict::Deny => return false,
+        PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(rewritten),
+        PermissionVerdict::Allow => CursorHookResponse::rewrite(rewritten),
+    };
+
     if let Ok(json) = serde_json::to_string(&response) {
         println!("{json}");
         return true;
@@ -136,13 +154,22 @@ pub(crate) fn handle_cursor_json_with_config(
 ///
 /// Deserializes the JSON as the appropriate input type (inferred from the
 /// response builder), checks the tool name, rewrites if a filter matches,
-/// and serializes the response to stdout.
+/// checks the original command against deny/ask permission rules, and
+/// serializes the response to stdout.
+///
+/// - Deny rule matched → pass through (return false), letting the tool's
+///   native deny handling block the command.
+/// - Ask rule matched → rewrite but omit `permissionDecision` so the tool
+///   prompts the user for confirmation.
+/// - No rule matched → rewrite and auto-allow (existing behavior).
+#[allow(clippy::too_many_arguments)]
 fn handle_generic<R: serde::Serialize>(
     json: &str,
     expected_tool: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-    build_response: impl FnOnce(String) -> R,
+    build_allow: impl FnOnce(String) -> R,
+    build_ask: impl FnOnce(String) -> R,
 ) -> bool {
     // All three input types share the same JSON shape (tool_name + tool_input.command),
     // so we can deserialize once with the Claude Code type.
@@ -164,7 +191,13 @@ fn handle_generic<R: serde::Serialize>(
         return false;
     }
 
-    let response = build_response(rewritten);
+    // Check the ORIGINAL command against deny/ask rules before responding.
+    let response = match permissions::check_command(&command) {
+        PermissionVerdict::Deny => return false,
+        PermissionVerdict::Ask => build_ask(rewritten),
+        PermissionVerdict::Allow => build_allow(rewritten),
+    };
+
     if let Ok(json) = serde_json::to_string(&response) {
         println!("{json}");
         return true;
