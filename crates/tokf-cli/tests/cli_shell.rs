@@ -445,6 +445,11 @@ fn shell_c_filters_full_path_git() {
 
 #[test]
 fn make_shell_override_filters_git_status() {
+    if Command::new("make").arg("--version").output().is_err() {
+        eprintln!("skipping: `make` not found in PATH");
+        return;
+    }
+
     let dir = TempDir::new().unwrap();
 
     Command::new("git")

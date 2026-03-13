@@ -60,8 +60,9 @@ fn collect_filter_patterns(search_dirs: &[PathBuf]) -> Vec<String> {
     };
     for filter in filters {
         for pattern in filter.config.command.patterns() {
-            if seen.insert(pattern.clone()) {
-                patterns.push(pattern.clone());
+            let owned = pattern.clone();
+            if seen.insert(owned.clone()) {
+                patterns.push(owned);
             }
         }
     }
