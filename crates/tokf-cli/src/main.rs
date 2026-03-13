@@ -287,10 +287,10 @@ enum Commands {
     /// Find missed token savings in Claude Code sessions
     Discover {
         /// Project path to scan (defaults to current directory)
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["all", "session"])]
         project: Option<String>,
         /// Scan all projects
-        #[arg(long)]
+        #[arg(long, conflicts_with = "session")]
         all: bool,
         /// Path to a single session file
         #[arg(long)]

@@ -22,6 +22,11 @@ pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
 
     let filtered_files = apply_since_filter(&session_files, opts.since);
 
+    if filtered_files.is_empty() {
+        eprintln!("[tokf] no session files match --since filter");
+        return Ok(1);
+    }
+
     let summary = discover::discover_sessions(&filtered_files, opts.no_cache)?;
 
     if opts.json {
@@ -51,7 +56,8 @@ fn collect_session_files(
     }
 
     let project_path = if let Some(p) = project {
-        PathBuf::from(p)
+        std::fs::canonicalize(p)
+            .map_err(|e| anyhow::anyhow!("cannot resolve project path '{p}': {e}"))?
     } else {
         std::env::current_dir()?
     };

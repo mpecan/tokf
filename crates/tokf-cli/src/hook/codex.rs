@@ -3,23 +3,47 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 const SKILL_MD: &str = include_str!("../../skills/codex-run/SKILL.md");
+const DISCOVER_SKILL_MD: &str = include_str!("../../skills/codex-discover/SKILL.md");
 
-/// Install the Codex CLI skill.
+struct CodexSkill {
+    dir_name: &'static str,
+    content: &'static str,
+}
+
+const CODEX_SKILLS: &[CodexSkill] = &[
+    CodexSkill {
+        dir_name: "tokf-run",
+        content: SKILL_MD,
+    },
+    CodexSkill {
+        dir_name: "tokf-discover",
+        content: DISCOVER_SKILL_MD,
+    },
+];
+
+/// Install Codex CLI skills (tokf-run + tokf-discover).
 ///
 /// # Errors
 ///
 /// Returns an error if the skill directory cannot be created or the skill file cannot be written.
 pub fn install(global: bool) -> anyhow::Result<()> {
-    let skill_dir = if global {
-        global_skill_dir()?
+    let parent = if global {
+        let home = dirs::home_dir().context("could not determine home directory")?;
+        home.join(".agents/skills")
     } else {
-        PathBuf::from(".agents/skills/tokf-run")
+        PathBuf::from(".agents/skills")
     };
-    install_to(&skill_dir)
+    for skill in CODEX_SKILLS {
+        write_skill_file(&parent.join(skill.dir_name), skill.content)?;
+    }
+    eprintln!("[tokf] Codex skills installed to {}", parent.display());
+    eprintln!("[tokf] Codex will auto-discover the skills on next start.");
+    Ok(())
 }
 
-pub(crate) fn install_to(skill_dir: &Path) -> anyhow::Result<()> {
-    write_skill_file(skill_dir)?;
+#[cfg(test)]
+fn install_to(skill_dir: &Path) -> anyhow::Result<()> {
+    write_skill_file(skill_dir, SKILL_MD)?;
     eprintln!(
         "[tokf] Codex skill installed to {}",
         skill_dir.join("SKILL.md").display()
@@ -28,18 +52,14 @@ pub(crate) fn install_to(skill_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn global_skill_dir() -> anyhow::Result<PathBuf> {
-    let home = dirs::home_dir().context("could not determine home directory")?;
-    Ok(home.join(".agents/skills/tokf-run"))
-}
-
-fn write_skill_file(skill_dir: &Path) -> anyhow::Result<()> {
+fn write_skill_file(skill_dir: &Path, content: &str) -> anyhow::Result<()> {
     std::fs::create_dir_all(skill_dir)
         .with_context(|| format!("failed to create skill dir: {}", skill_dir.display()))?;
 
     let skill_file = skill_dir.join("SKILL.md");
-    std::fs::write(&skill_file, SKILL_MD)
+    std::fs::write(&skill_file, content)
         .with_context(|| format!("failed to write skill file: {}", skill_file.display()))?;
+    eprintln!("[tokf] wrote {}", skill_file.display());
 
     Ok(())
 }
@@ -130,5 +150,21 @@ mod tests {
     #[test]
     fn embedded_content_is_not_empty() {
         assert!(!SKILL_MD.is_empty(), "SKILL_MD should not be empty");
+        assert!(
+            !DISCOVER_SKILL_MD.is_empty(),
+            "DISCOVER_SKILL_MD should not be empty"
+        );
+    }
+
+    #[test]
+    fn discover_skill_has_frontmatter() {
+        assert!(
+            DISCOVER_SKILL_MD.starts_with("---\n"),
+            "discover SKILL.md should start with YAML frontmatter"
+        );
+        assert!(
+            DISCOVER_SKILL_MD.contains("name: tokf-discover"),
+            "discover SKILL.md should include name: tokf-discover"
+        );
     }
 }

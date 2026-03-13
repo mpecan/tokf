@@ -343,7 +343,7 @@ fn hook_install_codex_shows_info_on_stderr() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Codex skill installed"),
+        stderr.contains("Codex skill") && stderr.contains("installed"),
         "expected install confirmation, got: {stderr}"
     );
     assert!(

@@ -52,10 +52,12 @@ pub fn discover_sessions(
         historical_ratios: &historical_ratios,
     };
 
+    let mut sessions_scanned = 0usize;
     for path in session_files {
         let Ok(file) = std::fs::File::open(path) else {
             continue;
         };
+        sessions_scanned += 1;
         classify_session(file, &ctx, &mut counters, &mut aggregated);
     }
 
@@ -63,7 +65,7 @@ pub fn discover_sessions(
     let estimated_total_savings = results.iter().map(|r| r.estimated_savings).sum();
 
     Ok(DiscoverSummary {
-        sessions_scanned: session_files.len(),
+        sessions_scanned,
         total_commands: counters.total,
         already_filtered: counters.already_filtered,
         filterable_commands: counters.filterable,
