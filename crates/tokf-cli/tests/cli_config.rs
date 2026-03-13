@@ -105,7 +105,7 @@ fn config_show_json_valid() {
         serde_json::from_str(&stdout).expect("config show --json should be valid JSON");
     assert!(parsed.is_array(), "expected JSON array, got: {parsed}");
     let arr = parsed.as_array().unwrap();
-    assert_eq!(arr.len(), 4, "expected 4 config entries");
+    assert_eq!(arr.len(), 5, "expected 5 config entries");
     assert!(arr[0]["key"].is_string());
     assert!(arr[0]["value"].is_string());
     assert!(arr[0]["source"].is_string());

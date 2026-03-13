@@ -182,6 +182,11 @@ enum Commands {
         #[command(subcommand)]
         action: HistoryAction,
     },
+    /// Print raw (unfiltered) output — `tokf raw last` or `tokf raw <id>`
+    Raw {
+        /// "last" for most recent, or a numeric entry ID
+        target: String,
+    },
     /// Run declarative test suites for filters
     Verify {
         /// Filter name to test (e.g. "cargo/build"). Omit to run all.
@@ -344,6 +349,9 @@ enum HookAction {
         /// Defaults to bare "tokf" (relies on PATH at runtime).
         #[arg(long)]
         path: Option<PathBuf>,
+        /// Skip creating TOKF.md context file and CLAUDE.md reference
+        #[arg(long)]
+        no_context: bool,
     },
 }
 
@@ -496,9 +504,12 @@ fn main() {
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
             HookAction::Handle => cmd_hook_handle(),
-            HookAction::Install { global, tool, path } => {
-                cmd_hook_install(*global, tool, path.as_deref())
-            }
+            HookAction::Install {
+                global,
+                tool,
+                path,
+                no_context,
+            } => cmd_hook_install(*global, tool, path.as_deref(), !no_context),
         },
         Commands::Skill { action } => match action {
             SkillAction::Install { global } => cmd_skill_install(*global),
@@ -555,6 +566,14 @@ fn main() {
                 history_cmd::cmd_history_search(query, *limit, *all)
             }
             HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
+        }),
+        Commands::Raw { target } => or_exit(if target == "last" {
+            history_cmd::cmd_history_last(true, false)
+        } else if let Ok(id) = target.parse::<i64>() {
+            history_cmd::cmd_history_show(id, true)
+        } else {
+            eprintln!("[tokf] expected `last` or a numeric ID, got: {target}");
+            Ok(1)
         }),
         Commands::Sync { status } => or_exit(sync_cmd::cmd_sync(*status)),
         Commands::Publish {

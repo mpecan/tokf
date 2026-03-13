@@ -311,6 +311,20 @@ fn history_last_all_returns_globally_most_recent() {
     );
 }
 
+/// Extract the history ID from a hint line like:
+///     🗜️ compressed — run `tokf raw 1` for full output
+fn extract_hint_id(stdout: &str) -> &str {
+    let hint_line = stdout
+        .lines()
+        .find(|l| l.starts_with("🗜️ compressed"))
+        .expect("hint line not found");
+    hint_line
+        .split('`')
+        .find(|seg| seg.starts_with("tokf raw "))
+        .and_then(|seg| seg.split_whitespace().last())
+        .expect("ID inside backtick-quoted tokf raw segment")
+}
+
 // ---------------------------------------------------------------------------
 // history hint message
 // ---------------------------------------------------------------------------
@@ -330,7 +344,7 @@ fn hint_appears_with_show_history_hint_filter() {
 
     assert!(out.status.success());
     assert!(
-        stdout.contains("[tokf] output filtered"),
+        stdout.contains("🗜️ compressed"),
         "expected hint in stdout, got: {stdout}"
     );
 }
@@ -350,7 +364,7 @@ fn hint_absent_without_show_history_hint() {
 
     assert!(out.status.success());
     assert!(
-        !stdout.contains("[tokf] output filtered"),
+        !stdout.contains("🗜️ compressed"),
         "hint should not appear, got: {stdout}"
     );
 }
@@ -369,17 +383,7 @@ fn hint_contains_valid_history_id() {
     let stdout = String::from_utf8_lossy(&run_out.stdout);
     assert!(run_out.status.success());
 
-    // Extract the history ID from the hint line.
-    // Format: "[tokf] output filtered — to see what was omitted: `tokf history show --raw 1`"
-    let hint_line = stdout
-        .lines()
-        .find(|l| l.contains("tokf history show --raw"))
-        .expect("hint line not found");
-    let id = hint_line
-        .trim_end_matches('`')
-        .rsplit_once(' ')
-        .expect("space before ID")
-        .1;
+    let id = extract_hint_id(&stdout);
 
     // Verify that the ID is valid by fetching raw output.
     let show_out = tokf_with_db(&db)
@@ -392,5 +396,139 @@ fn hint_contains_valid_history_id() {
     assert!(
         raw_stdout.contains("payload"),
         "raw output should contain 'payload', got: {raw_stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// tokf raw subcommand
+// ---------------------------------------------------------------------------
+
+#[test]
+fn raw_subcommand_returns_raw_output() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(true);
+
+    // Run a filtered command
+    let run_out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["run", "echo", "raw-test"])
+        .output()
+        .expect("run");
+    assert!(run_out.status.success());
+
+    let stdout = String::from_utf8_lossy(&run_out.stdout);
+    let id = extract_hint_id(&stdout);
+
+    // tokf raw <id> should return the raw output
+    let raw_out = tokf_with_db(&db)
+        .args(["raw", id])
+        .output()
+        .expect("tokf raw");
+    let raw_stdout = String::from_utf8_lossy(&raw_out.stdout);
+
+    assert!(raw_out.status.success(), "tokf raw should succeed");
+    assert!(
+        raw_stdout.contains("raw-test"),
+        "raw output should contain 'raw-test', got: {raw_stdout}"
+    );
+}
+
+#[test]
+fn raw_subcommand_last_returns_latest() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(false);
+
+    // Run a filtered command
+    tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["run", "echo", "latest-raw"])
+        .output()
+        .expect("run");
+
+    // tokf raw last
+    let raw_out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["raw", "last"])
+        .output()
+        .expect("tokf raw last");
+    let raw_stdout = String::from_utf8_lossy(&raw_out.stdout);
+
+    // Compare with tokf history last --raw
+    let hist_out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["history", "last", "--raw"])
+        .output()
+        .expect("history last --raw");
+    let hist_stdout = String::from_utf8_lossy(&hist_out.stdout);
+
+    assert!(raw_out.status.success(), "tokf raw last should succeed");
+    assert_eq!(
+        raw_stdout, hist_stdout,
+        "tokf raw last should match tokf history last --raw"
+    );
+}
+
+#[test]
+fn raw_subcommand_invalid_target() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+
+    let out = tokf_with_db(&db)
+        .args(["raw", "notanumber"])
+        .output()
+        .expect("tokf raw");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    assert_eq!(out.status.code(), Some(1), "expected exit 1");
+    assert!(
+        stderr.contains("expected `last` or a numeric ID"),
+        "expected error message, got: {stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// compression indicator
+// ---------------------------------------------------------------------------
+
+#[test]
+fn filtered_output_has_compression_indicator() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(false);
+
+    let out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .args(["run", "echo", "indicator-test"])
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(out.status.success());
+    assert!(
+        stdout.contains("🗜️"),
+        "filtered output should contain compression indicator, got: {stdout}"
+    );
+}
+
+#[test]
+fn compression_indicator_disabled_by_env() {
+    let db_dir = temp_db_dir();
+    let db = db_dir.path().join("tracking.db");
+    let work_dir = setup_local_filter(false);
+
+    let out = tokf_with_db(&db)
+        .current_dir(work_dir.path())
+        .env("TOKF_SHOW_INDICATOR", "false")
+        .args(["run", "echo", "no-indicator"])
+        .output()
+        .expect("run");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(out.status.success());
+    assert!(
+        !stdout.contains("🗜️"),
+        "indicator should be suppressed by env, got: {stdout}"
     );
 }

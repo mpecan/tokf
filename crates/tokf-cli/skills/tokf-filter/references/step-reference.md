@@ -806,8 +806,8 @@ output = "{branch} — {counts}"
 **Output example**:
 
 ```
-main — modified: 3, untracked: 1
-[tokf] output filtered — to see what was omitted: `tokf history show --raw 42`
+🗜️ main — modified: 3, untracked: 1
+🗜️ compressed — run `tokf raw 42` for full output
 ```
 
 **Behavior**:
