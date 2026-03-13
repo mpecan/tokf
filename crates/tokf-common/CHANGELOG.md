@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.33](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.32...tokf-common-v0.2.33) (2026-03-13)
+
+
+### Features
+
+* **filter:** add replace_all mode for in-place regex substitution ([#287](https://github.com/mpecan/tokf/issues/287)) ([3f44787](https://github.com/mpecan/tokf/commit/3f447879aeab162fb731ceb300c6c1b86bdfe9a0))
+
 ## [0.2.32](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.31...tokf-common-v0.2.32) (2026-03-13)
 
 

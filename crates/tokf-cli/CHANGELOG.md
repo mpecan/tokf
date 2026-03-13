@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.33](https://github.com/mpecan/tokf/compare/tokf-v0.2.32...tokf-v0.2.33) (2026-03-13)
+
+
+### Features
+
+* **hook:** add Gemini CLI, Cursor, Cline, Windsurf, Copilot, and Aider integrations ([#286](https://github.com/mpecan/tokf/issues/286)) ([5ef91f3](https://github.com/mpecan/tokf/commit/5ef91f3389d1191a576816dcd0f5b05a85e5089f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.32 to 0.2.33
+    * tokf-filter bumped from 0.2.32 to 0.2.33
+
 ## [0.2.32](https://github.com/mpecan/tokf/compare/tokf-v0.2.31...tokf-v0.2.32) (2026-03-13)
 
 
