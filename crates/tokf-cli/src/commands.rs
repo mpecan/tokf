@@ -12,7 +12,7 @@ use tokf::skill;
 use tokf::telemetry;
 
 use crate::resolve;
-use crate::{Cli, HookTool};
+use crate::{Cli, HookFormat, HookTool};
 
 pub fn or_exit(r: anyhow::Result<i32>) -> i32 {
     r.unwrap_or_else(|e| {
@@ -415,8 +415,18 @@ pub fn cmd_skill_install(global: bool) -> i32 {
     }
 }
 
-pub fn cmd_hook_handle() -> i32 {
-    hook::handle();
+pub fn cmd_hook_handle(format: &HookFormat) -> i32 {
+    match format {
+        HookFormat::ClaudeCode => {
+            hook::handle();
+        }
+        HookFormat::Gemini => {
+            hook::handle_gemini();
+        }
+        HookFormat::Cursor => {
+            hook::handle_cursor();
+        }
+    }
     0
 }
 
@@ -429,14 +439,18 @@ pub fn cmd_hook_install(
     let tokf_bin = path.map_or_else(|| "tokf".to_string(), |p| p.display().to_string());
     let result = match tool {
         HookTool::ClaudeCode => hook::install(global, &tokf_bin, install_context),
-        // R6: Updated variant name from Opencode to OpenCode.
         HookTool::OpenCode => hook::opencode::install(global, &tokf_bin),
         HookTool::Codex => hook::codex::install(global),
+        HookTool::GeminiCli => hook::gemini::install(global, &tokf_bin, install_context),
+        HookTool::Cursor => hook::cursor::install(global, &tokf_bin, install_context),
+        HookTool::Cline => hook::cline::install(global),
+        HookTool::Windsurf => hook::windsurf::install(global),
+        HookTool::Copilot => hook::copilot::install(global),
+        HookTool::Aider => hook::aider::install(global),
     };
     match result {
         Ok(()) => 0,
         Err(e) => {
-            // R5: Standardize eprintln prefix to [tokf].
             eprintln!("[tokf] hook install failed: {e:#}");
             1
         }

@@ -116,7 +116,7 @@ fn handle_json_env_prefixed_tokf_command_not_rewritten() {
     assert!(!handle_json(json));
 }
 
-// --- patch_settings ---
+// --- patch_json_hook_config ---
 
 #[test]
 fn patch_creates_new_settings_file() {
@@ -124,7 +124,7 @@ fn patch_creates_new_settings_file() {
     let settings = dir.path().join(".claude/settings.json");
     let hook = dir.path().join("hook.sh");
 
-    patch_settings(&settings, &hook).unwrap();
+    patch_json_hook_config(&settings, &hook, "PreToolUse", "Bash", None).unwrap();
 
     let content = std::fs::read_to_string(&settings).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -147,7 +147,7 @@ fn patch_preserves_existing_settings() {
     )
     .unwrap();
 
-    patch_settings(&settings_path, &hook).unwrap();
+    patch_json_hook_config(&settings_path, &hook, "PreToolUse", "Bash", None).unwrap();
 
     let content = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -164,8 +164,8 @@ fn patch_idempotent_install() {
     let hook = dir.path().join("tokf-hook.sh");
 
     // Install twice
-    patch_settings(&settings_path, &hook).unwrap();
-    patch_settings(&settings_path, &hook).unwrap();
+    patch_json_hook_config(&settings_path, &hook, "PreToolUse", "Bash", None).unwrap();
+    patch_json_hook_config(&settings_path, &hook, "PreToolUse", "Bash", None).unwrap();
 
     let content = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -199,7 +199,7 @@ fn patch_preserves_non_tokf_hooks() {
     )
     .unwrap();
 
-    patch_settings(&settings_path, &hook).unwrap();
+    patch_json_hook_config(&settings_path, &hook, "PreToolUse", "Bash", None).unwrap();
 
     let content = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -219,7 +219,7 @@ fn patch_settings_quotes_path_with_spaces() {
     // Simulate a hook script path that contains spaces
     let hook = std::path::Path::new("/Users/my name/.tokf/hooks/pre-tool-use.sh");
 
-    patch_settings(&settings_path, hook).unwrap();
+    patch_json_hook_config(&settings_path, hook, "PreToolUse", "Bash", None).unwrap();
 
     let content = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -245,7 +245,7 @@ fn patch_fails_on_corrupt_settings_json() {
 
     std::fs::write(&settings_path, "not valid json {{{").unwrap();
 
-    let result = patch_settings(&settings_path, &hook);
+    let result = patch_json_hook_config(&settings_path, &hook, "PreToolUse", "Bash", None);
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(
@@ -262,7 +262,7 @@ fn write_hook_shim_creates_executable_script() {
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
 
-    write_hook_shim(&hook_dir, &hook_script, "tokf").unwrap();
+    write_hook_shim(&hook_dir, &hook_script, "tokf", "").unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
     assert!(content.starts_with("#!/bin/sh\n"));
@@ -285,7 +285,7 @@ fn write_hook_shim_uses_bare_tokf() {
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
 
-    write_hook_shim(&hook_dir, &hook_script, "tokf").unwrap();
+    write_hook_shim(&hook_dir, &hook_script, "tokf", "").unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
     assert!(
@@ -300,7 +300,7 @@ fn write_hook_shim_custom_path() {
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
 
-    write_hook_shim(&hook_dir, &hook_script, "/opt/bin/tokf").unwrap();
+    write_hook_shim(&hook_dir, &hook_script, "/opt/bin/tokf", "").unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
     assert!(
@@ -315,7 +315,7 @@ fn write_hook_shim_path_with_spaces() {
     let hook_dir = dir.path().join("hooks");
     let hook_script = hook_dir.join("pre-tool-use.sh");
 
-    write_hook_shim(&hook_dir, &hook_script, "/home/my user/bin/tokf").unwrap();
+    write_hook_shim(&hook_dir, &hook_script, "/home/my user/bin/tokf", "").unwrap();
 
     let content = std::fs::read_to_string(&hook_script).unwrap();
     assert!(
@@ -460,4 +460,72 @@ fn install_no_context_skips_tokf_md() {
         !tokf_md.exists(),
         "TOKF.md should not exist when install_context is false"
     );
+}
+
+// --- handle_gemini_json_with_config ---
+
+#[test]
+fn handle_gemini_rewrites_matching_command() {
+    let dir = tempfile::TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let json = r#"{"tool_name":"run_shell_command","tool_input":{"command":"git status"}}"#;
+    let config = RewriteConfig::default();
+    let result = handle_gemini_json_with_config(json, &config, &[dir.path().to_path_buf()]);
+    assert!(result, "expected rewrite for Gemini matching command");
+}
+
+#[test]
+fn handle_gemini_non_shell_passes_through() {
+    let json = r#"{"tool_name":"read_file","tool_input":{"path":"/tmp/foo"}}"#;
+    assert!(!handle_gemini_json(json));
+}
+
+#[test]
+fn handle_gemini_no_command_passes_through() {
+    let json = r#"{"tool_name":"run_shell_command","tool_input":{}}"#;
+    assert!(!handle_gemini_json(json));
+}
+
+#[test]
+fn handle_gemini_invalid_json_passes_through() {
+    assert!(!handle_gemini_json("not json"));
+}
+
+// --- handle_cursor_json_with_config ---
+
+#[test]
+fn handle_cursor_rewrites_matching_command() {
+    let dir = tempfile::TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("cargo-test.toml"),
+        "command = \"cargo test\"",
+    )
+    .unwrap();
+
+    let json = r#"{"tool_name":"Shell","tool_input":{"command":"cargo test"}}"#;
+    let config = RewriteConfig::default();
+    let result = handle_cursor_json_with_config(json, &config, &[dir.path().to_path_buf()]);
+    assert!(result, "expected rewrite for Cursor matching command");
+}
+
+#[test]
+fn handle_cursor_non_shell_passes_through() {
+    let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
+    assert!(!handle_cursor_json(json));
+}
+
+#[test]
+fn handle_cursor_no_command_passes_through() {
+    let json = r#"{"tool_name":"Shell","tool_input":{}}"#;
+    assert!(!handle_cursor_json(json));
+}
+
+#[test]
+fn handle_cursor_invalid_json_passes_through() {
+    assert!(!handle_cursor_json("not json"));
 }

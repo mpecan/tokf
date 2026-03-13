@@ -331,12 +331,39 @@ pub(crate) enum HookTool {
     OpenCode,
     #[value(name = "codex")]
     Codex,
+    #[value(name = "gemini-cli")]
+    GeminiCli,
+    #[value(name = "cursor")]
+    Cursor,
+    #[value(name = "cline")]
+    Cline,
+    #[value(name = "windsurf")]
+    Windsurf,
+    #[value(name = "copilot")]
+    Copilot,
+    #[value(name = "aider")]
+    Aider,
+}
+
+/// Hook protocol format for the `handle` subcommand.
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+pub(crate) enum HookFormat {
+    #[default]
+    ClaudeCode,
+    #[value(name = "gemini")]
+    Gemini,
+    #[value(name = "cursor")]
+    Cursor,
 }
 
 #[derive(Subcommand)]
 enum HookAction {
-    /// Handle a `PreToolUse` hook invocation (reads JSON from stdin)
-    Handle,
+    /// Handle a hook invocation (reads JSON from stdin)
+    Handle {
+        /// Hook protocol format (default: claude-code)
+        #[arg(long, value_enum, default_value_t = HookFormat::ClaudeCode)]
+        format: HookFormat,
+    },
     /// Install the integration for the target tool
     Install {
         /// Install globally instead of project-local
@@ -503,7 +530,7 @@ fn main() {
         Commands::Show { filter, hash } => show_cmd::cmd_show(filter, *hash),
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
-            HookAction::Handle => cmd_hook_handle(),
+            HookAction::Handle { format } => cmd_hook_handle(format),
             HookAction::Install {
                 global,
                 tool,
