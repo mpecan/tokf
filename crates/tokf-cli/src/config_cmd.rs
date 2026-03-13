@@ -2,9 +2,9 @@ use clap::Subcommand;
 use serde::Serialize;
 
 use tokf::history::{
-    self, HistoryConfig, ShimsConfig, SyncConfig, TokfProjectConfig, TokfShimsSection,
-    TokfSyncSection, global_config_path, load_project_config, local_config_path, project_root_for,
-    save_project_config,
+    self, HistoryConfig, OutputConfig, ShimsConfig, SyncConfig, TokfOutputSection,
+    TokfProjectConfig, TokfShimsSection, TokfSyncSection, global_config_path, load_project_config,
+    local_config_path, project_root_for, save_project_config,
 };
 
 #[derive(Subcommand)]
@@ -57,6 +57,7 @@ pub fn run_config_action(action: &ConfigAction) -> i32 {
 
 const KNOWN_KEYS: &[&str] = &[
     "history.retention",
+    "output.show_indicator",
     "shims.enabled",
     "sync.auto_sync_threshold",
     "sync.upload_stats",
@@ -168,6 +169,17 @@ fn collect_config_entries(
         file: shims_file,
     });
 
+    // output.show_indicator
+    let output = OutputConfig::load_from(Some(project_root), global_path);
+    let (output_source, output_file) =
+        src(|c| c.output.as_ref().and_then(|o| o.show_indicator).is_some());
+    entries.push(ConfigEntry {
+        key: "output.show_indicator".to_string(),
+        value: Some(output.show_indicator.to_string()),
+        source: output_source,
+        file: output_file,
+    });
+
     // sync.auto_sync_threshold
     let (thresh_source, thresh_file) = src(|c| {
         c.sync
@@ -229,6 +241,10 @@ fn cmd_config_get(key: &str) -> i32 {
             let config = HistoryConfig::load(Some(&project_root));
             println!("{}", config.retention_count);
         }
+        "output.show_indicator" => {
+            let config = OutputConfig::load(Some(&project_root));
+            println!("{}", config.show_indicator);
+        }
         "shims.enabled" => {
             let config = ShimsConfig::load(Some(&project_root));
             println!("{}", config.enabled);
@@ -282,6 +298,15 @@ fn cmd_config_set(key: &str, value: &str, local: bool) -> i32 {
                     .retention = Some(n);
             },
         ),
+        "output.show_indicator" => {
+            set_parsed_field(&target_path, key, value, "true or false", |cfg, b: bool| {
+                cfg.output
+                    .get_or_insert(TokfOutputSection {
+                        show_indicator: None,
+                    })
+                    .show_indicator = Some(b);
+            })
+        }
         "shims.enabled" => {
             if local {
                 eprintln!(
@@ -441,7 +466,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let local = dir.path().join(".tokf/config.toml");
         let entries = collect_config_entries(None, &local, dir.path());
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].key, "history.retention");
         assert_eq!(entries[0].value.as_deref(), Some("10"));
         assert_eq!(entries[0].source, "default");
@@ -468,8 +493,8 @@ mod tests {
         let local = dir.path().join("nonexistent/.tokf/config.toml");
 
         let entries = collect_config_entries(Some(&global), &local, dir.path());
-        assert_eq!(entries[2].value.as_deref(), Some("200"));
-        assert_eq!(entries[2].source, "global");
+        assert_eq!(entries[3].value.as_deref(), Some("200"));
+        assert_eq!(entries[3].source, "global");
     }
 
     #[test]

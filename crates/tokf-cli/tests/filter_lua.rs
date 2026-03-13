@@ -169,6 +169,7 @@ source = "return args[1] or 'no-args'"
     // The command "tokf-lua-args-test hello" — "hello" becomes remaining_args[0]
     let output = tokf()
         .current_dir(tmp.path())
+        .env("TOKF_SHOW_INDICATOR", "false")
         .args(["run", "--no-cache", "tokf-lua-args-test", "hello"])
         .output()
         .unwrap();

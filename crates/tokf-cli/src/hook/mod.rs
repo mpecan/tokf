@@ -78,7 +78,7 @@ pub(crate) fn handle_json_with_config(
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool, tokf_bin: &str) -> anyhow::Result<()> {
+pub fn install(global: bool, tokf_bin: &str, install_context: bool) -> anyhow::Result<()> {
     let (hook_dir, settings_path) = if global {
         let user = crate::paths::user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
@@ -94,7 +94,7 @@ pub fn install(global: bool, tokf_bin: &str) -> anyhow::Result<()> {
         (hook_dir, settings_path)
     };
 
-    install_to(&hook_dir, &settings_path, tokf_bin)
+    install_to(&hook_dir, &settings_path, tokf_bin, install_context)
 }
 
 /// Core install logic with explicit paths (testable).
@@ -102,6 +102,7 @@ pub(crate) fn install_to(
     hook_dir: &Path,
     settings_path: &Path,
     tokf_bin: &str,
+    install_context: bool,
 ) -> anyhow::Result<()> {
     let hook_script = hook_dir.join("pre-tool-use.sh");
     write_hook_shim(hook_dir, &hook_script, tokf_bin)?;
@@ -111,7 +112,43 @@ pub(crate) fn install_to(
     eprintln!("[tokf]   script: {}", hook_script.display());
     eprintln!("[tokf]   settings: {}", settings_path.display());
 
+    if install_context && let Some(claude_dir) = settings_path.parent() {
+        write_context_doc(claude_dir)?;
+        patch_claude_md(claude_dir)?;
+        eprintln!("[tokf]   context: {}", claude_dir.join("TOKF.md").display());
+    }
+
     Ok(())
+}
+
+/// Write the TOKF.md context file that explains the compression indicator.
+fn write_context_doc(claude_dir: &std::path::Path) -> anyhow::Result<()> {
+    let tokf_md = claude_dir.join("TOKF.md");
+    let content = "\
+🗜️ means this output was compressed by tokf.
+Run `tokf raw last` to see the full uncompressed output of the last command.
+";
+    std::fs::write(&tokf_md, content)?;
+    Ok(())
+}
+
+/// Add an `@TOKF.md` reference to CLAUDE.md (creates the file if needed).
+fn patch_claude_md(claude_dir: &std::path::Path) -> anyhow::Result<()> {
+    let claude_md = claude_dir.join("CLAUDE.md");
+    let marker = "@TOKF.md";
+    match std::fs::read_to_string(&claude_md) {
+        Ok(content) if content.contains(marker) => Ok(()),
+        Ok(content) => {
+            let updated = format!("{}\n{marker}\n", content.trim_end());
+            std::fs::write(&claude_md, updated)?;
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::write(&claude_md, format!("{marker}\n"))?;
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Write the hook shim script.

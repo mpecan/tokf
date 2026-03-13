@@ -30,11 +30,13 @@ Remote gain requires authentication (`tokf auth login`). The `--daily` flag is n
 tokf records raw and filtered outputs in a local SQLite database, useful for debugging filters or reviewing what an AI agent saw:
 
 ```sh
+tokf raw last                  # print raw output of last filtered command
+tokf raw 42                    # print raw output of entry #42
 tokf history list              # recent entries (current project)
 tokf history list -l 20        # show 20 entries
 tokf history list --all        # entries from all projects
 tokf history show 42           # full details for entry #42
-tokf history show --raw 42     # print only the raw captured output
+tokf history show --raw 42     # print only the raw captured output (long form)
 tokf history search "error"    # search by command or output content
 tokf history clear             # clear current project history
 tokf history clear --all       # clear all history (destructive)
@@ -57,8 +59,12 @@ output = "{branch} — {counts}"
 **2. Automatic repetition detection** — tokf detects when the same command is run twice in a row for the same project. This is a signal the caller didn't act on the previous filtered output and may need the full content:
 
 ```
-✓ cargo test: 42 passed (2.31s)
-[tokf] output filtered — to see what was omitted: `tokf history show --raw 99`
+🗜️ ✓ cargo test: 42 passed (2.31s)
+[tokf] compressed — run `tokf raw 99` for full output
 ```
 
-The hint is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line.
+The `🗜️` prefix appears on all filtered output (disable with `tokf config set output.show_indicator false` or `TOKF_SHOW_INDICATOR=false`). The hint line is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line or indicator.
+
+## Context injection
+
+During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a two-line context explaining what `🗜️` means and how to retrieve full output (`tokf raw last`). Use `--no-context` to skip this step.

@@ -20,6 +20,12 @@ pub struct TokfProjectConfig {
     pub history: Option<TokfHistorySection>,
     pub sync: Option<TokfSyncSection>,
     pub shims: Option<TokfShimsSection>,
+    pub output: Option<TokfOutputSection>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TokfOutputSection {
+    pub show_indicator: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -36,6 +42,13 @@ pub struct TokfSyncSection {
 #[derive(Serialize, Deserialize)]
 pub struct TokfShimsSection {
     pub enabled: Option<bool>,
+}
+
+/// Read `[output] show_indicator` from a TOML config file path. Returns `None` on any error.
+fn read_indicator(path: &std::path::Path) -> Option<bool> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let cfg: TokfProjectConfig = toml::from_str(&content).ok()?;
+    cfg.output?.show_indicator
 }
 
 /// Read `[history] retention` from a TOML config file path. Returns `None` on any error.
@@ -244,6 +257,50 @@ pub fn global_config_path() -> Option<std::path::PathBuf> {
 /// Returns the local (project) config.toml path for a given project root.
 pub fn local_config_path(project_root: &std::path::Path) -> std::path::PathBuf {
     project_root.join(".tokf").join("config.toml")
+}
+
+/// Configuration for the compression indicator emoji
+#[derive(Debug, Clone)]
+pub struct OutputConfig {
+    pub show_indicator: bool,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            show_indicator: true,
+        }
+    }
+}
+
+impl OutputConfig {
+    /// Load output config using auto-detected paths. Priority:
+    /// 1. `TOKF_SHOW_INDICATOR` env var
+    /// 2. `{project_root}/.tokf/config.toml` `[output] show_indicator`
+    /// 3. `{config_dir}/tokf/config.toml` `[output] show_indicator`
+    /// 4. Default: true
+    pub fn load(project_root: Option<&std::path::Path>) -> Self {
+        // Env var override
+        if let Ok(val) = std::env::var("TOKF_SHOW_INDICATOR")
+            && let Ok(b) = val.parse::<bool>()
+        {
+            return Self { show_indicator: b };
+        }
+        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+        Self::load_from(project_root, global.as_deref())
+    }
+
+    /// Load output config from explicit paths. Useful for testing.
+    pub fn load_from(
+        project_root: Option<&std::path::Path>,
+        global_config: Option<&std::path::Path>,
+    ) -> Self {
+        let from_project =
+            project_root.and_then(|root| read_indicator(&root.join(".tokf").join("config.toml")));
+        let from_global = global_config.and_then(read_indicator);
+        let show_indicator = from_project.or(from_global).unwrap_or(true);
+        Self { show_indicator }
+    }
 }
 
 /// Walk up from `dir` to find the nearest ancestor containing `.git` or `.tokf/`.

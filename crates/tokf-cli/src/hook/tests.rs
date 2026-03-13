@@ -332,7 +332,7 @@ fn install_to_creates_files() {
     let hook_dir = dir.path().join("global/tokf/hooks");
     let settings_path = dir.path().join("global/.claude/settings.json");
 
-    install_to(&hook_dir, &settings_path, "tokf").unwrap();
+    install_to(&hook_dir, &settings_path, "tokf", false).unwrap();
 
     let hook_script = hook_dir.join("pre-tool-use.sh");
     assert!(hook_script.exists(), "hook script should exist");
@@ -350,11 +350,94 @@ fn install_to_idempotent() {
     let hook_dir = dir.path().join(".tokf/hooks");
     let settings_path = dir.path().join("settings.json");
 
-    install_to(&hook_dir, &settings_path, "tokf").unwrap();
-    install_to(&hook_dir, &settings_path, "tokf").unwrap();
+    install_to(&hook_dir, &settings_path, "tokf", false).unwrap();
+    install_to(&hook_dir, &settings_path, "tokf", false).unwrap();
 
     let content = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();
     let arr = value["hooks"]["PreToolUse"].as_array().unwrap();
     assert_eq!(arr.len(), 1, "should have one entry after double install");
+}
+
+#[test]
+fn install_creates_tokf_md() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join(".tokf/hooks");
+    let claude_dir = dir.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let settings_path = claude_dir.join("settings.json");
+
+    install_to(&hook_dir, &settings_path, "tokf", true).unwrap();
+
+    let tokf_md = claude_dir.join("TOKF.md");
+    assert!(tokf_md.exists(), "TOKF.md should exist");
+    let content = std::fs::read_to_string(&tokf_md).unwrap();
+    assert!(
+        content.contains("🗜️"),
+        "TOKF.md should contain compression indicator, got: {content}"
+    );
+    assert!(
+        content.contains("tokf raw last"),
+        "TOKF.md should mention tokf raw last, got: {content}"
+    );
+}
+
+#[test]
+fn install_patches_claude_md_with_reference() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join(".tokf/hooks");
+    let claude_dir = dir.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let settings_path = claude_dir.join("settings.json");
+
+    // Pre-existing CLAUDE.md content
+    std::fs::write(claude_dir.join("CLAUDE.md"), "# My Project\n").unwrap();
+
+    install_to(&hook_dir, &settings_path, "tokf", true).unwrap();
+
+    let content = std::fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+    assert!(
+        content.contains("@TOKF.md"),
+        "CLAUDE.md should contain @TOKF.md reference, got: {content}"
+    );
+    assert!(
+        content.contains("# My Project"),
+        "existing content should be preserved, got: {content}"
+    );
+}
+
+#[test]
+fn install_idempotent_claude_md() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join(".tokf/hooks");
+    let claude_dir = dir.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let settings_path = claude_dir.join("settings.json");
+
+    install_to(&hook_dir, &settings_path, "tokf", true).unwrap();
+    install_to(&hook_dir, &settings_path, "tokf", true).unwrap();
+
+    let content = std::fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+    let count = content.matches("@TOKF.md").count();
+    assert_eq!(
+        count, 1,
+        "should have exactly one @TOKF.md reference after double install, got: {count}"
+    );
+}
+
+#[test]
+fn install_no_context_skips_tokf_md() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join(".tokf/hooks");
+    let claude_dir = dir.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let settings_path = claude_dir.join("settings.json");
+
+    install_to(&hook_dir, &settings_path, "tokf", false).unwrap();
+
+    let tokf_md = claude_dir.join("TOKF.md");
+    assert!(
+        !tokf_md.exists(),
+        "TOKF.md should not exist when install_context is false"
+    );
 }

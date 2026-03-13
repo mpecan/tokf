@@ -6,10 +6,10 @@ mod queries;
 mod types;
 
 pub use config::{
-    HistoryConfig, ShimsConfig, SyncConfig, TokfHistorySection, TokfProjectConfig,
-    TokfShimsSection, TokfSyncSection, current_project, global_config_path, load_project_config,
-    local_config_path, project_root_for, save_project_config, save_upload_stats,
-    save_upload_stats_to_path,
+    HistoryConfig, OutputConfig, ShimsConfig, SyncConfig, TokfHistorySection, TokfOutputSection,
+    TokfProjectConfig, TokfShimsSection, TokfSyncSection, current_project, global_config_path,
+    load_project_config, local_config_path, project_root_for, save_project_config,
+    save_upload_stats, save_upload_stats_to_path,
 };
 pub use queries::{
     clear_history, get_history_entry, get_latest_entry, list_history, record_history,

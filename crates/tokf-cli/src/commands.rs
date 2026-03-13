@@ -4,6 +4,7 @@ use tokf::baseline;
 use tokf::config;
 use tokf::filter;
 use tokf::history;
+use tokf::history::OutputConfig;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
@@ -193,18 +194,26 @@ pub fn cmd_run(
         cmd_result.exit_code,
     );
 
+    let output_cfg = {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let project_root = history::project_root_for(&cwd);
+        OutputConfig::load(Some(&project_root))
+    };
+
     let mask = !cli.no_mask_exit_code && cmd_result.exit_code != 0;
     if mask {
         println!("Error: Exit code {}", cmd_result.exit_code);
     }
     if !final_output.is_empty() {
-        println!("{final_output}");
+        if output_cfg.show_indicator {
+            println!("🗜️ {final_output}");
+        } else {
+            println!("{final_output}");
+        }
     }
 
     if show_hint && let Some(id) = history_id {
-        println!(
-            "[tokf] output filtered — to see what was omitted: `tokf history show --raw {id}`"
-        );
+        println!("[tokf] compressed — run `tokf raw {id}` for full output");
     }
 
     reporter.report(&telemetry::TelemetryEvent::new(
@@ -411,10 +420,15 @@ pub fn cmd_hook_handle() -> i32 {
     0
 }
 
-pub fn cmd_hook_install(global: bool, tool: &HookTool, path: Option<&Path>) -> i32 {
+pub fn cmd_hook_install(
+    global: bool,
+    tool: &HookTool,
+    path: Option<&Path>,
+    install_context: bool,
+) -> i32 {
     let tokf_bin = path.map_or_else(|| "tokf".to_string(), |p| p.display().to_string());
     let result = match tool {
-        HookTool::ClaudeCode => hook::install(global, &tokf_bin),
+        HookTool::ClaudeCode => hook::install(global, &tokf_bin, install_context),
         // R6: Updated variant name from Opencode to OpenCode.
         HookTool::OpenCode => hook::opencode::install(global, &tokf_bin),
         HookTool::Codex => hook::codex::install(global),
