@@ -1149,6 +1149,71 @@ tokf skill install          # project-local (.claude/skills/)
 tokf skill install --global # user-level (~/.claude/skills/)
 ```
 
+## Gemini CLI
+
+tokf integrates with [Gemini CLI](https://github.com/google-gemini/gemini-cli) as a `BeforeTool` hook that automatically filters `run_shell_command` tool calls.
+
+```sh
+tokf hook install --tool gemini-cli          # project-local (.gemini/)
+tokf hook install --tool gemini-cli --global # user-level (~/.gemini/)
+```
+
+This registers a hook shim in `.gemini/settings.json` (or `~/.gemini/settings.json` for `--global`). When `--no-context` is not set, it also creates `.gemini/TOKF.md` and patches `.gemini/GEMINI.md` with context about the compression indicator.
+
+## Cursor
+
+tokf integrates with [Cursor](https://cursor.com) via a `beforeShellExecution` hook that automatically filters shell commands.
+
+```sh
+tokf hook install --tool cursor          # project-local (.cursor/)
+tokf hook install --tool cursor --global # user-level (~/.cursor/)
+```
+
+This registers a hook in `.cursor/hooks.json` (or `~/.cursor/hooks.json` for `--global`). When `--no-context` is not set, it also creates `.cursor/rules/TOKF.md` with context about the compression indicator.
+
+## Cline
+
+tokf integrates with [Cline](https://cline.bot) via a rules file that instructs the agent to prefix supported commands with `tokf run`.
+
+```sh
+tokf hook install --tool cline          # project-local (.clinerules/)
+tokf hook install --tool cline --global # user-level (~/Documents/Cline/Rules/)
+```
+
+This writes `.clinerules/tokf.md` (or `~/Documents/Cline/Rules/tokf.md` for `--global`), which Cline auto-discovers. The rules file uses `alwaysApply: true` frontmatter.
+
+## Windsurf
+
+tokf integrates with [Windsurf](https://windsurf.com) via a rules file.
+
+```sh
+tokf hook install --tool windsurf          # project-local (.windsurf/rules/)
+tokf hook install --tool windsurf --global # user-level (appends to global rules)
+```
+
+Project-local creates `.windsurf/rules/tokf.md`. Global mode appends a tokf section (with `<!-- tokf:start/end -->` markers for idempotent updates) to `~/.codeium/windsurf/memories/global_rules.md`.
+
+## GitHub Copilot
+
+tokf integrates with [GitHub Copilot](https://github.com/features/copilot) via instruction files. Copilot only supports repo-level instructions (no `--global` option).
+
+```sh
+tokf hook install --tool copilot
+```
+
+This creates `.github/instructions/tokf.instructions.md` (with `applyTo: "**"` frontmatter) and appends a tokf section to `.github/copilot-instructions.md`.
+
+## Aider
+
+tokf integrates with [Aider](https://aider.chat) via conventions files.
+
+```sh
+tokf hook install --tool aider          # project-local (CONVENTIONS.md)
+tokf hook install --tool aider --global # user-level (patches ~/.aider.conf.yml)
+```
+
+Project-local appends a tokf section to `CONVENTIONS.md` (which Aider auto-discovers). Global mode writes a conventions file and adds it to `~/.aider.conf.yml`'s `read:` list.
+
 ## OpenCode
 
 tokf integrates with [OpenCode](https://opencode.ai) via a plugin that applies filters in real-time before command execution.
