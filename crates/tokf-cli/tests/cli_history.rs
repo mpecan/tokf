@@ -311,11 +311,12 @@ fn history_last_all_returns_globally_most_recent() {
     );
 }
 
-/// Extract the history ID from the `tokf raw <id>` hint line in stdout.
+/// Extract the history ID from a hint line like:
+///     [tokf] compressed — run `tokf raw 1` for full output
 fn extract_hint_id(stdout: &str) -> &str {
     let hint_line = stdout
         .lines()
-        .find(|l| l.contains("tokf raw"))
+        .find(|l| l.starts_with("[tokf] compressed"))
         .expect("hint line not found");
     hint_line
         .split('`')

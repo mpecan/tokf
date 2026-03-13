@@ -113,23 +113,35 @@ pub(crate) fn install_to(
     eprintln!("[tokf]   settings: {}", settings_path.display());
 
     if install_context && let Some(claude_dir) = settings_path.parent() {
-        write_context_doc(claude_dir)?;
+        let created = write_context_doc(claude_dir)?;
         patch_claude_md(claude_dir)?;
-        eprintln!("[tokf]   context: {}", claude_dir.join("TOKF.md").display());
+        if created {
+            eprintln!("[tokf]   context: {}", claude_dir.join("TOKF.md").display());
+        } else {
+            eprintln!(
+                "[tokf]   context: {} (already exists, skipped)",
+                claude_dir.join("TOKF.md").display()
+            );
+        }
     }
 
     Ok(())
 }
 
 /// Write the TOKF.md context file that explains the compression indicator.
-fn write_context_doc(claude_dir: &std::path::Path) -> anyhow::Result<()> {
+/// Skips writing if the file already exists (preserves user edits).
+/// Returns `true` if the file was created, `false` if it already existed.
+fn write_context_doc(claude_dir: &std::path::Path) -> anyhow::Result<bool> {
     let tokf_md = claude_dir.join("TOKF.md");
+    if tokf_md.exists() {
+        return Ok(false);
+    }
     let content = "\
 🗜️ means this output was compressed by tokf.
 Run `tokf raw last` to see the full uncompressed output of the last command.
 ";
     std::fs::write(&tokf_md, content)?;
-    Ok(())
+    Ok(true)
 }
 
 /// Add an `@TOKF.md` reference to CLAUDE.md (creates the file if needed).
@@ -139,7 +151,12 @@ fn patch_claude_md(claude_dir: &std::path::Path) -> anyhow::Result<()> {
     match std::fs::read_to_string(&claude_md) {
         Ok(content) if content.contains(marker) => Ok(()),
         Ok(content) => {
-            let updated = format!("{}\n{marker}\n", content.trim_end());
+            let separator = if content.is_empty() || content.ends_with('\n') {
+                ""
+            } else {
+                "\n"
+            };
+            let updated = format!("{content}{separator}{marker}\n");
             std::fs::write(&claude_md, updated)?;
             Ok(())
         }

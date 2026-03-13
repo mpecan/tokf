@@ -426,6 +426,26 @@ fn install_idempotent_claude_md() {
 }
 
 #[test]
+fn install_preserves_existing_tokf_md() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let hook_dir = dir.path().join(".tokf/hooks");
+    let claude_dir = dir.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let settings_path = claude_dir.join("settings.json");
+
+    let custom = "custom user content\n";
+    std::fs::write(claude_dir.join("TOKF.md"), custom).unwrap();
+
+    install_to(&hook_dir, &settings_path, "tokf", true).unwrap();
+
+    let content = std::fs::read_to_string(claude_dir.join("TOKF.md")).unwrap();
+    assert_eq!(
+        content, custom,
+        "existing TOKF.md should not be overwritten, got: {content}"
+    );
+}
+
+#[test]
 fn install_no_context_skips_tokf_md() {
     let dir = tempfile::TempDir::new().unwrap();
     let hook_dir = dir.path().join(".tokf/hooks");

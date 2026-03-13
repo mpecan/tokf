@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "/Users/mdp/src/github.com/mpecan/tokf/.tokf/hooks/pre-tool-use.sh",
+            "command": "'/Users/mdp/src/github.com/mpecan/tokf/.tokf/hooks/pre-tool-use.sh'",
             "type": "command"
           }
         ],

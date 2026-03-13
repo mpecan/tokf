@@ -169,13 +169,27 @@ fn collect_config_entries(
         file: shims_file,
     });
 
-    // output.show_indicator
-    let output = OutputConfig::load_from(Some(project_root), global_path);
-    let (output_source, output_file) =
-        src(|c| c.output.as_ref().and_then(|o| o.show_indicator).is_some());
+    // output.show_indicator (env var takes priority)
+    let env_indicator = std::env::var("TOKF_SHOW_INDICATOR")
+        .ok()
+        .and_then(|v| v.parse::<bool>().ok());
+    let (output_val, output_source, output_file) = env_indicator.map_or_else(
+        || {
+            let output = OutputConfig::load_from(Some(project_root), global_path);
+            let (s, f) = src(|c| c.output.as_ref().and_then(|o| o.show_indicator).is_some());
+            (output.show_indicator, s, f)
+        },
+        |b| {
+            (
+                b,
+                "env".to_string(),
+                Some("TOKF_SHOW_INDICATOR".to_string()),
+            )
+        },
+    );
     entries.push(ConfigEntry {
         key: "output.show_indicator".to_string(),
-        value: Some(output.show_indicator.to_string()),
+        value: Some(output_val.to_string()),
         source: output_source,
         file: output_file,
     });
