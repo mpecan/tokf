@@ -181,25 +181,62 @@ fn extract_bash_pattern(rule: &str) -> Option<&str> {
 
 /// Check if `cmd` matches a Claude Code permission pattern.
 ///
-/// Pattern forms:
+/// Supports `*` as a wildcard anywhere in the pattern:
 /// - `*` → matches everything
-/// - `prefix:*` or `prefix *` (trailing `*`) → prefix match
-/// - `pattern` → exact match or word-boundary prefix match
+/// - `git push *` → trailing wildcard (prefix match)
+/// - `* --force` → leading wildcard (suffix match)
+/// - `git * main` → middle wildcard
+/// - `* --help *` → multiple wildcards
+/// - `sudo:*` → legacy colon syntax (prefix match)
+/// - `pattern` (no wildcard) → exact match or word-boundary prefix match
 fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
-    if pattern == "*" {
-        return true;
+    if !pattern.contains('*') {
+        // No wildcards — exact match or prefix with word boundary.
+        return starts_with_word(cmd, pattern);
     }
 
-    if let Some(p) = pattern.strip_suffix('*') {
-        let prefix = p.trim_end_matches(':').trim_end();
-        if prefix.is_empty() {
-            return true;
+    // Split pattern on `*` and verify all segments appear in order.
+    // For legacy `sudo:*` style, strip the colon from the segment before matching.
+    let segments: Vec<&str> = pattern.split('*').collect();
+    let mut pos = 0;
+
+    for (i, segment) in segments.iter().enumerate() {
+        let seg = if i == 0 {
+            segment.trim_end_matches(':').trim_end()
+        } else {
+            segment.trim()
+        };
+
+        if seg.is_empty() {
+            continue;
         }
-        return starts_with_word(cmd, prefix);
+
+        // First segment must match at the start (word boundary).
+        if i == 0 {
+            if !starts_with_word(cmd, seg) {
+                return false;
+            }
+            pos = seg.len();
+            continue;
+        }
+
+        // Remaining segments must appear after the current position.
+        if let Some(found) = cmd[pos..].find(seg) {
+            pos += found + seg.len();
+        } else {
+            return false;
+        }
     }
 
-    // Exact match or prefix with word boundary.
-    starts_with_word(cmd, pattern)
+    // If the pattern doesn't end with `*`, the last segment must reach the end.
+    if !pattern.ends_with('*') {
+        let last_seg = segments.last().unwrap_or(&"").trim();
+        if !last_seg.is_empty() {
+            return cmd.ends_with(last_seg);
+        }
+    }
+
+    true
 }
 
 /// Check if `cmd` equals `word` or starts with `word` followed by a space.
@@ -291,6 +328,52 @@ mod tests {
     #[test]
     fn wildcard_colon_no_false_positive() {
         assert!(!command_matches_pattern("sudoedit /etc/hosts", "sudo:*"));
+    }
+
+    #[test]
+    fn wildcard_leading() {
+        assert!(command_matches_pattern("git push --force", "* --force"));
+        assert!(command_matches_pattern("cargo build --force", "* --force"));
+    }
+
+    #[test]
+    fn wildcard_leading_no_match() {
+        assert!(!command_matches_pattern("git push --forceful", "* --force"));
+    }
+
+    #[test]
+    fn wildcard_middle() {
+        assert!(command_matches_pattern("git push main", "git * main"));
+        assert!(command_matches_pattern("git merge main", "git * main"));
+        assert!(command_matches_pattern(
+            "git rebase --onto main",
+            "git * main"
+        ));
+    }
+
+    #[test]
+    fn wildcard_middle_no_match() {
+        assert!(!command_matches_pattern("git push develop", "git * main"));
+    }
+
+    #[test]
+    fn wildcard_multiple() {
+        assert!(command_matches_pattern(
+            "git push --help origin",
+            "* --help *"
+        ));
+        assert!(command_matches_pattern(
+            "cargo test --help --verbose",
+            "* --help *"
+        ));
+    }
+
+    #[test]
+    fn wildcard_trailing_space() {
+        assert!(command_matches_pattern(
+            "git push --force origin main",
+            "git push *"
+        ));
     }
 
     #[test]
