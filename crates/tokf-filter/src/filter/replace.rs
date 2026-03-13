@@ -43,8 +43,14 @@ fn apply_rules_to_line(compiled: &[CompiledRule<'_>], line: &str) -> String {
     for rule in compiled {
         if rule.replace_all {
             // Replace all non-overlapping matches in-place, preserving unmatched text.
-            // Uses Regex::replace_all with the output template as the replacement.
-            current = rule.re.replace_all(&current, rule.output).into_owned();
+            // Uses a closure to call interpolate per match so both {N} and $N work.
+            let replaced = rule.re.replace_all(&current, |caps: &regex::Captures| {
+                super::extract::interpolate(rule.output, caps)
+            });
+            // Only allocate when replace_all actually changed something.
+            if let std::borrow::Cow::Owned(s) = replaced {
+                current = s;
+            }
         } else if let Some(caps) = rule.re.captures(&current) {
             current = super::extract::interpolate(rule.output, &caps);
         }
@@ -169,5 +175,23 @@ mod tests {
         let lines = vec!["foo baz foo", "foo"];
         let result = apply_replace(&rules, &lines);
         assert_eq!(result, vec!["bar baz bar".to_string(), "bar".to_string()]);
+    }
+
+    #[test]
+    fn replace_all_with_tokf_native_braces_syntax() {
+        // {N} syntax must work in replace_all mode (via interpolate)
+        let rules = vec![rule_all(r"(\w+):(\w+)", "{2}:{1}")];
+        let lines = vec!["a:b c:d"];
+        let result = apply_replace(&rules, &lines);
+        assert_eq!(result, vec!["b:a d:c".to_string()]);
+    }
+
+    #[test]
+    fn replace_all_with_mixed_syntax() {
+        // Mixed {N} and $N in same template
+        let rules = vec![rule_all(r"(\w+):(\w+)", "{1}=$2")];
+        let lines = vec!["x:y z:w"];
+        let result = apply_replace(&rules, &lines);
+        assert_eq!(result, vec!["x=y z=w".to_string()]);
     }
 }
