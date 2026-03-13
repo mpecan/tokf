@@ -54,8 +54,14 @@ mod tests {
 
         assert_eq!(cfg.command.first(), "git push");
         assert_eq!(cfg.match_output.len(), 2);
-        assert_eq!(cfg.match_output[0].contains, "Everything up-to-date");
-        assert_eq!(cfg.match_output[1].contains, "non-fast-forward");
+        assert_eq!(
+            cfg.match_output[0].contains.as_deref().unwrap(),
+            "Everything up-to-date"
+        );
+        assert_eq!(
+            cfg.match_output[1].contains.as_deref().unwrap(),
+            "non-fast-forward"
+        );
 
         let success = cfg.on_success.unwrap();
         assert_eq!(success.skip.len(), 8);
@@ -80,7 +86,10 @@ mod tests {
 
         // match_output: not-a-git-repo case
         assert_eq!(cfg.match_output.len(), 1);
-        assert_eq!(cfg.match_output[0].contains, "not a git repository");
+        assert_eq!(
+            cfg.match_output[0].contains.as_deref().unwrap(),
+            "not a git repository"
+        );
         assert_eq!(cfg.match_output[0].output, "Not a git repository");
 
         // replace rules: branch line transformations
@@ -183,7 +192,7 @@ empty = "nothing to show"
 
         assert_eq!(cfg.command.first(), "git add");
         assert_eq!(cfg.match_output.len(), 1);
-        assert_eq!(cfg.match_output[0].contains, "fatal:");
+        assert_eq!(cfg.match_output[0].contains.as_deref().unwrap(), "fatal:");
 
         let success = cfg.on_success.unwrap();
         assert_eq!(success.output.as_deref(), Some("ok \u{2713}"));
@@ -232,7 +241,7 @@ empty = "nothing to show"
         assert!(run.contains("{args}"));
 
         assert_eq!(cfg.match_output.len(), 1);
-        assert_eq!(cfg.match_output[0].contains, "fatal:");
+        assert_eq!(cfg.match_output[0].contains.as_deref().unwrap(), "fatal:");
 
         let success = cfg.on_success.unwrap();
         assert_eq!(success.output.as_deref(), Some("{output}"));

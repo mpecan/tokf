@@ -20,18 +20,26 @@ pub fn apply_extract(rule: &ExtractRule, lines: &[&str]) -> String {
     lines.join("\n")
 }
 
-/// Replace `{0}`, `{1}`, `{2}`, ... placeholders with capture groups.
+/// Replace `{0}`, `{1}`, `{2}`, ... and `$0`, `$1`, `$2`, ... placeholders
+/// with capture groups.
 ///
-/// Iterates in reverse order so `{10}` is replaced before `{1}`.
+/// Iterates in reverse order so `{10}`/`$10` is replaced before `{1}`/`$1`.
 /// Missing groups become empty strings.
+///
+/// Both syntaxes are supported for compatibility: `{N}` is the tokf-native
+/// syntax, `$N` is the RTK-compatible syntax.
 pub(super) fn interpolate(template: &str, caps: &regex::Captures<'_>) -> String {
     let mut result = template.to_string();
     let max_group = caps.len().saturating_sub(1);
 
     for i in (0..=max_group).rev() {
-        let placeholder = format!("{{{i}}}");
         let value = caps.get(i).map_or("", |m| m.as_str());
+        // tokf-native syntax: {N}
+        let placeholder = format!("{{{i}}}");
         result = result.replace(&placeholder, value);
+        // RTK-compatible syntax: $N
+        let dollar_placeholder = format!("${i}");
+        result = result.replace(&dollar_placeholder, value);
     }
 
     result
@@ -125,5 +133,42 @@ mod tests {
         let r = rule(r"(\S+)\s*->\s*(\S+)", "ok \u{2713} {2}");
         let lines = vec!["   abc1234..def5678 main -> main"];
         assert_eq!(apply_extract(&r, &lines), "ok \u{2713} main");
+    }
+
+    // --- RTK-compatible $N interpolation ---
+
+    #[test]
+    fn interpolate_dollar_syntax() {
+        let re = Regex::new(r"(hello) (world)").unwrap();
+        let caps = re.captures("hello world").unwrap();
+        assert_eq!(interpolate("$1 $2", &caps), "hello world");
+    }
+
+    #[test]
+    fn interpolate_dollar_group_zero() {
+        let re = Regex::new(r"(hello) (world)").unwrap();
+        let caps = re.captures("hello world").unwrap();
+        assert_eq!(interpolate("match: $0", &caps), "match: hello world");
+    }
+
+    #[test]
+    fn interpolate_mixed_syntax() {
+        let re = Regex::new(r"(hello) (world)").unwrap();
+        let caps = re.captures("hello world").unwrap();
+        assert_eq!(interpolate("{1} $2", &caps), "hello world");
+    }
+
+    #[test]
+    fn interpolate_dollar_missing_group() {
+        let re = Regex::new(r"(a)(b)?").unwrap();
+        let caps = re.captures("a").unwrap();
+        assert_eq!(interpolate("$1-$2", &caps), "a-");
+    }
+
+    #[test]
+    fn extract_with_dollar_syntax() {
+        let r = rule(r"(\S+)\s*->\s*(\S+)", "ok $2");
+        let lines = vec!["   abc1234..def5678 main -> main"];
+        assert_eq!(apply_extract(&r, &lines), "ok main");
     }
 }

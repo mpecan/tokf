@@ -58,6 +58,7 @@ struct BranchContext<'a> {
     json_parsed: bool,
     json_vars: &'a std::collections::HashMap<String, String>,
     top_level_tail: Option<usize>,
+    top_level_head: Option<usize>,
 }
 
 /// Apply a filter configuration to a command result.
@@ -228,8 +229,10 @@ fn apply_internal(
     #[cfg(feature = "lua")] lua_limits: &lua::SandboxLimits,
 ) -> FilterResult {
     // 1. match_output short-circuit
-    if let Some(rule) = match_output::find_matching_rule(&config.match_output, &result.combined) {
-        let output = match_output::render_output(&rule.output, &rule.contains, &result.combined);
+    if let Some((rule, needle)) =
+        match_output::find_matching_rule(&config.match_output, &result.combined)
+    {
+        let output = match_output::render_output(&rule.output, &needle, &result.combined);
         return FilterResult {
             output: finalize_output(config, output),
         };
@@ -338,6 +341,7 @@ fn apply_internal(
         json_parsed,
         json_vars: &json_vars,
         top_level_tail: config.tail,
+        top_level_head: config.head,
     };
     let output = branch.map_or_else(
         || apply_fallback(config, &pre_filtered),
@@ -352,9 +356,23 @@ fn apply_internal(
     }
 }
 
-/// Final output processing: post-process (strip/collapse/truncate) then apply `on_empty`.
+/// Final output processing: post-process (strip/collapse/truncate), apply
+/// `max_lines` cap, then apply `on_empty`.
 fn finalize_output(config: &FilterConfig, output: String) -> String {
-    let output = cleanup::post_process_output(config, output);
+    let mut output = cleanup::post_process_output(config, output);
+
+    // max_lines: absolute cap applied after all other processing.
+    if let Some(max) = config.max_lines {
+        let trailing = output.ends_with('\n');
+        let lines: Vec<&str> = output.lines().collect();
+        if lines.len() > max {
+            output = lines[..max].join("\n");
+            if trailing {
+                output.push('\n');
+            }
+        }
+    }
+
     if let Some(ref msg) = config.on_empty
         && output.trim().is_empty()
     {
@@ -437,7 +455,7 @@ fn apply_branch(branch: &OutputBranch, combined: &str, ctx: &BranchContext<'_>) 
     {
         lines = lines.split_off(lines.len() - tail);
     }
-    if let Some(head) = branch.head {
+    if let Some(head) = branch.head.or(ctx.top_level_head) {
         lines.truncate(head);
     }
 
@@ -457,13 +475,21 @@ fn apply_fallback(config: &FilterConfig, combined: &str) -> String {
         .as_ref()
         .and_then(|fb| fb.tail)
         .or(config.tail);
-    if let Some(tail) = tail {
-        let lines: Vec<&str> = combined.lines().collect();
-        if lines.len() > tail {
-            return lines[lines.len() - tail..].join("\n");
-        }
+
+    if tail.is_none() && config.head.is_none() {
+        return combined.to_string();
     }
-    combined.to_string()
+
+    let mut lines: Vec<&str> = combined.lines().collect();
+    if let Some(tail) = tail
+        && lines.len() > tail
+    {
+        lines = lines.split_off(lines.len() - tail);
+    }
+    if let Some(head) = config.head {
+        lines.truncate(head);
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -481,3 +507,6 @@ mod tests_json;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_pipeline;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests_rtk_compat;
