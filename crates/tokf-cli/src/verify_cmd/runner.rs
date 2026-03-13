@@ -78,6 +78,13 @@ pub(super) fn run_suite(suite: &DiscoveredSuite, check_safety: bool) -> SuiteRes
         Err(e) => return error_suite(&suite.filter_name, format!("{e:#}")),
     };
 
+    // Validate match_output rules
+    for (i, rule) in cfg.match_output.iter().enumerate() {
+        if let Err(e) = rule.validate() {
+            return error_suite(&suite.filter_name, format!("match_output[{i}]: {e}"));
+        }
+    }
+
     let mut case_files: Vec<PathBuf> = match std::fs::read_dir(&suite.suite_dir) {
         Ok(rd) => rd
             .filter_map(Result::ok)

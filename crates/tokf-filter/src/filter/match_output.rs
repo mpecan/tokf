@@ -38,13 +38,18 @@ pub fn find_matching_rule<'a>(
         // Fall back to regex match (`pattern`).
         if let Some(ref pat) = rule.pattern
             && let Ok(re) = Regex::new(pat)
-            && re.is_match(combined)
+            && let Some(m) = re.find(combined)
         {
-            // Use the regex pattern itself as the "needle" for
-            // `{line_containing}` — find the first line that matches.
+            // Find the line containing the start of the match.
+            // This works for both single-line and multi-line patterns.
+            let match_start = m.start();
             let needle = combined
                 .lines()
-                .find(|l| re.is_match(l))
+                .find(|l| {
+                    let l_start = l.as_ptr() as usize - combined.as_ptr() as usize;
+                    let l_end = l_start + l.len();
+                    match_start >= l_start && match_start < l_end
+                })
                 .unwrap_or("")
                 .to_string();
             return Some((rule, needle));
@@ -280,5 +285,28 @@ unless = "error|failed"
         )
         .unwrap();
         assert_eq!(rule.unless.unwrap(), "error|failed");
+    }
+
+    // --- multiline pattern needle resolution ---
+
+    #[test]
+    fn pattern_multiline_resolves_line_containing() {
+        // Pattern spans two lines — the needle should be the line where the match starts
+        let rules = vec![rule_pattern(
+            r"0 Warning\(s\)\n\s+0 Error\(s\)",
+            "{line_containing}",
+        )];
+        let input = "Build started\n  0 Warning(s)\n  0 Error(s)\nDone";
+        let (_, needle) = find_matching_rule(&rules, input).unwrap();
+        // The match starts on the "0 Warning(s)" line
+        assert_eq!(needle, "  0 Warning(s)");
+    }
+
+    #[test]
+    fn pattern_single_line_resolves_line_containing() {
+        let rules = vec![rule_pattern(r"fatal:", "{line_containing}")];
+        let input = "some preamble\nfatal: bad revision\nmore stuff";
+        let (_, needle) = find_matching_rule(&rules, input).unwrap();
+        assert_eq!(needle, "fatal: bad revision");
     }
 }

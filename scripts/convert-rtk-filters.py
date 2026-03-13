@@ -82,11 +82,11 @@ def convert_filter(name: str, rtk_filter: dict) -> tuple[str, bool]:
     if cmd_needs_review:
         lines.append(f"# TODO: review — RTK uses regex: {match_cmd}")
         needs_review = True
-    lines.append(f'command = "{command}"')
+    lines.append(f'command = "{_escape_toml(command)}"')
 
     # description
     if desc := rtk_filter.get("description"):
-        lines.append(f'description = "{desc}"')
+        lines.append(f'description = "{_escape_toml(desc)}"')
 
     # strip_ansi
     if rtk_filter.get("strip_ansi"):
@@ -108,13 +108,13 @@ def convert_filter(name: str, rtk_filter: dict) -> tuple[str, bool]:
 
     # head / tail / max_lines / truncate_lines_at / on_empty
     # (emit scalar fields before array-of-tables sections)
-    if head := rtk_filter.get("head_lines"):
+    if (head := rtk_filter.get("head_lines")) is not None:
         lines.append(f"head = {head}")
-    if tail := rtk_filter.get("tail_lines"):
+    if (tail := rtk_filter.get("tail_lines")) is not None:
         lines.append(f"tail = {tail}")
-    if max_lines := rtk_filter.get("max_lines"):
+    if (max_lines := rtk_filter.get("max_lines")) is not None:
         lines.append(f"max_lines = {max_lines}")
-    if trunc := rtk_filter.get("truncate_lines_at"):
+    if (trunc := rtk_filter.get("truncate_lines_at")) is not None:
         lines.append(f"truncate_lines_at = {trunc}")
     if on_empty := rtk_filter.get("on_empty"):
         lines.append(f'on_empty = "{_escape_toml(on_empty)}"')
@@ -166,10 +166,10 @@ def convert_tests(name: str, tests: list[dict]) -> list[tuple[str, str]]:
         if exit_code != 0:
             tc_lines.append(f"exit_code = {exit_code}")
 
-        # input → inline (use triple-quoted for multiline)
+        # input → inline (use literal multiline strings for safety)
         if raw_input := test.get("input"):
             if "\n" in raw_input:
-                tc_lines.append(f'inline = """\n{raw_input}"""')
+                tc_lines.append(f"inline = '''\n{raw_input}'''")
             else:
                 tc_lines.append(f'inline = "{_escape_toml(raw_input)}"')
 
@@ -178,7 +178,7 @@ def convert_tests(name: str, tests: list[dict]) -> list[tuple[str, str]]:
             tc_lines.append("")
             tc_lines.append("[[expect]]")
             if "\n" in expected:
-                tc_lines.append(f'equals = """\n{expected}"""')
+                tc_lines.append(f"equals = '''\n{expected}'''")
             else:
                 tc_lines.append(f'equals = "{_escape_toml(expected)}"')
 

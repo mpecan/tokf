@@ -15,6 +15,10 @@ fn validate_filter_for_server(config: &FilterConfig) -> Result<(), String> {
                 .to_string(),
         );
     }
+    for (i, rule) in config.match_output.iter().enumerate() {
+        rule.validate()
+            .map_err(|e| format!("match_output[{i}]: {e}"))?;
+    }
     Ok(())
 }
 
@@ -185,6 +189,24 @@ source = 'return "filtered"'
         let cases = vec![make_case("lua", "input", vec![expect_equals("filtered")])];
         let result = verify_filter_server(&config, &cases).unwrap();
         assert!(result.all_passed());
+    }
+
+    #[test]
+    fn server_verify_rejects_match_output_without_matcher() {
+        let config = make_config(
+            r#"
+command = "test"
+
+[[match_output]]
+output = "ok"
+"#,
+        );
+        let cases = vec![make_case("basic", "hello", vec![expect_equals("hello")])];
+        let err = verify_filter_server(&config, &cases).unwrap_err();
+        assert!(
+            err.contains("match_output"),
+            "expected match_output validation error, got: {err}"
+        );
     }
 
     #[test]

@@ -253,6 +253,7 @@ pub struct ExtractRule {
 /// At least one of `contains` (literal substring) or `pattern` (regex) must be
 /// set. When both are present, `contains` is tried first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MatchOutputRule {
     /// Substring to search for in the combined output.
     #[serde(default)]
@@ -269,6 +270,22 @@ pub struct MatchOutputRule {
     /// Regex pattern — if this also matches the output, skip this rule.
     /// Prevents short-circuit rules from swallowing errors (RTK-compatible).
     pub unless: Option<String>,
+}
+
+impl MatchOutputRule {
+    /// Validate that at least one of `contains` or `pattern` is set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if both `contains` and `pattern` are `None`.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.contains.is_none() && self.pattern.is_none() {
+            return Err(
+                "match_output rule must have at least one of `contains` or `pattern`".to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
 /// A state-machine section that collects lines between enter/exit markers.
