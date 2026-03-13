@@ -97,13 +97,9 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize) {
     eprintln!(
         "[tokf] scanned {} session{}, {} command{} total",
         summary.sessions_scanned,
-        if summary.sessions_scanned == 1 {
-            ""
-        } else {
-            "s"
-        },
+        plural(summary.sessions_scanned),
         summary.total_commands,
-        if summary.total_commands == 1 { "" } else { "s" },
+        plural(summary.total_commands),
     );
 
     if summary.already_filtered > 0 {
@@ -118,6 +114,22 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize) {
         return;
     }
 
+    print_results_table(&summary.results, limit);
+
+    println!();
+    println!(
+        "Estimated total savings: {} tokens ({} filterable, {} with no filter)",
+        format_tokens(summary.estimated_total_savings),
+        summary.filterable_commands,
+        summary.no_filter_commands,
+    );
+}
+
+const fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
+
+fn print_results_table(results: &[discover::types::DiscoverResult], limit: usize) {
     println!();
     println!(
         "{:<30} {:<20} {:>5} {:>10} {:>10}",
@@ -126,14 +138,15 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize) {
     println!("{}", "-".repeat(80));
 
     let display_count = if limit == 0 {
-        summary.results.len()
+        results.len()
     } else {
-        limit.min(summary.results.len())
+        limit.min(results.len())
     };
 
-    for result in summary.results.iter().take(display_count) {
+    for result in results.iter().take(display_count) {
         let cmd_display = if result.command_pattern.len() > 28 {
-            format!("{}...", &result.command_pattern[..25])
+            let truncated: String = result.command_pattern.chars().take(25).collect();
+            format!("{truncated}...")
         } else {
             result.command_pattern.clone()
         };
@@ -147,20 +160,12 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize) {
         );
     }
 
-    if summary.results.len() > display_count {
+    if results.len() > display_count {
         println!(
             "  ... and {} more (use --limit 0 to show all)",
-            summary.results.len() - display_count
+            results.len() - display_count
         );
     }
-
-    println!();
-    println!(
-        "Estimated total savings: {} tokens ({} filterable, {} with no filter)",
-        format_tokens(summary.estimated_total_savings),
-        summary.filterable_commands,
-        summary.no_filter_commands,
-    );
 }
 
 fn format_tokens(n: usize) -> String {

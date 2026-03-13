@@ -61,7 +61,7 @@ pub fn strip_simple_pipe(command: &str) -> Option<StrippedPipe> {
 
 /// Collect the byte-offsets of every bare pipe (`|`) that is not part of `||`.
 /// Quote-aware: pipes inside single or double quotes are ignored.
-fn bare_pipe_positions(command: &str) -> Vec<usize> {
+pub fn bare_pipe_positions(command: &str) -> Vec<usize> {
     let bytes = command.as_bytes();
     let mut positions = Vec::new();
     let mut in_single = false;

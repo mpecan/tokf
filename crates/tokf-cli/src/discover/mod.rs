@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use types::{CommandAnalysis, DiscoverResult, DiscoverSummary, ExtractedCommand};
 
 use crate::config::{self, ResolvedFilter};
+use crate::rewrite::compound::bare_pipe_positions;
 use crate::tracking;
 
 const DEFAULT_SAVINGS_PCT: f64 = 60.0;
@@ -30,21 +31,32 @@ pub fn discover_sessions(
         config::cache::discover_with_cache(&search_dirs)?
     };
 
+    // Pre-compute display names so we don't repeat PathBuf→String per command.
+    let filter_names: Vec<String> = filters
+        .iter()
+        .map(|f| {
+            f.relative_path
+                .with_extension("")
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+
     let historical_ratios = load_historical_ratios();
     let mut counters = Counters::default();
     let mut aggregated: HashMap<(String, String), AggBucket> = HashMap::new();
+
+    let ctx = SessionContext {
+        filters: &filters,
+        filter_names: &filter_names,
+        historical_ratios: &historical_ratios,
+    };
 
     for path in session_files {
         let Ok(file) = std::fs::File::open(path) else {
             continue;
         };
-        classify_session(
-            file,
-            &filters,
-            &historical_ratios,
-            &mut counters,
-            &mut aggregated,
-        );
+        classify_session(file, &ctx, &mut counters, &mut aggregated);
     }
 
     let results = build_results(aggregated);
@@ -69,10 +81,15 @@ struct Counters {
     no_filter: usize,
 }
 
+struct SessionContext<'a> {
+    filters: &'a [ResolvedFilter],
+    filter_names: &'a [String],
+    historical_ratios: &'a HashMap<String, f64>,
+}
+
 fn classify_session(
     file: std::fs::File,
-    filters: &[ResolvedFilter],
-    historical_ratios: &HashMap<String, f64>,
+    ctx: &SessionContext<'_>,
     counters: &mut Counters,
     aggregated: &mut HashMap<(String, String), AggBucket>,
 ) {
@@ -80,19 +97,21 @@ fn classify_session(
     counters.total += commands.len();
 
     for cmd in &commands {
-        match classify_command(cmd, filters) {
+        match classify_command(cmd, ctx.filters, ctx.filter_names) {
             CommandAnalysis::AlreadyFiltered => counters.already_filtered += 1,
             CommandAnalysis::Filterable {
                 filter_name,
-                savings_pct: _,
+                normalized_command,
             } => {
                 counters.filterable += 1;
-                let norm = normalize_command(&cmd.command);
-                let pct = historical_ratios
+                let pct = ctx
+                    .historical_ratios
                     .get(&filter_name)
                     .copied()
                     .unwrap_or(DEFAULT_SAVINGS_PCT);
-                let bucket = aggregated.entry((filter_name, norm)).or_default();
+                let bucket = aggregated
+                    .entry((filter_name, normalized_command))
+                    .or_default();
                 bucket.occurrences += 1;
                 bucket.total_output_bytes += cmd.output_bytes;
                 bucket.savings_pct = pct;
@@ -107,10 +126,12 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
         .into_iter()
         .map(|((filter_name, command_pattern), bucket)| {
             let estimated_tokens = bucket.total_output_bytes / 4;
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let estimated_savings = (f64::from(u32::try_from(estimated_tokens).unwrap_or(u32::MAX))
-                * bucket.savings_pct
-                / 100.0) as usize;
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                clippy::cast_precision_loss
+            )]
+            let estimated_savings = (estimated_tokens as f64 * bucket.savings_pct / 100.0) as usize;
             DiscoverResult {
                 command_pattern,
                 filter_name,
@@ -175,7 +196,13 @@ pub fn encode_project_path(path: &Path) -> String {
 }
 
 /// Classify a single command against the available filters.
-pub fn classify_command(cmd: &ExtractedCommand, filters: &[ResolvedFilter]) -> CommandAnalysis {
+///
+/// `filter_names` must be parallel to `filters` (pre-computed display names).
+pub fn classify_command(
+    cmd: &ExtractedCommand,
+    filters: &[ResolvedFilter],
+    filter_names: &[String],
+) -> CommandAnalysis {
     let command = cmd.command.trim();
 
     if command.starts_with("tokf run ") {
@@ -188,16 +215,11 @@ pub fn classify_command(cmd: &ExtractedCommand, filters: &[ResolvedFilter]) -> C
         return CommandAnalysis::NoFilter;
     }
 
-    for filter in filters {
+    for (filter, name) in filters.iter().zip(filter_names) {
         if filter.matches(&words).is_some() {
-            let name = filter
-                .relative_path
-                .with_extension("")
-                .to_string_lossy()
-                .to_string();
             return CommandAnalysis::Filterable {
-                filter_name: name,
-                savings_pct: DEFAULT_SAVINGS_PCT,
+                filter_name: name.clone(),
+                normalized_command: normalized,
             };
         }
     }
@@ -205,44 +227,16 @@ pub fn classify_command(cmd: &ExtractedCommand, filters: &[ResolvedFilter]) -> C
     CommandAnalysis::NoFilter
 }
 
-/// Normalize a command for matching: strip trailing pipes, redirections, etc.
+/// Normalize a command for matching: strip the last bare pipe and everything after it.
 fn normalize_command(command: &str) -> String {
     let command = command.trim();
-    // Strip trailing pipe chains (e.g. `| tail -20`, `| head -n 5`, `2>&1 | grep`)
-    let mut result = command.to_string();
-    if let Some(idx) = find_trailing_pipe(&result) {
-        result.truncate(idx);
-        result = result.trim_end().to_string();
+    // Reuse the existing quote-aware pipe finder from rewrite::compound.
+    let positions = bare_pipe_positions(command);
+    if let Some(&last_pipe) = positions.last() {
+        command[..last_pipe].trim_end().to_string()
+    } else {
+        command.to_string()
     }
-    result
-}
-
-/// Find the index of the first `|` that starts a trailing pipe chain.
-fn find_trailing_pipe(command: &str) -> Option<usize> {
-    // Simple heuristic: find last `|` not inside quotes
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut last_pipe = None;
-
-    for (i, ch) in command.char_indices() {
-        match ch {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            '|' if !in_single && !in_double => {
-                // Skip `||` (logical OR)
-                if command.as_bytes().get(i + 1) == Some(&b'|') {
-                    continue;
-                }
-                // Skip if preceded by `|` (second char of `||` already handled)
-                if i > 0 && command.as_bytes().get(i - 1) == Some(&b'|') {
-                    continue;
-                }
-                last_pipe = Some(i);
-            }
-            _ => {}
-        }
-    }
-    last_pipe
 }
 
 /// Load historical savings ratios from the tracking database (`filter_name` → `savings_pct`).

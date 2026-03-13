@@ -12,14 +12,15 @@ pub struct ExtractedCommand {
 }
 
 /// Classification of a single extracted command.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandAnalysis {
     /// Already wrapped with `tokf run` — no action needed.
     AlreadyFiltered,
-    /// A matching filter exists; estimated savings percentage.
+    /// A matching filter exists.
     Filterable {
         filter_name: String,
-        savings_pct: f64,
+        /// The normalized command string (pipes stripped), returned to avoid recomputation.
+        normalized_command: String,
     },
     /// No matching filter found.
     NoFilter,

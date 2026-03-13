@@ -133,14 +133,14 @@ fn make_cmd(command: &str, output_bytes: usize) -> ExtractedCommand {
 #[test]
 fn classify_already_filtered() {
     let cmd = make_cmd("tokf run git status", 100);
-    let result = classify_command(&cmd, &[]);
+    let result = classify_command(&cmd, &[], &[]);
     assert_eq!(result, CommandAnalysis::AlreadyFiltered);
 }
 
 #[test]
 fn classify_no_filter_empty_list() {
     let cmd = make_cmd("some-unknown-tool", 100);
-    let result = classify_command(&cmd, &[]);
+    let result = classify_command(&cmd, &[], &[]);
     assert_eq!(result, CommandAnalysis::NoFilter);
 }
 
