@@ -1,5 +1,3 @@
-# Exact duplicates
-
 [[ignore]]
 fingerprint = "55b4a6e929693e66"
 reason = "Mock GitHubClient::get_user impls - minimal trait implementations on different test doubles"
@@ -92,8 +90,6 @@ reason = "sync_tests validation rejection tests - each tests a different error c
 fingerprint = "e7c7421228f41810"
 reason = "TestHarness::blocking_get_filter/blocking_download_filter - spawn_blocking test boilerplate; test clarity > DRY"
 
-# Near duplicates
-
 [[ignore]]
 fingerprint = "74e5891bbee906dd"
 reason = "auth_user_extractor tests - test code with different token values and assertions; clarity > DRY"
@@ -125,3 +121,7 @@ reason = "publish_filter_rejects_missing_* tests - same post+assert+check-error 
 [[ignore]]
 fingerprint = "91e815e8a2c7146b"
 reason = "publish_filter_rejects_oversized/failing tests - same post+assert+check-error pattern with different inputs and assertions; test clarity > DRY"
+
+[[ignore]]
+fingerprint = "958788df08a36871"
+reason = "Intentional thin wrappers for different hook formats (Claude Code vs Gemini)"
