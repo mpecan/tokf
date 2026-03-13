@@ -77,13 +77,29 @@ pub(crate) fn patch_aider_conf_at(conf_path: &Path, conventions_path: &Path) -> 
         return Ok(());
     }
 
-    let separator = if existing.is_empty() || existing.ends_with('\n') {
-        ""
+    let entry = format!("  - {conventions_str}");
+
+    // If `read:` key already exists, append to it; otherwise create it
+    let updated = if existing.contains("\nread:") || existing.starts_with("read:") {
+        // Find the `read:` line and insert the new entry after it
+        let mut lines: Vec<&str> = existing.lines().collect();
+        if let Some(pos) = lines.iter().position(|l| l.trim() == "read:") {
+            lines.insert(pos + 1, &entry);
+        }
+        let mut result = lines.join("\n");
+        if !result.ends_with('\n') {
+            result.push('\n');
+        }
+        result
     } else {
-        "\n"
+        let separator = if existing.is_empty() || existing.ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
+        format!("{existing}{separator}read:\n{entry}\n")
     };
 
-    let updated = format!("{existing}{separator}read:\n  - {conventions_str}\n");
     std::fs::write(conf_path, updated)?;
 
     Ok(())
@@ -172,6 +188,22 @@ mod tests {
         let content = std::fs::read_to_string(&conf_path).unwrap();
         assert!(content.starts_with("model: gpt-4\n"));
         assert!(content.contains("read:"));
+    }
+
+    #[test]
+    fn patch_aider_conf_appends_to_existing_read_key() {
+        let dir = TempDir::new().unwrap();
+        let conf_path = dir.path().join(".aider.conf.yml");
+        std::fs::write(&conf_path, "read:\n  - /other/file.md\n").unwrap();
+        let conventions_path = dir.path().join("tokf-conventions.md");
+
+        patch_aider_conf_at(&conf_path, &conventions_path).unwrap();
+
+        let content = std::fs::read_to_string(&conf_path).unwrap();
+        let read_count = content.matches("read:").count();
+        assert_eq!(read_count, 1, "should not duplicate read: key");
+        assert!(content.contains("/other/file.md"));
+        assert!(content.contains("tokf-conventions.md"));
     }
 
     #[test]

@@ -51,19 +51,8 @@ impl HookResponse {
 }
 
 // --- Gemini CLI types ---
-
-/// Gemini CLI `BeforeTool` hook input (read from stdin).
-#[derive(Debug, Clone, Deserialize)]
-pub struct GeminiHookInput {
-    pub tool_name: String,
-    pub tool_input: GeminiToolInput,
-}
-
-/// The `tool_input` payload from the Gemini hook.
-#[derive(Debug, Clone, Deserialize)]
-pub struct GeminiToolInput {
-    pub command: Option<String>,
-}
+// Input types share the same JSON shape as Claude Code (HookInput/ToolInput),
+// so no separate Gemini/Cursor input types are needed.
 
 /// Response to send back to Gemini CLI when rewriting a command.
 #[derive(Debug, Clone, Serialize)]
@@ -98,19 +87,6 @@ impl GeminiHookResponse {
 }
 
 // --- Cursor types ---
-
-/// Cursor `preToolUse` hook input (read from stdin).
-#[derive(Debug, Clone, Deserialize)]
-pub struct CursorHookInput {
-    pub tool_name: String,
-    pub tool_input: CursorToolInput,
-}
-
-/// The `tool_input` payload from the Cursor hook.
-#[derive(Debug, Clone, Deserialize)]
-pub struct CursorToolInput {
-    pub command: Option<String>,
-}
 
 /// Response to send back to Cursor when rewriting a command.
 #[derive(Debug, Clone, Serialize)]
@@ -197,11 +173,14 @@ mod tests {
     }
 
     // --- Gemini CLI types ---
+    // Gemini and Cursor inputs share the same JSON shape as HookInput,
+    // so deserialization is tested via HookInput above. Only response
+    // serialization differs per protocol.
 
     #[test]
     fn deserialize_gemini_run_shell_command() {
         let json = r#"{"tool_name":"run_shell_command","tool_input":{"command":"git status"}}"#;
-        let input: GeminiHookInput = serde_json::from_str(json).unwrap();
+        let input: HookInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.tool_name, "run_shell_command");
         assert_eq!(input.tool_input.command.as_deref(), Some("git status"));
     }
@@ -218,22 +197,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deserialize_gemini_no_command() {
-        let json = r#"{"tool_name":"run_shell_command","tool_input":{}}"#;
-        let input: GeminiHookInput = serde_json::from_str(json).unwrap();
-        assert!(input.tool_input.command.is_none());
-    }
-
     // --- Cursor types ---
-
-    #[test]
-    fn deserialize_cursor_shell_command() {
-        let json = r#"{"tool_name":"Shell","tool_input":{"command":"cargo test"}}"#;
-        let input: CursorHookInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.tool_name, "Shell");
-        assert_eq!(input.tool_input.command.as_deref(), Some("cargo test"));
-    }
 
     #[test]
     fn serialize_cursor_hook_response() {
@@ -242,12 +206,5 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["permission"], "allow");
         assert_eq!(value["updated_input"]["command"], "tokf run cargo test");
-    }
-
-    #[test]
-    fn deserialize_cursor_no_command() {
-        let json = r#"{"tool_name":"Shell","tool_input":{}}"#;
-        let input: CursorHookInput = serde_json::from_str(json).unwrap();
-        assert!(input.tool_input.command.is_none());
     }
 }
