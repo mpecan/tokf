@@ -1,5 +1,109 @@
 # Changelog
 
+## [0.2.36](https://github.com/mpecan/tokf/compare/tokf-v0.2.35...tokf-v0.2.36) (2026-03-13)
+
+
+### Features
+
+* **catalog:** filter versioning & grouped catalog ([#265](https://github.com/mpecan/tokf/issues/265)) ([a326481](https://github.com/mpecan/tokf/commit/a3264817594e7377a8a45776755c3ee9a9941a67))
+* **ci:** sticky PR comment for filter verification + reject empty fixtures ([#173](https://github.com/mpecan/tokf/issues/173)) ([c66af9e](https://github.com/mpecan/tokf/commit/c66af9edd60fa4196fc9b2b4753ea1271ebd0b1e))
+* **cli,server:** filter publishing — tokf publish &lt;filter-name&gt; ([#117](https://github.com/mpecan/tokf/issues/117)) ([#181](https://github.com/mpecan/tokf/issues/181)) ([acf495f](https://github.com/mpecan/tokf/commit/acf495f08f35fb54c9ec8a488c6d4010c33a02d1))
+* **cli,server:** filter search, download, and install — tokf search/install ([#118](https://github.com/mpecan/tokf/issues/118)) ([#183](https://github.com/mpecan/tokf/issues/183)) ([e0e17c9](https://github.com/mpecan/tokf/commit/e0e17c9b2c45ab6487ccc276a0a6ccc82a44628a))
+* **cli,server:** machine UUID registration for remote sync ([#113](https://github.com/mpecan/tokf/issues/113)) ([#179](https://github.com/mpecan/tokf/issues/179)) ([8535a85](https://github.com/mpecan/tokf/commit/8535a85eef08124e853e478965260811ddd1dec5))
+* **cli:** add --raw flag to history show ([#155](https://github.com/mpecan/tokf/issues/155)) ([a98c34d](https://github.com/mpecan/tokf/commit/a98c34d89c7ef09c3305720544beebbef1258fe9))
+* **cli:** add `tokf completions` subcommand ([#233](https://github.com/mpecan/tokf/issues/233)) ([3c9bef6](https://github.com/mpecan/tokf/commit/3c9bef65621773156e6fb0085afe7d746876322d))
+* **cli:** add `tokf telemetry status` subcommand ([#87](https://github.com/mpecan/tokf/issues/87)) ([#254](https://github.com/mpecan/tokf/issues/254)) ([f7138c1](https://github.com/mpecan/tokf/commit/f7138c19c4390976641107ff4de7ab8c68d74aa3))
+* **cli:** add onboarding flow and usage stats opt-in ([#235](https://github.com/mpecan/tokf/issues/235)) ([3aeec4b](https://github.com/mpecan/tokf/commit/3aeec4b1a7316f96a2dca51d80549f57ebc34b26))
+* **cli:** add reduction stats to tokf verify ([#250](https://github.com/mpecan/tokf/issues/250)) ([ff6bd23](https://github.com/mpecan/tokf/commit/ff6bd230ef9a2059d6bcf0c670a4e6f52ca9a9ac))
+* **cli:** add rich color for gain, with NO_COLOR support ([#240](https://github.com/mpecan/tokf/issues/240)) ([e9e3e58](https://github.com/mpecan/tokf/commit/e9e3e582c34532c812c376010299c97350dfb8c1))
+* **cli:** add tokf auth login/logout/status commands ([#178](https://github.com/mpecan/tokf/issues/178)) ([92bcf6b](https://github.com/mpecan/tokf/commit/92bcf6b3cf60dc6f26adb7881c6d02ddf776c260))
+* **cli:** add tokf info command and tokf verify --scope ([#158](https://github.com/mpecan/tokf/issues/158)) ([7263e30](https://github.com/mpecan/tokf/commit/7263e307441b70116a543d0fa27bdb0f276c1f88))
+* **cli:** add TOKF_HOME env var and improve permission diagnostics ([#180](https://github.com/mpecan/tokf/issues/180)) ([10d4d37](https://github.com/mpecan/tokf/commit/10d4d377dd8512dbc78abe1b2ff6f055c5291551))
+* **cli:** centralized HTTP client with retry and error classification ([#200](https://github.com/mpecan/tokf/issues/200)) ([b1d676d](https://github.com/mpecan/tokf/commit/b1d676d7c7bd8563f4146aee039d42de1cc909ea))
+* **cli:** exit-code masking and improved push filter ([#150](https://github.com/mpecan/tokf/issues/150)) ([1b97ce5](https://github.com/mpecan/tokf/commit/1b97ce5f97b1b9ed281f39844131cce8abebc2ec))
+* **cli:** improve search ergonomics ([#248](https://github.com/mpecan/tokf/issues/248)) ([a6bc402](https://github.com/mpecan/tokf/commit/a6bc402ec19e2ff0918ed1314ce541a18db79608))
+* **cli:** pipe stripping control, --prefer-less mode, and override tracking ([#154](https://github.com/mpecan/tokf/issues/154)) ([7f24f12](https://github.com/mpecan/tokf/commit/7f24f12deb3b6968a9a857b9a6f327c7796928aa))
+* **cli:** remote stats sync and gain display ([#115](https://github.com/mpecan/tokf/issues/115)) ([#188](https://github.com/mpecan/tokf/issues/188)) ([3253f2f](https://github.com/mpecan/tokf/commit/3253f2f4d09909abdb4c34ac919405a8022801fc))
+* **cli:** shell-override wrappers for task runners (make, just) ([#209](https://github.com/mpecan/tokf/issues/209)) ([3a1cd9a](https://github.com/mpecan/tokf/commit/3a1cd9af6cb348945b6438b882cb4a6c12249ef4))
+* **filter,cli,server:** sandbox CLI Lua execution and inline scripts on publish ([#194](https://github.com/mpecan/tokf/issues/194)) ([4e104cb](https://github.com/mpecan/tokf/commit/4e104cb00563cdda390b9e9e44663c45e3bd9e7f))
+* **filter:** add --preserve-color flag for ANSI color passthrough ([#162](https://github.com/mpecan/tokf/issues/162)) ([4187493](https://github.com/mpecan/tokf/commit/4187493fbeabe423100ad7bd58fbce0b8726a8df))
+* **filter:** add description, truncate_lines_at, on_empty, and top-level tail ([#278](https://github.com/mpecan/tokf/issues/278)) ([4418619](https://github.com/mpecan/tokf/commit/4418619dde23770f9684fe5dff59f46b40945444))
+* **filter:** add eslint, prettier, and ruff filters ([#164](https://github.com/mpecan/tokf/issues/164)) ([2771860](https://github.com/mpecan/tokf/commit/27718600f8a4e0ca08e8e050b36209777d18ea34))
+* **filter:** add go/test filter (issue [#42](https://github.com/mpecan/tokf/issues/42)) ([#246](https://github.com/mpecan/tokf/issues/246)) ([ffdcd30](https://github.com/mpecan/tokf/commit/ffdcd304b9ec8bca44464619f88c362d8a94cd72))
+* **filter:** add passthrough_args to skip filters on flag conflicts ([#275](https://github.com/mpecan/tokf/issues/275)) ([36d43d0](https://github.com/mpecan/tokf/commit/36d43d0dbcf99e7506aa92701a2f78f35906882a))
+* **filter:** add playwright, vue-tsc, firebase deploy, and vite/build filters ([#165](https://github.com/mpecan/tokf/issues/165)) ([ac4f49e](https://github.com/mpecan/tokf/commit/ac4f49e93edd0f663d0a33ca08c9c683a131a76b))
+* **filter:** add RTK filter format compatibility ([#281](https://github.com/mpecan/tokf/issues/281)) ([494e770](https://github.com/mpecan/tokf/commit/494e770f569c003fd76706ad65055e0f13841bf3))
+* **filter:** canonical content hash for filter identity ([#126](https://github.com/mpecan/tokf/issues/126)) ([5abfaf8](https://github.com/mpecan/tokf/commit/5abfaf819833eb625eba47c35e947bbfe9540474))
+* **filter:** chunk processing engine with tree-structured grouping ([#203](https://github.com/mpecan/tokf/issues/203)) ([87557f5](https://github.com/mpecan/tokf/commit/87557f504f86b5e449adf518d43da03f88a8e1bc))
+* **filter:** condense cargo clippy error output with grouping ([#256](https://github.com/mpecan/tokf/issues/256)) ([5916a80](https://github.com/mpecan/tokf/commit/5916a8045dc3d4cdd0fe49eef9d1393524695425))
+* **filter:** JSON extraction via JSONPath (RFC 9535) ([#255](https://github.com/mpecan/tokf/issues/255)) ([dd2759b](https://github.com/mpecan/tokf/commit/dd2759b615f6d54212c2be501c5f27c5593db95e))
+* **filter:** rewrite git/status and add cargo/fmt stdlib filters ([#184](https://github.com/mpecan/tokf/issues/184)) ([06d41c3](https://github.com/mpecan/tokf/commit/06d41c3f78acbd3e442b57764e48aa9461a2f4fe))
+* **filter:** show history hint for filtered output ([#129](https://github.com/mpecan/tokf/issues/129)) ([9eca37c](https://github.com/mpecan/tokf/commit/9eca37ce1ec0ed1cb0dcbf2ac2b899b00db15883))
+* **filter:** version info in search, backfill fix, per-command deprecation ([#272](https://github.com/mpecan/tokf/issues/272)) ([59ce733](https://github.com/mpecan/tokf/commit/59ce733a0c381c7859f370c1d06ae24443b3f0ab))
+* **history:** add `tokf history last` subcommand ([#223](https://github.com/mpecan/tokf/issues/223)) ([83f7c11](https://github.com/mpecan/tokf/commit/83f7c1163954619b140d82ac3d4b198bcee80c9c))
+* **hook:** add Gemini CLI, Cursor, Cline, Windsurf, Copilot, and Aider integrations ([#286](https://github.com/mpecan/tokf/issues/286)) ([5ef91f3](https://github.com/mpecan/tokf/commit/5ef91f3389d1191a576816dcd0f5b05a85e5089f))
+* **hook:** add OpenAI Codex CLI integration ([#157](https://github.com/mpecan/tokf/issues/157)) ([a837661](https://github.com/mpecan/tokf/commit/a8376616fdf8e6ce59c0377170120a6abc4dafb5))
+* **hook:** add opencode plugin installer ([#136](https://github.com/mpecan/tokf/issues/136)) ([dee751d](https://github.com/mpecan/tokf/commit/dee751d3e2c88afde690c42d97502bb91726b0d0))
+* **output:** compression indicator, tokf raw alias, and TOKF.md context ([#282](https://github.com/mpecan/tokf/issues/282)) ([78fa850](https://github.com/mpecan/tokf/commit/78fa850c671e315434d92bd056e4a67727c6da41))
+* **rewrite:** strip leading env var prefix before command matching ([#141](https://github.com/mpecan/tokf/issues/141)) ([4aca301](https://github.com/mpecan/tokf/commit/4aca30114d353bce8db611755c2e04a40df14dfb))
+* **runner:** migrate shims to use shell mode ([#268](https://github.com/mpecan/tokf/issues/268)) ([0c1b718](https://github.com/mpecan/tokf/commit/0c1b718cf398e405015c239224582840b54c5092))
+* **runner:** PATH-based shim injection for sub-process filtering ([#262](https://github.com/mpecan/tokf/issues/262)) ([2fa1e50](https://github.com/mpecan/tokf/commit/2fa1e5007fe6e2aee1e0d96dde8514754112f81a))
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+* **server,cli:** add Terms of Service and account deletion ([#224](https://github.com/mpecan/tokf/issues/224)) ([468e93c](https://github.com/mpecan/tokf/commit/468e93c33eefd2e91bf466b5ac4e4766f2133827))
+* **server,cli:** allow updating test suites for published filters ([#119](https://github.com/mpecan/tokf/issues/119)) ([#192](https://github.com/mpecan/tokf/issues/192)) ([ef9428b](https://github.com/mpecan/tokf/commit/ef9428b06d3d13ca4d8a2a422b3188bf3bbe5914))
+* **server,cli:** comprehensive API rate limiting ([#196](https://github.com/mpecan/tokf/issues/196)) ([52592a5](https://github.com/mpecan/tokf/commit/52592a509dbe7b2b457351fad093592d4d077e33))
+* **server,cli:** publish stdlib filters to registry ([#204](https://github.com/mpecan/tokf/issues/204)) ([#205](https://github.com/mpecan/tokf/issues/205)) ([e9bbb61](https://github.com/mpecan/tokf/commit/e9bbb61e59ae795e65606b6b6d50c374adec7965))
+* **server:** add DB connection pooling, schema migrations, and health probes ([#140](https://github.com/mpecan/tokf/issues/140)) ([dc4c85a](https://github.com/mpecan/tokf/commit/dc4c85ab1076ea49559d3a1a83c30630e7290547))
+* **server:** bootstrap axum server with /health, config, and CI ([#109](https://github.com/mpecan/tokf/issues/109)) ([#127](https://github.com/mpecan/tokf/issues/127)) ([90bcf72](https://github.com/mpecan/tokf/commit/90bcf724872a25038ac8eb37ba37409f4cf73181))
+* **telemetry:** OpenTelemetry OTLP metrics exporter ([#85](https://github.com/mpecan/tokf/issues/85)) ([#134](https://github.com/mpecan/tokf/issues/134)) ([9b7303d](https://github.com/mpecan/tokf/commit/9b7303dd96b15b4301797a9ee1596b0c294c6e90))
+* **tracking,cli,server:** usage stats sync and aggregation endpoints ([#114](https://github.com/mpecan/tokf/issues/114)) ([#186](https://github.com/mpecan/tokf/issues/186)) ([30d4ef2](https://github.com/mpecan/tokf/commit/30d4ef28dc4a4f56418b997c910486c4280dc28b))
+* **tracking:** track raw_bytes, enhance gain display, fix passthrough filters ([#257](https://github.com/mpecan/tokf/issues/257)) ([718552c](https://github.com/mpecan/tokf/commit/718552c31b715de05024b8b89c6274223da64830))
+
+
+### Bug Fixes
+
+* **ci:** stop running stdlib verify tests redundantly in cargo test ([#175](https://github.com/mpecan/tokf/issues/175)) ([52b4f9a](https://github.com/mpecan/tokf/commit/52b4f9aa847097cf186d06e94b9d7feced34047d))
+* **cli,server:** use test: prefix in multipart fields and add just recipes ([#193](https://github.com/mpecan/tokf/issues/193)) ([737d522](https://github.com/mpecan/tokf/commit/737d522e918bcab0df8bc0e172a17291b18edc66))
+* **cli:** add explicit type annotation for stdlib-publish collect ([#236](https://github.com/mpecan/tokf/issues/236)) ([145ca16](https://github.com/mpecan/tokf/commit/145ca165991ced01f1c1939127ecb5a16daf6a99))
+* **cli:** isolate cli_cache tests to prevent shim races ([#269](https://github.com/mpecan/tokf/issues/269)) ([9b590f1](https://github.com/mpecan/tokf/commit/9b590f1867b519ff34d2b939c5bd9ba1a5aaf675))
+* **config:** normalize basename on both pattern and input words ([#221](https://github.com/mpecan/tokf/issues/221)) ([a236a8b](https://github.com/mpecan/tokf/commit/a236a8bd575eec760bfba3f4e15218b8c084eca7))
+* **filter:** gh pr checks false positive on failures ([#266](https://github.com/mpecan/tokf/issues/266)) ([c0ef9fd](https://github.com/mpecan/tokf/commit/c0ef9fd9a23835f68480f3a50003d54c8ef91d40))
+* **filter:** remove wildcard from gh view/checks patterns that consumed {args} ([#260](https://github.com/mpecan/tokf/issues/260)) ([eb6048f](https://github.com/mpecan/tokf/commit/eb6048fc797a2a154b3c81db8c45676fbd5b06c6))
+* **hook:** respect Claude Code deny/ask permission rules on rewrite ([#289](https://github.com/mpecan/tokf/issues/289)) ([b1255d3](https://github.com/mpecan/tokf/commit/b1255d3d8106d5c2665987d3dbe79275f2f8a2b6))
+* **hook:** support wildcards in any position in permission patterns ([#291](https://github.com/mpecan/tokf/issues/291)) ([99c9181](https://github.com/mpecan/tokf/commit/99c9181686ab5ed3a6a716373395fcd36ad9d66f))
+* **hook:** use bare tokf in generated hook scripts ([#208](https://github.com/mpecan/tokf/issues/208)) ([08a47d4](https://github.com/mpecan/tokf/commit/08a47d42087c23f0b23bcd1fe903b4fdbf3408e3))
+* **output:** store savings_pct as 0-100, rename INSTALLS to RUNS ([#217](https://github.com/mpecan/tokf/issues/217)) ([ea2fc11](https://github.com/mpecan/tokf/commit/ea2fc11f200b6b009e0a3894e804b3035f996b2e))
+* **rewrite:** use pattern_matches_prefix for consistent filter matching ([#295](https://github.com/mpecan/tokf/issues/295)) ([dc2fe58](https://github.com/mpecan/tokf/commit/dc2fe589f1849e2f42241fbcd85a2083c1a81236))
+* **runner:** use unquoted args for rewrite matching in shell argv mode ([#273](https://github.com/mpecan/tokf/issues/273)) ([ed298a8](https://github.com/mpecan/tokf/commit/ed298a867cb9b3d0867c08d19fa5a875088539f4))
+* **server,cli:** use i64 for ToS version fields (CockroachDB INT8) ([#229](https://github.com/mpecan/tokf/issues/229)) ([df084d4](https://github.com/mpecan/tokf/commit/df084d4e8662a6e7431f387b13cdc08e9ecbdb45))
+* **skill:** move skill files into crate for cargo package compatibility ([#137](https://github.com/mpecan/tokf/issues/137)) ([da3b653](https://github.com/mpecan/tokf/commit/da3b6531e9d97134d263c305d9470e9102764b67))
+
+
+### Performance Improvements
+
+* **cli:** optimize test execution and eliminate unsafe env var access ([#195](https://github.com/mpecan/tokf/issues/195)) ([#237](https://github.com/mpecan/tokf/issues/237)) ([389f52e](https://github.com/mpecan/tokf/commit/389f52efc8e0cdead626fbe10b03a4d2f7617cc4))
+
+
+### Documentation
+
+* **filter:** add description to all 48 built-in filters ([#280](https://github.com/mpecan/tokf/issues/280)) ([ce63527](https://github.com/mpecan/tokf/commit/ce63527a04e893575d446ad6e3ac9d161aea7874))
+
+
+### Code Refactoring
+
+* **cli,server:** consolidate publish and stdlib-publish paths ([#231](https://github.com/mpecan/tokf/issues/231)) ([1ecc3fb](https://github.com/mpecan/tokf/commit/1ecc3fb6c009fdebaf1c16592179fe7fc55fec36))
+* **cli:** address Copilot review feedback ([#201](https://github.com/mpecan/tokf/issues/201)) ([e39ccf7](https://github.com/mpecan/tokf/commit/e39ccf7297a30dfafa28ced73ef836bc6b1a6fea))
+* restructure repository as a Cargo workspace ([#124](https://github.com/mpecan/tokf/issues/124)) ([23396d5](https://github.com/mpecan/tokf/commit/23396d50271f0764619f89b302d84443bf1ab32d))
+* split oversized files, reduce duplication, add cargo-dupes CI ([#161](https://github.com/mpecan/tokf/issues/161)) ([d269603](https://github.com/mpecan/tokf/commit/d2696039c71f9305e915cb18325650e7d465347e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.35 to 0.2.36
+    * tokf-filter bumped from 0.2.35 to 0.2.36
+
 ## [0.2.35](https://github.com/mpecan/tokf/compare/tokf-v0.2.34...tokf-v0.2.35) (2026-03-13)
 
 

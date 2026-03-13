@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.36](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.35...catalog-types-v0.2.36) (2026-03-13)
+
+
+### Features
+
+* **catalog:** filter versioning & grouped catalog ([#265](https://github.com/mpecan/tokf/issues/265)) ([a326481](https://github.com/mpecan/tokf/commit/a3264817594e7377a8a45776755c3ee9a9941a67))
+* **catalog:** materialize filter catalog to R2 for tokf-net ([#220](https://github.com/mpecan/tokf/issues/220)) ([4d0e4d6](https://github.com/mpecan/tokf/commit/4d0e4d6e78633a48e2101f750ef5eea31c5ef2a4))
+* **ci:** publish @tokf/catalog-types npm package on release ([#228](https://github.com/mpecan/tokf/issues/228)) ([263a130](https://github.com/mpecan/tokf/commit/263a1309402462f3f3ab8c0b16306a47837c6389))
+* **filter:** add token estimates to filter examples ([#244](https://github.com/mpecan/tokf/issues/244)) ([002b94c](https://github.com/mpecan/tokf/commit/002b94c066c675993e162c66462ccec3ee963503))
+* **filter:** version info in search, backfill fix, per-command deprecation ([#272](https://github.com/mpecan/tokf/issues/272)) ([59ce733](https://github.com/mpecan/tokf/commit/59ce733a0c381c7859f370c1d06ae24443b3f0ab))
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+* **tracking:** track raw_bytes, enhance gain display, fix passthrough filters ([#257](https://github.com/mpecan/tokf/issues/257)) ([718552c](https://github.com/mpecan/tokf/commit/718552c31b715de05024b8b89c6274223da64830))
+* **types:** export filter examples types to @tokf/catalog-types ([#242](https://github.com/mpecan/tokf/issues/242)) ([d01fb44](https://github.com/mpecan/tokf/commit/d01fb44657a8591f26b262353bc5c5eaa5c9e148))
+
 ## [0.2.35](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.34...catalog-types-v0.2.35) (2026-03-13)
 
 

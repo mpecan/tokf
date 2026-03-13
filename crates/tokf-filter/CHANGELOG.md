@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.36](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.35...tokf-filter-v0.2.36) (2026-03-13)
+
+
+### Features
+
+* **filter,cli,server:** sandbox CLI Lua execution and inline scripts on publish ([#194](https://github.com/mpecan/tokf/issues/194)) ([4e104cb](https://github.com/mpecan/tokf/commit/4e104cb00563cdda390b9e9e44663c45e3bd9e7f))
+* **filter:** add description, truncate_lines_at, on_empty, and top-level tail ([#278](https://github.com/mpecan/tokf/issues/278)) ([4418619](https://github.com/mpecan/tokf/commit/4418619dde23770f9684fe5dff59f46b40945444))
+* **filter:** add passthrough_args to skip filters on flag conflicts ([#275](https://github.com/mpecan/tokf/issues/275)) ([36d43d0](https://github.com/mpecan/tokf/commit/36d43d0dbcf99e7506aa92701a2f78f35906882a))
+* **filter:** add replace_all mode for in-place regex substitution ([#287](https://github.com/mpecan/tokf/issues/287)) ([3f44787](https://github.com/mpecan/tokf/commit/3f447879aeab162fb731ceb300c6c1b86bdfe9a0))
+* **filter:** add RTK filter format compatibility ([#281](https://github.com/mpecan/tokf/issues/281)) ([494e770](https://github.com/mpecan/tokf/commit/494e770f569c003fd76706ad65055e0f13841bf3))
+* **filter:** add token estimates to filter examples ([#244](https://github.com/mpecan/tokf/issues/244)) ([002b94c](https://github.com/mpecan/tokf/commit/002b94c066c675993e162c66462ccec3ee963503))
+* **filter:** chunk processing engine with tree-structured grouping ([#203](https://github.com/mpecan/tokf/issues/203)) ([87557f5](https://github.com/mpecan/tokf/commit/87557f504f86b5e449adf518d43da03f88a8e1bc))
+* **filter:** JSON extraction via JSONPath (RFC 9535) ([#255](https://github.com/mpecan/tokf/issues/255)) ([dd2759b](https://github.com/mpecan/tokf/commit/dd2759b615f6d54212c2be501c5f27c5593db95e))
+* **runner:** PATH-based shim injection for sub-process filtering ([#262](https://github.com/mpecan/tokf/issues/262)) ([2fa1e50](https://github.com/mpecan/tokf/commit/2fa1e5007fe6e2aee1e0d96dde8514754112f81a))
+* **safety:** add filter examples generation and safety checks ([#241](https://github.com/mpecan/tokf/issues/241)) ([2faaa60](https://github.com/mpecan/tokf/commit/2faaa60d867ab49f7312866fcb880031d543992d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.35 to 0.2.36
+
 ## [0.2.35](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.34...tokf-filter-v0.2.35) (2026-03-13)
 
 
