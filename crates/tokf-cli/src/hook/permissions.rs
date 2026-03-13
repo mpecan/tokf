@@ -195,55 +195,82 @@ fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
         return starts_with_word(cmd, pattern);
     }
 
-    // Split pattern on `*` and verify all segments appear in order.
-    // For legacy `sudo:*` style, strip the colon from the segment before matching.
-    let segments: Vec<&str> = pattern.split('*').collect();
+    // Iterate over segments between `*` wildcards. Each non-empty segment
+    // must appear in order with word-boundary semantics (no partial-token
+    // matches). Avoids allocating a Vec by using the split iterator directly.
+    let ends_with_star = pattern.ends_with('*');
+    let mut split = pattern.split('*').peekable();
     let mut pos = 0;
+    let mut is_first = true;
 
-    for (i, segment) in segments.iter().enumerate() {
-        let seg = if i == 0 {
+    while let Some(segment) = split.next() {
+        let is_last = split.peek().is_none();
+        let seg = if is_first {
             segment.trim_end_matches(':').trim_end()
         } else {
             segment.trim()
         };
 
         if seg.is_empty() {
+            is_first = false;
             continue;
         }
 
-        // First segment must match at the start (word boundary).
-        if i == 0 {
+        if is_first {
+            // First segment must match at the start (word boundary).
             if !starts_with_word(cmd, seg) {
                 return false;
             }
             pos = seg.len();
-            continue;
-        }
-
-        // Remaining segments must appear after the current position.
-        if let Some(found) = cmd[pos..].find(seg) {
-            pos += found + seg.len();
+        } else if is_last && !ends_with_star {
+            // Last segment (pattern doesn't end with `*`) must match at the end
+            // with a word boundary.
+            return ends_with_word(cmd, seg);
         } else {
-            return false;
+            // Middle segments: find with word-boundary awareness.
+            match find_word(cmd, pos, seg) {
+                Some(end) => pos = end,
+                None => return false,
+            }
         }
-    }
 
-    // If the pattern doesn't end with `*`, the last segment must reach the end.
-    if !pattern.ends_with('*') {
-        let last_seg = segments.last().unwrap_or(&"").trim();
-        if !last_seg.is_empty() {
-            return cmd.ends_with(last_seg);
-        }
+        is_first = false;
     }
 
     true
 }
 
 /// Check if `cmd` equals `word` or starts with `word` followed by a space.
-/// Avoids allocating a format string for the comparison.
 fn starts_with_word(cmd: &str, word: &str) -> bool {
     cmd == word
         || (cmd.len() > word.len() && cmd.as_bytes()[word.len()] == b' ' && cmd.starts_with(word))
+}
+
+/// Check if `cmd` ends with `word` preceded by a space (or equals `word`).
+fn ends_with_word(cmd: &str, word: &str) -> bool {
+    cmd == word
+        || (cmd.len() > word.len()
+            && cmd.as_bytes()[cmd.len() - word.len() - 1] == b' '
+            && cmd.ends_with(word))
+}
+
+/// Find `needle` in `cmd[from..]` at a word boundary: preceded by a space
+/// (or at the start) and followed by a space (or at the end).
+/// Returns `Some(end_pos)` (absolute index in `cmd`) on match, `None` otherwise.
+fn find_word(cmd: &str, from: usize, needle: &str) -> Option<usize> {
+    let haystack = &cmd[from..];
+    let mut search_from = 0;
+    while let Some(idx) = haystack[search_from..].find(needle) {
+        let abs_start = from + search_from + idx;
+        let abs_end = abs_start + needle.len();
+        let left_ok = abs_start == 0 || cmd.as_bytes()[abs_start - 1] == b' ';
+        let right_ok = abs_end == cmd.len() || cmd.as_bytes()[abs_end] == b' ';
+        if left_ok && right_ok {
+            return Some(abs_end);
+        }
+        search_from += idx + 1;
+    }
+    None
 }
 
 /// Split a compound shell command into individual segments.
@@ -357,6 +384,14 @@ mod tests {
     }
 
     #[test]
+    fn wildcard_middle_no_partial_token() {
+        // "git * main" must not match "xmain" — word boundary required at end.
+        assert!(!command_matches_pattern("git push xmain", "git * main"));
+        // Must not match "mainly" either.
+        assert!(!command_matches_pattern("git push mainly", "git * main"));
+    }
+
+    #[test]
     fn wildcard_multiple() {
         assert!(command_matches_pattern(
             "git push --help origin",
@@ -364,6 +399,15 @@ mod tests {
         ));
         assert!(command_matches_pattern(
             "cargo test --help --verbose",
+            "* --help *"
+        ));
+    }
+
+    #[test]
+    fn wildcard_multiple_no_partial_token() {
+        // "* --help *" must not match "--helpful" — word boundary required.
+        assert!(!command_matches_pattern(
+            "git push --helpful origin",
             "* --help *"
         ));
     }
