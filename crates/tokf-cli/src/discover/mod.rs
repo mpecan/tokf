@@ -117,8 +117,15 @@ fn classify_session(
                 bucket.occurrences += 1;
                 bucket.total_output_bytes += cmd.output_bytes;
                 bucket.savings_pct = pct;
+                bucket.has_filter = true;
             }
-            CommandAnalysis::NoFilter => counters.no_filter += 1,
+            CommandAnalysis::NoFilter => {
+                counters.no_filter += 1;
+                let normalized = normalize_command(&cmd.command);
+                let bucket = aggregated.entry((String::new(), normalized)).or_default();
+                bucket.occurrences += 1;
+                bucket.total_output_bytes += cmd.output_bytes;
+            }
         }
     }
 }
@@ -137,6 +144,7 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
             DiscoverResult {
                 command_pattern,
                 filter_name,
+                has_filter: bucket.has_filter,
                 occurrences: bucket.occurrences,
                 total_output_bytes: bucket.total_output_bytes,
                 estimated_tokens,
@@ -272,4 +280,5 @@ struct AggBucket {
     occurrences: usize,
     total_output_bytes: usize,
     savings_pct: f64,
+    has_filter: bool,
 }
