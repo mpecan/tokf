@@ -181,32 +181,96 @@ fn extract_bash_pattern(rule: &str) -> Option<&str> {
 
 /// Check if `cmd` matches a Claude Code permission pattern.
 ///
-/// Pattern forms:
+/// Supports `*` as a wildcard anywhere in the pattern:
 /// - `*` → matches everything
-/// - `prefix:*` or `prefix *` (trailing `*`) → prefix match
-/// - `pattern` → exact match or word-boundary prefix match
+/// - `git push *` → trailing wildcard (prefix match)
+/// - `* --force` → leading wildcard (suffix match)
+/// - `git * main` → middle wildcard
+/// - `* --help *` → multiple wildcards
+/// - `sudo:*` → legacy colon syntax (prefix match)
+/// - `pattern` (no wildcard) → exact match or word-boundary prefix match
 fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
-    if pattern == "*" {
-        return true;
+    if !pattern.contains('*') {
+        // No wildcards — exact match or prefix with word boundary.
+        return starts_with_word(cmd, pattern);
     }
 
-    if let Some(p) = pattern.strip_suffix('*') {
-        let prefix = p.trim_end_matches(':').trim_end();
-        if prefix.is_empty() {
-            return true;
+    // Iterate over segments between `*` wildcards. Each non-empty segment
+    // must appear in order with word-boundary semantics (no partial-token
+    // matches). Avoids allocating a Vec by using the split iterator directly.
+    let ends_with_star = pattern.ends_with('*');
+    let mut split = pattern.split('*').peekable();
+    let mut pos = 0;
+    let mut is_first = true;
+
+    while let Some(segment) = split.next() {
+        let is_last = split.peek().is_none();
+        let seg = if is_first {
+            segment.trim_end_matches(':').trim_end()
+        } else {
+            segment.trim()
+        };
+
+        if seg.is_empty() {
+            is_first = false;
+            continue;
         }
-        return starts_with_word(cmd, prefix);
+
+        if is_first {
+            // First segment must match at the start (word boundary).
+            if !starts_with_word(cmd, seg) {
+                return false;
+            }
+            pos = seg.len();
+        } else if is_last && !ends_with_star {
+            // Last segment (pattern doesn't end with `*`) must match at the end
+            // with a word boundary.
+            return ends_with_word(cmd, seg);
+        } else {
+            // Middle segments: find with word-boundary awareness.
+            match find_word(cmd, pos, seg) {
+                Some(end) => pos = end,
+                None => return false,
+            }
+        }
+
+        is_first = false;
     }
 
-    // Exact match or prefix with word boundary.
-    starts_with_word(cmd, pattern)
+    true
 }
 
 /// Check if `cmd` equals `word` or starts with `word` followed by a space.
-/// Avoids allocating a format string for the comparison.
 fn starts_with_word(cmd: &str, word: &str) -> bool {
     cmd == word
         || (cmd.len() > word.len() && cmd.as_bytes()[word.len()] == b' ' && cmd.starts_with(word))
+}
+
+/// Check if `cmd` ends with `word` preceded by a space (or equals `word`).
+fn ends_with_word(cmd: &str, word: &str) -> bool {
+    cmd == word
+        || (cmd.len() > word.len()
+            && cmd.as_bytes()[cmd.len() - word.len() - 1] == b' '
+            && cmd.ends_with(word))
+}
+
+/// Find `needle` in `cmd[from..]` at a word boundary: preceded by a space
+/// (or at the start) and followed by a space (or at the end).
+/// Returns `Some(end_pos)` (absolute index in `cmd`) on match, `None` otherwise.
+fn find_word(cmd: &str, from: usize, needle: &str) -> Option<usize> {
+    let haystack = &cmd[from..];
+    let mut search_from = 0;
+    while let Some(idx) = haystack[search_from..].find(needle) {
+        let abs_start = from + search_from + idx;
+        let abs_end = abs_start + needle.len();
+        let left_ok = abs_start == 0 || cmd.as_bytes()[abs_start - 1] == b' ';
+        let right_ok = abs_end == cmd.len() || cmd.as_bytes()[abs_end] == b' ';
+        if left_ok && right_ok {
+            return Some(abs_end);
+        }
+        search_from += idx + 1;
+    }
+    None
 }
 
 /// Split a compound shell command into individual segments.
@@ -291,6 +355,69 @@ mod tests {
     #[test]
     fn wildcard_colon_no_false_positive() {
         assert!(!command_matches_pattern("sudoedit /etc/hosts", "sudo:*"));
+    }
+
+    #[test]
+    fn wildcard_leading() {
+        assert!(command_matches_pattern("git push --force", "* --force"));
+        assert!(command_matches_pattern("cargo build --force", "* --force"));
+    }
+
+    #[test]
+    fn wildcard_leading_no_match() {
+        assert!(!command_matches_pattern("git push --forceful", "* --force"));
+    }
+
+    #[test]
+    fn wildcard_middle() {
+        assert!(command_matches_pattern("git push main", "git * main"));
+        assert!(command_matches_pattern("git merge main", "git * main"));
+        assert!(command_matches_pattern(
+            "git rebase --onto main",
+            "git * main"
+        ));
+    }
+
+    #[test]
+    fn wildcard_middle_no_match() {
+        assert!(!command_matches_pattern("git push develop", "git * main"));
+    }
+
+    #[test]
+    fn wildcard_middle_no_partial_token() {
+        // "git * main" must not match "xmain" — word boundary required at end.
+        assert!(!command_matches_pattern("git push xmain", "git * main"));
+        // Must not match "mainly" either.
+        assert!(!command_matches_pattern("git push mainly", "git * main"));
+    }
+
+    #[test]
+    fn wildcard_multiple() {
+        assert!(command_matches_pattern(
+            "git push --help origin",
+            "* --help *"
+        ));
+        assert!(command_matches_pattern(
+            "cargo test --help --verbose",
+            "* --help *"
+        ));
+    }
+
+    #[test]
+    fn wildcard_multiple_no_partial_token() {
+        // "* --help *" must not match "--helpful" — word boundary required.
+        assert!(!command_matches_pattern(
+            "git push --helpful origin",
+            "* --help *"
+        ));
+    }
+
+    #[test]
+    fn wildcard_trailing_space() {
+        assert!(command_matches_pattern(
+            "git push --force origin main",
+            "git push *"
+        ));
     }
 
     #[test]
