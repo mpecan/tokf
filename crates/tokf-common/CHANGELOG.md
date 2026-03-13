@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.32](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.31...tokf-common-v0.2.32) (2026-03-13)
+
+
+### Features
+
+* **filter:** add description, truncate_lines_at, on_empty, and top-level tail ([#278](https://github.com/mpecan/tokf/issues/278)) ([4418619](https://github.com/mpecan/tokf/commit/4418619dde23770f9684fe5dff59f46b40945444))
+* **filter:** add RTK filter format compatibility ([#281](https://github.com/mpecan/tokf/issues/281)) ([494e770](https://github.com/mpecan/tokf/commit/494e770f569c003fd76706ad65055e0f13841bf3))
+
 ## [0.2.31](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.30...tokf-common-v0.2.31) (2026-03-11)
 
 

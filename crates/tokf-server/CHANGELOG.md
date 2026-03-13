@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.32](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.31...tokf-server-v0.2.32) (2026-03-13)
+
+
+### Features
+
+* **filter:** add RTK filter format compatibility ([#281](https://github.com/mpecan/tokf/issues/281)) ([494e770](https://github.com/mpecan/tokf/commit/494e770f569c003fd76706ad65055e0f13841bf3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.31 to 0.2.32
+    * tokf-filter bumped from 0.2.31 to 0.2.32
+
 ## [0.2.31](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.30...tokf-server-v0.2.31) (2026-03-11)
 
 

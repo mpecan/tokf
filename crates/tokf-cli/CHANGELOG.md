@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.32](https://github.com/mpecan/tokf/compare/tokf-v0.2.31...tokf-v0.2.32) (2026-03-13)
+
+
+### Features
+
+* **filter:** add description, truncate_lines_at, on_empty, and top-level tail ([#278](https://github.com/mpecan/tokf/issues/278)) ([4418619](https://github.com/mpecan/tokf/commit/4418619dde23770f9684fe5dff59f46b40945444))
+* **filter:** add RTK filter format compatibility ([#281](https://github.com/mpecan/tokf/issues/281)) ([494e770](https://github.com/mpecan/tokf/commit/494e770f569c003fd76706ad65055e0f13841bf3))
+* **output:** compression indicator, tokf raw alias, and TOKF.md context ([#282](https://github.com/mpecan/tokf/issues/282)) ([78fa850](https://github.com/mpecan/tokf/commit/78fa850c671e315434d92bd056e4a67727c6da41))
+
+
+### Documentation
+
+* **filter:** add description to all 48 built-in filters ([#280](https://github.com/mpecan/tokf/issues/280)) ([ce63527](https://github.com/mpecan/tokf/commit/ce63527a04e893575d446ad6e3ac9d161aea7874))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.31 to 0.2.32
+    * tokf-filter bumped from 0.2.31 to 0.2.32
+
 ## [0.2.31](https://github.com/mpecan/tokf/compare/tokf-v0.2.30...tokf-v0.2.31) (2026-03-11)
 
 
