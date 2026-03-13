@@ -5,6 +5,7 @@ mod cache_cmd;
 mod commands;
 mod completions_cmd;
 mod config_cmd;
+mod discover_cmd;
 mod eject_cmd;
 mod gain;
 mod gain_render;
@@ -282,6 +283,27 @@ enum Commands {
     Telemetry {
         #[command(subcommand)]
         action: TelemetryAction,
+    },
+    /// Find missed token savings in Claude Code sessions
+    Discover {
+        /// Project path to scan (defaults to current directory)
+        #[arg(long, conflicts_with_all = ["all", "session"])]
+        project: Option<String>,
+        /// Scan all projects
+        #[arg(long, conflicts_with = "session")]
+        all: bool,
+        /// Path to a single session file
+        #[arg(long)]
+        session: Option<String>,
+        /// Only scan sessions modified within this window (e.g. 7d, 24h)
+        #[arg(long)]
+        since: Option<String>,
+        /// Maximum number of results to show (0 = unlimited, default: 20)
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Install a filter from the community registry
     Install {
@@ -629,6 +651,22 @@ fn main() {
                 telemetry_cmd::cmd_telemetry_status(*check, cli.verbose)
             }
         }),
+        Commands::Discover {
+            project,
+            all,
+            session,
+            since,
+            limit,
+            json,
+        } => or_exit(discover_cmd::cmd_discover(&discover_cmd::DiscoverOpts {
+            project: project.as_deref(),
+            all: *all,
+            session: session.as_deref(),
+            since: since.as_deref(),
+            limit: *limit,
+            json: *json,
+            no_cache: cli.no_cache,
+        })),
         Commands::Install {
             filter,
             local,

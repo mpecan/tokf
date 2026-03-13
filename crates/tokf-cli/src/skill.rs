@@ -3,53 +3,75 @@ use std::path::{Path, PathBuf};
 const SKILL_MD: &str = include_str!("../skills/tokf-filter/SKILL.md");
 const STEP_REFERENCE_MD: &str = include_str!("../skills/tokf-filter/references/step-reference.md");
 const EXAMPLES_TOML: &str = include_str!("../skills/tokf-filter/references/examples.toml");
+const DISCOVER_SKILL_MD: &str = include_str!("../skills/tokf-discover/SKILL.md");
 
 struct SkillFile {
+    /// Relative path within the skill's directory.
     rel_path: &'static str,
     content: &'static str,
 }
 
-const SKILL_FILES: &[SkillFile] = &[
-    SkillFile {
-        rel_path: "SKILL.md",
-        content: SKILL_MD,
-    },
-    SkillFile {
-        rel_path: "references/step-reference.md",
-        content: STEP_REFERENCE_MD,
-    },
-    SkillFile {
-        rel_path: "references/examples.toml",
-        content: EXAMPLES_TOML,
-    },
-];
+struct SkillBundle {
+    dir_name: &'static str,
+    files: &'static [SkillFile],
+}
 
-/// Determine the target base directory for the skill files.
-fn skill_base_dir(global: bool) -> anyhow::Result<PathBuf> {
+const FILTER_SKILL: SkillBundle = SkillBundle {
+    dir_name: "tokf-filter",
+    files: &[
+        SkillFile {
+            rel_path: "SKILL.md",
+            content: SKILL_MD,
+        },
+        SkillFile {
+            rel_path: "references/step-reference.md",
+            content: STEP_REFERENCE_MD,
+        },
+        SkillFile {
+            rel_path: "references/examples.toml",
+            content: EXAMPLES_TOML,
+        },
+    ],
+};
+
+const DISCOVER_SKILL: SkillBundle = SkillBundle {
+    dir_name: "tokf-discover",
+    files: &[SkillFile {
+        rel_path: "SKILL.md",
+        content: DISCOVER_SKILL_MD,
+    }],
+};
+
+const ALL_SKILLS: &[&SkillBundle] = &[&FILTER_SKILL, &DISCOVER_SKILL];
+
+/// Determine the skills parent directory.
+fn skills_parent(global: bool) -> anyhow::Result<PathBuf> {
     if global {
         let home = dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
-        Ok(home.join(".claude/skills/tokf-filter"))
+        Ok(home.join(".claude/skills"))
     } else {
         let cwd = std::env::current_dir()?;
-        Ok(cwd.join(".claude/skills/tokf-filter"))
+        Ok(cwd.join(".claude/skills"))
     }
 }
 
-/// Install skill files to `~/.claude/skills/tokf-filter/` (global) or
-/// `.claude/skills/tokf-filter/` in the current directory (project-local).
+/// Install all skill bundles (tokf-filter + tokf-discover).
 ///
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
 pub fn install(global: bool) -> anyhow::Result<()> {
-    let base = skill_base_dir(global)?;
-    install_to(&base)
+    let parent = skills_parent(global)?;
+    for bundle in ALL_SKILLS {
+        install_bundle_to(&parent.join(bundle.dir_name), bundle)?;
+    }
+    Ok(())
 }
 
-/// Core install logic with an explicit base path (testable).
-pub(crate) fn install_to(base: &Path) -> anyhow::Result<()> {
-    for file in SKILL_FILES {
+/// Core install logic for a single bundle with an explicit base path (testable).
+fn install_bundle_to(base: &Path, bundle: &SkillBundle) -> anyhow::Result<()> {
+    for file in bundle.files {
         let dest = base.join(file.rel_path);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
@@ -59,6 +81,12 @@ pub(crate) fn install_to(base: &Path) -> anyhow::Result<()> {
     }
     eprintln!("[tokf] skill installed: {}", base.display());
     Ok(())
+}
+
+/// Install just the filter skill to a specific path (used by tests).
+#[cfg(test)]
+fn install_to(base: &Path) -> anyhow::Result<()> {
+    install_bundle_to(base, &FILTER_SKILL)
 }
 
 #[cfg(test)]
