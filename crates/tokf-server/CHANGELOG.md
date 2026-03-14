@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.36](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.35...tokf-server-v0.2.36) (2026-03-14)
+
+
+### Miscellaneous
+
+* **tokf-server:** Synchronize workspace versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.35 to 0.2.36
+    * tokf-filter bumped from 0.2.35 to 0.2.36
+
 ## [0.2.35](https://github.com/mpecan/tokf/compare/tokf-server-v0.2.34...tokf-server-v0.2.35) (2026-03-13)
 
 
