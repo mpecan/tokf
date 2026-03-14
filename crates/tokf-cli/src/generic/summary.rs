@@ -7,15 +7,18 @@ const SUMMARY_PATTERNS: &[&str] = &[
 ];
 
 /// Statistics patterns to scan for.
-const STAT_PATTERNS: &[(&str, &str)] = &[
-    (r"(\d+)\s+(?:tests?\s+)?passed", "passed"),
-    (r"(\d+)\s+(?:tests?\s+)?failed", "failed"),
-    (r"(\d+)\s+errors?", "errors"),
-    (r"(\d+)\s+warnings?", "warnings"),
-    (r"(\d+)\s+(?:files?|modules?)", "files"),
+/// Each tuple: (regex, label, `capture_unit`) — if `capture_unit` is true, the
+/// matched unit suffix (s/ms/seconds) is appended to the value.
+const STAT_PATTERNS: &[(&str, &str, bool)] = &[
+    (r"(\d+)\s+(?:tests?\s+)?passed", "passed", false),
+    (r"(\d+)\s+(?:tests?\s+)?failed", "failed", false),
+    (r"(\d+)\s+errors?", "errors", false),
+    (r"(\d+)\s+warnings?", "warnings", false),
+    (r"(\d+)\s+(?:files?|modules?)", "files", false),
     (
-        r"(?:in\s+)?(\d+\.?\d*)\s*(?:s|seconds?|ms|minutes?)",
+        r"(?:in\s+)?(\d+\.?\d*)\s*(s|seconds?|ms|minutes?)",
         "time",
+        true,
     ),
 ];
 
@@ -166,12 +169,17 @@ fn sample_lines<'a>(lines: &[&'a str], count: usize) -> Vec<&'a str> {
 /// Extract human-readable statistics from the text.
 fn extract_stats(text: &str) -> String {
     let mut parts = Vec::new();
-    for (pattern, label) in STAT_PATTERNS {
+    for (pattern, label, capture_unit) in STAT_PATTERNS {
         if let Ok(re) = Regex::new(pattern)
             && let Some(cap) = re.captures(text)
             && let Some(val) = cap.get(1)
         {
-            parts.push(format!("{label}: {}", val.as_str()));
+            if *capture_unit {
+                let unit = cap.get(2).map_or("", |m| m.as_str());
+                parts.push(format!("{label}: {}{unit}", val.as_str()));
+            } else {
+                parts.push(format!("{label}: {}", val.as_str()));
+            }
         }
     }
     parts.join(", ")
@@ -230,8 +238,9 @@ mod tests {
     fn extract_stats_finds_counts() {
         let text = "test result: ok. 15 passed; 2 failed; 0 ignored; finished in 3.5s";
         let stats = extract_stats(text);
-        assert!(stats.contains("passed: 15"));
-        assert!(stats.contains("failed: 2"));
+        assert!(stats.contains("passed: 15"), "stats: {stats}");
+        assert!(stats.contains("failed: 2"), "stats: {stats}");
+        assert!(stats.contains("time: 3.5s"), "stats: {stats}");
     }
 
     #[test]

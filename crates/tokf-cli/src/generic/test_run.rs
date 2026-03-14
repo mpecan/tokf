@@ -61,7 +61,8 @@ pub fn extract_test_failures(text: &str, exit_code: i32, context: usize) -> Stri
         .any(|l| matcher.classify(l) == LineKind::Interesting);
 
     if !has_failures && exit_code == 0 {
-        return format!("[tokf test] all tests passed\n{extracted}");
+        let deduped = dedup_summary_lines(&extracted);
+        return format!("[tokf test] all tests passed\n{deduped}");
     }
 
     let failure_count = lines
@@ -75,6 +76,55 @@ pub fn extract_test_failures(text: &str, exit_code: i32, context: usize) -> Stri
          ({extracted_lines} lines with context, from {} total)\n{extracted}",
         lines.len()
     )
+}
+
+/// Collapse repetitive summary lines (e.g. 33 "test result: ok. 0 passed; 0 failed; ..."
+/// lines from multi-binary cargo test) into a count + unique examples.
+fn dedup_summary_lines(text: &str) -> String {
+    use std::collections::HashMap;
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut shape_counts: HashMap<String, (usize, &str)> = HashMap::new();
+
+    for line in &lines {
+        let shape = normalize_summary_shape(line);
+        shape_counts
+            .entry(shape)
+            .and_modify(|(count, _)| *count += 1)
+            .or_insert((1, line));
+    }
+
+    // If no shape appears more than twice, return as-is
+    let max_repeats = shape_counts.values().map(|(c, _)| *c).max().unwrap_or(0);
+    if max_repeats <= 2 {
+        return text.to_string();
+    }
+
+    let mut result = Vec::new();
+    let mut seen_shapes: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for line in &lines {
+        let shape = normalize_summary_shape(line);
+        let (count, _) = shape_counts[&shape];
+        if count <= 2 {
+            result.push((*line).to_string());
+        } else if seen_shapes.insert(shape) {
+            // First occurrence of a repeated shape: show it with count
+            result.push(format!("{line}  (\u{00d7}{count} similar)"));
+        }
+        // Skip subsequent duplicates
+    }
+
+    result.join("\n")
+}
+
+/// Normalize a summary line for dedup comparison.
+/// Numbers → N so "0 passed; 0 failed; 839 filtered" matches "7 passed; 0 failed; 177 filtered".
+#[allow(clippy::unwrap_used)]
+fn normalize_summary_shape(line: &str) -> String {
+    use std::sync::LazyLock;
+    static NUMS: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"\d+").unwrap());
+    NUMS.replace_all(line, "N").to_string()
 }
 
 #[cfg(test)]
@@ -105,6 +155,29 @@ mod tests {
             .join("\n");
         let result = extract_test_failures(&text, 1, 5);
         assert!(result.starts_with("[tokf test] exit code 1"));
+    }
+
+    #[test]
+    fn all_pass_deduplicates_summary_lines() {
+        // Simulate cargo test with multiple binaries all passing
+        let mut lines: Vec<String> = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(
+                "test result: ok. {i} passed; 0 failed; 0 ignored; 0 measured; {} filtered out; finished in 0.0{}s",
+                100 - i, i
+            ));
+        }
+        let text = lines.join("\n");
+        let result = extract_test_failures(&text, 0, 5);
+        assert!(result.starts_with("[tokf test] all tests passed"));
+        // Should be collapsed, not 20 lines
+        let result_lines: Vec<&str> = result.lines().collect();
+        assert!(
+            result_lines.len() < 5,
+            "expected collapsed output, got {} lines:\n{result}",
+            result_lines.len()
+        );
+        assert!(result.contains("similar"));
     }
 
     #[test]

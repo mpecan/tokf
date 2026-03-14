@@ -20,11 +20,12 @@ fn err_extracts_errors_from_echo() {
         .unwrap();
     assert!(output.status.success(), "should exit 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Short output (< 10 lines) is passed through
     assert!(
         stdout.contains("error: something broke"),
         "stdout: {stdout}"
     );
+    // Short output with errors should still get the [tokf err] header
+    assert!(stdout.contains("[tokf err]"), "stdout: {stdout}");
 }
 
 #[test]
