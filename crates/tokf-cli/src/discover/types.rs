@@ -31,8 +31,10 @@ pub enum CommandAnalysis {
 pub struct DiscoverResult {
     /// Canonical command pattern (e.g. "git status").
     pub command_pattern: String,
-    /// Filter that would handle this command.
+    /// Filter that would handle this command (empty string if no filter exists).
     pub filter_name: String,
+    /// Whether an existing filter matches this command.
+    pub has_filter: bool,
     /// Number of times this command appeared across sessions.
     pub occurrences: usize,
     /// Total output bytes across all occurrences.

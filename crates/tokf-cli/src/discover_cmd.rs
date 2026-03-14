@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use tokf::discover;
 
+#[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
 pub struct DiscoverOpts<'a> {
     pub project: Option<&'a str>,
     pub all: bool,
@@ -10,6 +11,7 @@ pub struct DiscoverOpts<'a> {
     pub limit: usize,
     pub json: bool,
     pub no_cache: bool,
+    pub include_filtered: bool,
 }
 
 pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
@@ -27,12 +29,28 @@ pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
         return Ok(1);
     }
 
-    let summary = discover::discover_sessions(&filtered_files, opts.no_cache)?;
+    let mut summary = discover::discover_sessions(&filtered_files, opts.no_cache)?;
+
+    if !opts.include_filtered {
+        summary.results.retain(|r| !r.has_filter);
+    }
+    // Recompute total: use estimated_tokens for unfiltered, estimated_savings for filtered.
+    summary.estimated_total_savings = summary
+        .results
+        .iter()
+        .map(|r| {
+            if r.has_filter {
+                r.estimated_savings
+            } else {
+                r.estimated_tokens
+            }
+        })
+        .sum();
 
     if opts.json {
         crate::output::print_json(&summary);
     } else {
-        print_human(&summary, opts.limit);
+        print_human(&summary, opts.limit, opts.include_filtered);
     }
 
     Ok(0)
@@ -99,7 +117,7 @@ fn parse_since(s: &str) -> Option<std::time::SystemTime> {
     std::time::SystemTime::now().checked_sub(std::time::Duration::from_secs(secs))
 }
 
-fn print_human(summary: &discover::types::DiscoverSummary, limit: usize) {
+fn print_human(summary: &discover::types::DiscoverSummary, limit: usize, include_filtered: bool) {
     eprintln!(
         "[tokf] scanned {} session{}, {} command{} total",
         summary.sessions_scanned,
@@ -115,20 +133,40 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize) {
         );
     }
 
+    if summary.filterable_commands > 0 && !include_filtered {
+        eprintln!(
+            "[tokf] {} commands have filters (use --include-filtered to show)",
+            summary.filterable_commands,
+        );
+    }
+
     if summary.results.is_empty() {
-        println!("No filterable commands found — you're all set!");
+        if include_filtered {
+            println!("No commands found to report.");
+        } else {
+            println!("All commands either have filters or are already filtered — you're all set!");
+        }
         return;
     }
 
     print_results_table(&summary.results, limit);
 
     println!();
-    println!(
-        "Estimated total savings: {} tokens ({} filterable, {} with no filter)",
-        format_tokens(summary.estimated_total_savings),
-        summary.filterable_commands,
-        summary.no_filter_commands,
-    );
+    if include_filtered {
+        println!(
+            "Total: {} tokens ({} filterable, {} without filters)",
+            format_tokens(summary.estimated_total_savings),
+            summary.filterable_commands,
+            summary.no_filter_commands,
+        );
+    } else {
+        println!(
+            "Total unfiltered output: {} tokens across {} command{}",
+            format_tokens(summary.estimated_total_savings),
+            summary.no_filter_commands,
+            plural(summary.no_filter_commands),
+        );
+    }
 }
 
 const fn plural(n: usize) -> &'static str {
@@ -138,10 +176,10 @@ const fn plural(n: usize) -> &'static str {
 fn print_results_table(results: &[discover::types::DiscoverResult], limit: usize) {
     println!();
     println!(
-        "{:<30} {:<20} {:>5} {:>10} {:>10}",
-        "COMMAND", "FILTER", "RUNS", "TOKENS", "SAVINGS"
+        "{:<30} {:<20} {:>5} {:>10}",
+        "COMMAND", "FILTER", "RUNS", "TOKENS"
     );
-    println!("{}", "-".repeat(80));
+    println!("{}", "-".repeat(70));
 
     let display_count = if limit == 0 {
         results.len()
@@ -156,13 +194,17 @@ fn print_results_table(results: &[discover::types::DiscoverResult], limit: usize
         } else {
             result.command_pattern.clone()
         };
+        let filter_display = if result.has_filter {
+            result.filter_name.clone()
+        } else {
+            "(none)".to_string()
+        };
         println!(
-            "{:<30} {:<20} {:>5} {:>10} {:>10}",
+            "{:<30} {:<20} {:>5} {:>10}",
             cmd_display,
-            result.filter_name,
+            filter_display,
             result.occurrences,
             format_tokens(result.estimated_tokens),
-            format_tokens(result.estimated_savings),
         );
     }
 

@@ -6,11 +6,16 @@ order: 10
 
 ## tokf discover
 
-`tokf discover` scans Claude Code session files to find commands that ran without tokf filtering, estimates the token waste, and ranks results by savings opportunity.
+`tokf discover` scans Claude Code session files to find commands that have **no matching tokf filter**, helping you identify where to create new filters for maximum token savings.
+
+By default, commands that already have a matching filter are hidden — if the hook is installed, those are already being filtered. Use `--include-filtered` to see the full picture including commands with existing filters.
 
 ```bash
 # Scan sessions for the current project
 tokf discover
+
+# Also show commands that have existing filters
+tokf discover --include-filtered
 
 # Scan all projects
 tokf discover --all
@@ -27,14 +32,15 @@ Example output:
 ```
 [tokf] scanned 12 sessions, 847 commands total
 [tokf] 203 already filtered by tokf
+[tokf] 201 commands have filters (use --include-filtered to show)
 
-COMMAND                        FILTER               RUNS     TOKENS    SAVINGS
---------------------------------------------------------------------------------
-cargo test                     cargo/test             89      45.2k      27.1k
-git diff                       git/diff               67      31.0k      18.6k
-cargo clippy                   cargo/clippy           45      22.1k      13.3k
+COMMAND                        FILTER               RUNS     TOKENS
+----------------------------------------------------------------------
+python manage.py migrate       (none)                 34      12.1k
+terraform plan                 (none)                 28       9.8k
+helm upgrade                   (none)                 15       6.2k
 
-Estimated total savings: 58.9k tokens (201 filterable, 443 with no filter)
+Total unfiltered output: 28.1k tokens across 443 commands
 ```
 
 ### Options
@@ -47,6 +53,7 @@ Estimated total savings: 58.9k tokens (201 filterable, 443 with no filter)
 | `--since <duration>` | Filter by recency: `7d`, `24h`, `30m` |
 | `--limit <n>` | Number of results to show (0 = all, default: 20) |
 | `--json` | Output as JSON |
+| `--include-filtered` | Also show commands that already have a matching filter |
 
 ### How It Works
 
@@ -54,5 +61,5 @@ Estimated total savings: 58.9k tokens (201 filterable, 443 with no filter)
 2. Extracts all Bash `tool_use` / `tool_result` pairs
 3. Skips commands already wrapped with `tokf run`
 4. Matches remaining commands against available tokf filters
-5. Uses historical compression ratios from your tracking database (falls back to 60% default)
-6. Aggregates and ranks by estimated token savings
+5. By default shows only commands with no matching filter
+6. Aggregates and ranks by estimated token count

@@ -197,6 +197,166 @@ fn encode_project_path_dots_replaced() {
     );
 }
 
+// --- command_group_key tests ---
+
+#[test]
+fn group_key_simple_command() {
+    assert_eq!(command_group_key("find /tmp -name '*.rs'"), "find");
+}
+
+#[test]
+fn group_key_with_subcommand() {
+    assert_eq!(command_group_key("gh pr list --limit 5"), "gh pr list");
+}
+
+#[test]
+fn group_key_with_flags() {
+    assert_eq!(command_group_key("cargo test --workspace"), "cargo test");
+}
+
+#[test]
+fn group_key_strips_env_vars() {
+    assert_eq!(command_group_key("RUST_LOG=debug cargo test"), "cargo test");
+}
+
+#[test]
+fn group_key_strips_path_prefix() {
+    assert_eq!(command_group_key("/usr/bin/find /tmp"), "find");
+}
+
+#[test]
+fn group_key_stops_at_path_arg() {
+    assert_eq!(command_group_key("ls -la /some/path"), "ls");
+}
+
+#[test]
+fn group_key_max_depth() {
+    assert_eq!(
+        command_group_key("gh pr checks 123 --watch"),
+        "gh pr checks"
+    );
+}
+
+#[test]
+fn group_key_python_subcommand() {
+    assert_eq!(
+        command_group_key("python manage.py migrate"),
+        "python manage.py migrate"
+    );
+}
+
+#[test]
+fn group_key_stops_at_dollar() {
+    assert_eq!(command_group_key("echo $HOME"), "echo");
+}
+
+// --- extract_group_keys tests ---
+
+#[test]
+fn extract_keys_compound_command() {
+    let keys = extract_group_keys("cd /tmp && gh repo view foo");
+    assert_eq!(keys, vec!["cd", "gh repo view"]);
+}
+
+#[test]
+fn extract_keys_single_command() {
+    let keys = extract_group_keys("cargo test");
+    assert_eq!(keys, vec!["cargo test"]);
+}
+
+#[test]
+fn extract_keys_or_chain() {
+    let keys = extract_group_keys("test -f foo || echo missing");
+    // "missing" looks like a subcommand to the heuristic — that's fine for grouping
+    assert_eq!(keys, vec!["test", "echo missing"]);
+}
+
+// --- strip_heredoc tests ---
+
+#[test]
+fn strip_heredoc_removes_heredoc() {
+    assert_eq!(
+        strip_heredoc("git commit -m \"$(cat <<'EOF'"),
+        "git commit -m \"$(cat"
+    );
+}
+
+#[test]
+fn strip_heredoc_no_heredoc() {
+    assert_eq!(
+        strip_heredoc("cargo test --release"),
+        "cargo test --release"
+    );
+}
+
+// --- command_group_key edge cases ---
+
+#[test]
+fn group_key_skips_code_fragments() {
+    assert_eq!(command_group_key("\"quoted stuff\""), "");
+    assert_eq!(command_group_key("(subshell)"), "");
+    assert_eq!(command_group_key("{block}"), "");
+}
+
+#[test]
+fn group_key_skips_pipe_fragments() {
+    assert_eq!(command_group_key("s|\\.toml$"), "");
+}
+
+#[test]
+fn group_key_handles_for_loop() {
+    assert_eq!(command_group_key("for f in *.rs"), "for f in");
+}
+
+#[test]
+fn group_key_stops_at_glob() {
+    assert_eq!(command_group_key("wc -l *.rs"), "wc");
+}
+
+// --- extract_group_keys with heredoc ---
+
+#[test]
+fn extract_keys_strips_heredoc() {
+    let keys = extract_group_keys("git commit -m \"$(cat <<'EOF'\nmessage\nEOF\n)\"");
+    assert_eq!(keys, vec!["git commit"]);
+}
+
+#[test]
+fn extract_keys_filters_empty() {
+    // A command that produces only non-command fragments
+    let keys = extract_group_keys("\"just a string\"");
+    assert!(keys.is_empty());
+}
+
+// --- discover results grouping ---
+
+#[test]
+fn discover_groups_unfiltered_commands() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    // Two different `find` invocations should be grouped together
+    let session = format!(
+        "{}{}{}{}",
+        assistant_bash_tool_use("tu_1", "find /tmp -name '*.rs'"),
+        user_tool_result("tu_1", &"x".repeat(400)),
+        assistant_bash_tool_use("tu_2", "find /var -type f"),
+        user_tool_result("tu_2", &"y".repeat(200)),
+    );
+    let session_path = dir.path().join("session_group.jsonl");
+    std::fs::write(&session_path, &session).unwrap();
+
+    let summary = discover_sessions(&[session_path], true).unwrap();
+    // Both `find` commands should be grouped under the "find" key
+    let find_results: Vec<_> = summary
+        .results
+        .iter()
+        .filter(|r| r.command_pattern == "find")
+        .collect();
+    assert_eq!(find_results.len(), 1, "both finds should be grouped");
+    assert_eq!(find_results[0].occurrences, 2);
+    assert!(!find_results[0].has_filter);
+}
+
 // --- aggregation integration test ---
 
 #[test]

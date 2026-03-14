@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use types::{CommandAnalysis, DiscoverResult, DiscoverSummary, ExtractedCommand};
 
 use crate::config::{self, ResolvedFilter};
-use crate::rewrite::compound::bare_pipe_positions;
+use crate::rewrite::compound::{bare_pipe_positions, split_compound};
 use crate::tracking;
 
 const DEFAULT_SAVINGS_PCT: f64 = 60.0;
@@ -117,8 +117,17 @@ fn classify_session(
                 bucket.occurrences += 1;
                 bucket.total_output_bytes += cmd.output_bytes;
                 bucket.savings_pct = pct;
+                bucket.has_filter = true;
             }
-            CommandAnalysis::NoFilter => counters.no_filter += 1,
+            CommandAnalysis::NoFilter => {
+                counters.no_filter += 1;
+                let normalized = normalize_command(&cmd.command);
+                for key in extract_group_keys(&normalized) {
+                    let bucket = aggregated.entry((String::new(), key)).or_default();
+                    bucket.occurrences += 1;
+                    bucket.total_output_bytes += cmd.output_bytes;
+                }
+            }
         }
     }
 }
@@ -137,6 +146,7 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
             DiscoverResult {
                 command_pattern,
                 filter_name,
+                has_filter: bucket.has_filter,
                 occurrences: bucket.occurrences,
                 total_output_bytes: bucket.total_output_bytes,
                 estimated_tokens,
@@ -146,7 +156,9 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
         })
         .collect();
 
-    results.sort_by(|a, b| b.estimated_savings.cmp(&a.estimated_savings));
+    // Sort by estimated tokens (most output first), consistent with the
+    // displayed TOKENS column.
+    results.sort_by(|a, b| b.estimated_tokens.cmp(&a.estimated_tokens));
     results
 }
 
@@ -247,6 +259,114 @@ fn normalize_command(command: &str) -> String {
     }
 }
 
+/// Split a compound command into segments and extract a group key for each.
+///
+/// Compound commands like `cd /tmp && gh repo view ...` yield multiple keys:
+/// `["cd", "gh repo view"]`. Each segment is independently grouped.
+///
+/// Uses `split_compound` for `&&`/`||`/`;` splitting. Takes only the first
+/// line to avoid parsing heredoc content or multi-line strings.
+fn extract_group_keys(command: &str) -> Vec<String> {
+    // Take only the first line — heredocs and multi-line commands have
+    // their actual command on line 1.
+    let first_line = command.lines().next().unwrap_or(command);
+    // Strip heredoc markers and everything after them.
+    let first_line = strip_heredoc(first_line);
+    let segments = split_compound(&first_line);
+    segments
+        .iter()
+        .filter_map(|(segment, _)| {
+            let trimmed = segment.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let key = command_group_key(trimmed);
+            if key.is_empty() { None } else { Some(key) }
+        })
+        .collect()
+}
+
+/// Extract a smart grouping key from a single command.
+///
+/// Takes the basename of the program and appends subcommand-like words
+/// (non-flag, non-path tokens) up to a reasonable depth:
+/// - `gh pr list --limit 5` → `gh pr list`
+/// - `cargo test --workspace` → `cargo test`
+/// - `find /Users/... -name "*.rs"` → `find`
+/// - `git log --oneline -5` → `git log`
+/// - `RUST_LOG=debug cargo test` → `cargo test` (strips env vars)
+/// - `python manage.py migrate` → `python manage.py migrate`
+fn command_group_key(command: &str) -> String {
+    let words: Vec<&str> = command.split_whitespace().collect();
+    if words.is_empty() {
+        return String::new();
+    }
+
+    // Skip leading env var assignments (KEY=value).
+    let start = words.iter().position(|w| !w.contains('=')).unwrap_or(0);
+    let words = &words[start..];
+    if words.is_empty() {
+        return String::new();
+    }
+
+    // Take basename of the program.
+    let program = words[0].rsplit('/').next().unwrap_or(words[0]);
+
+    // Skip non-command-like first words (code fragments, punctuation, etc.)
+    if program.is_empty()
+        || program.starts_with('"')
+        || program.starts_with('\'')
+        || program.starts_with('(')
+        || program.starts_with(')')
+        || program.starts_with('{')
+        || program.starts_with('#')
+        || program.starts_with('*')
+        || program.contains('(')
+        || program.contains('|')
+        || program.contains('\\')
+        || program.contains('>')
+        || program.contains('<')
+        || !program.chars().any(char::is_alphanumeric)
+    {
+        return String::new();
+    }
+
+    let mut key_parts = vec![program];
+
+    // Collect subcommand-like words: non-flag, non-path, non-quoted.
+    for word in words.iter().skip(1) {
+        if word.starts_with('-')
+            || word.starts_with('/')
+            || word.starts_with('~')
+            || word.starts_with('.')
+            || word.starts_with('"')
+            || word.starts_with('\'')
+            || word.starts_with('$')
+            || word.contains('/')
+            || word.contains('=')
+            || word.contains('*')
+            || word.contains('{')
+        {
+            break;
+        }
+        key_parts.push(word);
+        // Most tools have at most 2 levels of subcommands (e.g. `gh pr list`).
+        if key_parts.len() >= 3 {
+            break;
+        }
+    }
+
+    key_parts.join(" ")
+}
+
+/// Strip heredoc markers (`<<EOF`, `<<'EOF'`, `<<"EOF"`) and everything after.
+fn strip_heredoc(line: &str) -> String {
+    line.find("<<").map_or_else(
+        || line.to_string(),
+        |idx| line[..idx].trim_end().to_string(),
+    )
+}
+
 /// Load historical savings ratios from the tracking database (`filter_name` → `savings_pct`).
 fn load_historical_ratios() -> HashMap<String, f64> {
     let mut ratios = HashMap::new();
@@ -272,4 +392,5 @@ struct AggBucket {
     occurrences: usize,
     total_output_bytes: usize,
     savings_pct: f64,
+    has_filter: bool,
 }

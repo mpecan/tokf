@@ -304,6 +304,9 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Also show commands that already have a matching filter
+        #[arg(long)]
+        include_filtered: bool,
     },
     /// Install a filter from the community registry
     Install {
@@ -658,6 +661,7 @@ fn main() {
             since,
             limit,
             json,
+            include_filtered,
         } => or_exit(discover_cmd::cmd_discover(&discover_cmd::DiscoverOpts {
             project: project.as_deref(),
             all: *all,
@@ -666,6 +670,7 @@ fn main() {
             limit: *limit,
             json: *json,
             no_cache: cli.no_cache,
+            include_filtered: *include_filtered,
         })),
         Commands::Install {
             filter,
