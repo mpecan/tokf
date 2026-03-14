@@ -679,7 +679,7 @@ tokf verify                   # run all suites
 For quick one-off testing without creating test files:
 
 ```sh
-tokf test filters/mytool/mysubcmd.toml tests/fixtures/mytool_output.txt --exit-code 0
+tokf apply filters/mytool/mysubcmd.toml tests/fixtures/mytool_output.txt --exit-code 0
 ```
 
 ### Step 5: Place and name the file correctly
@@ -995,3 +995,43 @@ The `_test` suffix makes suite directories immediately identifiable in file list
 7. **Don't skip the `[fallback]`.** Complex filters with `[[section]]` can produce empty output if sections don't match. Always add `[fallback] tail = 5` as a safety net.
 
 8. **Test with realistic fixture data.** A filter that works on a trimmed example may miss edge cases. Use real command output saved to a `.txt` fixture file.
+
+---
+
+## Section 11 — Generic Commands (When a Filter Isn't Needed)
+
+Before writing a full filter, consider whether a **generic command** would be sufficient. tokf provides three built-in subcommands that work on any command without a TOML filter:
+
+| Command | Use case | Example |
+|---------|----------|---------|
+| `tokf err <cmd>` | Extract errors/warnings | `tokf err mix compile` |
+| `tokf test <cmd>` | Extract test failures | `tokf test ctest --output-on-failure` |
+| `tokf summary <cmd>` | Heuristic summary | `tokf summary terraform plan` |
+
+### When to use generic commands vs. writing a filter
+
+- **Use generic commands** when the tool's output follows common patterns (error lines, test results, repetitive logs) and you don't need precise control over the output format.
+- **Write a filter** when you need structured extraction, specific sections, custom templates, or the generic output isn't useful enough.
+
+### Routing generic commands through rewrites
+
+To make generic commands trigger automatically via the hook, add rewrite rules to `.tokf/rewrites.toml`:
+
+```toml
+# Build tools without dedicated filters
+[[rewrite]]
+match = "^mix compile"
+replace = "tokf err {0}"
+
+# Test runners without dedicated filters
+[[rewrite]]
+match = "^mix test"
+replace = "tokf test {0}"
+
+# Long output without dedicated filters
+[[rewrite]]
+match = "^terraform plan"
+replace = "tokf summary {0}"
+```
+
+**Important:** Only add rewrite rules for commands that don't already have a filter. Check with `tokf which "<command>"` first. Commands with dedicated filters produce better output through `tokf run`.

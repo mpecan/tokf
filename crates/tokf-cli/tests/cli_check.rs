@@ -58,13 +58,13 @@ fn check_invalid_toml() {
     );
 }
 
-// --- tokf test ---
+// --- tokf apply ---
 
 #[test]
 fn test_nonexistent_filter_exits_with_error() {
     let fixture = format!("{}/filters/git/push_test/success.txt", manifest_dir());
     let output = tokf()
-        .args(["test", "/nonexistent/filter.toml", &fixture])
+        .args(["apply", "/nonexistent/filter.toml", &fixture])
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -80,7 +80,7 @@ fn test_nonexistent_filter_exits_with_error() {
 fn test_nonexistent_fixture_exits_with_error() {
     let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let output = tokf()
-        .args(["test", &filter, "/nonexistent/fixture.txt"])
+        .args(["apply", &filter, "/nonexistent/fixture.txt"])
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -98,11 +98,11 @@ fn test_exit_code_selects_different_branch() {
     let fixture = format!("{}/filters/git/push_test/success.txt", manifest_dir());
 
     let success_output = tokf()
-        .args(["test", &filter, &fixture, "--exit-code", "0"])
+        .args(["apply", &filter, &fixture, "--exit-code", "0"])
         .output()
         .unwrap();
     let failure_output = tokf()
-        .args(["test", &filter, &fixture, "--exit-code", "1"])
+        .args(["apply", &filter, &fixture, "--exit-code", "1"])
         .output()
         .unwrap();
 
@@ -120,7 +120,7 @@ fn test_exit_code_selects_different_branch() {
 fn test_git_push_success_fixture() {
     let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/filters/git/push_test/success.txt", manifest_dir());
-    let output = tokf().args(["test", &filter, &fixture]).output().unwrap();
+    let output = tokf().args(["apply", &filter, &fixture]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -133,7 +133,7 @@ fn test_git_push_success_fixture() {
 fn test_git_push_up_to_date_fixture() {
     let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/filters/git/push_test/up_to_date.txt", manifest_dir());
-    let output = tokf().args(["test", &filter, &fixture]).output().unwrap();
+    let output = tokf().args(["apply", &filter, &fixture]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "ok (up-to-date)");
@@ -144,7 +144,7 @@ fn test_git_push_failure_with_exit_code() {
     let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/filters/git/push_test/failure.txt", manifest_dir());
     let output = tokf()
-        .args(["test", &filter, &fixture, "--exit-code", "1"])
+        .args(["apply", &filter, &fixture, "--exit-code", "1"])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -157,7 +157,7 @@ fn test_with_timing() {
     let filter = format!("{}/filters/git/push.toml", manifest_dir());
     let fixture = format!("{}/filters/git/push_test/up_to_date.txt", manifest_dir());
     let output = tokf()
-        .args(["test", "--timing", &filter, &fixture])
+        .args(["apply", "--timing", &filter, &fixture])
         .output()
         .unwrap();
     assert!(output.status.success());

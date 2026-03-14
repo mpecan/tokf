@@ -123,7 +123,7 @@ exit_code = 0
 starts_with = "ok"
 ```
 
-Use `tokf test filters/my/filter.toml tests/fixtures/my_fixture.txt` to iterate quickly on a single fixture.
+Use `tokf apply filters/my/filter.toml tests/fixtures/my_fixture.txt` to iterate quickly on a single fixture.
 
 Every filter in the stdlib **must** have a `_test/` suite — CI enforces this with `tokf verify --require-all`.
 

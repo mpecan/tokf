@@ -93,6 +93,31 @@ match = "^(?:[^\\s]*/)?mise run(\\s.*)?$"
 replace = "SHELL=tokf mise run{1}"
 ```
 
+## Routing to generic commands
+
+For commands that don't have a dedicated filter, you can route them through [generic commands](generic-commands.md) (`tokf err`, `tokf test`, `tokf summary`) via rewrite rules:
+
+```toml
+# .tokf/rewrites.toml
+
+# Build commands → error extraction
+[[rewrite]]
+match = "^mix compile"
+replace = "tokf err {0}"
+
+# Test runners → failure extraction
+[[rewrite]]
+match = "^mix test"
+replace = "tokf test {0}"
+
+# Long-running commands → heuristic summary
+[[rewrite]]
+match = "^terraform plan"
+replace = "tokf summary {0}"
+```
+
+**Note:** User rewrite rules fire *before* filter matching. Only add these for commands that don't already have a filter — check with `tokf which "<command>"`. Commands with dedicated filters (e.g. `cargo build`, `git status`) produce better output through `tokf run`.
+
 ## Piped commands
 
 When a command is piped to a simple output-shaping tool (`grep`, `tail`, or `head`), tokf **strips the pipe automatically** and uses its own structured filter output instead. The original pipe suffix is passed to `--baseline-pipe` so token savings are still calculated accurately.

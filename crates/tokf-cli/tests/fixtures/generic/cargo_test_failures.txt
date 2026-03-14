@@ -1,0 +1,64 @@
+running 45 tests
+test config::tests::parse_basic ... ok
+test config::tests::parse_with_skip ... ok
+test config::tests::parse_with_replace ... ok
+test config::tests::parse_with_extract ... ok
+test filter::skip::tests::keep_matching ... ok
+test filter::skip::tests::skip_matching ... ok
+test filter::extract::tests::basic_capture ... ok
+test filter::extract::tests::no_match ... ok
+test filter::replace::tests::simple_replace ... ok
+test filter::replace::tests::regex_replace ... ok
+test filter::group::tests::group_by_key ... ok
+test filter::section::tests::section_parse ... ok
+test filter::aggregate::tests::sum_values ... ok
+test filter::template::tests::interpolate ... ok
+test filter::dedup::tests::remove_duplicates ... ok
+test runner::tests::execute_simple ... ok
+test runner::tests::capture_stderr ... ok
+test integration::test_git_push ... ok
+test integration::test_git_status ... ok
+test integration::test_bad_assertion ... FAILED
+test integration::test_cargo_build ... ok
+test integration::test_cargo_check ... ok
+test integration::test_npm_run ... ok
+test integration::test_docker_build ... ok
+test integration::test_go_build ... ok
+test integration::test_another_failure ... FAILED
+test integration::test_kubectl ... ok
+test integration::test_gradle ... ok
+test integration::test_gh_pr ... ok
+test integration::test_next_build ... ok
+test integration::test_prisma ... ok
+test integration::test_edge_case ... ok
+test integration::test_pnpm ... ok
+test integration::test_yarn ... ok
+test integration::test_shell ... ok
+test integration::test_rewrite ... ok
+test integration::test_verify ... ok
+test integration::test_eject ... ok
+test integration::test_gain ... ok
+test integration::test_history ... ok
+test integration::test_info ... ok
+test integration::test_completions ... ok
+test integration::test_config ... ok
+test integration::test_discover ... ok
+test integration::test_install ... ok
+
+failures:
+
+---- integration::test_bad_assertion stdout ----
+thread 'integration::test_bad_assertion' panicked at 'assertion failed: `(left == right)`
+  left: `42`,
+ right: `43`', tests/integration.rs:150:5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- integration::test_another_failure stdout ----
+thread 'integration::test_another_failure' panicked at 'called `Option::unwrap()` on a `None` value', tests/integration.rs:200:10
+
+
+failures:
+    integration::test_bad_assertion
+    integration::test_another_failure
+
+test result: FAILED. 43 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.34s
