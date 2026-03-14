@@ -1786,9 +1786,9 @@ COMMAND                        FILTER               RUNS     TOKENS
 ----------------------------------------------------------------------
 python manage.py migrate       (none)                 34      12.1k
 terraform plan                 (none)                 28       9.8k
-helm upgrade --install         (none)                 15       6.2k
+helm upgrade                   (none)                 15       6.2k
 
-Estimated total savings: 28.1k tokens (443 without filters)
+Total unfiltered output: 28.1k tokens across 443 commands
 ```
 
 ### Options

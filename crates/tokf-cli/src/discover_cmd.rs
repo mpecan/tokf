@@ -33,8 +33,19 @@ pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
 
     if !opts.include_filtered {
         summary.results.retain(|r| !r.has_filter);
-        summary.estimated_total_savings = summary.results.iter().map(|r| r.estimated_savings).sum();
     }
+    // Recompute total: use estimated_tokens for unfiltered, estimated_savings for filtered.
+    summary.estimated_total_savings = summary
+        .results
+        .iter()
+        .map(|r| {
+            if r.has_filter {
+                r.estimated_savings
+            } else {
+                r.estimated_tokens
+            }
+        })
+        .sum();
 
     if opts.json {
         crate::output::print_json(&summary);
@@ -131,7 +142,7 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize, include
 
     if summary.results.is_empty() {
         if include_filtered {
-            println!("No unfiltered commands found — you're all set!");
+            println!("No commands found to report.");
         } else {
             println!("All commands either have filters or are already filtered — you're all set!");
         }
@@ -141,11 +152,21 @@ fn print_human(summary: &discover::types::DiscoverSummary, limit: usize, include
     print_results_table(&summary.results, limit);
 
     println!();
-    println!(
-        "Estimated total savings: {} tokens ({} without filters)",
-        format_tokens(summary.estimated_total_savings),
-        summary.no_filter_commands,
-    );
+    if include_filtered {
+        println!(
+            "Total: {} tokens ({} filterable, {} without filters)",
+            format_tokens(summary.estimated_total_savings),
+            summary.filterable_commands,
+            summary.no_filter_commands,
+        );
+    } else {
+        println!(
+            "Total unfiltered output: {} tokens across {} command{}",
+            format_tokens(summary.estimated_total_savings),
+            summary.no_filter_commands,
+            plural(summary.no_filter_commands),
+        );
+    }
 }
 
 const fn plural(n: usize) -> &'static str {

@@ -156,21 +156,9 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
         })
         .collect();
 
-    // Sort by tokens (most waste first). For filtered commands, use savings;
-    // for unfiltered, use total tokens since we can't estimate savings.
-    results.sort_by(|a, b| {
-        let a_key = if a.has_filter {
-            a.estimated_savings
-        } else {
-            a.estimated_tokens
-        };
-        let b_key = if b.has_filter {
-            b.estimated_savings
-        } else {
-            b.estimated_tokens
-        };
-        b_key.cmp(&a_key)
-    });
+    // Sort by estimated tokens (most output first), consistent with the
+    // displayed TOKENS column.
+    results.sort_by(|a, b| b.estimated_tokens.cmp(&a.estimated_tokens));
     results
 }
 
