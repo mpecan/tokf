@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.37](https://github.com/mpecan/tokf/compare/tokf-v0.2.36...tokf-v0.2.37) (2026-03-14)
+
+
+### Features
+
+* **cli:** generic fallback commands — tokf err, tokf test, tokf summary ([#298](https://github.com/mpecan/tokf/issues/298)) ([5ec063e](https://github.com/mpecan/tokf/commit/5ec063e3ae60db5583ad4ba6d1452010e04daa12))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.36 to 0.2.37
+    * tokf-filter bumped from 0.2.36 to 0.2.37
+
 ## [0.2.36](https://github.com/mpecan/tokf/compare/tokf-v0.2.35...tokf-v0.2.36) (2026-03-14)
 
 
