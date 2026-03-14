@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.36](https://github.com/mpecan/tokf/compare/tokf-v0.2.35...tokf-v0.2.36) (2026-03-14)
+
+
+### Features
+
+* **cli:** tokf discover — find missed token savings in AI sessions ([#294](https://github.com/mpecan/tokf/issues/294)) ([f004204](https://github.com/mpecan/tokf/commit/f0042045a973f29468009c032247132d6fd29fc3))
+
+
+### Bug Fixes
+
+* **cli:** default discover to showing only unfiltered commands ([#297](https://github.com/mpecan/tokf/issues/297)) ([835e48e](https://github.com/mpecan/tokf/commit/835e48e0bb68e22685602f83f3769bc09a0688c6))
+* **rewrite:** use pattern_matches_prefix for consistent filter matching ([#295](https://github.com/mpecan/tokf/issues/295)) ([dc2fe58](https://github.com/mpecan/tokf/commit/dc2fe589f1849e2f42241fbcd85a2083c1a81236))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.35 to 0.2.36
+    * tokf-filter bumped from 0.2.35 to 0.2.36
+
 ## [0.2.35](https://github.com/mpecan/tokf/compare/tokf-v0.2.34...tokf-v0.2.35) (2026-03-13)
 
 
