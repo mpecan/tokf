@@ -68,10 +68,10 @@ tokf run cargo test
 tokf run docker build .
 ```
 
-### Test a filter against a fixture
+### Apply a filter to a fixture
 
 ```sh
-tokf test filters/git/push.toml tests/fixtures/git_push_success.txt --exit-code 0
+tokf apply filters/git/push.toml tests/fixtures/git_push_success.txt --exit-code 0
 ```
 
 ### Verify filter test suites

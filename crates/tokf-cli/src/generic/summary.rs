@@ -6,21 +6,40 @@ const SUMMARY_PATTERNS: &[&str] = &[
     "done", "elapsed", "duration", "built in",
 ];
 
-/// Statistics patterns to scan for.
-/// Each tuple: (regex, label, `capture_unit`) — if `capture_unit` is true, the
+/// Precompiled statistics patterns.
+/// Each entry: (regex, label, `capture_unit`) — if `capture_unit` is true, the
 /// matched unit suffix (s/ms/seconds) is appended to the value.
-const STAT_PATTERNS: &[(&str, &str, bool)] = &[
-    (r"(\d+)\s+(?:tests?\s+)?passed", "passed", false),
-    (r"(\d+)\s+(?:tests?\s+)?failed", "failed", false),
-    (r"(\d+)\s+errors?", "errors", false),
-    (r"(\d+)\s+warnings?", "warnings", false),
-    (r"(\d+)\s+(?:files?|modules?)", "files", false),
-    (
-        r"(?:in\s+)?(\d+\.?\d*)\s*(s|seconds?|ms|minutes?)",
-        "time",
-        true,
-    ),
-];
+#[allow(clippy::unwrap_used)]
+fn stat_patterns() -> &'static [(Regex, &'static str, bool)] {
+    use std::sync::LazyLock;
+    static PATTERNS: LazyLock<Vec<(Regex, &'static str, bool)>> = LazyLock::new(|| {
+        vec![
+            (
+                Regex::new(r"(\d+)\s+(?:tests?\s+)?passed").unwrap(),
+                "passed",
+                false,
+            ),
+            (
+                Regex::new(r"(\d+)\s+(?:tests?\s+)?failed").unwrap(),
+                "failed",
+                false,
+            ),
+            (Regex::new(r"(\d+)\s+errors?").unwrap(), "errors", false),
+            (Regex::new(r"(\d+)\s+warnings?").unwrap(), "warnings", false),
+            (
+                Regex::new(r"(\d+)\s+(?:files?|modules?)").unwrap(),
+                "files",
+                false,
+            ),
+            (
+                Regex::new(r"(?:in\s+)?(\d+\.?\d*)\s*(s|seconds?|ms|minutes?)").unwrap(),
+                "time",
+                true,
+            ),
+        ]
+    });
+    &PATTERNS
+}
 
 /// Produce a heuristic summary of command output.
 ///
@@ -61,11 +80,10 @@ pub fn summarize(text: &str, exit_code: i32, max_lines: usize) -> String {
         &mut result,
     );
 
-    // Footer
-    if footer_start < lines.len() {
-        for line in &lines[footer_start..] {
-            result.push((*line).to_string());
-        }
+    // Footer (capped to budget)
+    let footer_end = (footer_start + footer_budget).min(lines.len());
+    for line in &lines[footer_start..footer_end] {
+        result.push((*line).to_string());
     }
 
     // Phase 3: Statistics
@@ -169,9 +187,8 @@ fn sample_lines<'a>(lines: &[&'a str], count: usize) -> Vec<&'a str> {
 /// Extract human-readable statistics from the text.
 fn extract_stats(text: &str) -> String {
     let mut parts = Vec::new();
-    for (pattern, label, capture_unit) in STAT_PATTERNS {
-        if let Ok(re) = Regex::new(pattern)
-            && let Some(cap) = re.captures(text)
+    for (re, label, capture_unit) in stat_patterns() {
+        if let Some(cap) = re.captures(text)
             && let Some(val) = cap.get(1)
         {
             if *capture_unit {

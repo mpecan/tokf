@@ -4,8 +4,8 @@ use std::process::Command;
 
 fn tokf() -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
-    // Use a temp DB to avoid polluting the user's tracking data.
-    let tmp = std::env::temp_dir().join("tokf_generic_test.db");
+    // Use a unique temp DB per invocation to avoid cross-test interference.
+    let tmp = std::env::temp_dir().join(format!("tokf_generic_test_{}.db", std::process::id()));
     cmd.env("TOKF_DB_PATH", &tmp);
     // Disable the config cache so tests don't interfere.
     cmd.arg("--no-cache");

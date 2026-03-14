@@ -679,7 +679,7 @@ tokf verify                   # run all suites
 For quick one-off testing without creating test files:
 
 ```sh
-tokf test filters/mytool/mysubcmd.toml tests/fixtures/mytool_output.txt --exit-code 0
+tokf apply filters/mytool/mysubcmd.toml tests/fixtures/mytool_output.txt --exit-code 0
 ```
 
 ### Step 5: Place and name the file correctly
