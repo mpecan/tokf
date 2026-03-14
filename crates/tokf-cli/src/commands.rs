@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use clap::Subcommand;
 use tokf::baseline;
 use tokf::config;
 use tokf::filter;
@@ -11,8 +12,115 @@ use tokf::runner;
 use tokf::skill;
 use tokf::telemetry;
 
+use crate::Cli;
 use crate::resolve;
-use crate::{Cli, HookFormat, HookTool};
+
+// R6: Rename Opencode → OpenCode; use #[value(name = "opencode")] to keep CLI arg as "opencode".
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+pub enum HookTool {
+    #[default]
+    ClaudeCode,
+    #[value(name = "opencode")]
+    OpenCode,
+    #[value(name = "codex")]
+    Codex,
+    #[value(name = "gemini-cli")]
+    GeminiCli,
+    #[value(name = "cursor")]
+    Cursor,
+    #[value(name = "cline")]
+    Cline,
+    #[value(name = "windsurf")]
+    Windsurf,
+    #[value(name = "copilot")]
+    Copilot,
+    #[value(name = "aider")]
+    Aider,
+}
+
+/// Hook protocol format for the `handle` subcommand.
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+pub enum HookFormat {
+    #[default]
+    ClaudeCode,
+    #[value(name = "gemini")]
+    Gemini,
+    #[value(name = "cursor")]
+    Cursor,
+}
+
+#[derive(Subcommand)]
+pub enum HookAction {
+    /// Handle a hook invocation (reads JSON from stdin)
+    Handle {
+        /// Hook protocol format (default: claude-code)
+        #[arg(long, value_enum, default_value_t = HookFormat::ClaudeCode)]
+        format: HookFormat,
+    },
+    /// Install the integration for the target tool
+    Install {
+        /// Install globally instead of project-local
+        #[arg(long)]
+        global: bool,
+        /// Target tool to install hook for (default: claude-code)
+        #[arg(long, value_enum, default_value_t = HookTool::ClaudeCode)]
+        tool: HookTool,
+        /// Path to the tokf binary to embed in generated scripts.
+        /// Defaults to bare "tokf" (relies on PATH at runtime).
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Skip creating TOKF.md context file and CLAUDE.md reference
+        #[arg(long)]
+        no_context: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum HistoryAction {
+    /// List recent history entries (current project by default)
+    List {
+        /// Number of entries to show (default: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+        /// Show history from all projects
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Show details of a specific history entry
+    Show {
+        /// Entry ID to show
+        id: i64,
+        /// Print only the raw captured output (no metadata, no filtered output)
+        #[arg(long)]
+        raw: bool,
+    },
+    /// Show the most recent history entry (current project by default)
+    Last {
+        /// Print only the raw captured output (no metadata, no filtered output)
+        #[arg(long)]
+        raw: bool,
+        /// Show the most recent entry across all projects
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Search history by command or output content (current project by default)
+    Search {
+        /// Search query (searches command, raw output, and filtered output)
+        query: String,
+        /// Maximum number of results to show (default: 10)
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+        /// Search across all projects
+        #[arg(short, long)]
+        all: bool,
+    },
+    /// Clear history entries (current project by default)
+    Clear {
+        /// Clear history for all projects — this is destructive and cannot be undone
+        #[arg(short, long)]
+        all: bool,
+    },
+}
 
 pub fn or_exit(r: anyhow::Result<i32>) -> i32 {
     r.unwrap_or_else(|e| {
@@ -256,7 +364,7 @@ pub fn cmd_check(filter_path: &Path) -> i32 {
     }
 }
 
-pub fn cmd_test(
+pub fn cmd_apply(
     filter_path: &Path,
     fixture_path: &Path,
     exit_code: i32,

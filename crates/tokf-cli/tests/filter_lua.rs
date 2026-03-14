@@ -39,7 +39,7 @@ source = 'return "ok"'
 
     let output = tokf()
         .args([
-            "test",
+            "apply",
             filter.to_str().unwrap(),
             fixture.to_str().unwrap(),
             "--exit-code",
@@ -73,7 +73,7 @@ output = "branch output"
 
     let output = tokf()
         .args([
-            "test",
+            "apply",
             filter.to_str().unwrap(),
             fixture.to_str().unwrap(),
             "--exit-code",
@@ -113,7 +113,7 @@ end
 
     let success = tokf()
         .args([
-            "test",
+            "apply",
             filter.to_str().unwrap(),
             fixture.to_str().unwrap(),
             "--exit-code",
@@ -129,7 +129,7 @@ end
 
     let failure = tokf()
         .args([
-            "test",
+            "apply",
             filter.to_str().unwrap(),
             fixture.to_str().unwrap(),
             "--exit-code",
@@ -203,7 +203,7 @@ file = "{}"
 
     let output = tokf()
         .args([
-            "test",
+            "apply",
             filter.to_str().unwrap(),
             fixture.to_str().unwrap(),
             "--exit-code",
