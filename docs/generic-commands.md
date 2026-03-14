@@ -33,7 +33,8 @@ tokf err npm run build
 **Patterns matched:** `error:`, `warning:`, `FAILED`, `Traceback`, `panic`, `npm ERR!`, `fatal:`, Python/Java exception types, and more.
 
 **Behaviour:**
-- Output < 10 lines: passed through unchanged
+- Empty output: `[tokf err] no errors detected (empty output)`
+- Short output (< 10 lines): shows `[tokf err]` header with full output
 - No errors + exit 0: prints `[tokf err] no errors detected`
 - No errors + exit ≠ 0: includes full output (something failed but no recognized pattern)
 
@@ -84,6 +85,39 @@ All three commands support:
 | `--baseline-pipe <cmd>` | Fair baseline accounting (as with `tokf run`) |
 | `--no-mask-exit-code` | Propagate the real exit code instead of masking to 0 |
 | `--timing` | Show how long filtering took |
+
+### Using generic commands with rewrites
+
+Generic commands can be integrated with the [rewrite system](rewrites-config.md) so they trigger automatically through the hook. Add rules to `.tokf/rewrites.toml` for commands that don't have dedicated filters:
+
+```toml
+# Route build commands without filters through tokf err
+[[rewrite]]
+match = "^mix compile"
+replace = "tokf err {0}"
+
+[[rewrite]]
+match = "^cmake --build"
+replace = "tokf err {0}"
+
+# Route test runners without filters through tokf test
+[[rewrite]]
+match = "^mix test"
+replace = "tokf test {0}"
+
+[[rewrite]]
+match = "^ctest"
+replace = "tokf test {0}"
+
+# Summarize long-running commands
+[[rewrite]]
+match = "^terraform plan"
+replace = "tokf summary {0}"
+```
+
+**Important:** User rewrite rules are checked *before* filter matching. Don't add rules for commands that already have dedicated filters (like `cargo build`, `npm test`) — the dedicated filter will produce better output than the generic command.
+
+To check whether a command already has a filter: `tokf which "cargo build"`.
 
 ### Tracking and history
 
