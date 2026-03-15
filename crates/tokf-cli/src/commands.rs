@@ -49,6 +49,9 @@ pub enum HookFormat {
     Cursor,
 }
 
+// Re-export PermissionMode from hook module
+pub use tokf::hook::PermissionMode;
+
 #[derive(Subcommand)]
 pub enum HookAction {
     /// Handle a hook invocation (reads JSON from stdin)
@@ -56,6 +59,9 @@ pub enum HookAction {
         /// Hook protocol format (default: claude-code)
         #[arg(long, value_enum, default_value_t = HookFormat::ClaudeCode)]
         format: HookFormat,
+        /// Permission decision behavior (default: allow)
+        #[arg(long, value_enum, default_value_t = PermissionMode::Allow)]
+        permission: PermissionMode,
     },
     /// Install the integration for the target tool
     Install {
@@ -523,18 +529,18 @@ pub fn cmd_skill_install(global: bool) -> i32 {
     }
 }
 
-pub fn cmd_hook_handle(format: &HookFormat) -> i32 {
+pub fn cmd_hook_handle(format: &HookFormat, permission: &PermissionMode) -> i32 {
     // Return values (true = rewritten, false = pass-through) are intentionally
     // discarded: the hook must always exit 0 so it never blocks the IDE's command.
     match format {
         HookFormat::ClaudeCode => {
-            hook::handle();
+            hook::handle_with_permission(permission);
         }
         HookFormat::Gemini => {
-            hook::handle_gemini();
+            hook::handle_gemini_with_permission(permission);
         }
         HookFormat::Cursor => {
-            hook::handle_cursor();
+            hook::handle_cursor_with_permission(permission);
         }
     }
     0

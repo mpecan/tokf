@@ -20,6 +20,20 @@ use crate::rewrite;
 use crate::rewrite::types::RewriteConfig;
 use crate::runner;
 
+/// Permission decision behavior for the `handle` subcommand.
+///
+/// When multiple PreToolUse hooks are registered, the default `allow` mode
+/// can block subsequent hooks from running. Use `preserve` to pass through
+/// the original permission decision (or omit it) so other hooks can validate.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PermissionMode {
+    /// Always return `permissionDecision: "allow"` (default, backward compatible)
+    #[default]
+    Allow,
+    /// Omit `permissionDecision` from response, letting other hooks decide
+    Preserve,
+}
+
 /// Process a `PreToolUse` hook invocation.
 ///
 /// Reads JSON from stdin, checks if it's a Bash tool call, rewrites the command
@@ -29,6 +43,14 @@ use crate::runner;
 /// Errors are intentionally swallowed to never block commands.
 pub fn handle() -> bool {
     handle_from_reader(&mut std::io::stdin())
+}
+
+/// Process a `PreToolUse` hook invocation with permission mode control.
+///
+/// - `PermissionMode::Allow`: Always returns `permissionDecision: "allow"` (default, backward compatible)
+/// - `PermissionMode::Preserve`: Omits `permissionDecision` so other hooks can validate
+pub fn handle_with_permission(permission: &PermissionMode) -> bool {
+    handle_from_reader_with_permission(&mut std::io::stdin(), permission)
 }
 
 /// Testable version that reads from any `Read` source.
@@ -41,6 +63,16 @@ pub(crate) fn handle_from_reader<R: Read>(reader: &mut R) -> bool {
     handle_json(&input)
 }
 
+/// Testable version with permission mode control.
+pub(crate) fn handle_from_reader_with_permission<R: Read>(reader: &mut R, permission: &PermissionMode) -> bool {
+    let mut input = String::new();
+    if reader.read_to_string(&mut input).is_err() {
+        return false;
+    }
+
+    handle_json_with_permission(&input, permission)
+}
+
 /// Core handle logic operating on a JSON string.
 pub(crate) fn handle_json(json: &str) -> bool {
     handle_with_autodiscovery(
@@ -49,6 +81,31 @@ pub(crate) fn handle_json(json: &str) -> bool {
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
     )
+}
+
+/// Core handle logic with permission mode control.
+pub(crate) fn handle_json_with_permission(json: &str, permission: &PermissionMode) -> bool {
+    // Choose response builder based on permission mode
+    match permission {
+        PermissionMode::Allow => {
+            // Default: use rewrite (with permissionDecision: "allow")
+            handle_with_autodiscovery(
+                json,
+                "Bash",
+                HookResponse::rewrite,
+                HookResponse::rewrite_ask,
+            )
+        }
+        PermissionMode::Preserve => {
+            // Always use rewrite_ask (omits permissionDecision)
+            handle_with_autodiscovery(
+                json,
+                "Bash",
+                HookResponse::rewrite_ask,
+                HookResponse::rewrite_ask,
+            )
+        }
+    }
 }
 
 /// Fully injectable handle logic with explicit permission rules (hermetic).
@@ -81,6 +138,15 @@ pub fn handle_gemini() -> bool {
     handle_gemini_json(&input)
 }
 
+/// Process Gemini hook with permission mode control.
+pub fn handle_gemini_with_permission(permission: &PermissionMode) -> bool {
+    let mut input = String::new();
+    if std::io::stdin().read_to_string(&mut input).is_err() {
+        return false;
+    }
+    handle_gemini_json_with_permission(&input, permission)
+}
+
 /// Core Gemini handle logic operating on a JSON string.
 pub(crate) fn handle_gemini_json(json: &str) -> bool {
     handle_with_autodiscovery(
@@ -89,6 +155,28 @@ pub(crate) fn handle_gemini_json(json: &str) -> bool {
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
     )
+}
+
+/// Core Gemini handle logic with permission mode control.
+pub(crate) fn handle_gemini_json_with_permission(json: &str, permission: &PermissionMode) -> bool {
+    match permission {
+        PermissionMode::Allow => {
+            handle_with_autodiscovery(
+                json,
+                "run_shell_command",
+                GeminiHookResponse::rewrite,
+                GeminiHookResponse::rewrite_ask,
+            )
+        }
+        PermissionMode::Preserve => {
+            handle_with_autodiscovery(
+                json,
+                "run_shell_command",
+                GeminiHookResponse::rewrite_ask,
+                GeminiHookResponse::rewrite_ask,
+            )
+        }
+    }
 }
 
 /// Fully injectable Gemini handle logic with explicit permission rules (hermetic).
@@ -144,6 +232,15 @@ pub fn handle_cursor() -> bool {
     handle_cursor_json(&input)
 }
 
+/// Process Cursor hook with permission mode control.
+pub fn handle_cursor_with_permission(permission: &PermissionMode) -> bool {
+    let mut input = String::new();
+    if std::io::stdin().read_to_string(&mut input).is_err() {
+        return false;
+    }
+    handle_cursor_json_with_permission(&input, permission)
+}
+
 /// Core Cursor handle logic operating on a JSON string.
 ///
 /// Cursor's `beforeShellExecution` sends `command` at the top level
@@ -153,6 +250,14 @@ pub(crate) fn handle_cursor_json(json: &str) -> bool {
     let search_dirs = crate::config::default_search_dirs();
     let (deny, ask) = permissions::load_deny_ask_rules();
     handle_cursor_json_inner(json, &user_config, &search_dirs, &deny, &ask)
+}
+
+/// Core Cursor handle logic with permission mode control.
+pub(crate) fn handle_cursor_json_with_permission(json: &str, permission: &PermissionMode) -> bool {
+    let user_config = rewrite::load_user_config().unwrap_or_default();
+    let search_dirs = crate::config::default_search_dirs();
+    let (deny, ask) = permissions::load_deny_ask_rules();
+    handle_cursor_json_inner_with_permission(json, &user_config, &search_dirs, &deny, &ask, permission)
 }
 
 /// Fully injectable Cursor handle logic with explicit permission rules (hermetic).
@@ -194,6 +299,53 @@ fn handle_cursor_json_inner(
         PermissionVerdict::Deny => return false,
         PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(rewritten),
         PermissionVerdict::Allow => CursorHookResponse::rewrite(rewritten),
+    };
+
+    if let Ok(json) = serde_json::to_string(&response) {
+        println!("{json}");
+        return true;
+    }
+
+    false
+}
+
+/// Cursor handle logic with permission mode control.
+fn handle_cursor_json_inner_with_permission(
+    json: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    deny_rules: &[String],
+    ask_rules: &[String],
+    permission: &PermissionMode,
+) -> bool {
+    let Ok(input) = serde_json::from_str::<CursorInput>(json) else {
+        return false;
+    };
+
+    let Some(command) = input.command else {
+        return false;
+    };
+
+    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+
+    if rewritten == command {
+        return false;
+    }
+
+    // Build response based on permission mode
+    let response = match permission {
+        PermissionMode::Allow => {
+            // Check deny/ask rules
+            match permissions::check_command_with_rules(&command, deny_rules, ask_rules) {
+                PermissionVerdict::Deny => return false,
+                PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(rewritten),
+                PermissionVerdict::Allow => CursorHookResponse::rewrite(rewritten),
+            }
+        }
+        PermissionMode::Preserve => {
+            // Always use rewrite_ask (omits permission)
+            CursorHookResponse::rewrite_ask(rewritten)
+        }
     };
 
     if let Ok(json) = serde_json::to_string(&response) {
@@ -294,7 +446,7 @@ pub(crate) fn install_to(
     install_context: bool,
 ) -> anyhow::Result<()> {
     let hook_script = hook_dir.join("pre-tool-use.sh");
-    write_hook_shim(hook_dir, &hook_script, tokf_bin, "")?;
+    write_hook_shim(hook_dir, &hook_script, tokf_bin, "--permission preserve")?;
     patch_json_hook_config(settings_path, &hook_script, "PreToolUse", "Bash", None)?;
 
     eprintln!("[tokf] hook installed");
