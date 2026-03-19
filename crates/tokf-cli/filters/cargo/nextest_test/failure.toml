@@ -1,0 +1,15 @@
+name = "single failure with cancel"
+fixture = "failure.txt"
+exit_code = 1
+
+[[expect]]
+starts_with = "✗ nextest: 28 passed, 1 failed, 0 skipped"
+
+[[expect]]
+contains = "load_picks_up_database_url_from_env"
+
+[[expect]]
+contains = "panicked"
+
+[[expect]]
+not_contains = "PASS"

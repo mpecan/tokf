@@ -1,0 +1,18 @@
+name = "multiple failures"
+fixture = "multi_failure.txt"
+exit_code = 1
+
+[[expect]]
+starts_with = "✗ nextest: 9 passed, 3 failed, 0 skipped"
+
+[[expect]]
+contains = "connection_pool_timeout"
+
+[[expect]]
+contains = "create_user_validates_email"
+
+[[expect]]
+contains = "rate_limiter_blocks_excess"
+
+[[expect]]
+not_contains = "PASS"

@@ -1,0 +1,78 @@
+# cargo-nextest.toml — Filter for cargo-nextest test runner output
+# Raw: hundreds of PASS/FAIL lines with timing, inline failure output
+# Filtered (pass): "✓ nextest: 68 passed, 0 failed, 0 skipped"
+# Filtered (fail): failure details + summary
+
+command = "cargo nextest"
+description = "Summarise nextest results: pass/fail counts with failure details"
+strip_ansi = true
+
+skip = [
+  "^\\s*Compiling ",
+  "^\\s*Downloading ",
+  "^\\s*Downloaded ",
+  "^\\s*Finished ",
+  "^\\s*Locking ",
+  "^\\s*Blocking ",
+  "^ Nextest run ID ",
+  "^\\s*Starting \\d+ tests",
+  "^\\s+PASS ",
+  "^────+$",
+  "^\\s*$",
+]
+
+# Capture FAIL lines with their inline output (stdout/stderr blocks).
+# Each block starts at "  FAIL [" and ends at the next PASS/FAIL/separator/Summary.
+[[section]]
+name = "failure_detail"
+enter = "^\\s+FAIL \\["
+exit = "^\\s+(PASS|FAIL) \\[|^\\s+Summary |^  Cancelling "
+include_enter = true
+collect_as = "failure_blocks"
+
+# Capture the summary line
+[[section]]
+name = "summary"
+match = "^\\s+Summary "
+collect_as = "summary_lines"
+
+# Success: concise summary
+[on_success]
+output = "✓ nextest: {passed} passed, {failed} failed, {skipped} skipped"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) passed'
+sum = "passed"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[on_success.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) skipped'
+sum = "skipped"
+
+# Failure: show failure details + summary
+[on_failure]
+output = "✗ nextest: {passed} passed, {failed} failed, {skipped} skipped\n\n{failure_blocks | each: \"{value}\" | join: \"\\n\"}\n\n{summary_lines | join: \"\\n\"}"
+
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) passed'
+sum = "passed"
+
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[on_failure.aggregates]]
+from = "summary_lines"
+pattern = '(\d+) skipped'
+sum = "skipped"
+
+[fallback]
+tail = 30

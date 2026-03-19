@@ -1,0 +1,15 @@
+name = "single crate all pass"
+fixture = "pass.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "✓ nextest: 12 passed, 0 failed, 0 skipped"
+
+[[expect]]
+not_contains = "PASS"
+
+[[expect]]
+not_contains = "Compiling"
+
+[[expect]]
+not_contains = "Finished"

@@ -1,0 +1,78 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.23s
+────────────
+ Nextest run ID 8a2c1e4f-3b7d-4e8a-9c2f-1a3b5c7d9e0f with nextest profile: default
+    Starting 150 tests across 5 binaries
+        PASS [   0.010s] (  1/150) myapp auth::tests::login_succeeds
+        PASS [   0.012s] (  2/150) myapp auth::tests::logout_clears_session
+        PASS [   0.011s] (  3/150) myapp auth::tests::refresh_token_works
+        FAIL [   0.015s] (  4/150) myapp db::tests::connection_pool_timeout
+
+── stdout ───
+running 1 test
+test db::tests::connection_pool_timeout ... FAILED
+
+failures:
+
+failures:
+    db::tests::connection_pool_timeout
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.01s
+
+── stderr ───
+thread 'db::tests::connection_pool_timeout' panicked at src/db.rs:45:9:
+assertion `left == right` failed
+  left: 5000
+ right: 3000
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.009s] (  5/150) myapp config::tests::load_defaults
+        PASS [   0.010s] (  6/150) myapp config::tests::override_from_env
+        FAIL [   0.020s] (  7/150) myapp handlers::tests::create_user_validates_email
+
+── stdout ───
+running 1 test
+test handlers::tests::create_user_validates_email ... FAILED
+
+failures:
+
+failures:
+    handlers::tests::create_user_validates_email
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.02s
+
+── stderr ───
+thread 'handlers::tests::create_user_validates_email' panicked at src/handlers.rs:112:9:
+Expected 400 Bad Request but got 200 OK
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.008s] (  8/150) myapp handlers::tests::list_users_paginated
+        PASS [   0.009s] (  9/150) myapp handlers::tests::delete_user_returns_204
+        FAIL [   0.018s] ( 10/150) myapp middleware::tests::rate_limiter_blocks_excess
+
+── stdout ───
+running 1 test
+test middleware::tests::rate_limiter_blocks_excess ... FAILED
+
+failures:
+
+failures:
+    middleware::tests::rate_limiter_blocks_excess
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.01s
+
+── stderr ───
+thread 'middleware::tests::rate_limiter_blocks_excess' panicked at src/middleware.rs:78:9:
+assertion `left == right` failed
+  left: 200
+ right: 429
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.010s] ( 11/150) myapp middleware::tests::cors_headers_present
+        PASS [   0.011s] ( 12/150) myapp middleware::tests::auth_middleware_rejects_expired
+────────────
+     Summary [   0.250s] 12/150 tests run: 9 passed, 3 failed, 0 skipped
+        FAIL [   0.015s] (  4/150) myapp db::tests::connection_pool_timeout
+        FAIL [   0.020s] (  7/150) myapp handlers::tests::create_user_validates_email
+        FAIL [   0.018s] ( 10/150) myapp middleware::tests::rate_limiter_blocks_excess
+warning: 138/150 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed

@@ -1,0 +1,53 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.99s
+────────────
+ Nextest run ID 4bc31861-0d88-49fa-a3c1-d31fa6161ce4 with nextest profile: default
+    Starting 469 tests across 12 binaries
+        PASS [   0.011s] (  1/469) kiezfyi-api auth::extractor::tests::extract_bearer_token_valid
+        PASS [   0.016s] (  2/469) kiezfyi-api auth::extractor::tests::extract_bearer_token_non_utf8
+        PASS [   0.020s] (  3/469) kiezfyi-api config::tests::load_applies_defaults_for_host_and_port
+        PASS [   0.020s] (  4/469) kiezfyi-api config::tests::validate_rejects_empty_clerk_issuer
+        PASS [   0.021s] (  5/469) kiezfyi-api config::tests::load_has_empty_defaults_for_clerk_fields
+        PASS [   0.024s] (  6/469) kiezfyi-api config::tests::validate_accepts_valid_clerk_config
+        PASS [   0.024s] (  7/469) kiezfyi-api auth::extractor::tests::extract_bearer_token_missing_header
+        PASS [   0.024s] (  8/469) kiezfyi-api auth::extractor::tests::extract_bearer_token_wrong_scheme
+        PASS [   0.013s] (  9/469) kiezfyi-api error::tests::bad_request_returns_400
+        PASS [   0.011s] ( 10/469) kiezfyi-api error::tests::debug_impl_contains_variant_name
+        PASS [   0.015s] ( 11/469) kiezfyi-api error::tests::database_error_returns_500_with_generic_message
+        PASS [   0.015s] ( 12/469) kiezfyi-api error::tests::display_impl_shows_message
+        PASS [   0.014s] ( 13/469) kiezfyi-api error::tests::internal_returns_500
+        FAIL [   0.022s] ( 14/469) kiezfyi-api config::tests::load_picks_up_database_url_from_env
+
+── stdout ───
+running 1 test
+test config::tests::load_picks_up_database_url_from_env ... FAILED
+
+failures:
+
+failures:
+    config::tests::load_picks_up_database_url_from_env
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 212 filtered out; finished in 0.00s
+
+── stderr ───
+thread 'config::tests::load_picks_up_database_url_from_env' (39244358) panicked at api/src/config.rs:103:9:
+database_url should be populated from DATABASE_URL env var
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.015s] ( 15/469) kiezfyi-api error::tests::forbidden_returns_403
+        PASS [   0.014s] ( 16/469) kiezfyi-api error::tests::service_unavailable_returns_503
+        PASS [   0.015s] ( 17/469) kiezfyi-api error::tests::sqlx_error_converts_via_from
+        PASS [   0.011s] ( 18/469) kiezfyi-api geo::polyline::tests::empty_polygon_returns_error
+        PASS [   0.017s] ( 19/469) kiezfyi-api error::tests::not_found_returns_404
+        PASS [   0.015s] ( 20/469) kiezfyi-api geo::polyline::tests::coordinate_order_swapped
+        PASS [   0.017s] ( 21/469) kiezfyi-api error::tests::unauthorized_returns_401
+        PASS [   0.018s] ( 22/469) kiezfyi-api geo::polyline::tests::encode_negative_coords
+        PASS [  12.065s] ( 23/469) kiezfyi-api auth::jwks::tests::find_key_returns_error_for_unknown_kid
+        PASS [  12.556s] ( 24/469) kiezfyi-api auth::jwks::tests::find_key_returns_error_for_missing_kid
+        PASS [  12.647s] ( 25/469) kiezfyi-api auth::jwks::tests::find_key_returns_key_for_matching_kid
+        PASS [  30.023s] ( 26/469) kiezfyi-api db::tests::create_pool_with_invalid_url_returns_error
+  Cancelling due to test failure: 15 tests still running
+────────────
+     Summary [  30.023s] 29/469 tests run: 28 passed, 1 failed, 0 skipped
+        FAIL [   0.022s] ( 14/469) kiezfyi-api config::tests::load_picks_up_database_url_from_env
+warning: 440/469 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed

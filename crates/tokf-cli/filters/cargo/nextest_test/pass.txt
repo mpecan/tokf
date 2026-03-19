@@ -1,0 +1,18 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+────────────
+ Nextest run ID cb44c8eb-b6cf-4c3b-bf20-b90037cf6e57 with nextest profile: default
+    Starting 12 tests across 1 binary
+        PASS [   0.009s] ( 1/12) tokf-common config::types::tests::passthrough_empty_list_never_triggers
+        PASS [   0.010s] ( 2/12) tokf-common config::types::tests::passthrough_short_flag_does_not_match_long
+        PASS [   0.010s] ( 3/12) tokf-common config::types_tests::match_output_validate_accepts_pattern
+        PASS [   0.007s] ( 4/12) tokf-common examples::tests::reduction_pct_basic
+        PASS [   0.007s] ( 5/12) tokf-common hash::tests::hash_is_stable_across_calls
+        PASS [   0.009s] ( 6/12) tokf-common safety::tests::all_checks_returns_all_registered
+        PASS [   0.009s] ( 7/12) tokf-common safety::tests::config_clean
+        PASS [   0.011s] ( 8/12) tokf-common multipart::tests::build_body_produces_valid_multipart
+        PASS [   0.008s] ( 9/12) tokf-common safety::tests::rewrite_clean_simple
+        PASS [   0.009s] (10/12) tokf-common safety::tests::rewrite_detects_pipe
+        PASS [   0.009s] (11/12) tokf-common test_case::tests::deserialize_minimal_test_case
+        PASS [   0.008s] (12/12) tokf-common test_case::tests::serialize_round_trip
+────────────
+     Summary [   0.083s] 12 tests run: 12 passed, 0 skipped
