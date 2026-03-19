@@ -1264,6 +1264,24 @@ tokf hook install --global --path ~/.cargo/bin/tokf
 tokf hook install --tool opencode --path /home/linuxbrew/.linuxbrew/bin/tokf
 ```
 
+### Multiple hooks and permission mode
+
+When using multiple `PreToolUse` hooks (e.g., tokf for filtering + another hook for validation), the default behavior can block subsequent hooks. By default, tokf returns `permissionDecision: "allow"` which tells Claude Code to skip further permission checks.
+
+If you're using another hook that needs to validate commands (like a security policy checker), use `--permission preserve` to omit the permission decision:
+
+```sh
+# Edit the generated hook script to use preserve mode
+exec tokf hook handle --permission preserve
+```
+
+Or install with a custom hook script that includes this flag. The available modes are:
+
+- `--permission allow` (default) - Returns `permissionDecision: "allow"`. Use when tokf is the only hook.
+- `--permission preserve` - Omits `permissionDecision`. Allows subsequent hooks to validate permissions.
+
+With `preserve` mode, tokf rewrites the command but lets other hooks decide whether to allow, deny, or ask for confirmation.
+
 tokf also ships a filter-authoring skill that teaches Claude the complete filter schema:
 
 ```sh

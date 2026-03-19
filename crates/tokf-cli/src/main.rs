@@ -485,7 +485,7 @@ fn main() {
         Commands::Show { filter, hash } => show_cmd::cmd_show(filter, *hash),
         Commands::Eject { filter, global } => eject_cmd::cmd_eject(filter, *global, cli.no_cache),
         Commands::Hook { action } => match action {
-            HookAction::Handle { format, permission } => cmd_hook_handle(format, permission),
+            HookAction::Handle { format, permission } => cmd_hook_handle(format, *permission),
             HookAction::Install {
                 global,
                 tool,
