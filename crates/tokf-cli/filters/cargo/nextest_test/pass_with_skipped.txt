@@ -1,0 +1,17 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+────────────
+ Nextest run ID 0c45a582-a5ca-4e1a-9fef-356e7378284b with nextest profile: default
+    Starting 1426 tests across 32 binaries (2 tests skipped)
+        PASS [   0.020s] (   1/1426) tokf auth::client::tests::debug_redacts_device_code
+        PASS [   0.019s] (   2/1426) tokf auth::client::tests::deserialize_token_response_without_tos_fields
+        PASS [   0.020s] (   3/1426) tokf auth::client::tests::deserialize_device_flow_with_complete_uri
+        PASS [   0.021s] (   4/1426) tokf auth::client::tests::extract_error_message_raw_text
+        PASS [   0.022s] (   5/1426) tokf auth::client::tests::deserialize_token_response_with_tos_fields
+        PASS [   0.023s] (   6/1426) tokf auth::client::tests::deserialize_pending_response
+        PASS [   0.024s] (   7/1426) tokf auth::client::tests::extract_error_message_from_json_error_field
+        PASS [   0.024s] (   8/1426) tokf auth::client::tests::sanitize_error_text_truncates
+        PASS [   0.024s] (   9/1426) tokf auth::client::tests::is_safe_browser_uri_checks
+        PASS [   0.024s] (  10/1426) tokf auth::client::tests::extract_error_message_from_json
+        PASS [   7.028s] (1426/1426) tokf remote::retry::tests::retries_on_429_up_to_max
+────────────
+     Summary [   7.572s] 1426 tests run: 1426 passed, 2 skipped

@@ -1,0 +1,12 @@
+name = "workspace all pass with skipped"
+fixture = "workspace_pass.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "✓ nextest: 1504 passed, 0 failed, 2 skipped"
+
+[[expect]]
+not_contains = "PASS"
+
+[[expect]]
+not_contains = "Starting"

@@ -1,0 +1,6 @@
+name = "pass with skipped tests"
+fixture = "pass_with_skipped.txt"
+exit_code = 0
+
+[[expect]]
+starts_with = "✓ nextest: 1426 passed, 0 failed, 2 skipped"

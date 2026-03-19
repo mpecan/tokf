@@ -1,0 +1,33 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.99s
+────────────
+ Nextest run ID 0c45a582-a5ca-4e1a-9fef-356e7378284b with nextest profile: default
+    Starting 1504 tests across 33 binaries (2 tests skipped)
+        PASS [   0.020s] (   1/1504) tokf auth::client::tests::debug_redacts_device_code
+        PASS [   0.019s] (   2/1504) tokf auth::client::tests::deserialize_token_response_without_tos_fields
+        PASS [   0.020s] (   3/1504) tokf auth::client::tests::deserialize_device_flow_with_complete_uri
+        PASS [   0.021s] (   4/1504) tokf auth::client::tests::extract_error_message_raw_text
+        PASS [   0.022s] (   5/1504) tokf auth::client::tests::deserialize_token_response_with_tos_fields
+        PASS [   0.023s] (   6/1504) tokf auth::client::tests::deserialize_pending_response
+        PASS [   0.024s] (   7/1504) tokf auth::client::tests::extract_error_message_from_json_error_field
+        PASS [   0.024s] (   8/1504) tokf auth::client::tests::sanitize_error_text_truncates
+        PASS [   0.009s] (   9/1504) tokf-common config::types::tests::passthrough_empty_list_never_triggers
+        PASS [   0.009s] (  10/1504) tokf-common config::types::tests::passthrough_args_defaults_to_empty
+        PASS [   0.011s] (  11/1504) tokf-common config::types::tests::passthrough_exact_match
+        PASS [   0.012s] (  12/1504) tokf-common config::types::tests::passthrough_prefix_match
+        PASS [   0.009s] (  13/1504) tokf-common hash::tests::hash_is_stable_across_calls
+        PASS [   0.008s] (  14/1504) tokf-common safety::tests::config_clean
+        PASS [   0.008s] (  15/1504) tokf-common safety::tests::rewrite_clean_simple
+        PASS [   0.009s] (  16/1504) tokf-common test_case::tests::serialize_round_trip
+        PASS [   0.010s] (  17/1504) tokf filter::cleanup::tests::strip_ansi_removes_codes
+        PASS [   0.010s] (  18/1504) tokf filter::dedup::tests::dedup_basic
+        PASS [   0.011s] (  19/1504) tokf filter::extract::tests::extract_first_match
+        PASS [   0.012s] (  20/1504) tokf filter::group::tests::group_basic
+        PASS [   0.009s] (  21/1504) tokf filter::skip::tests::skip_filters_lines
+        PASS [   0.010s] (  22/1504) tokf filter::template::tests::simple_template
+        PASS [   0.012s] (  23/1504) tokf config::tests::resolve_basic
+        PASS [   0.014s] (  24/1504) tokf config::cache::tests::round_trip
+        PASS [   2.071s] (1502/1504) tokf::cli_shell make_shell_override_filters_git_status
+        PASS [   2.832s] (1503/1504) tokf::cli_shell shell_c_filters_git_no_pager_log
+        PASS [   7.023s] (1504/1504) tokf remote::retry::tests::retries_on_429_up_to_max
+────────────
+     Summary [   7.442s] 1504 tests run: 1504 passed, 2 skipped
