@@ -10,6 +10,7 @@ use crate::gain_render;
 #[allow(clippy::fn_params_excessive_bools)]
 pub fn cmd_gain(daily: bool, by_filter: bool, json: bool, top: usize, no_color: bool) -> i32 {
     prompt_upload_stats_if_needed();
+    tokf::setup::hint_setup_if_needed();
 
     let Some(path) = tracking::db_path() else {
         eprintln!("[tokf] error: cannot determine DB path");

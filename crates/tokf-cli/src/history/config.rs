@@ -21,6 +21,7 @@ pub struct TokfProjectConfig {
     pub sync: Option<TokfSyncSection>,
     pub shims: Option<TokfShimsSection>,
     pub output: Option<TokfOutputSection>,
+    pub setup: Option<crate::setup::TokfSetupSection>,
 }
 
 #[derive(Serialize, Deserialize)]

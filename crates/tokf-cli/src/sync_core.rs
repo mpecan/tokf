@@ -65,7 +65,7 @@ impl Drop for SyncLock {
 
 /// Generate a UTC ISO 8601 timestamp string without external dependencies.
 #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-fn utc_now_iso8601() -> String {
+pub fn utc_now_iso8601() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
