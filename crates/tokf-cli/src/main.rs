@@ -20,6 +20,7 @@ mod publish_stdlib_cmd;
 mod remote_cmd;
 mod resolve;
 mod search_cmd;
+mod setup_cmd;
 mod shell;
 mod show_cmd;
 mod sync_cmd;
@@ -345,6 +346,12 @@ enum Commands {
         #[arg(trailing_var_arg = true, required = true)]
         command_args: Vec<String>,
     },
+    /// Detect installed AI tools and install hooks interactively
+    Setup {
+        /// Re-run setup even if already completed
+        #[arg(long, alias = "renew")]
+        refresh: bool,
+    },
     /// Install a filter from the community registry
     Install {
         /// Filter hash (64 hex chars) or command pattern to search for
@@ -635,6 +642,7 @@ fn main() {
             &cli,
             |text, ec| generic::summary::summarize(text, ec, *max_lines),
         )),
+        Commands::Setup { refresh } => setup_cmd::cmd_setup(*refresh),
         Commands::Install {
             filter,
             local,

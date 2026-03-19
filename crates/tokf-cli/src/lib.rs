@@ -10,6 +10,7 @@ pub mod publish_shared;
 pub mod remote;
 pub mod rewrite;
 pub mod runner;
+pub mod setup;
 pub mod skill;
 pub mod sync_core;
 pub mod telemetry;

@@ -1942,7 +1942,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a86cc925d4053d0526ae7f5bc765dbd0d7a5d1a63d43974f4966cb349ca63295"
 dependencies = [
  "cc",
- "which",
+ "which 8.0.0",
 ]
 
 [[package]]
@@ -3742,6 +3742,7 @@ dependencies = [
  "toml",
  "tonic",
  "uuid",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -4386,6 +4387,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cfaf3c063993ff62e73cb4311efde4db1efb31ab78a3e5c457939ad5cc0bed"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "which"
+version = "7.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
+dependencies = [
+ "either",
+ "env_home",
+ "rustix",
+ "winsafe",
 ]
 
 [[package]]
