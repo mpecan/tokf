@@ -59,8 +59,8 @@ pub enum HookAction {
         /// Hook protocol format (default: claude-code)
         #[arg(long, value_enum, default_value_t = HookFormat::ClaudeCode)]
         format: HookFormat,
-        /// Permission decision behavior (default: allow)
-        #[arg(long, value_enum, default_value_t = PermissionMode::Allow)]
+        /// Permission decision behavior (default: preserve)
+        #[arg(long, value_enum, default_value_t = PermissionMode::Preserve)]
         permission: PermissionMode,
     },
     /// Install the integration for the target tool

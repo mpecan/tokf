@@ -27,10 +27,10 @@ use crate::runner;
 /// the original permission decision (or omit it) so other hooks can validate.
 #[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PermissionMode {
-    /// Always return `permissionDecision: "allow"` (default, backward compatible)
-    #[default]
+    /// Always return `permissionDecision: "allow"` (blocks subsequent hooks)
     Allow,
     /// Omit `permissionDecision` from response, letting other hooks decide
+    #[default]
     Preserve,
 }
 
