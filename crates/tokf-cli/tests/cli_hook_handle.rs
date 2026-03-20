@@ -75,9 +75,10 @@ fn hook_handle_rewrites_bash_git_status() {
         response["hookSpecificOutput"]["hookEventName"],
         "PreToolUse"
     );
-    assert_eq!(
-        response["hookSpecificOutput"]["permissionDecision"],
-        "allow"
+    // Default --permission is preserve: permissionDecision is omitted
+    assert!(
+        response["hookSpecificOutput"]["permissionDecision"].is_null(),
+        "expected permissionDecision to be absent (preserve mode)"
     );
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
@@ -96,9 +97,10 @@ fn hook_handle_rewrites_bash_with_args() {
         response["hookSpecificOutput"]["hookEventName"],
         "PreToolUse"
     );
-    assert_eq!(
-        response["hookSpecificOutput"]["permissionDecision"],
-        "allow"
+    // Default --permission is preserve: permissionDecision is omitted
+    assert!(
+        response["hookSpecificOutput"]["permissionDecision"].is_null(),
+        "expected permissionDecision to be absent (preserve mode)"
     );
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
@@ -194,9 +196,10 @@ fn hook_handle_fixture_bash() {
         response["hookSpecificOutput"]["hookEventName"],
         "PreToolUse"
     );
-    assert_eq!(
-        response["hookSpecificOutput"]["permissionDecision"],
-        "allow"
+    // Default --permission is preserve: permissionDecision is omitted
+    assert!(
+        response["hookSpecificOutput"]["permissionDecision"].is_null(),
+        "expected permissionDecision to be absent (preserve mode)"
     );
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
@@ -274,9 +277,10 @@ fn hook_handle_multiple_pattern_first_variant() {
         response["hookSpecificOutput"]["hookEventName"],
         "PreToolUse"
     );
-    assert_eq!(
-        response["hookSpecificOutput"]["permissionDecision"],
-        "allow"
+    // Default --permission is preserve: permissionDecision is omitted
+    assert!(
+        response["hookSpecificOutput"]["permissionDecision"].is_null(),
+        "expected permissionDecision to be absent (preserve mode)"
     );
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
@@ -297,9 +301,10 @@ fn hook_handle_multiple_pattern_second_variant() {
         response["hookSpecificOutput"]["hookEventName"],
         "PreToolUse"
     );
-    assert_eq!(
-        response["hookSpecificOutput"]["permissionDecision"],
-        "allow"
+    // Default --permission is preserve: permissionDecision is omitted
+    assert!(
+        response["hookSpecificOutput"]["permissionDecision"].is_null(),
+        "expected permissionDecision to be absent (preserve mode)"
     );
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],

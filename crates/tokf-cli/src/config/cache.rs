@@ -207,11 +207,34 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
         return;
     }
 
-    let tokf_escaped = shell_escape(&tokf_cmd);
-    for cmd in &basenames {
+    write_shim_scripts(&shims_dir, &basenames, &tokf_cmd);
+}
+
+/// Write shim scripts for each command basename.
+///
+/// Each shim guards against recursion via `TOKF_SHIM_DEPTH`. When the depth
+/// is > 0 (meaning a shim already called tokf), the shim strips its own
+/// directory from PATH and execs the real binary directly.
+fn write_shim_scripts(
+    shims_dir: &std::path::Path,
+    basenames: &std::collections::BTreeSet<String>,
+    tokf_cmd: &str,
+) {
+    let tokf_escaped = shell_escape(tokf_cmd);
+    let shims_dir_str = shims_dir.to_string_lossy();
+    for cmd in basenames {
         let shim_path = shims_dir.join(cmd);
         let cmd_escaped = shell_escape(cmd);
-        let content = format!("#!/bin/sh\nexec {tokf_escaped} -c {cmd_escaped} \"$@\"\n");
+        let content = format!(
+            "#!/bin/sh\n\
+             if [ \"${{TOKF_SHIM_DEPTH:-0}}\" -gt 0 ]; then\n\
+             \x20 PATH=$(printf '%s' \"$PATH\" | /usr/bin/awk -v d='{shims_dir_str}' \
+             'BEGIN{{RS=\":\"}}$0!=d{{printf \"%s%s\",sep,$0;sep=\":\"}}'); export PATH\n\
+             \x20 exec {cmd_escaped} \"$@\"\n\
+             fi\n\
+             export TOKF_SHIM_DEPTH=1\n\
+             exec {tokf_escaped} -c {cmd_escaped} \"$@\"\n"
+        );
         if std::fs::write(&shim_path, &content).is_ok() {
             #[cfg(unix)]
             {

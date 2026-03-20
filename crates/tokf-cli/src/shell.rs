@@ -50,6 +50,15 @@ fn restore_original_path() {
     }
 }
 
+/// Clear the shim depth counter so child processes don't inherit it.
+///
+/// SAFETY: same constraints as `restore_original_path` — call from
+/// `main()` before threads are spawned.
+fn clear_shim_depth() {
+    // SAFETY: called from main() before any threads are spawned.
+    unsafe { std::env::remove_var("TOKF_SHIM_DEPTH") };
+}
+
 /// Rewrite a command string and delegate to the real shell.
 ///
 /// Shared logic for both string mode and argv mode. Applies the rewrite
@@ -59,6 +68,7 @@ fn restore_original_path() {
 /// both modes are protected from shim recursion.
 fn rewrite_and_delegate(flags: &str, command: &str, verbose: bool) -> i32 {
     restore_original_path();
+    clear_shim_depth();
 
     if env_no_filter() {
         if verbose {
@@ -124,6 +134,7 @@ pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
 
     let verbose = env_verbose();
     restore_original_path();
+    clear_shim_depth();
 
     if env_no_filter() {
         if verbose {
