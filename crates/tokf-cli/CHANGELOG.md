@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.37](https://github.com/mpecan/tokf/compare/tokf-v0.2.36...tokf-v0.2.37) (2026-03-19)
+
+
+### Features
+
+* **cli:** generic fallback commands — tokf err, tokf test, tokf summary ([#298](https://github.com/mpecan/tokf/issues/298)) ([5ec063e](https://github.com/mpecan/tokf/commit/5ec063e3ae60db5583ad4ba6d1452010e04daa12))
+* **cli:** tokf setup — interactive wizard for AI tool detection ([#306](https://github.com/mpecan/tokf/issues/306)) ([f47569b](https://github.com/mpecan/tokf/commit/f47569b1ebaa81ec01834378cd7cdc556b4fffe5))
+* **filter:** add cargo/nextest filter ([#305](https://github.com/mpecan/tokf/issues/305)) ([d2f7b96](https://github.com/mpecan/tokf/commit/d2f7b9641b12e8567fc74b0aeaf21b695e2b298e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.36 to 0.2.37
+    * tokf-filter bumped from 0.2.36 to 0.2.37
+
 ## [0.2.36](https://github.com/mpecan/tokf/compare/tokf-v0.2.35...tokf-v0.2.36) (2026-03-14)
 
 
