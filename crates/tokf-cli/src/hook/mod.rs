@@ -193,32 +193,55 @@ fn handle_cursor_json_inner(
         return false;
     };
 
-    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+    if is_external_engine(user_config) {
+        let verdict = resolve_permission_verdict(
+            &command,
+            json,
+            HookFormat::Cursor,
+            user_config,
+            (deny_rules, ask_rules),
+        );
 
+        let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+        let output_cmd = if rewritten == command {
+            command
+        } else {
+            rewritten
+        };
+
+        let response = match verdict {
+            PermissionVerdict::Deny => return false,
+            PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(output_cmd),
+            PermissionVerdict::Allow => CursorHookResponse::rewrite(output_cmd),
+        };
+
+        if let Ok(out) = serde_json::to_string(&response) {
+            println!("{out}");
+            return true;
+        }
+        return false;
+    }
+
+    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
     if rewritten == command {
         return false;
     }
 
-    // Check the ORIGINAL command against permission rules before responding.
-    let verdict = resolve_permission_verdict(
-        &command,
-        json,
-        HookFormat::Cursor,
-        user_config,
-        (deny_rules, ask_rules),
-    );
-    let response = match verdict {
-        PermissionVerdict::Deny => return false,
-        PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(rewritten),
-        PermissionVerdict::Allow => CursorHookResponse::rewrite(rewritten),
-    };
-
+    let response = CursorHookResponse::rewrite(rewritten);
     if let Ok(out) = serde_json::to_string(&response) {
         println!("{out}");
         return true;
     }
 
     false
+}
+
+/// Check if an external permission engine is configured.
+fn is_external_engine(user_config: &RewriteConfig) -> bool {
+    user_config
+        .permissions
+        .as_ref()
+        .is_some_and(|p| p.engine == PermissionEngineType::External && p.external.is_some())
 }
 
 /// Resolve the permission verdict using the configured engine.
@@ -307,21 +330,45 @@ fn handle_generic<R: serde::Serialize>(
         return false;
     };
 
-    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+    // When an external permission engine is configured, consult it on every
+    // command — even ones tokf has no filter for. This lets the engine
+    // auto-approve safe commands without the user being prompted.
+    if is_external_engine(user_config) {
+        let verdict = resolve_permission_verdict(
+            &command,
+            json,
+            format,
+            user_config,
+            (deny_rules, ask_rules),
+        );
 
+        let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+        let output_cmd = if rewritten == command {
+            command
+        } else {
+            rewritten
+        };
+
+        let response = match verdict {
+            PermissionVerdict::Deny => return false,
+            PermissionVerdict::Ask => build_ask(output_cmd),
+            PermissionVerdict::Allow => build_allow(output_cmd),
+        };
+
+        if let Ok(out) = serde_json::to_string(&response) {
+            println!("{out}");
+            return true;
+        }
+        return false;
+    }
+
+    // No external engine — only act when tokf has a matching filter.
+    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
     if rewritten == command {
         return false;
     }
 
-    // Check the ORIGINAL command against permission rules before responding.
-    let verdict =
-        resolve_permission_verdict(&command, json, format, user_config, (deny_rules, ask_rules));
-    let response = match verdict {
-        PermissionVerdict::Deny => return false,
-        PermissionVerdict::Ask => build_ask(rewritten),
-        PermissionVerdict::Allow => build_allow(rewritten),
-    };
-
+    let response = build_allow(rewritten);
     if let Ok(json) = serde_json::to_string(&response) {
         println!("{json}");
         return true;
