@@ -188,7 +188,7 @@ Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_
 
 ## External permission engine
 
-By default, tokf checks commands against deny/ask rules from Claude Code's `settings.json` files. You can delegate this decision to an external process — a "sub-hook" that performs deeper semantic analysis of commands.
+You can delegate permission decisions to an external process — a "sub-hook" that performs deeper semantic analysis of commands. When configured, the engine is consulted on **every** command, not just ones tokf has a filter for. This lets the engine auto-approve safe commands without the user being prompted.
 
 ### Configuration
 
@@ -200,14 +200,33 @@ engine = "external"
 
 [permissions.external]
 command = "dippy"
-args = ["hook", "handle"]
+args = ["hook", "handle", "--mode", "{format}"]
 timeout_ms = 3000    # default: 5000
 on_error = "builtin" # what to do if the engine fails
 ```
 
+### Tool format (`{format}`)
+
+The `{format}` placeholder in `args` is replaced with the AI tool identifier before spawning:
+
+| Tool | Default value |
+|---|---|
+| Claude Code | `claude-code` |
+| Gemini CLI | `gemini` |
+| Cursor | `cursor` |
+
+If the engine expects different names, add a `format_map`:
+
+```toml
+[permissions.external]
+command = "my-engine"
+args = ["check", "--tool", "{format}"]
+format_map = { "claude-code" = "claude", "gemini" = "google" }
+```
+
 ### Protocol
 
-1. tokf spawns the engine process (`command` + `args`)
+1. tokf spawns the engine process (`command` + `args`, with `{format}` resolved)
 2. The original hook JSON (from the AI tool) is written to the engine's **stdin**
 3. The engine returns a standard hook response JSON on **stdout** — the same format the AI tool expects
 4. tokf extracts the permission decision from the response and applies it to its own rewritten command
@@ -234,7 +253,7 @@ engine = "external"
 
 [permissions.external]
 command = "dippy"
-args = ["hook", "handle"]
+args = ["hook", "handle", "--mode", "{format}"]
 timeout_ms = 3000
 on_error = "builtin"
 ```

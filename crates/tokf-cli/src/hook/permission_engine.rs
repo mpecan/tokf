@@ -22,7 +22,9 @@ pub struct ExternalEngineConfig {
     /// Path to the external engine binary (resolved via PATH if not absolute).
     pub command: String,
 
-    /// Arguments passed to the engine before stdin is written.
+    /// Arguments passed to the engine. Use `{format}` as a placeholder for the
+    /// tool format (e.g. `["hook", "handle", "--mode", "{format}"]`).
+    /// The placeholder is replaced with the resolved format string before spawning.
     #[serde(default)]
     pub args: Vec<String>,
 
@@ -33,6 +35,26 @@ pub struct ExternalEngineConfig {
     /// What to do when the engine fails (crash, timeout, bad output).
     #[serde(default)]
     pub on_error: ErrorFallback,
+
+    /// Override the default format strings used for `{format}` substitution.
+    /// Keys are the default names (`claude-code`, `gemini`, `cursor`);
+    /// values are the replacements the engine expects.
+    ///
+    /// Example: `{ "claude-code" = "claude", "gemini" = "google" }`
+    #[serde(default)]
+    pub format_map: std::collections::HashMap<String, String>,
+}
+
+impl ExternalEngineConfig {
+    /// Resolve the format string for a given hook format,
+    /// applying `format_map` overrides if present.
+    pub fn resolve_format(&self, format: HookFormat) -> String {
+        let default = format.as_str();
+        self.format_map
+            .get(default)
+            .cloned()
+            .unwrap_or_else(|| default.to_string())
+    }
 }
 
 /// Behaviour when the external engine fails.
@@ -92,8 +114,15 @@ pub fn check_with_engine(
     hook_json: &str,
     format: HookFormat,
 ) -> Result<PermissionVerdict, EngineError> {
+    let format_str = config.resolve_format(format);
+    let resolved_args: Vec<String> = config
+        .args
+        .iter()
+        .map(|a| a.replace("{format}", &format_str))
+        .collect();
+
     let mut child = Command::new(&config.command)
-        .args(&config.args)
+        .args(&resolved_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -328,6 +357,7 @@ mod tests {
             args: vec![],
             timeout_ms: 5000,
             on_error: ErrorFallback::Ask,
+            format_map: std::collections::HashMap::new(),
         }
     }
 
@@ -455,5 +485,71 @@ mod tests {
         assert_eq!(result.unwrap(), PermissionVerdict::Allow);
         let args = std::fs::read_to_string(&marker_file).unwrap();
         assert_eq!(args.trim(), "hook handle");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn engine_format_substitution() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let marker_file = dir.path().join("args.txt");
+        let cmd = write_mock_engine(
+            dir.path(),
+            "engine.sh",
+            &format!(
+                "#!/bin/sh\necho \"$@\" > {}\ncat >/dev/null\necho '{{\"hookSpecificOutput\":{{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"updatedInput\":{{\"command\":\"ls\"}}}}}}'",
+                marker_file.display()
+            ),
+        );
+        let mut config = default_config(cmd);
+        config.args = vec!["--mode".to_string(), "{format}".to_string()];
+        let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#;
+        let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
+        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        let args = std::fs::read_to_string(&marker_file).unwrap();
+        assert_eq!(args.trim(), "--mode claude-code");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn engine_format_map_override() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let marker_file = dir.path().join("args.txt");
+        let cmd = write_mock_engine(
+            dir.path(),
+            "engine.sh",
+            &format!(
+                "#!/bin/sh\necho \"$@\" > {}\ncat >/dev/null\necho '{{\"hookSpecificOutput\":{{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\",\"updatedInput\":{{\"command\":\"ls\"}}}}}}'",
+                marker_file.display()
+            ),
+        );
+        let mut config = default_config(cmd);
+        config.args = vec!["--mode".to_string(), "{format}".to_string()];
+        config.format_map =
+            std::collections::HashMap::from([("claude-code".to_string(), "claude".to_string())]);
+        let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#;
+        let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
+        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        let args = std::fs::read_to_string(&marker_file).unwrap();
+        assert_eq!(args.trim(), "--mode claude");
+    }
+
+    #[test]
+    fn resolve_format_default() {
+        let config = default_config("test".to_string());
+        assert_eq!(config.resolve_format(HookFormat::ClaudeCode), "claude-code");
+        assert_eq!(config.resolve_format(HookFormat::Gemini), "gemini");
+        assert_eq!(config.resolve_format(HookFormat::Cursor), "cursor");
+    }
+
+    #[test]
+    fn resolve_format_with_map() {
+        let mut config = default_config("test".to_string());
+        config.format_map = std::collections::HashMap::from([
+            ("claude-code".to_string(), "anthropic".to_string()),
+            ("gemini".to_string(), "google".to_string()),
+        ]);
+        assert_eq!(config.resolve_format(HookFormat::ClaudeCode), "anthropic");
+        assert_eq!(config.resolve_format(HookFormat::Gemini), "google");
+        assert_eq!(config.resolve_format(HookFormat::Cursor), "cursor");
     }
 }
