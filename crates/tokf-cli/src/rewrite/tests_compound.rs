@@ -199,6 +199,7 @@ fn rewrite_user_rule_wraps_piped_command() {
             match_pattern: "^cargo test".to_string(),
             replace: "my-wrapper {0}{rest}".to_string(),
         }],
+        permissions: None,
     };
     let r = rewrite_with_config(
         "cargo test | grep FAILED",
@@ -220,6 +221,7 @@ fn rewrite_skip_pattern_wins_over_pipe_guard() {
         }),
         pipe: None,
         rewrite: vec![],
+        permissions: None,
     };
     let r = rewrite_with_config(
         "git status | grep M",

@@ -1592,6 +1592,59 @@ tokf gain summary
 
 Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_less` has no effect.
 
+## External permission engine
+
+By default, tokf checks commands against deny/ask rules from Claude Code's `settings.json` files. You can delegate this decision to an external process — a "sub-hook" that performs deeper semantic analysis of commands.
+
+### Configuration
+
+Add a `[permissions]` section to `.tokf/rewrites.toml`:
+
+```toml
+[permissions]
+engine = "external"
+
+[permissions.external]
+command = "dippy"
+args = ["hook", "handle"]
+timeout_ms = 3000    # default: 5000
+on_error = "builtin" # what to do if the engine fails
+```
+
+### Protocol
+
+1. tokf spawns the engine process (`command` + `args`)
+2. The original hook JSON (from the AI tool) is written to the engine's **stdin**
+3. The engine returns a standard hook response JSON on **stdout** — the same format the AI tool expects
+4. tokf extracts the permission decision from the response and applies it to its own rewritten command
+
+The engine sees the **original** command (not the rewritten one). tokf controls the rewrite; the engine controls the permission decision.
+
+### Error handling (`on_error`)
+
+When the engine fails (crash, timeout, invalid output), the `on_error` field determines the fallback:
+
+| Value | Behaviour |
+|---|---|
+| `"ask"` (default) | Fail closed — prompt user for permission |
+| `"allow"` | Fail open — auto-allow the command |
+| `"builtin"` | Fall back to built-in deny/ask rule matching |
+
+### Example: Dippy integration
+
+[Dippy](https://github.com/ldayton/Dippy) is a permission engine that performs deep semantic analysis of bash commands — auto-approving safe commands while blocking dangerous ones.
+
+```toml
+[permissions]
+engine = "external"
+
+[permissions.external]
+command = "dippy"
+args = ["hook", "handle"]
+timeout_ms = 3000
+on_error = "builtin"
+```
+
 ## Environment variable prefixes
 
 Leading `KEY=VALUE` assignments are automatically stripped before matching, so env-prefixed commands are rewritten correctly:

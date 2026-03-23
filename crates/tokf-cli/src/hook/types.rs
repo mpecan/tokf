@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+/// Which hook format is being processed — determines response shape
+/// and which JSON field carries the permission decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookFormat {
+    /// Claude Code: `hookSpecificOutput.permissionDecision`
+    ClaudeCode,
+    /// Gemini CLI: `decision`
+    Gemini,
+    /// Cursor: `permission`
+    Cursor,
+}
+
 /// Claude Code `PreToolUse` hook input (read from stdin).
 #[derive(Debug, Clone, Deserialize)]
 pub struct HookInput {

@@ -275,12 +275,13 @@ fn find_word(cmd: &str, from: usize, needle: &str) -> Option<usize> {
 
 /// Split a compound shell command into individual segments.
 ///
-/// Splits on `&&`, `||`, and `;`. Pipes (`|`) are intentionally excluded —
-/// `git log | head` is one logical command for permission purposes.
-fn split_compound_command(cmd: &str) -> Vec<&str> {
-    cmd.split("&&")
-        .flat_map(|s| s.split("||"))
-        .flat_map(|s| s.split(';'))
+/// Uses the tree-sitter-bash AST for quote-aware splitting on `&&`, `||`,
+/// and `;`. Pipes (`|`) are intentionally excluded — `git log | head` is
+/// one logical command for permission purposes.
+fn split_compound_command(cmd: &str) -> Vec<String> {
+    crate::rewrite::bash_ast::split_compound(cmd)
+        .into_iter()
+        .map(|(seg, _sep)| seg)
         .collect()
 }
 

@@ -6,6 +6,7 @@ pub mod cursor;
 pub mod gemini;
 pub mod instructions;
 pub mod opencode;
+pub mod permission_engine;
 pub mod permissions;
 pub mod types;
 pub mod windsurf;
@@ -13,11 +14,14 @@ pub mod windsurf;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use permission_engine::ErrorFallback;
 use permissions::PermissionVerdict;
-use types::{CursorHookResponse, CursorInput, GeminiHookResponse, HookInput, HookResponse};
+use types::{
+    CursorHookResponse, CursorInput, GeminiHookResponse, HookFormat, HookInput, HookResponse,
+};
 
 use crate::rewrite;
-use crate::rewrite::types::RewriteConfig;
+use crate::rewrite::types::{PermissionEngineType, RewriteConfig};
 use crate::runner;
 
 /// Process a `PreToolUse` hook invocation.
@@ -46,6 +50,7 @@ pub(crate) fn handle_json(json: &str) -> bool {
     handle_with_autodiscovery(
         json,
         "Bash",
+        HookFormat::ClaudeCode,
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
     )
@@ -63,6 +68,7 @@ pub(crate) fn handle_json_with_rules(
     handle_generic(
         json,
         "Bash",
+        HookFormat::ClaudeCode,
         user_config,
         search_dirs,
         deny_rules,
@@ -86,6 +92,7 @@ pub(crate) fn handle_gemini_json(json: &str) -> bool {
     handle_with_autodiscovery(
         json,
         "run_shell_command",
+        HookFormat::Gemini,
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
     )
@@ -103,6 +110,7 @@ pub(crate) fn handle_gemini_json_with_rules(
     handle_generic(
         json,
         "run_shell_command",
+        HookFormat::Gemini,
         user_config,
         search_dirs,
         deny_rules,
@@ -117,6 +125,7 @@ pub(crate) fn handle_gemini_json_with_rules(
 fn handle_with_autodiscovery<R: serde::Serialize>(
     json: &str,
     expected_tool: &str,
+    format: HookFormat,
     build_allow: impl FnOnce(String) -> R,
     build_ask: impl FnOnce(String) -> R,
 ) -> bool {
@@ -126,6 +135,7 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
     handle_generic(
         json,
         expected_tool,
+        format,
         &user_config,
         &search_dirs,
         &deny,
@@ -189,19 +199,74 @@ fn handle_cursor_json_inner(
         return false;
     }
 
-    // Check the ORIGINAL command against deny/ask rules before responding.
-    let response = match permissions::check_command_with_rules(&command, deny_rules, ask_rules) {
+    // Check the ORIGINAL command against permission rules before responding.
+    let verdict = resolve_permission_verdict(
+        &command,
+        json,
+        HookFormat::Cursor,
+        user_config,
+        (deny_rules, ask_rules),
+    );
+    let response = match verdict {
         PermissionVerdict::Deny => return false,
         PermissionVerdict::Ask => CursorHookResponse::rewrite_ask(rewritten),
         PermissionVerdict::Allow => CursorHookResponse::rewrite(rewritten),
     };
 
-    if let Ok(json) = serde_json::to_string(&response) {
-        println!("{json}");
+    if let Ok(out) = serde_json::to_string(&response) {
+        println!("{out}");
         return true;
     }
 
     false
+}
+
+/// Resolve the permission verdict using the configured engine.
+///
+/// When `engine = "external"`, delegates to the external sub-hook process.
+/// Falls back to built-in rule matching on error or when no external engine
+/// is configured.
+fn resolve_permission_verdict(
+    cmd: &str,
+    hook_json: &str,
+    format: HookFormat,
+    user_config: &RewriteConfig,
+    builtin_rules: (&[String], &[String]),
+) -> PermissionVerdict {
+    let (deny_rules, ask_rules) = builtin_rules;
+    let engine_type = user_config
+        .permissions
+        .as_ref()
+        .map_or(&PermissionEngineType::Builtin, |p| &p.engine);
+
+    match engine_type {
+        PermissionEngineType::Builtin => {
+            permissions::check_command_with_rules(cmd, deny_rules, ask_rules)
+        }
+        PermissionEngineType::External => {
+            let Some(ext_config) = user_config
+                .permissions
+                .as_ref()
+                .and_then(|p| p.external.as_ref())
+            else {
+                // No external config provided — fall back to builtin.
+                return permissions::check_command_with_rules(cmd, deny_rules, ask_rules);
+            };
+            match permission_engine::check_with_engine(ext_config, hook_json, format) {
+                Ok(verdict) => verdict,
+                Err(e) => {
+                    eprintln!("[tokf] warning: external permission engine failed: {e}");
+                    match ext_config.on_error {
+                        ErrorFallback::Ask => PermissionVerdict::Ask,
+                        ErrorFallback::Allow => PermissionVerdict::Allow,
+                        ErrorFallback::Builtin => {
+                            permissions::check_command_with_rules(cmd, deny_rules, ask_rules)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Generic handle logic shared across all hook formats.
@@ -220,6 +285,7 @@ fn handle_cursor_json_inner(
 fn handle_generic<R: serde::Serialize>(
     json: &str,
     expected_tool: &str,
+    format: HookFormat,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
     deny_rules: &[String],
@@ -247,8 +313,10 @@ fn handle_generic<R: serde::Serialize>(
         return false;
     }
 
-    // Check the ORIGINAL command against deny/ask rules before responding.
-    let response = match permissions::check_command_with_rules(&command, deny_rules, ask_rules) {
+    // Check the ORIGINAL command against permission rules before responding.
+    let verdict =
+        resolve_permission_verdict(&command, json, format, user_config, (deny_rules, ask_rules));
+    let response = match verdict {
         PermissionVerdict::Deny => return false,
         PermissionVerdict::Ask => build_ask(rewritten),
         PermissionVerdict::Allow => build_allow(rewritten),

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use types::{CommandAnalysis, DiscoverResult, DiscoverSummary, ExtractedCommand};
 
 use crate::config::{self, ResolvedFilter};
-use crate::rewrite::compound::{bare_pipe_positions, split_compound};
+use crate::rewrite::bash_ast;
 use crate::tracking;
 
 const DEFAULT_SAVINGS_PCT: f64 = 60.0;
@@ -250,8 +250,7 @@ pub fn classify_command(
 /// Normalize a command for matching: strip the last bare pipe and everything after it.
 fn normalize_command(command: &str) -> String {
     let command = command.trim();
-    // Reuse the existing quote-aware pipe finder from rewrite::compound.
-    let positions = bare_pipe_positions(command);
+    let positions = bash_ast::pipe_positions(command);
     if let Some(&last_pipe) = positions.last() {
         command[..last_pipe].trim_end().to_string()
     } else {
@@ -272,7 +271,7 @@ fn extract_group_keys(command: &str) -> Vec<String> {
     let first_line = command.lines().next().unwrap_or(command);
     // Strip heredoc markers and everything after them.
     let first_line = strip_heredoc(first_line);
-    let segments = split_compound(&first_line);
+    let segments = bash_ast::split_compound(&first_line);
     segments
         .iter()
         .filter_map(|(segment, _)| {
