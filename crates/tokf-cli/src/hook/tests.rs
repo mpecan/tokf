@@ -50,7 +50,7 @@ fn handle_json_with_rules_rewrites_matching_command() {
 
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
     let config = RewriteConfig::default();
-    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite to occur for matching command");
 }
 
@@ -59,7 +59,7 @@ fn handle_json_with_rules_no_match_returns_false() {
     let dir = tempfile::TempDir::new().unwrap();
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
     let config = RewriteConfig::default();
-    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(!result);
 }
 
@@ -74,7 +74,7 @@ fn handle_json_rewrites_single_env_var_prefix() {
 
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"DEBUG=1 git status"}}"#;
     let config = RewriteConfig::default();
-    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite for env-prefixed matching command");
 }
 
@@ -90,7 +90,7 @@ fn handle_json_rewrites_multiple_env_vars_prefix() {
     let json =
         r#"{"tool_name":"Bash","tool_input":{"command":"RUST_LOG=debug TERM=xterm cargo test"}}"#;
     let config = RewriteConfig::default();
-    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite for multiple env vars prefix");
 }
 
@@ -105,7 +105,7 @@ fn handle_json_rewrites_env_var_with_strippable_pipe() {
 
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"RUST_LOG=debug cargo test | grep FAILED"}}"#;
     let config = RewriteConfig::default();
-    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite for env var + strippable pipe");
 }
 
@@ -475,8 +475,7 @@ fn handle_gemini_rewrites_matching_command() {
 
     let json = r#"{"tool_name":"run_shell_command","tool_input":{"command":"git status"}}"#;
     let config = RewriteConfig::default();
-    let result =
-        handle_gemini_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_gemini_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite for Gemini matching command");
 }
 
@@ -511,8 +510,7 @@ fn handle_cursor_rewrites_matching_command() {
     // Cursor's beforeShellExecution sends command at the top level
     let json = r#"{"command":"cargo test","cwd":"/tmp","hook_event_name":"beforeShellExecution"}"#;
     let config = RewriteConfig::default();
-    let result =
-        handle_cursor_json_with_rules(json, &config, &[dir.path().to_path_buf()], &[], &[]);
+    let result = handle_cursor_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
     assert!(result, "expected rewrite for Cursor matching command");
 }
 
