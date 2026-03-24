@@ -152,10 +152,16 @@ pub fn check_with_engine(
         match child.try_wait() {
             Ok(Some(status)) => {
                 let stdout_bytes = handle.join().ok().and_then(Result::ok).unwrap_or_default();
-                if !status.success() {
-                    return Err(EngineError::NonZeroExit(status.code()));
+                // Always try to parse stdout first — engines like rippy/dippy
+                // use exit code 2 for ask/deny but still produce valid JSON.
+                // Only fall back to NonZeroExit if parsing fails.
+                match parse_engine_output(&stdout_bytes, format) {
+                    Ok(verdict) => return Ok(verdict),
+                    Err(_) if !status.success() => {
+                        return Err(EngineError::NonZeroExit(status.code()));
+                    }
+                    Err(e) => return Err(e),
                 }
-                return parse_engine_output(&stdout_bytes, format);
             }
             Ok(None) => {
                 if std::time::Instant::now() >= deadline {
@@ -199,11 +205,11 @@ pub fn extract_verdict(json: &Value, format: HookFormat) -> Option<PermissionVer
     };
 
     // For all formats: field present with "allow" → Allow,
-    // field present with "deny" → Deny, field absent → Ask.
+    // field present with "deny" → Deny, field absent or "ask" → Ask.
     match decision_str {
         Some("allow") => Some(PermissionVerdict::Allow),
         Some("deny") => Some(PermissionVerdict::Deny),
-        None => Some(PermissionVerdict::Ask),
+        Some("ask") | None => Some(PermissionVerdict::Ask),
         Some(_) => None, // Unknown value — caller treats as error.
     }
 }
@@ -402,6 +408,23 @@ mod tests {
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
         assert!(matches!(result, Err(EngineError::NonZeroExit(Some(1)))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn engine_non_zero_exit_with_valid_json_uses_verdict() {
+        // Engines like rippy use exit code 2 for ask/deny but still produce valid JSON.
+        let dir = tempfile::TempDir::new().unwrap();
+        let response = r#"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","updatedInput":{"command":"rm -rf /"}}}"#;
+        let cmd = write_mock_engine(
+            dir.path(),
+            "engine.sh",
+            &format!("#!/bin/sh\ncat >/dev/null\necho '{response}'\nexit 2"),
+        );
+        let config = default_config(cmd);
+        let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}"#;
+        let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
+        assert_eq!(result.unwrap(), PermissionVerdict::Ask);
     }
 
     #[cfg(unix)]
