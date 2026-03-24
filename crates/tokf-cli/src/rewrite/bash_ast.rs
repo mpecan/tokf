@@ -1,9 +1,9 @@
-//! AST-based bash command parsing using tree-sitter-bash.
+//! AST-based bash command parsing using rable.
 //!
 //! Provides grammar-aware splitting, pipe detection, heredoc detection,
 //! env-prefix stripping, and command word extraction.
 
-use tree_sitter::{Node, Parser, Tree};
+use rable::ast::Node;
 
 /// Result of stripping a simple pipe from a command.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,95 +35,75 @@ pub fn strip_env_prefix(command: &str) -> Option<(String, String)> {
 }
 
 /// Returns `true` if the command has a top-level heredoc redirect.
-///
-/// Uses the AST when the input is a complete heredoc (body included).
-/// Falls back to scanning for `<<` at depth 0 for incomplete commands
-/// (e.g. `cat <<EOF` without the body), since tree-sitter needs the
-/// full heredoc syntax to produce a `heredoc_redirect` node.
 pub fn has_toplevel_heredoc(command: &str) -> bool {
-    if let Some(p) = ParsedCommand::parse(command) {
-        if p.has_toplevel_heredoc() {
-            return true;
-        }
-        // Check ERROR nodes for `<<` — indicates an incomplete heredoc.
-        if scan_for_heredoc_marker(p.tree.root_node(), &p.source, false) {
-            return true;
-        }
-    }
-    false
+    ParsedCommand::parse(command).is_some_and(|p| p.has_toplevel_heredoc())
 }
 
-fn scan_for_heredoc_marker(node: Node, source: &str, inside_substitution: bool) -> bool {
-    if node.kind() == "ERROR" && !inside_substitution {
-        let text = &source[node.byte_range()];
-        if text.contains("<<") {
-            return true;
-        }
-    }
-    let in_sub = inside_substitution || node.kind() == "command_substitution";
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if scan_for_heredoc_marker(child, source, in_sub) {
-            return true;
-        }
-    }
-    false
-}
-
-/// A parsed bash command backed by a tree-sitter AST.
+/// A parsed bash command backed by a rable AST.
 pub struct ParsedCommand {
-    tree: Tree,
+    nodes: Vec<Node>,
     source: String,
 }
 
 impl ParsedCommand {
     /// Parse a bash command string into an AST.
     ///
-    /// Returns `None` if tree-sitter cannot parse the input at all.
+    /// Returns `None` if rable cannot parse the input.
     pub fn parse(source: &str) -> Option<Self> {
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_bash::LANGUAGE.into())
-            .ok()?;
-        let tree = parser.parse(source, None)?;
+        let nodes = rable::parse(source, false).ok()?;
         Some(Self {
-            tree,
+            nodes,
             source: source.to_string(),
         })
     }
 
-    /// Text slice for an AST node.
-    #[cfg(test)]
-    fn text(&self, node: Node) -> &str {
-        &self.source[node.byte_range()]
-    }
-
     /// Split a compound command at chain operators (`&&`, `||`, `;`).
     ///
-    /// Returns `(segment, separator)` pairs matching the legacy
-    /// `compound::split_compound` API. Pipes are NOT separators.
+    /// Returns `(segment, separator)` pairs. Pipes are NOT separators.
     pub fn compound_segments(&self) -> Vec<(String, String)> {
-        let root = self.tree.root_node();
-        let mut result = Vec::new();
-        collect_segments(&self.source, root, &mut result);
-
-        if result.is_empty() {
+        // Collect operator strings and their positions in source order.
+        let operators = collect_operators(&self.nodes);
+        if operators.is_empty() {
             return vec![(self.source.clone(), String::new())];
         }
+
+        // Split source at operator positions.
+        let mut result = Vec::new();
+        let mut pos = 0;
+
+        for op in &operators {
+            if let Some(op_pos) = self.source[pos..].find(op.as_str()) {
+                let abs_pos = pos + op_pos;
+                let segment = self.source[pos..abs_pos].trim_end().to_string();
+                let sep = rebuild_separator(&self.source, op, abs_pos);
+                result.push((segment, sep));
+                pos = abs_pos + op.len();
+                // Skip whitespace after operator.
+                while pos < self.source.len() && self.source.as_bytes()[pos] == b' ' {
+                    pos += 1;
+                }
+            }
+        }
+
+        // Remaining text after last operator.
+        let tail = self.source[pos..].to_string();
+        result.push((tail, String::new()));
+
         result
     }
 
     /// Find byte positions of bare pipe operators (not `||`).
     pub fn pipe_positions(&self) -> Vec<usize> {
-        let root = self.tree.root_node();
         let mut positions = Vec::new();
-        collect_pipe_positions(root, &mut positions);
+        for node in &self.nodes {
+            collect_pipe_positions(&self.source, node, &mut positions);
+        }
         positions
     }
 
     /// Returns `true` if the command contains at least one bare pipe.
     pub fn has_bare_pipe(&self) -> bool {
-        !self.pipe_positions().is_empty()
+        self.nodes.iter().any(has_pipeline)
     }
 
     /// If the command has exactly one bare pipe to a simple suffix
@@ -150,29 +130,45 @@ impl ParsedCommand {
     /// Returns `Some((env_prefix, rest))` where `env_prefix` includes
     /// trailing whitespace. Returns `None` if there are no env var assignments.
     pub fn env_prefix(&self) -> Option<(String, String)> {
-        let root = self.tree.root_node();
-        let cmd_node = find_first_command(root)?;
+        // Find the first Command node and check for assignment words.
+        let cmd = find_first_command(&self.nodes)?;
+        let Node::Command { words, .. } = cmd else {
+            return None;
+        };
 
-        let mut last_assignment_end = 0;
-        let mut found_assignment = false;
-        let mut cursor = cmd_node.walk();
-
-        for child in cmd_node.children(&mut cursor) {
-            if child.kind() == "variable_assignment" {
-                last_assignment_end = child.end_byte();
-                found_assignment = true;
+        // Count leading words that look like variable assignments (contain `=`).
+        let mut assignment_count = 0;
+        for word in words {
+            if let Node::Word { value, .. } = word {
+                if looks_like_assignment(value) {
+                    assignment_count += 1;
+                } else {
+                    break;
+                }
             } else {
                 break;
             }
         }
 
-        if !found_assignment {
+        if assignment_count == 0 {
             return None;
         }
 
-        let rest_start = self.source[last_assignment_end..]
+        // Find where the assignments end in the source string.
+        // Walk through the source matching each assignment word.
+        let mut pos = 0;
+        for word in words.iter().take(assignment_count) {
+            if let Node::Word { value, .. } = word
+                && let Some(idx) = self.source[pos..].find(value.as_str())
+            {
+                pos += idx + value.len();
+            }
+        }
+
+        // Include trailing whitespace.
+        let rest_start = self.source[pos..]
             .find(|c: char| !c.is_ascii_whitespace())
-            .map_or(self.source.len(), |offset| last_assignment_end + offset);
+            .map_or(self.source.len(), |offset| pos + offset);
 
         let prefix = &self.source[..rest_start];
         let rest = &self.source[rest_start..];
@@ -188,84 +184,73 @@ impl ParsedCommand {
     ///
     /// A heredoc inside `$(...)` command substitution is NOT top-level.
     pub fn has_toplevel_heredoc(&self) -> bool {
-        let root = self.tree.root_node();
-        find_toplevel_heredoc(root, false)
+        self.nodes.iter().any(|n| has_heredoc(n, false))
     }
 
     /// Extract command words (command name + arguments) from a simple command.
-    ///
-    /// Strips quotes from word nodes. Useful for pattern matching.
     #[cfg(test)]
     pub fn command_words(&self) -> Option<Vec<String>> {
-        let root = self.tree.root_node();
-        let cmd_node = find_first_command(root)?;
-        let mut words = Vec::new();
-        let mut cursor = cmd_node.walk();
+        let cmd = find_first_command(&self.nodes)?;
+        let Node::Command { words, .. } = cmd else {
+            return None;
+        };
 
-        for child in cmd_node.children(&mut cursor) {
-            match child.kind() {
-                "command_name" | "word" | "string" | "raw_string" | "concatenation"
-                | "simple_expansion" | "expansion" | "number" => {
-                    words.push(unquote(self.text(child)));
-                }
-                "variable_assignment" => {} // skip env vars
-                _ => {
-                    if child.is_named() {
-                        words.push(self.text(child).to_string());
+        let result: Vec<String> = words
+            .iter()
+            .filter_map(|w| {
+                if let Node::Word { value, .. } = w {
+                    if looks_like_assignment(value) {
+                        return None;
                     }
-                }
-            }
-        }
-
-        if words.is_empty() { None } else { Some(words) }
-    }
-}
-
-// --- Free functions for tree walking (avoids clippy::only_used_in_recursion) ---
-
-/// Recursively collect segments from compound nodes.
-fn collect_segments(source: &str, node: Node, out: &mut Vec<(String, String)>) {
-    match node.kind() {
-        "list" | "program" => {
-            let child_count = node.child_count();
-            for i in 0..child_count {
-                let Some(child) = node.child(i) else {
-                    continue;
-                };
-                let kind = child.kind();
-                if is_chain_operator(kind) || kind == "\n" {
-                    let sep = if kind == "\n" {
-                        "\n".to_string()
-                    } else {
-                        rebuild_separator(source, &child)
-                    };
-                    if let Some(last) = out.last_mut() {
-                        last.1 = sep;
-                    }
+                    Some(unquote(value))
                 } else {
-                    collect_segments(source, child, out);
+                    None
                 }
-            }
-        }
-        _ => {
-            out.push((source[node.byte_range()].to_string(), String::new()));
+            })
+            .collect();
+
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
         }
     }
 }
 
-/// Rebuild the separator string preserving surrounding whitespace.
-fn rebuild_separator(source: &str, node: &Node) -> String {
-    let op = &source[node.byte_range()];
-    let start = node.start_byte();
-    let end = node.end_byte();
+// --- AST walking helpers ---
+
+/// Collect operator strings from List nodes in order.
+fn collect_operators(nodes: &[Node]) -> Vec<String> {
+    let mut ops = Vec::new();
+    for node in nodes {
+        collect_operators_recursive(node, &mut ops);
+    }
+    ops
+}
+
+fn collect_operators_recursive(node: &Node, ops: &mut Vec<String>) {
+    if let Node::List { parts } = node {
+        for part in parts {
+            if let Node::Operator { op } = part {
+                ops.push(op.clone());
+            } else {
+                collect_operators_recursive(part, ops);
+            }
+        }
+    }
+}
+
+/// Rebuild a separator string, preserving surrounding whitespace from the source.
+fn rebuild_separator(source: &str, op: &str, op_pos: usize) -> String {
+    let op_end = op_pos + op.len();
     let bytes = source.as_bytes();
 
-    let before = if start > 0 && bytes[start - 1] == b' ' {
+    let before = if op_pos > 0 && bytes[op_pos - 1] == b' ' {
         " "
     } else {
         ""
     };
-    let after = if end < bytes.len() && bytes[end] == b' ' {
+    let after = if op_end < bytes.len() && bytes[op_end] == b' ' {
         " "
     } else {
         ""
@@ -273,55 +258,121 @@ fn rebuild_separator(source: &str, node: &Node) -> String {
     format!("{before}{op}{after}")
 }
 
-/// Collect byte-offsets of `|` operators from pipeline nodes.
-fn collect_pipe_positions(node: Node, out: &mut Vec<usize>) {
-    if node.kind() == "pipeline" {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "|" {
-                out.push(child.start_byte());
+/// Find pipe byte positions in source from Pipeline nodes.
+///
+/// Since rable already identified the Pipeline structure, we know pipes exist.
+/// We find their byte positions by locating each command's first word in sequence
+/// and looking for `|` in the gap between adjacent commands.
+fn collect_pipe_positions(source: &str, node: &Node, out: &mut Vec<usize>) {
+    match node {
+        Node::Pipeline { commands } => {
+            // Find each command's approximate start by its first word.
+            let mut cmd_starts: Vec<usize> = Vec::new();
+            let mut search_from = 0;
+            for cmd in commands {
+                if let Some(word) = first_word_value(cmd)
+                    && let Some(pos) = source[search_from..].find(word)
+                {
+                    let abs = search_from + pos;
+                    cmd_starts.push(abs);
+                    search_from = abs + word.len();
+                }
+            }
+            // Find `|` between each pair of adjacent command starts.
+            for window in cmd_starts.windows(2) {
+                let gap = &source[window[0]..window[1]];
+                // Search backwards from the second command to find the `|`.
+                for (i, b) in gap.bytes().rev().enumerate() {
+                    if b == b'|' {
+                        let abs = window[1] - 1 - i;
+                        // Ensure it's not `||`.
+                        let prev_pipe = abs > 0 && source.as_bytes()[abs - 1] == b'|';
+                        let next_pipe =
+                            abs + 1 < source.len() && source.as_bytes()[abs + 1] == b'|';
+                        if !prev_pipe && !next_pipe {
+                            out.push(abs);
+                            break;
+                        }
+                    }
+                }
             }
         }
-        return; // Don't recurse further — pipes already collected.
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_pipe_positions(child, out);
+        Node::List { parts } => {
+            for part in parts {
+                collect_pipe_positions(source, part, out);
+            }
+        }
+        _ => {}
     }
 }
 
-/// Check if a node kind is a chain operator.
-fn is_chain_operator(kind: &str) -> bool {
-    kind == "&&" || kind == "||" || kind == ";"
-}
-
-/// Find the first `command` node in the AST (depth-first).
-fn find_first_command(node: Node) -> Option<Node> {
-    if node.kind() == "command" {
-        return Some(node);
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(cmd) = find_first_command(child) {
-            return Some(cmd);
+/// Extract the first word value from a Command node.
+fn first_word_value(node: &Node) -> Option<&str> {
+    if let Node::Command { words, .. } = node {
+        for w in words {
+            if let Node::Word { value, .. } = w {
+                return Some(value.as_str());
+            }
         }
     }
     None
 }
 
-/// Recursively check for top-level heredoc redirects.
-fn find_toplevel_heredoc(node: Node, inside_substitution: bool) -> bool {
-    if node.kind() == "heredoc_redirect" && !inside_substitution {
-        return true;
+/// Check if any node is or contains a Pipeline.
+fn has_pipeline(node: &Node) -> bool {
+    match node {
+        Node::Pipeline { .. } => true,
+        Node::List { parts } => parts.iter().any(has_pipeline),
+        _ => false,
     }
-    let in_sub = inside_substitution || node.kind() == "command_substitution";
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if find_toplevel_heredoc(child, in_sub) {
-            return true;
+}
+
+/// Recursively check for top-level heredoc redirects.
+fn has_heredoc(node: &Node, inside_substitution: bool) -> bool {
+    match node {
+        Node::HereDoc { .. } if !inside_substitution => true,
+        Node::Redirect { op, .. }
+            if !inside_substitution && op.starts_with("<<") && !op.starts_with("<<<") =>
+        {
+            true
+        }
+        Node::CommandSubstitution { command, .. } => has_heredoc(command, true),
+        Node::Command { redirects, .. } => redirects
+            .iter()
+            .any(|r| has_heredoc(r, inside_substitution)),
+        Node::Pipeline { commands } => commands.iter().any(|c| has_heredoc(c, inside_substitution)),
+        Node::List { parts } => parts.iter().any(|p| has_heredoc(p, inside_substitution)),
+        _ => false,
+    }
+}
+
+/// Find the first Command node in the AST.
+fn find_first_command(nodes: &[Node]) -> Option<&Node> {
+    for node in nodes {
+        match node {
+            Node::Command { .. } => return Some(node),
+            Node::Pipeline { commands } => {
+                if let Some(cmd) = find_first_command(commands) {
+                    return Some(cmd);
+                }
+            }
+            Node::List { parts } => {
+                if let Some(cmd) = find_first_command(parts) {
+                    return Some(cmd);
+                }
+            }
+            _ => {}
         }
     }
-    false
+    None
+}
+
+/// Check if a word looks like a variable assignment (`KEY=VALUE`).
+fn looks_like_assignment(value: &str) -> bool {
+    value.find('=').is_some_and(|eq_pos| {
+        let name = &value[..eq_pos];
+        !name.is_empty() && (name.as_bytes()[0].is_ascii_alphabetic() || name.as_bytes()[0] == b'_')
+    })
 }
 
 // --- Pipe strippability checks (tokf-specific policy, not parsing) ---

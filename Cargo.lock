@@ -2564,6 +2564,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "rable"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bd5baf9949ebb5087f60c7f28d8a009be272dd10ba6d598f136ccc5754beb2c"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rancor"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3090,7 +3099,6 @@ version = "1.0.149"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
 dependencies = [
- "indexmap",
  "itoa",
  "memchr",
  "serde",
@@ -3530,12 +3538,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "streaming-iterator"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
-
-[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3734,6 +3736,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "rable",
  "regex",
  "reqwest 0.13.2",
  "rkyv",
@@ -3748,8 +3751,6 @@ dependencies = [
  "tokio",
  "toml",
  "tonic",
- "tree-sitter",
- "tree-sitter-bash",
  "uuid",
  "which",
 ]
@@ -4063,36 +4064,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
 ]
-
-[[package]]
-name = "tree-sitter"
-version = "0.25.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78f873475d258561b06f1c595d93308a7ed124d9977cb26b148c2084a4a3cc87"
-dependencies = [
- "cc",
- "regex",
- "regex-syntax",
- "serde_json",
- "streaming-iterator",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-bash"
-version = "0.23.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "329a4d48623ac337d42b1df84e81a1c9dbb2946907c102ca72db158c1964a52e"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-language"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
 name = "try-lock"
