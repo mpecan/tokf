@@ -10,9 +10,17 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
+          private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
+          repositories: tokf-net
+
       - name: Trigger tokf-net deploy
         uses: peter-evans/repository-dispatch@v4
         with:
-          token: ${{ secrets.TOKF_NET_DISPATCH_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           repository: mpecan/tokf-net
           event-type: tokf-docs-update

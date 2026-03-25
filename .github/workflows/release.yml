@@ -172,7 +172,7 @@ jobs:
         with:
           app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
           private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
-          repositories: homebrew-tokf
+          repositories: homebrew-tokf,homebrew-tools
 
       - name: Checkout homebrew-tokf tap
         uses: actions/checkout@v6
@@ -180,6 +180,13 @@ jobs:
           repository: mpecan/homebrew-tokf
           token: ${{ steps.app-token.outputs.token }}
           path: homebrew-tokf
+
+      - name: Checkout homebrew-tools tap
+        uses: actions/checkout@v6
+        with:
+          repository: mpecan/homebrew-tools
+          token: ${{ steps.app-token.outputs.token }}
+          path: homebrew-tools
 
       - name: Update formula
         env:
@@ -226,12 +233,24 @@ jobs:
               end
             end
           """).strip()
-          with open("homebrew-tokf/Formula/tokf.rb", "w") as f:
-              f.write(formula + "\n")
+          for tap_dir in ["homebrew-tokf", "homebrew-tools"]:
+              os.makedirs(f"{tap_dir}/Formula", exist_ok=True)
+              with open(f"{tap_dir}/Formula/tokf.rb", "w") as f:
+                  f.write(formula + "\n")
           EOF
 
-      - name: Commit and push
+      - name: Commit and push homebrew-tokf
         working-directory: homebrew-tokf
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/tokf.rb
+          git diff --staged --quiet && echo "Formula unchanged, skipping commit" && exit 0
+          git commit -m "chore: update tokf to v${{ steps.version.outputs.version }}"
+          git push
+
+      - name: Commit and push homebrew-tools
+        working-directory: homebrew-tools
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
