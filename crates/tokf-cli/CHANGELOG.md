@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.38](https://github.com/mpecan/tokf/compare/tokf-v0.2.37...tokf-v0.2.38) (2026-03-25)
+
+
+### Features
+
+* **hook,rewrite:** rable bash parsing + pluggable permission engine ([#311](https://github.com/mpecan/tokf/issues/311)) ([8f58b45](https://github.com/mpecan/tokf/commit/8f58b45c6b78fc592c1ab7c16e679f7e7a960c00))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate which to v8 ([#309](https://github.com/mpecan/tokf/issues/309)) ([89b1a56](https://github.com/mpecan/tokf/commit/89b1a564190d888b90e23e52fa06660d87ccd7e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.37 to 0.2.38
+    * tokf-filter bumped from 0.2.37 to 0.2.38
+
 ## [0.2.37](https://github.com/mpecan/tokf/compare/tokf-v0.2.36...tokf-v0.2.37) (2026-03-19)
 
 
