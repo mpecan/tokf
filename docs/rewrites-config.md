@@ -188,7 +188,9 @@ Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_
 
 ## External permission engine
 
-You can delegate permission decisions to an external process — a "sub-hook" that performs deeper semantic analysis of commands. When configured, the engine is consulted on **every** command, not just ones tokf has a filter for. This lets the engine auto-approve safe commands without the user being prompted.
+By default, tokf does **no** permission checking — the AI tool (Claude Code, Gemini, Cursor) handles its own deny/ask rules natively. tokf only rewrites commands that match a filter and auto-allows them.
+
+You can optionally delegate permission decisions to an external process — a "sub-hook" that performs deeper semantic analysis of commands. When configured, the engine is consulted on **every** command, not just ones tokf has a filter for. This lets the engine auto-approve safe commands without the user being prompted.
 
 ### Configuration
 
@@ -231,7 +233,61 @@ format_map = { "claude-code" = "claude", "gemini" = "google" }
 3. The engine returns a standard hook response JSON on **stdout** — the same format the AI tool expects
 4. tokf extracts the permission decision from the response and applies it to its own rewritten command
 
-The engine sees the **original** command (not the rewritten one). tokf controls the rewrite; the engine controls the permission decision.
+The engine sees the **original** command (not the rewritten one). tokf controls the rewrite; the engine controls the permission decision. Engines that exit with a non-zero status but still produce valid JSON will have their JSON verdict honoured — this supports engines like Dippy that use exit codes for signalling alongside a valid response.
+
+### Hook JSON reference (for engine developers)
+
+The engine receives the AI tool's hook JSON verbatim on stdin. The format depends on the tool:
+
+**Claude Code** (`--mode claude-code`):
+
+```json
+{"tool_name": "Bash", "tool_input": {"command": "git push --force"}}
+```
+
+Expected response — set `permissionDecision` to `"allow"`, `"deny"`, or `"ask"` (or omit for ask):
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow",
+    "updatedInput": {"command": "git push --force"}
+  }
+}
+```
+
+**Gemini CLI** (`--mode gemini`):
+
+```json
+{"tool_name": "run_shell_command", "tool_input": {"command": "git push --force"}}
+```
+
+Expected response — set `decision` to `"allow"`, `"deny"`, or `"ask"`:
+
+```json
+{
+  "decision": "allow",
+  "hookSpecificOutput": {
+    "tool_input": {"command": "git push --force"}
+  }
+}
+```
+
+**Cursor** (`--mode cursor`):
+
+```json
+{"command": "git push --force"}
+```
+
+Expected response — set `permission` to `"allow"`, `"deny"`, or `"ask"`:
+
+```json
+{
+  "permission": "allow",
+  "updated_input": {"command": "git push --force"}
+}
+```
 
 ### Error handling (`on_error`)
 
