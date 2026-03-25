@@ -16,6 +16,31 @@ pub struct RewriteConfig {
     /// User-defined rewrite rules (checked before auto-generated filter rules).
     #[serde(default)]
     pub rewrite: Vec<RewriteRule>,
+
+    /// Permission engine configuration (external sub-hook delegation).
+    pub permissions: Option<PermissionsConfig>,
+}
+
+/// Configuration for the permission decision engine.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PermissionsConfig {
+    /// Which engine to use: `"builtin"` (default) or `"external"`.
+    #[serde(default)]
+    pub engine: PermissionEngineType,
+
+    /// Configuration for the external engine (required when `engine = "external"`).
+    pub external: Option<crate::hook::permission_engine::ExternalEngineConfig>,
+}
+
+/// Which permission engine to use.
+#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionEngineType {
+    /// Built-in deny/ask rule matching from Claude Code settings.json.
+    #[default]
+    Builtin,
+    /// Delegate to an external process (sub-hook).
+    External,
 }
 
 /// Controls how tokf handles piped commands during rewriting.
@@ -203,5 +228,68 @@ replace = "tokf run {0}"
         assert!(config.skip.is_some());
         assert!(!config.pipe.unwrap().strip);
         assert_eq!(config.rewrite.len(), 1);
+    }
+
+    #[test]
+    fn deserialize_no_permissions_section() {
+        let config: RewriteConfig = toml::from_str("").unwrap();
+        assert!(config.permissions.is_none());
+    }
+
+    #[test]
+    fn deserialize_permissions_builtin() {
+        let toml_str = r#"
+[permissions]
+engine = "builtin"
+"#;
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let perms = config.permissions.unwrap();
+        assert_eq!(perms.engine, PermissionEngineType::Builtin);
+        assert!(perms.external.is_none());
+    }
+
+    #[test]
+    fn deserialize_permissions_external() {
+        let toml_str = r#"
+[permissions]
+engine = "external"
+
+[permissions.external]
+command = "dippy"
+args = ["hook", "handle"]
+timeout_ms = 3000
+on_error = "builtin"
+"#;
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let perms = config.permissions.unwrap();
+        assert_eq!(perms.engine, PermissionEngineType::External);
+        let ext = perms.external.unwrap();
+        assert_eq!(ext.command, "dippy");
+        assert_eq!(ext.args, vec!["hook", "handle"]);
+        assert_eq!(ext.timeout_ms, 3000);
+        assert_eq!(
+            ext.on_error,
+            crate::hook::permission_engine::ErrorFallback::Builtin
+        );
+    }
+
+    #[test]
+    fn deserialize_permissions_external_defaults() {
+        let toml_str = r#"
+[permissions]
+engine = "external"
+
+[permissions.external]
+command = "my-engine"
+"#;
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let ext = config.permissions.unwrap().external.unwrap();
+        assert_eq!(ext.command, "my-engine");
+        assert!(ext.args.is_empty());
+        assert_eq!(ext.timeout_ms, 5000);
+        assert_eq!(
+            ext.on_error,
+            crate::hook::permission_engine::ErrorFallback::Ask
+        );
     }
 }

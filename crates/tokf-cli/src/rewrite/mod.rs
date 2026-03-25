@@ -1,13 +1,13 @@
 pub mod types;
 
-pub(crate) mod compound;
+pub(crate) mod bash_ast;
 pub(crate) mod rules;
 pub(crate) mod user_config;
 
 use std::path::PathBuf;
 
 use crate::config;
-use compound::{StrippedPipe, has_bare_pipe, split_compound, strip_env_prefix, strip_simple_pipe};
+use bash_ast::{StrippedPipe, split_compound, strip_env_prefix};
 use rules::{apply_rules, should_skip};
 use types::{RewriteConfig, RewriteOptions, RewriteRule};
 
@@ -141,8 +141,12 @@ fn rewrite_segment(
     prefer_less: bool,
     verbose: bool,
 ) -> String {
-    let (env_prefix, cmd_owned) =
-        strip_env_prefix(segment).unwrap_or_else(|| (String::new(), segment.to_string()));
+    // Parse once — reuse the AST for env_prefix, pipe detection, and stripping.
+    let parsed = bash_ast::ParsedCommand::parse(segment);
+    let (env_prefix, cmd_owned) = parsed
+        .as_ref()
+        .and_then(bash_ast::ParsedCommand::env_prefix)
+        .unwrap_or_else(|| (String::new(), segment.to_string()));
     let cmd = cmd_owned.as_str();
 
     // Wrapper rules are tried first — they inject SHELL=tokf rather than
@@ -155,9 +159,21 @@ fn rewrite_segment(
         return format!("{env_prefix}{wrapper_result}");
     }
 
-    if has_bare_pipe(cmd) {
+    // Parse the env-stripped command for pipe analysis (reuse if no env prefix).
+    let cmd_parsed = if env_prefix.is_empty() {
+        parsed
+    } else {
+        bash_ast::ParsedCommand::parse(cmd)
+    };
+
+    if cmd_parsed
+        .as_ref()
+        .is_some_and(bash_ast::ParsedCommand::has_bare_pipe)
+    {
         if strip_pipes
-            && let Some(StrippedPipe { base, suffix }) = strip_simple_pipe(cmd)
+            && let Some(StrippedPipe { base, suffix }) = cmd_parsed
+                .as_ref()
+                .and_then(bash_ast::ParsedCommand::strip_simple_pipe)
             && let Some(rewritten) = try_filter_match(&base, rules.filter_patterns, rules.options)
         {
             if verbose {
@@ -307,7 +323,8 @@ pub(crate) fn rewrite_with_config_and_options(
 }
 
 #[cfg(test)]
-mod compound_tests;
+#[allow(clippy::unwrap_used)]
+mod bash_ast_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
