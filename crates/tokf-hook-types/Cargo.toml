@@ -1,0 +1,16 @@
+[package]
+name = "tokf-hook-types"
+version = "0.2.38"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Shared hook and permission types for tokf integrations"
+keywords = ["llm", "cli", "tokens", "ai", "hooks"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true
