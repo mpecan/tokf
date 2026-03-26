@@ -43,6 +43,18 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Publish tokf-hook-types
+        run: |
+          LOCAL=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "tokf-hook-types") | .version')
+          PUBLISHED=$(cargo search tokf-hook-types --limit 1 --color never | sed -n 's/^tokf-hook-types = "\([^"]*\)".*/\1/p')
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "::notice::tokf-hook-types@$LOCAL already published, skipping"
+          else
+            cargo publish -p tokf-hook-types
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
       - name: Publish tokf-filter
         run: |
           LOCAL=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "tokf-filter") | .version')

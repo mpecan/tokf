@@ -4,5 +4,6 @@
   "crates/tokf-cli": "0.2.38",
   "crates/tokf-server": "0.2.38",
   "crates/tokf-server/generated": "0.2.38",
+  "crates/tokf-hook-types": "0.2.38",
   "crates/e2e-tests": "0.1.26"
 }
