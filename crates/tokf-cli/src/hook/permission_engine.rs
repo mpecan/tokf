@@ -10,69 +10,12 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::permissions::PermissionVerdict;
 use super::types::HookFormat;
 
-/// Configuration for an external permission engine.
-#[derive(Debug, Clone, Deserialize)]
-pub struct ExternalEngineConfig {
-    /// Path to the external engine binary (resolved via PATH if not absolute).
-    pub command: String,
-
-    /// Arguments passed to the engine. Use `{format}` as a placeholder for the
-    /// tool format (e.g. `["hook", "handle", "--mode", "{format}"]`).
-    /// The placeholder is replaced with the resolved format string before spawning.
-    #[serde(default)]
-    pub args: Vec<String>,
-
-    /// Timeout in milliseconds. Default: 5000 (5 seconds).
-    #[serde(default = "default_timeout")]
-    pub timeout_ms: u64,
-
-    /// What to do when the engine fails (crash, timeout, bad output).
-    #[serde(default)]
-    pub on_error: ErrorFallback,
-
-    /// Override the default format strings used for `{format}` substitution.
-    /// Keys are the default names (`claude-code`, `gemini`, `cursor`);
-    /// values are the replacements the engine expects.
-    ///
-    /// Example: `{ "claude-code" = "claude", "gemini" = "google" }`
-    #[serde(default)]
-    pub format_map: std::collections::HashMap<String, String>,
-}
-
-impl ExternalEngineConfig {
-    /// Resolve the format string for a given hook format,
-    /// applying `format_map` overrides if present.
-    pub fn resolve_format(&self, format: HookFormat) -> String {
-        let default = format.as_str();
-        self.format_map
-            .get(default)
-            .cloned()
-            .unwrap_or_else(|| default.to_string())
-    }
-}
-
-/// Behaviour when the external engine fails.
-#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ErrorFallback {
-    /// Fail closed — prompt user for permission (default).
-    #[default]
-    Ask,
-    /// Fail open — auto-allow.
-    Allow,
-    /// Fall back to built-in rule matching.
-    Builtin,
-}
-
-const fn default_timeout() -> u64 {
-    5000
-}
+pub use tokf_hook_types::{ErrorFallback, ExternalEngineConfig};
 
 /// Error from the external permission engine.
 #[derive(Debug)]

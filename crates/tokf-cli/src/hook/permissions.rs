@@ -9,16 +9,7 @@
 use serde_json::Value;
 use std::path::PathBuf;
 
-/// Verdict from checking a command against Claude Code's permission rules.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum PermissionVerdict {
-    /// No deny/ask rules matched — safe to auto-allow.
-    Allow,
-    /// A deny rule matched — pass through to Claude Code's native deny handling.
-    Deny,
-    /// An ask rule matched — rewrite the command but let the tool prompt the user.
-    Ask,
-}
+pub use tokf_hook_types::PermissionVerdict;
 
 /// Check `cmd` against Claude Code's deny/ask permission rules.
 ///
