@@ -6,35 +6,35 @@ use super::*;
 fn handle_bash_with_no_matching_filter() {
     // No filters in search path, so no rewrite should happen
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-cmd"}}"#;
-    assert!(!handle_json(json));
+    assert_eq!(handle_json(json), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_non_bash_tool_passes_through() {
     let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
-    assert!(!handle_json(json));
+    assert_eq!(handle_json(json), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_bash_no_command_passes_through() {
     let json = r#"{"tool_name":"Bash","tool_input":{}}"#;
-    assert!(!handle_json(json));
+    assert_eq!(handle_json(json), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_invalid_json_passes_through() {
-    assert!(!handle_json("not json"));
+    assert_eq!(handle_json("not json"), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_empty_input_passes_through() {
-    assert!(!handle_json(""));
+    assert_eq!(handle_json(""), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_tokf_command_not_rewritten() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"tokf run git status"}}"#;
-    assert!(!handle_json(json));
+    assert_eq!(handle_json(json), HookOutcome::PassThrough);
 }
 
 // --- handle_json_with_rules (fix #9: test the rewrite path) ---
@@ -51,7 +51,11 @@ fn handle_json_with_rules_rewrites_matching_command() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
     let config = RewriteConfig::default();
     let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(result, "expected rewrite to occur for matching command");
+    assert_eq!(
+        result,
+        HookOutcome::Allow,
+        "expected rewrite to occur for matching command"
+    );
 }
 
 #[test]
@@ -60,7 +64,7 @@ fn handle_json_with_rules_no_match_returns_false() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
     let config = RewriteConfig::default();
     let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(!result);
+    assert_eq!(result, HookOutcome::PassThrough);
 }
 
 #[test]
@@ -75,7 +79,11 @@ fn handle_json_rewrites_single_env_var_prefix() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"DEBUG=1 git status"}}"#;
     let config = RewriteConfig::default();
     let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(result, "expected rewrite for env-prefixed matching command");
+    assert_eq!(
+        result,
+        HookOutcome::Allow,
+        "expected rewrite for env-prefixed matching command"
+    );
 }
 
 #[test]
@@ -91,7 +99,11 @@ fn handle_json_rewrites_multiple_env_vars_prefix() {
         r#"{"tool_name":"Bash","tool_input":{"command":"RUST_LOG=debug TERM=xterm cargo test"}}"#;
     let config = RewriteConfig::default();
     let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(result, "expected rewrite for multiple env vars prefix");
+    assert_eq!(
+        result,
+        HookOutcome::Allow,
+        "expected rewrite for multiple env vars prefix"
+    );
 }
 
 #[test]
@@ -106,14 +118,18 @@ fn handle_json_rewrites_env_var_with_strippable_pipe() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"RUST_LOG=debug cargo test | grep FAILED"}}"#;
     let config = RewriteConfig::default();
     let result = handle_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(result, "expected rewrite for env var + strippable pipe");
+    assert_eq!(
+        result,
+        HookOutcome::Allow,
+        "expected rewrite for env var + strippable pipe"
+    );
 }
 
 #[test]
 fn handle_json_env_prefixed_tokf_command_not_rewritten() {
     // DEBUG=1 tokf run ... must not be rewritten — same as tokf run ... passthrough.
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"DEBUG=1 tokf run git status"}}"#;
-    assert!(!handle_json(json));
+    assert_eq!(handle_json(json), HookOutcome::PassThrough);
 }
 
 // --- patch_json_hook_config ---
@@ -476,24 +492,28 @@ fn handle_gemini_rewrites_matching_command() {
     let json = r#"{"tool_name":"run_shell_command","tool_input":{"command":"git status"}}"#;
     let config = RewriteConfig::default();
     let result = handle_gemini_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(result, "expected rewrite for Gemini matching command");
+    assert_eq!(
+        result,
+        HookOutcome::Allow,
+        "expected rewrite for Gemini matching command"
+    );
 }
 
 #[test]
 fn handle_gemini_non_shell_passes_through() {
     let json = r#"{"tool_name":"read_file","tool_input":{"path":"/tmp/foo"}}"#;
-    assert!(!handle_gemini_json(json));
+    assert_eq!(handle_gemini_json(json), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_gemini_no_command_passes_through() {
     let json = r#"{"tool_name":"run_shell_command","tool_input":{}}"#;
-    assert!(!handle_gemini_json(json));
+    assert_eq!(handle_gemini_json(json), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_gemini_invalid_json_passes_through() {
-    assert!(!handle_gemini_json("not json"));
+    assert_eq!(handle_gemini_json("not json"), HookOutcome::PassThrough);
 }
 
 // --- handle_cursor_json_with_config ---
@@ -511,18 +531,22 @@ fn handle_cursor_rewrites_matching_command() {
     let json = r#"{"command":"cargo test","cwd":"/tmp","hook_event_name":"beforeShellExecution"}"#;
     let config = RewriteConfig::default();
     let result = handle_cursor_json_with_rules(json, &config, &[dir.path().to_path_buf()]);
-    assert!(result, "expected rewrite for Cursor matching command");
+    assert_eq!(
+        result,
+        HookOutcome::Allow,
+        "expected rewrite for Cursor matching command"
+    );
 }
 
 #[test]
 fn handle_cursor_no_command_passes_through() {
     let json = r#"{"cwd":"/tmp","hook_event_name":"beforeShellExecution"}"#;
-    assert!(!handle_cursor_json(json));
+    assert_eq!(handle_cursor_json(json), HookOutcome::PassThrough);
 }
 
 #[test]
 fn handle_cursor_invalid_json_passes_through() {
-    assert!(!handle_cursor_json("not json"));
+    assert_eq!(handle_cursor_json("not json"), HookOutcome::PassThrough);
 }
 
 // --- append_or_replace_section ---

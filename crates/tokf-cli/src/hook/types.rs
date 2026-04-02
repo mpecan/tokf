@@ -22,18 +22,18 @@ pub struct HookResponse {
     pub hook_specific_output: HookSpecificOutput,
 }
 
-/// The specific output that tells Claude Code to use a different command.
-///
-/// When `permission_decision` is `Some("allow")`, Claude Code auto-allows the
-/// rewritten command. When `None`, the field is omitted from JSON and Claude
-/// Code applies its normal permission rules (deny / ask / allow) — used when
-/// the original command matched an ask rule.
+/// The specific output that tells Claude Code the permission decision.
 #[derive(Debug, Clone, Serialize)]
 pub struct HookSpecificOutput {
     #[serde(rename = "hookEventName")]
     pub hook_event_name: &'static str,
     #[serde(rename = "permissionDecision", skip_serializing_if = "Option::is_none")]
     pub permission_decision: Option<&'static str>,
+    #[serde(
+        rename = "permissionDecisionReason",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub permission_decision_reason: Option<String>,
     #[serde(rename = "updatedInput")]
     pub updated_input: UpdatedInput,
 }
@@ -46,23 +46,31 @@ pub struct UpdatedInput {
 
 impl HookResponse {
     /// Create a response that rewrites and auto-allows the command.
-    pub const fn rewrite(command: String) -> Self {
-        Self {
-            hook_specific_output: HookSpecificOutput {
-                hook_event_name: "PreToolUse",
-                permission_decision: Some("allow"),
-                updated_input: UpdatedInput { command },
-            },
-        }
+    pub const fn rewrite(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("allow", command, reason)
     }
 
-    /// Create a response that rewrites the command but lets Claude Code
-    /// decide permissions (used when an ask rule matched the original command).
-    pub const fn rewrite_ask(command: String) -> Self {
+    /// Create a response that rewrites the command and explicitly asks
+    /// Claude Code to prompt the user.
+    pub const fn rewrite_ask(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("ask", command, reason)
+    }
+
+    /// Create a deny response with an optional reason.
+    pub const fn deny(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("deny", command, reason)
+    }
+
+    const fn with_decision(
+        decision: &'static str,
+        command: String,
+        reason: Option<String>,
+    ) -> Self {
         Self {
             hook_specific_output: HookSpecificOutput {
                 hook_event_name: "PreToolUse",
-                permission_decision: None,
+                permission_decision: Some(decision),
+                permission_decision_reason: reason,
                 updated_input: UpdatedInput { command },
             },
         }
@@ -78,6 +86,8 @@ impl HookResponse {
 pub struct GeminiHookResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decision: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     #[serde(rename = "hookSpecificOutput")]
     pub hook_specific_output: GeminiHookSpecificOutput,
 }
@@ -96,19 +106,30 @@ pub struct GeminiRewrittenInput {
 
 impl GeminiHookResponse {
     /// Create a Gemini response that rewrites and auto-allows the command.
-    pub const fn rewrite(command: String) -> Self {
-        Self {
-            decision: Some("allow"),
-            hook_specific_output: GeminiHookSpecificOutput {
-                tool_input: GeminiRewrittenInput { command },
-            },
-        }
+    pub const fn rewrite(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("allow", command, reason)
     }
 
     /// Create a Gemini response that rewrites but defers permission to the tool.
-    pub const fn rewrite_ask(command: String) -> Self {
+    /// Gemini has no "ask" concept — maps to "deny".
+    pub const fn rewrite_ask(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("deny", command, reason)
+    }
+
+    /// Create a Gemini deny response with an optional reason.
+    /// Gemini has no "ask" concept — both ask and deny map to "deny".
+    pub const fn deny(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("deny", command, reason)
+    }
+
+    const fn with_decision(
+        decision: &'static str,
+        command: String,
+        reason: Option<String>,
+    ) -> Self {
         Self {
-            decision: None,
+            decision: Some(decision),
+            reason,
             hook_specific_output: GeminiHookSpecificOutput {
                 tool_input: GeminiRewrittenInput { command },
             },
@@ -131,6 +152,10 @@ pub struct CursorInput {
 pub struct CursorHookResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permission: Option<&'static str>,
+    #[serde(rename = "userMessage", skip_serializing_if = "Option::is_none")]
+    pub user_message: Option<String>,
+    #[serde(rename = "agentMessage", skip_serializing_if = "Option::is_none")]
+    pub agent_message: Option<String>,
     pub updated_input: CursorUpdatedInput,
 }
 
@@ -142,17 +167,25 @@ pub struct CursorUpdatedInput {
 
 impl CursorHookResponse {
     /// Create a Cursor response that rewrites and auto-allows the command.
-    pub const fn rewrite(command: String) -> Self {
-        Self {
-            permission: Some("allow"),
-            updated_input: CursorUpdatedInput { command },
-        }
+    pub fn rewrite(command: String, reason: Option<String>) -> Self {
+        Self::with_permission("allow", command, reason)
     }
 
-    /// Create a Cursor response that rewrites but defers permission to Cursor.
-    pub const fn rewrite_ask(command: String) -> Self {
+    /// Create a Cursor response that rewrites and explicitly asks the user.
+    pub fn rewrite_ask(command: String, reason: Option<String>) -> Self {
+        Self::with_permission("ask", command, reason)
+    }
+
+    /// Create a Cursor deny response with an optional reason.
+    pub fn deny(command: String, reason: Option<String>) -> Self {
+        Self::with_permission("deny", command, reason)
+    }
+
+    fn with_permission(permission: &'static str, command: String, reason: Option<String>) -> Self {
         Self {
-            permission: None,
+            permission: Some(permission),
+            user_message: reason.clone(),
+            agent_message: reason,
             updated_input: CursorUpdatedInput { command },
         }
     }
@@ -189,11 +222,17 @@ mod tests {
 
     #[test]
     fn serialize_hook_response_allow() {
-        let response = HookResponse::rewrite("tokf run git status".to_string());
+        let response = HookResponse::rewrite("tokf run git status".to_string(), None);
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
         assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "allow");
+        assert!(
+            value["hookSpecificOutput"]
+                .get("permissionDecisionReason")
+                .is_none(),
+            "reason should be absent when None"
+        );
         assert_eq!(
             value["hookSpecificOutput"]["updatedInput"]["command"],
             "tokf run git status"
@@ -201,16 +240,32 @@ mod tests {
     }
 
     #[test]
-    fn serialize_hook_response_ask_omits_permission() {
-        let response = HookResponse::rewrite_ask("tokf run git push".to_string());
+    fn serialize_hook_response_allow_with_reason() {
+        let response = HookResponse::rewrite(
+            "tokf run git status".to_string(),
+            Some("safe command".to_string()),
+        );
+        let json = serde_json::to_string(&response).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            value["hookSpecificOutput"]["permissionDecisionReason"],
+            "safe command"
+        );
+    }
+
+    #[test]
+    fn serialize_hook_response_ask_includes_decision() {
+        let response = HookResponse::rewrite_ask(
+            "tokf run git push".to_string(),
+            Some("requires confirmation".to_string()),
+        );
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
-        assert!(
-            value["hookSpecificOutput"]
-                .get("permissionDecision")
-                .is_none(),
-            "ask response must not include permissionDecision"
+        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "ask");
+        assert_eq!(
+            value["hookSpecificOutput"]["permissionDecisionReason"],
+            "requires confirmation"
         );
         assert_eq!(
             value["hookSpecificOutput"]["updatedInput"]["command"],
@@ -219,8 +274,23 @@ mod tests {
     }
 
     #[test]
+    fn serialize_hook_response_deny() {
+        let response = HookResponse::deny(
+            "rm -rf /".to_string(),
+            Some("dangerous command".to_string()),
+        );
+        let json = serde_json::to_string(&response).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            value["hookSpecificOutput"]["permissionDecisionReason"],
+            "dangerous command"
+        );
+    }
+
+    #[test]
     fn response_round_trip() {
-        let response = HookResponse::rewrite("tokf run cargo test".to_string());
+        let response = HookResponse::rewrite("tokf run cargo test".to_string(), None);
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(
@@ -252,10 +322,14 @@ mod tests {
 
     #[test]
     fn serialize_gemini_hook_response_allow() {
-        let response = GeminiHookResponse::rewrite("tokf run git status".to_string());
+        let response = GeminiHookResponse::rewrite("tokf run git status".to_string(), None);
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["decision"], "allow");
+        assert!(
+            value.get("reason").is_none(),
+            "reason should be absent when None"
+        );
         assert_eq!(
             value["hookSpecificOutput"]["tool_input"]["command"],
             "tokf run git status"
@@ -263,14 +337,28 @@ mod tests {
     }
 
     #[test]
-    fn serialize_gemini_hook_response_ask_omits_decision() {
-        let response = GeminiHookResponse::rewrite_ask("tokf run git push".to_string());
+    fn serialize_gemini_hook_response_ask_maps_to_deny() {
+        let response = GeminiHookResponse::rewrite_ask(
+            "tokf run git push".to_string(),
+            Some("needs approval".to_string()),
+        );
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(
-            value.get("decision").is_none(),
-            "ask response must not include decision"
+        assert_eq!(
+            value["decision"], "deny",
+            "Gemini has no ask — maps to deny"
         );
+        assert_eq!(value["reason"], "needs approval");
+    }
+
+    #[test]
+    fn serialize_gemini_hook_response_deny() {
+        let response =
+            GeminiHookResponse::deny("rm -rf /".to_string(), Some("dangerous".to_string()));
+        let json = serde_json::to_string(&response).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["decision"], "deny");
+        assert_eq!(value["reason"], "dangerous");
     }
 
     // --- Cursor types ---
@@ -291,22 +379,45 @@ mod tests {
 
     #[test]
     fn serialize_cursor_hook_response_allow() {
-        let response = CursorHookResponse::rewrite("tokf run cargo test".to_string());
+        let response = CursorHookResponse::rewrite("tokf run cargo test".to_string(), None);
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["permission"], "allow");
+        assert!(
+            value.get("userMessage").is_none(),
+            "reason should be absent when None"
+        );
+        assert!(
+            value.get("agentMessage").is_none(),
+            "reason should be absent when None"
+        );
         assert_eq!(value["updated_input"]["command"], "tokf run cargo test");
     }
 
     #[test]
-    fn serialize_cursor_hook_response_ask_omits_permission() {
-        let response = CursorHookResponse::rewrite_ask("tokf run git push".to_string());
+    fn serialize_cursor_hook_response_ask_includes_permission() {
+        let response = CursorHookResponse::rewrite_ask(
+            "tokf run git push".to_string(),
+            Some("needs confirmation".to_string()),
+        );
         let json = serde_json::to_string(&response).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(
-            value.get("permission").is_none(),
-            "ask response must not include permission"
-        );
+        assert_eq!(value["permission"], "ask");
+        assert_eq!(value["userMessage"], "needs confirmation");
+        assert_eq!(value["agentMessage"], "needs confirmation");
         assert_eq!(value["updated_input"]["command"], "tokf run git push");
+    }
+
+    #[test]
+    fn serialize_cursor_hook_response_deny() {
+        let response = CursorHookResponse::deny(
+            "rm -rf /".to_string(),
+            Some("dangerous command".to_string()),
+        );
+        let json = serde_json::to_string(&response).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["permission"], "deny");
+        assert_eq!(value["userMessage"], "dangerous command");
+        assert_eq!(value["agentMessage"], "dangerous command");
     }
 }
