@@ -9,7 +9,7 @@
 use serde_json::Value;
 use std::path::PathBuf;
 
-pub use tokf_hook_types::PermissionVerdict;
+pub use tokf_hook_types::{PermissionDecision, PermissionVerdict};
 
 /// Check `cmd` against Claude Code's deny/ask permission rules.
 ///
@@ -37,7 +37,7 @@ pub(crate) fn check_command_with_rules(
 
         for pattern in deny_rules {
             if command_matches_pattern(segment, pattern) {
-                return PermissionVerdict::Deny;
+                return PermissionVerdict::deny(None);
             }
         }
 
@@ -52,9 +52,9 @@ pub(crate) fn check_command_with_rules(
     }
 
     if any_ask {
-        PermissionVerdict::Ask
+        PermissionVerdict::ask(None)
     } else {
-        PermissionVerdict::Allow
+        PermissionVerdict::allow()
     }
 }
 
@@ -421,7 +421,7 @@ mod tests {
     fn empty_rules_allow() {
         assert_eq!(
             check_command_with_rules("git push --force", &[], &[]),
-            PermissionVerdict::Allow
+            PermissionVerdict::allow()
         );
     }
 
@@ -430,7 +430,7 @@ mod tests {
         let deny = vec!["git push --force".to_string()];
         assert_eq!(
             check_command_with_rules("git push --force", &deny, &[]),
-            PermissionVerdict::Deny
+            PermissionVerdict::deny(None)
         );
     }
 
@@ -439,7 +439,7 @@ mod tests {
         let ask = vec!["git push".to_string()];
         assert_eq!(
             check_command_with_rules("git push origin main", &[], &ask),
-            PermissionVerdict::Ask
+            PermissionVerdict::ask(None)
         );
     }
 
@@ -449,7 +449,7 @@ mod tests {
         let ask = vec!["git push --force".to_string()];
         assert_eq!(
             check_command_with_rules("git push --force", &deny, &ask),
-            PermissionVerdict::Deny
+            PermissionVerdict::deny(None)
         );
     }
 
@@ -458,7 +458,7 @@ mod tests {
         let deny = vec!["git push --force".to_string()];
         assert_eq!(
             check_command_with_rules("git status && git push --force", &deny, &[]),
-            PermissionVerdict::Deny
+            PermissionVerdict::deny(None)
         );
     }
 
@@ -467,7 +467,7 @@ mod tests {
         let ask = vec!["git push".to_string()];
         assert_eq!(
             check_command_with_rules("git status && git push origin main", &[], &ask),
-            PermissionVerdict::Ask
+            PermissionVerdict::ask(None)
         );
     }
 
@@ -477,7 +477,7 @@ mod tests {
         let ask = vec!["git status".to_string()];
         assert_eq!(
             check_command_with_rules("git status && git push --force", &deny, &ask),
-            PermissionVerdict::Deny
+            PermissionVerdict::deny(None)
         );
     }
 
@@ -490,7 +490,7 @@ mod tests {
         // Malformed JSON should inject a wildcard ask rule, causing Ask verdict.
         assert_eq!(
             check_command_from_settings("git status", &[settings.as_path()]),
-            PermissionVerdict::Ask
+            PermissionVerdict::ask(None)
         );
     }
 
@@ -507,7 +507,7 @@ mod tests {
         // Unreadable file should fail closed as Ask, not silently skip.
         assert_eq!(
             check_command_from_settings("git status", &[settings.as_path()]),
-            PermissionVerdict::Ask
+            PermissionVerdict::ask(None)
         );
 
         // Restore permissions for cleanup
@@ -522,7 +522,7 @@ mod tests {
         // Missing file is silently skipped — no rules means Allow.
         assert_eq!(
             check_command_from_settings("git status", &[settings.as_path()]),
-            PermissionVerdict::Allow
+            PermissionVerdict::allow()
         );
     }
 
@@ -544,25 +544,25 @@ mod tests {
         // Deny rule matches
         assert_eq!(
             check_command_from_settings("git push --force", &[settings.as_path()]),
-            PermissionVerdict::Deny
+            PermissionVerdict::deny(None)
         );
 
         // Ask rule matches
         assert_eq!(
             check_command_from_settings("git push origin main", &[settings.as_path()]),
-            PermissionVerdict::Ask
+            PermissionVerdict::ask(None)
         );
 
         // No rule matches
         assert_eq!(
             check_command_from_settings("git status", &[settings.as_path()]),
-            PermissionVerdict::Allow
+            PermissionVerdict::allow()
         );
 
         // Non-Bash rules ignored
         assert_eq!(
             check_command_from_settings("cat .env", &[settings.as_path()]),
-            PermissionVerdict::Allow
+            PermissionVerdict::allow()
         );
     }
 }

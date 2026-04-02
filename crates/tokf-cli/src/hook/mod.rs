@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 use permission_engine::ErrorFallback;
 use permissions::PermissionVerdict;
+use tokf_hook_types::PermissionDecision;
 use types::{
     CursorHookResponse, CursorInput, GeminiHookResponse, HookFormat, HookInput, HookResponse,
 };
@@ -24,35 +25,49 @@ use crate::rewrite;
 use crate::rewrite::types::{PermissionEngineType, RewriteConfig};
 use crate::runner;
 
+/// Outcome of a hook handle invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookOutcome {
+    /// A response was emitted with an allow decision (or auto-allow rewrite).
+    Allow,
+    /// A response was emitted with an ask decision.
+    Ask,
+    /// A response was emitted with a deny decision.
+    Deny,
+    /// No response was emitted — pass-through.
+    PassThrough,
+}
+
 /// Process a `PreToolUse` hook invocation.
 ///
 /// Reads JSON from stdin, checks if it's a Bash tool call, rewrites the command
 /// if a matching rule is found, and prints the response JSON to stdout.
 ///
-/// Returns `Ok(true)` if a rewrite was emitted, `Ok(false)` for pass-through.
+/// Returns the outcome of the hook (allow/ask/deny/pass-through).
 /// Errors are intentionally swallowed to never block commands.
-pub fn handle() -> bool {
+pub fn handle() -> HookOutcome {
     handle_from_reader(&mut std::io::stdin())
 }
 
 /// Testable version that reads from any `Read` source.
-pub(crate) fn handle_from_reader<R: Read>(reader: &mut R) -> bool {
+pub(crate) fn handle_from_reader<R: Read>(reader: &mut R) -> HookOutcome {
     let mut input = String::new();
     if reader.read_to_string(&mut input).is_err() {
-        return false;
+        return HookOutcome::PassThrough;
     }
 
     handle_json(&input)
 }
 
 /// Core handle logic operating on a JSON string.
-pub(crate) fn handle_json(json: &str) -> bool {
+pub(crate) fn handle_json(json: &str) -> HookOutcome {
     handle_with_autodiscovery(
         json,
         "Bash",
         HookFormat::ClaudeCode,
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
+        HookResponse::deny,
     )
 }
 
@@ -62,7 +77,7 @@ pub(crate) fn handle_json_with_rules(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-) -> bool {
+) -> HookOutcome {
     handle_generic(
         json,
         "Bash",
@@ -71,26 +86,28 @@ pub(crate) fn handle_json_with_rules(
         search_dirs,
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
+        HookResponse::deny,
     )
 }
 
 /// Process a Gemini CLI `BeforeTool` hook invocation.
-pub fn handle_gemini() -> bool {
+pub fn handle_gemini() -> HookOutcome {
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
-        return false;
+        return HookOutcome::PassThrough;
     }
     handle_gemini_json(&input)
 }
 
 /// Core Gemini handle logic operating on a JSON string.
-pub(crate) fn handle_gemini_json(json: &str) -> bool {
+pub(crate) fn handle_gemini_json(json: &str) -> HookOutcome {
     handle_with_autodiscovery(
         json,
         "run_shell_command",
         HookFormat::Gemini,
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
+        GeminiHookResponse::deny,
     )
 }
 
@@ -100,7 +117,7 @@ pub(crate) fn handle_gemini_json_with_rules(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-) -> bool {
+) -> HookOutcome {
     handle_generic(
         json,
         "run_shell_command",
@@ -109,18 +126,21 @@ pub(crate) fn handle_gemini_json_with_rules(
         search_dirs,
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
+        GeminiHookResponse::deny,
     )
 }
 
 /// Convenience wrapper that loads user config and search dirs from the
 /// filesystem, then delegates to `handle_generic`.
+#[allow(clippy::too_many_arguments)]
 fn handle_with_autodiscovery<R: serde::Serialize>(
     json: &str,
     expected_tool: &str,
     format: HookFormat,
-    build_allow: impl FnOnce(String) -> R,
-    build_ask: impl FnOnce(String) -> R,
-) -> bool {
+    build_allow: impl FnOnce(String, Option<String>) -> R,
+    build_ask: impl FnOnce(String, Option<String>) -> R,
+    build_deny: impl FnOnce(String, Option<String>) -> R,
+) -> HookOutcome {
     let user_config = rewrite::load_user_config().unwrap_or_default();
     let search_dirs = crate::config::default_search_dirs();
     handle_generic(
@@ -131,14 +151,15 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
         &search_dirs,
         build_allow,
         build_ask,
+        build_deny,
     )
 }
 
 /// Process a Cursor `preToolUse` hook invocation.
-pub fn handle_cursor() -> bool {
+pub fn handle_cursor() -> HookOutcome {
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
-        return false;
+        return HookOutcome::PassThrough;
     }
     handle_cursor_json(&input)
 }
@@ -147,7 +168,7 @@ pub fn handle_cursor() -> bool {
 ///
 /// Cursor's `beforeShellExecution` sends `command` at the top level
 /// (not nested under `tool_input` like Claude Code / Gemini).
-pub(crate) fn handle_cursor_json(json: &str) -> bool {
+pub(crate) fn handle_cursor_json(json: &str) -> HookOutcome {
     let user_config = rewrite::load_user_config().unwrap_or_default();
     let search_dirs = crate::config::default_search_dirs();
     handle_cursor_json_inner(json, &user_config, &search_dirs)
@@ -159,7 +180,7 @@ pub(crate) fn handle_cursor_json_with_rules(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-) -> bool {
+) -> HookOutcome {
     handle_cursor_json_inner(json, user_config, search_dirs)
 }
 
@@ -168,13 +189,13 @@ fn handle_cursor_json_inner(
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-) -> bool {
+) -> HookOutcome {
     let Ok(input) = serde_json::from_str::<CursorInput>(json) else {
-        return false;
+        return HookOutcome::PassThrough;
     };
 
     let Some(command) = input.command else {
-        return false;
+        return HookOutcome::PassThrough;
     };
 
     process_command(
@@ -185,6 +206,7 @@ fn handle_cursor_json_inner(
         search_dirs,
         CursorHookResponse::rewrite,
         CursorHookResponse::rewrite_ask,
+        CursorHookResponse::deny,
     )
 }
 
@@ -210,8 +232,8 @@ fn query_external_engine(
         Err(e) => {
             eprintln!("[tokf] warning: external permission engine failed: {e}");
             match ext_config.on_error {
-                ErrorFallback::Ask => PermissionVerdict::Ask,
-                ErrorFallback::Allow => PermissionVerdict::Allow,
+                ErrorFallback::Ask => PermissionVerdict::ask(None),
+                ErrorFallback::Allow => PermissionVerdict::allow(),
                 ErrorFallback::Builtin => {
                     let (deny, ask) = permissions::load_deny_ask_rules();
                     permissions::check_command_with_rules(cmd, &deny, &ask)
@@ -234,19 +256,20 @@ fn handle_generic<R: serde::Serialize>(
     format: HookFormat,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-    build_allow: impl FnOnce(String) -> R,
-    build_ask: impl FnOnce(String) -> R,
-) -> bool {
+    build_allow: impl FnOnce(String, Option<String>) -> R,
+    build_ask: impl FnOnce(String, Option<String>) -> R,
+    build_deny: impl FnOnce(String, Option<String>) -> R,
+) -> HookOutcome {
     let Ok(hook_input) = serde_json::from_str::<HookInput>(json) else {
-        return false;
+        return HookOutcome::PassThrough;
     };
 
     if hook_input.tool_name != expected_tool {
-        return false;
+        return HookOutcome::PassThrough;
     }
 
     let Some(command) = hook_input.tool_input.command else {
-        return false;
+        return HookOutcome::PassThrough;
     };
 
     process_command(
@@ -257,6 +280,7 @@ fn handle_generic<R: serde::Serialize>(
         search_dirs,
         build_allow,
         build_ask,
+        build_deny,
     )
 }
 
@@ -271,36 +295,47 @@ fn process_command<R: serde::Serialize>(
     format: HookFormat,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
-    build_allow: impl FnOnce(String) -> R,
-    build_ask: impl FnOnce(String) -> R,
-) -> bool {
+    build_allow: impl FnOnce(String, Option<String>) -> R,
+    build_ask: impl FnOnce(String, Option<String>) -> R,
+    build_deny: impl FnOnce(String, Option<String>) -> R,
+) -> HookOutcome {
     // When an external permission engine is configured, consult it on every
     // command — even ones tokf has no filter for.
     if let Some(verdict) = query_external_engine(&command, json, format, user_config) {
-        if verdict == PermissionVerdict::Deny {
-            return false;
+        // Deny doesn't need a rewrite — the command won't execute.
+        if verdict.decision == PermissionDecision::Deny {
+            if emit_response(&build_deny(command, verdict.reason)) {
+                return HookOutcome::Deny;
+            }
+            return HookOutcome::PassThrough;
         }
-        // Only compute rewrite after ruling out deny.
         let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
         let output_cmd = if rewritten == command {
             command
         } else {
             rewritten
         };
-        let response = match verdict {
-            PermissionVerdict::Ask => build_ask(output_cmd),
-            _ => build_allow(output_cmd),
+        let (response, outcome) = match verdict.decision {
+            PermissionDecision::Ask => (build_ask(output_cmd, verdict.reason), HookOutcome::Ask),
+            _ => (build_allow(output_cmd, verdict.reason), HookOutcome::Allow),
         };
-        return emit_response(&response);
+        if emit_response(&response) {
+            return outcome;
+        }
+        return HookOutcome::PassThrough;
     }
 
     // No external engine — only act when tokf has a matching filter.
     let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
     if rewritten == command {
-        return false;
+        return HookOutcome::PassThrough;
     }
 
-    emit_response(&build_allow(rewritten))
+    if emit_response(&build_allow(rewritten, None)) {
+        HookOutcome::Allow
+    } else {
+        HookOutcome::PassThrough
+    }
 }
 
 /// Serialize and print a hook response. Returns true on success.

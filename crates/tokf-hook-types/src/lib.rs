@@ -8,4 +8,4 @@ pub use config::{
 };
 pub use engine::{ErrorFallback, ExternalEngineConfig};
 pub use format::HookFormat;
-pub use verdict::PermissionVerdict;
+pub use verdict::{PermissionDecision, PermissionVerdict};

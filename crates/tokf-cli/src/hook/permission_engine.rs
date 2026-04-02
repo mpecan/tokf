@@ -137,22 +137,37 @@ fn parse_engine_output(
 /// Extract the permission verdict from a hook response JSON based on format.
 ///
 /// Returns `None` if the response doesn't contain a recognisable verdict.
+/// Also extracts the reason string (per-format field names):
+/// - Claude: `hookSpecificOutput.permissionDecisionReason`
+/// - Gemini: `reason`
+/// - Cursor: `userMessage`
 pub fn extract_verdict(json: &Value, format: HookFormat) -> Option<PermissionVerdict> {
-    let decision_str = match format {
-        HookFormat::ClaudeCode => json
-            .get("hookSpecificOutput")?
-            .get("permissionDecision")
-            .and_then(Value::as_str),
-        HookFormat::Gemini => json.get("decision").and_then(Value::as_str),
-        HookFormat::Cursor => json.get("permission").and_then(Value::as_str),
+    let (decision_str, reason_str) = match format {
+        HookFormat::ClaudeCode => {
+            let hso = json.get("hookSpecificOutput")?;
+            let decision = hso.get("permissionDecision").and_then(Value::as_str);
+            let reason = hso.get("permissionDecisionReason").and_then(Value::as_str);
+            (decision, reason)
+        }
+        HookFormat::Gemini => {
+            let decision = json.get("decision").and_then(Value::as_str);
+            let reason = json.get("reason").and_then(Value::as_str);
+            (decision, reason)
+        }
+        HookFormat::Cursor => {
+            let decision = json.get("permission").and_then(Value::as_str);
+            let reason = json.get("userMessage").and_then(Value::as_str);
+            (decision, reason)
+        }
     };
 
     // For all formats: field present with "allow" → Allow,
     // field present with "deny" → Deny, field absent or "ask" → Ask.
+    // Reason is only allocated for deny/ask (allow discards it).
     match decision_str {
-        Some("allow") => Some(PermissionVerdict::Allow),
-        Some("deny") => Some(PermissionVerdict::Deny),
-        Some("ask") | None => Some(PermissionVerdict::Ask),
+        Some("allow") => Some(PermissionVerdict::allow()),
+        Some("deny") => Some(PermissionVerdict::deny(reason_str.map(String::from))),
+        Some("ask") | None => Some(PermissionVerdict::ask(reason_str.map(String::from))),
         Some(_) => None, // Unknown value — caller treats as error.
     }
 }
@@ -175,7 +190,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::ClaudeCode),
-            Some(PermissionVerdict::Allow)
+            Some(PermissionVerdict::allow())
         );
     }
 
@@ -190,7 +205,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::ClaudeCode),
-            Some(PermissionVerdict::Deny)
+            Some(PermissionVerdict::deny(None))
         );
     }
 
@@ -204,8 +219,61 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::ClaudeCode),
-            Some(PermissionVerdict::Ask)
+            Some(PermissionVerdict::ask(None))
         );
+    }
+
+    #[test]
+    fn claude_code_deny_with_reason() {
+        let json = serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "dangerous command",
+                "updatedInput": { "command": "rm -rf /" }
+            }
+        });
+        let verdict = extract_verdict(&json, HookFormat::ClaudeCode).unwrap();
+        assert_eq!(verdict.decision, tokf_hook_types::PermissionDecision::Deny);
+        assert_eq!(verdict.reason.as_deref(), Some("dangerous command"));
+    }
+
+    #[test]
+    fn claude_code_ask_with_reason() {
+        let json = serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "needs confirmation",
+                "updatedInput": { "command": "git push" }
+            }
+        });
+        let verdict = extract_verdict(&json, HookFormat::ClaudeCode).unwrap();
+        assert_eq!(verdict.decision, tokf_hook_types::PermissionDecision::Ask);
+        assert_eq!(verdict.reason.as_deref(), Some("needs confirmation"));
+    }
+
+    #[test]
+    fn gemini_deny_with_reason() {
+        let json = serde_json::json!({
+            "decision": "deny",
+            "reason": "blocked by policy"
+        });
+        let verdict = extract_verdict(&json, HookFormat::Gemini).unwrap();
+        assert_eq!(verdict.decision, tokf_hook_types::PermissionDecision::Deny);
+        assert_eq!(verdict.reason.as_deref(), Some("blocked by policy"));
+    }
+
+    #[test]
+    fn cursor_deny_with_reason() {
+        let json = serde_json::json!({
+            "permission": "deny",
+            "userMessage": "not allowed",
+            "agentMessage": "not allowed"
+        });
+        let verdict = extract_verdict(&json, HookFormat::Cursor).unwrap();
+        assert_eq!(verdict.decision, tokf_hook_types::PermissionDecision::Deny);
+        assert_eq!(verdict.reason.as_deref(), Some("not allowed"));
     }
 
     #[test]
@@ -236,7 +304,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::Gemini),
-            Some(PermissionVerdict::Allow)
+            Some(PermissionVerdict::allow())
         );
     }
 
@@ -249,7 +317,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::Gemini),
-            Some(PermissionVerdict::Ask)
+            Some(PermissionVerdict::ask(None))
         );
     }
 
@@ -261,7 +329,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::Cursor),
-            Some(PermissionVerdict::Allow)
+            Some(PermissionVerdict::allow())
         );
     }
 
@@ -272,7 +340,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::Cursor),
-            Some(PermissionVerdict::Ask)
+            Some(PermissionVerdict::ask(None))
         );
     }
 
@@ -284,7 +352,7 @@ mod tests {
         });
         assert_eq!(
             extract_verdict(&json, HookFormat::Cursor),
-            Some(PermissionVerdict::Deny)
+            Some(PermissionVerdict::deny(None))
         );
     }
 
@@ -323,7 +391,7 @@ mod tests {
         let config = default_config(cmd);
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        assert_eq!(result.unwrap(), PermissionVerdict::allow());
     }
 
     #[cfg(unix)]
@@ -339,7 +407,7 @@ mod tests {
         let config = default_config(cmd);
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"git push"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Ask);
+        assert_eq!(result.unwrap(), PermissionVerdict::ask(None));
     }
 
     #[cfg(unix)]
@@ -367,7 +435,7 @@ mod tests {
         let config = default_config(cmd);
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Ask);
+        assert_eq!(result.unwrap(), PermissionVerdict::ask(None));
     }
 
     #[cfg(unix)]
@@ -426,7 +494,7 @@ mod tests {
         let config = default_config(cmd);
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        assert_eq!(result.unwrap(), PermissionVerdict::allow());
         let received = std::fs::read_to_string(&marker_file).unwrap();
         assert_eq!(received, hook_json);
     }
@@ -448,7 +516,7 @@ mod tests {
         config.args = vec!["hook".to_string(), "handle".to_string()];
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        assert_eq!(result.unwrap(), PermissionVerdict::allow());
         let args = std::fs::read_to_string(&marker_file).unwrap();
         assert_eq!(args.trim(), "hook handle");
     }
@@ -470,7 +538,7 @@ mod tests {
         config.args = vec!["--mode".to_string(), "{format}".to_string()];
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        assert_eq!(result.unwrap(), PermissionVerdict::allow());
         let args = std::fs::read_to_string(&marker_file).unwrap();
         assert_eq!(args.trim(), "--mode claude-code");
     }
@@ -494,7 +562,7 @@ mod tests {
             std::collections::HashMap::from([("claude-code".to_string(), "claude".to_string())]);
         let hook_json = r#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#;
         let result = check_with_engine(&config, hook_json, HookFormat::ClaudeCode);
-        assert_eq!(result.unwrap(), PermissionVerdict::Allow);
+        assert_eq!(result.unwrap(), PermissionVerdict::allow());
         let args = std::fs::read_to_string(&marker_file).unwrap();
         assert_eq!(args.trim(), "--mode claude");
     }
