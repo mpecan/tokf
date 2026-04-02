@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.40](https://github.com/mpecan/tokf/compare/tokf-v0.2.39...tokf-v0.2.40) (2026-04-02)
+
+
+### Features
+
+* **hook:** forward permission decision reasons to AI tools ([#317](https://github.com/mpecan/tokf/issues/317)) ([cf6b5d7](https://github.com/mpecan/tokf/commit/cf6b5d7bc9eaa2bbf1f8b3dececd1741ffa0bb58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.39 to 0.2.40
+    * tokf-filter bumped from 0.2.39 to 0.2.40
+    * tokf-hook-types bumped from 0.2.39 to 0.2.40
+
 ## [0.2.39](https://github.com/mpecan/tokf/compare/tokf-v0.2.38...tokf-v0.2.39) (2026-03-26)
 
 
