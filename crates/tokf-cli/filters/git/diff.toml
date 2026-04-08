@@ -1,12 +1,35 @@
 # git-diff.toml — Override to --stat for compact output
 # Raw: full unified diff (potentially hundreds of lines)
 # Filtered: compact stat summary (files changed + insertions/deletions)
+#
+# Escape hatches: when the model needs the actual diff content (or an
+# alternative summary format), it can pass any of the flags in
+# `passthrough_args` and tokf will skip the override and run `git diff`
+# as the user requested. The list below was chosen from observed agent
+# retry patterns: forcing --stat with no escape caused models to thrash
+# through ~50 retries trying every variation of `git diff` to get the
+# patch content out.
 
 command = "git diff"
 description = "Show compact --stat summary instead of full diff"
 
 # Override: use --stat for compact summary output
 run = "git diff --stat {args}"
+
+# Skip the override entirely when the user explicitly asks for diff content,
+# specific context-line counts, or alternative summary formats.
+passthrough_args = [
+  "-p",            # patch (full diff content)
+  "--patch",       # also matches --patch-with-stat, --patch-with-raw, --patch-id
+  "--no-stat",     # explicitly disable our forced --stat
+  "-U",            # -U3, -U10, ... custom unified context line counts
+  "--unified",
+  "--name-only",   # alternative summary: file paths only
+  "--name-status", # alternative summary: status + file paths
+  "--numstat",     # alternative summary: machine-readable
+  "--shortstat",   # alternative summary: one line
+  "--raw",         # alternative summary: raw format
+]
 
 match_output = [
   { contains = "fatal:", output = "✗ {line_containing}" },

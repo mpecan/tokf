@@ -82,7 +82,9 @@ mod tests {
 
         assert_eq!(cfg.command.first(), "git status");
         let run = cfg.run.unwrap();
-        assert_eq!(run, "git status --porcelain -b");
+        // -uall: list every untracked file individually (avoid dir collapse)
+        // --find-renames: render renames as "R old -> new" instead of D + ??
+        assert_eq!(run, "git status --porcelain=v1 -b -uall --find-renames");
 
         // match_output: not-a-git-repo case
         assert_eq!(cfg.match_output.len(), 1);
@@ -92,8 +94,10 @@ mod tests {
         );
         assert_eq!(cfg.match_output[0].output, "Not a git repository");
 
-        // replace rules: branch line transformations
-        assert_eq!(cfg.replace.len(), 3);
+        // replace rules: branch line transformations.
+        // 1) detached HEAD, 2) ahead/behind bracket, 3) synced (upstream
+        // present, no bracket), 4) local-only (no upstream).
+        assert_eq!(cfg.replace.len(), 4);
 
         // Detached HEAD rule
         assert_eq!(cfg.replace[0].pattern, "^## HEAD \\(no branch\\).*$");
@@ -103,9 +107,13 @@ mod tests {
         assert!(cfg.replace[1].pattern.contains("\\["));
         assert_eq!(cfg.replace[1].output, "{1} [{2}]");
 
-        // Plain branch (no ahead/behind)
-        assert!(cfg.replace[2].pattern.contains("(?:"));
-        assert_eq!(cfg.replace[2].output, "{1}");
+        // Branch with upstream but in sync
+        assert!(cfg.replace[2].pattern.contains("\\.\\.\\."));
+        assert_eq!(cfg.replace[2].output, "{1} [synced]");
+
+        // Local-only branch (no upstream tracking)
+        assert_eq!(cfg.replace[3].pattern, "^## (\\S+)$");
+        assert_eq!(cfg.replace[3].output, "{1} (no upstream)");
 
         // history hint is off — files are shown directly
         assert!(!cfg.show_history_hint);
@@ -222,9 +230,40 @@ empty = "nothing to show"
 
         assert_eq!(cfg.command.first(), "git log");
 
-        let run = cfg.run.unwrap();
+        let run = cfg.run.clone().unwrap();
         assert!(run.contains("{args}"));
         assert!(run.contains("--oneline"));
+
+        // on_empty hint: empty results must be unambiguous and actionable.
+        let on_empty = cfg.on_empty.as_deref().expect("on_empty hint required");
+        assert!(on_empty.contains("no matching commits"));
+        assert!(on_empty.contains("git ls-files"));
+        assert!(on_empty.contains("--all"));
+        assert!(on_empty.contains("--follow"));
+
+        // Passthrough escape hatches: these flags must skip the override.
+        for flag in [
+            "-p",
+            "--patch",
+            "--format",
+            "--pretty",
+            "--graph",
+            "--stat",
+            "--shortstat",
+            "--dirstat",
+            "--name-only",
+            "--name-status",
+            "-L",
+        ] {
+            assert!(
+                cfg.passthrough_args.iter().any(|p| p == flag),
+                "git/log.toml is missing passthrough_args entry: {flag}",
+            );
+        }
+        // Sanity-check prefix matching for line-history (-L1,10:file).
+        assert!(cfg.should_passthrough(&["-L1,10:src/main.rs".to_string()]));
+        assert!(cfg.should_passthrough(&["--name-only".to_string()]));
+        assert!(!cfg.should_passthrough(&["--all".to_string()]));
 
         let success = cfg.on_success.unwrap();
         assert_eq!(success.output.as_deref(), Some("{output}"));
@@ -236,9 +275,36 @@ empty = "nothing to show"
 
         assert_eq!(cfg.command.first(), "git diff");
 
-        let run = cfg.run.unwrap();
+        let run = cfg.run.clone().unwrap();
         assert!(run.contains("--stat"));
         assert!(run.contains("{args}"));
+
+        // Escape hatches: these flags must trigger passthrough so the model
+        // can get the actual diff content (or alternative summaries) instead
+        // of being trapped behind the forced --stat override.
+        for flag in [
+            "-p",
+            "--patch",
+            "--no-stat",
+            "-U",
+            "--unified",
+            "--name-only",
+            "--name-status",
+            "--numstat",
+            "--shortstat",
+            "--raw",
+        ] {
+            assert!(
+                cfg.passthrough_args.iter().any(|p| p == flag),
+                "git/diff.toml is missing passthrough_args entry: {flag}",
+            );
+        }
+        // Sanity-check the prefix-matching behaviour for context-line flags
+        // (e.g. -U3, -U10) and patch variants (--patch-with-stat).
+        assert!(cfg.should_passthrough(&["-U3".to_string()]));
+        assert!(cfg.should_passthrough(&["--patch-with-stat".to_string()]));
+        assert!(cfg.should_passthrough(&["--no-stat".to_string()]));
+        assert!(!cfg.should_passthrough(&["origin/main...HEAD".to_string()]));
 
         assert_eq!(cfg.match_output.len(), 1);
         assert_eq!(cfg.match_output[0].contains.as_deref().unwrap(), "fatal:");

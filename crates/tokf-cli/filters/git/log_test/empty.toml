@@ -1,6 +1,16 @@
-name = "empty git log produces no output"
+name = "empty git log emits actionable hint instead of nothing"
+# Regression: previously empty output was returned as-is, leaving the model
+# unable to distinguish "git returned nothing" (often: file untracked, empty
+# branch range) from "tokf filtered everything out". Observed retry pattern:
+# 10–40 follow-up `git log` calls trying to escape a non-existent filter.
 inline = ""
 exit_code = 0
 
 [[expect]]
-equals = ""
+contains = "no matching commits"
+
+[[expect]]
+contains = "git ls-files"
+
+[[expect]]
+contains = "--all"

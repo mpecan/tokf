@@ -1,13 +1,43 @@
 # git-log.toml — Override command to get compact format
 # Raw: multi-line commit entries with full metadata
 # Filtered: one-line-per-commit format
+#
+# Empty-output handling: when git log returns no commits (e.g. for an
+# untracked pathspec, an empty branch range, or a search that matched
+# nothing), the model previously got back nothing — indistinguishable
+# from "tokf filtered everything out". Observed retry pattern: agents
+# would burn 10–40 calls cycling through flag variations
+# (`--all`, `--diff-filter=A`, `--grep=…`, `--source`, `--follow`,
+# `-- 'path'`) before realising the answer was "the file is untracked".
+# `on_empty` makes the empty-result case unambiguous and actionable.
 
 command = "git log"
 description = "Show one-line-per-commit format, last 20 entries"
 
 # Override to get compact output directly from git
 run = "git log --oneline --no-decorate -n 20 {args}"
-passthrough_args = ["-p", "--patch", "--format", "--pretty", "--graph", "--stat"]
+
+# Skip the override entirely when the user asks for an output format
+# fundamentally incompatible with `--oneline -n 20`. Other common flags
+# (`--all`, `--follow`, `--diff-filter`, `--grep`, `-S`, `-G`, `--author`,
+# `--since`, etc.) compose fine with the override and don't need passthrough.
+passthrough_args = [
+  "-p",            # patch (full diff content per commit)
+  "--patch",
+  "--format",      # custom output format
+  "--pretty",
+  "--graph",       # ASCII graph
+  "--stat",        # diffstat per commit
+  "--shortstat",   # one-line diffstat per commit
+  "--dirstat",     # per-directory change stats
+  "--name-only",   # file paths per commit (new)
+  "--name-status", # status + file paths per commit (new)
+  "-L",            # line-history (-L 1,10:file or -L:funcName:file) — patch output
+]
+
+# When git returns no commits, give the model a one-line hint about the
+# most likely causes instead of empty output.
+on_empty = "(no matching commits — if querying a path, verify it's tracked: `git ls-files -- <path>`; for cross-branch history, add `--all`; for renamed-file history, add `--follow`)"
 
 # Nothing to filter — the override command already produces compact output
 # But if args include --stat or --patch, passthrough

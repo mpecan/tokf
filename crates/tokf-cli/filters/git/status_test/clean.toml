@@ -1,6 +1,6 @@
-name = "clean repo shows only branch name"
+name = "clean repo shows branch name with synced marker"
 fixture = "clean.txt"
 exit_code = 0
 
 [[expect]]
-equals = "main"
+equals = "main [synced]"
