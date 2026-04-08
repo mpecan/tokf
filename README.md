@@ -258,11 +258,11 @@ FORCE_COLOR=1 tokf run npm test
 |---|---|
 | `git/add` | `git add` |
 | `git/commit` | `git commit` |
-| `git/diff` | `git diff` |
-| `git/log` | `git log` |
+| `git/diff` | `git diff` — overrides to `git diff --stat` for compact output. Pass `-p`/`--patch`/`--no-stat`/`-U<n>`/`--name-only`/`--name-status`/`--numstat`/`--shortstat`/`--raw` to skip the override and get the requested format instead |
+| `git/log` | `git log` — overrides to `git log --oneline --no-decorate -n 20`. Pass `-p`/`--patch`/`--format`/`--pretty`/`--graph`/`--stat`/`--shortstat`/`--dirstat`/`--name-only`/`--name-status`/`-L` to skip the override. Empty results emit a one-line hint pointing at common causes (untracked pathspec, missing `--all`, missing `--follow`) instead of nothing — this stops agents looping through flag variations trying to escape a non-existent filter |
 | `git/push` | `git push` |
 | `git/show` | `git show` |
-| `git/status` | `git status` — runs `git status --porcelain -b`; shows branch name + one porcelain-format line per changed file (e.g. `M  src/main.rs`, `?? scratch.rs`) |
+| `git/status` | `git status` — runs `git status --porcelain=v1 -b -uall --find-renames`; shows branch + upstream sync state (`[synced]`, `[ahead N]`, `[behind N]`, `(no upstream)`) and one porcelain line per changed file (`M  src/main.rs`, `?? scratch.rs`, `R  old.rs -> new.rs`). `-uall` lists every untracked file individually instead of collapsing newly-created directories |
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
 | `cargo/clippy` | `cargo clippy` |

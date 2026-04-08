@@ -1,12 +1,26 @@
 # git-status.toml — compact file listing with native git status codes
-# Runs: git status --porcelain -b (branch header + XY status lines)
-# Filtered: branch header transformed to name [±N]; file lines passed through unchanged
+# Runs: git status --porcelain=v1 -b -uall --find-renames
+#   -b              → branch header (## main...origin/main [ahead 1])
+#   -uall           → list every untracked file individually instead of
+#                     collapsing newly-created directories to "?? dir/".
+#                     The collapsing default caused models to retry status
+#                     because they "didn't see" files they had just created.
+#   --find-renames  → render renames as "R old -> new" instead of D + ??.
+#                     Without it, the model sees the rename as a deletion
+#                     plus an unrelated new file and tries to "fix" the
+#                     deletion.
+# Filtered: branch header transformed to a compact form that always
+#           communicates upstream sync state — "[synced]", "[ahead N]",
+#           "[behind N]", "[ahead N, behind M]", or "(no upstream)".
+#           The previous filter stripped the upstream tracking entirely
+#           when in sync, leaving the model unable to tell whether it had
+#           unpushed commits.
 
 command = "git status"
-description = "Compact porcelain format with branch info"
+description = "Compact porcelain format with branch and upstream sync state"
 
-# Override: use porcelain for reliable machine parsing
-run = "git status --porcelain -b"
+# Override: porcelain v1 with untracked-all and rename detection
+run = "git status --porcelain=v1 -b -uall --find-renames"
 
 match_output = [
   { contains = "not a git repository", output = "Not a git repository" },
@@ -17,7 +31,9 @@ replace = [
   { pattern = '^## HEAD \(no branch\).*$', output = "HEAD (detached)" },
   # Branch with ahead/behind info: ## main...origin/main [ahead 2]
   { pattern = '^## (\S+?)(?:\.\.\.\S+)?\s+\[(.+)\]$', output = "{1} [{2}]" },
-  # Branch without ahead/behind: ## main...origin/main  or  ## main
-  { pattern = '^## (\S+?)(?:\.\.\.\S+)?$', output = "{1}" },
+  # Branch with upstream but in sync (no [ahead/behind] bracket)
+  { pattern = '^## (\S+?)\.\.\.\S+$', output = "{1} [synced]" },
+  # Local-only branch (no upstream tracking)
+  { pattern = '^## (\S+)$', output = "{1} (no upstream)" },
   # File lines pass through unchanged (XY codes are standard and understood by models)
 ]

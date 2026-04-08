@@ -1,0 +1,14 @@
+name = "rename detection shows R old -> new instead of D + ??"
+# Regression: previously --find-renames was not enabled, so a rename
+# appeared as a deletion of the old file plus an unrelated untracked
+# new file. The model would then try to "fix" the deletion and undo
+# its own rename. With --find-renames in the run override, git emits
+# a single "R" line that the model recognises as a rename.
+inline = """
+## main...origin/main
+R  old_path.rs -> new_path.rs
+"""
+exit_code = 0
+
+[[expect]]
+equals = "main [synced]\nR  old_path.rs -> new_path.rs"

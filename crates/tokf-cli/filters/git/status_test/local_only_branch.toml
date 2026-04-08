@@ -1,6 +1,6 @@
-name = "local-only branch with no upstream shows just branch name"
+name = "local-only branch with no upstream is marked explicitly"
 inline = "## my-feature\n?? scratch.rs\n"
 exit_code = 0
 
 [[expect]]
-equals = "my-feature\n?? scratch.rs"
+equals = "my-feature (no upstream)\n?? scratch.rs"

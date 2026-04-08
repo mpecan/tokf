@@ -1,6 +1,6 @@
-name = "normal repo shows branch and file listing"
+name = "normal repo shows branch with synced marker and file listing"
 fixture = "normal.txt"
 exit_code = 0
 
 [[expect]]
-equals = "main\nM  src/main.rs\n M src/lib.rs\n?? new_file.txt\n?? another.txt"
+equals = "main [synced]\nM  src/main.rs\n M src/lib.rs\n?? new_file.txt\n?? another.txt"
