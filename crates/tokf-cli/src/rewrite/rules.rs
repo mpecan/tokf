@@ -6,7 +6,14 @@ use super::types::RewriteRule;
 ///
 /// - `^tokf ` prevents double-wrapping
 ///
-/// Top-level heredoc detection is handled separately by [`has_toplevel_heredoc`].
+/// Two implicit AST-based skip rules are also enforced (separate from the
+/// regex patterns above):
+/// - Top-level heredocs via [`super::bash_ast::has_toplevel_heredoc`].
+/// - Top-level output redirects to a file via
+///   [`super::bash_ast::has_toplevel_output_redirect`]. When an agent uses
+///   `>`, `>>`, `&>`, etc., they explicitly want raw output for downstream
+///   processing — interposing `tokf run` would write filtered bytes into
+///   the file, silently corrupting the agent's data.
 const BUILTIN_SKIP_PATTERNS: &[&str] = &["^tokf "];
 
 /// Check if a command should be skipped (not rewritten).
@@ -20,6 +27,10 @@ pub fn should_skip(command: &str, user_patterns: &[String]) -> bool {
     }
 
     if super::bash_ast::has_toplevel_heredoc(command) {
+        return true;
+    }
+
+    if super::bash_ast::has_toplevel_output_redirect(command) {
         return true;
     }
 
@@ -167,6 +178,59 @@ EOF
         assert!(!should_skip("git status", &[]));
         assert!(!should_skip("cargo test", &[]));
         assert!(!should_skip("ls -la", &[]));
+    }
+
+    // --- skip output redirects ---
+
+    #[test]
+    fn skip_output_redirect_basic() {
+        assert!(should_skip("git diff > /tmp/foo.txt", &[]));
+    }
+
+    #[test]
+    fn skip_output_redirect_append() {
+        assert!(should_skip("git log >> /tmp/log.txt", &[]));
+    }
+
+    #[test]
+    fn skip_output_redirect_to_dev_null() {
+        assert!(should_skip("git status > /dev/null", &[]));
+    }
+
+    #[test]
+    fn skip_output_redirect_stderr_to_file() {
+        assert!(should_skip("cargo test 2> errors.log", &[]));
+    }
+
+    #[test]
+    fn skip_output_redirect_combined_bash() {
+        assert!(should_skip("cargo test &> all.log", &[]));
+    }
+
+    #[test]
+    fn no_skip_fd_merge_only() {
+        // `2>&1` redirects fd-to-fd; no file is written.
+        assert!(!should_skip("git diff 2>&1", &[]));
+    }
+
+    #[test]
+    fn no_skip_input_redirect() {
+        assert!(!should_skip("git apply < input.patch", &[]));
+    }
+
+    #[test]
+    fn no_skip_redirect_in_substitution() {
+        // The outer `echo` has no redirect; the redirect inside `$(...)`
+        // is a separate scope and must not affect the outer command.
+        assert!(!should_skip("echo $(git diff > /tmp/foo)", &[]));
+    }
+
+    #[test]
+    fn no_skip_redirect_in_function_def() {
+        // Function definitions produce no output; the body runs at call
+        // time. Skipping the definition would silently disable filtering
+        // at every call site of `foo`.
+        assert!(!should_skip("foo() { git diff > x; }", &[]));
     }
 
     // --- apply_rules ---
