@@ -13,6 +13,7 @@ mod replace;
 pub mod section;
 mod skip;
 mod template;
+mod tree;
 
 use regex::Regex;
 
@@ -259,6 +260,16 @@ fn apply_internal(
         lines
     };
 
+    // 2.6. Tree transform — restructures path-list output into a directory
+    // tree. Returns Some(rendered) when engagement gates pass, None when
+    // they don't (caller treats None as "use original lines unchanged").
+    // When active, color restoration is bypassed in the pre_filtered step
+    // below — color spans don't survive structural rearrangement.
+    let tree_lines: Option<Vec<String>> = config
+        .tree
+        .as_ref()
+        .and_then(|tree_cfg| tree::apply_tree(tree_cfg, &lines));
+
     // 2b. Lua script escape hatch (sandboxed)
     #[cfg(feature = "lua")]
     if let Some(ref script_cfg) = config.lua_script {
@@ -319,8 +330,12 @@ fn apply_internal(
         SectionMap::new()
     };
 
-    // Restore display lines for color mode, or join clean lines.
-    let pre_filtered = if let Some(ref display) = raw.display {
+    // Restore display lines for color mode, join tree-rendered lines, or
+    // join clean lines. The tree path takes priority over color restoration
+    // because the rearranged structure can't carry per-line color spans.
+    let pre_filtered = if let Some(ref t) = tree_lines {
+        t.join("\n")
+    } else if let Some(ref display) = raw.display {
         restore_display_lines(&raw.clean, display, &lines)
     } else {
         lines.join("\n")
@@ -516,3 +531,9 @@ mod tests_pipeline;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests_rtk_compat;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests_tree;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tree_tests;
