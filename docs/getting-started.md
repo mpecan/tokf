@@ -163,7 +163,7 @@ FORCE_COLOR=1 tokf run npm test
 | `git/log` | `git log` — overrides to `git log --oneline --no-decorate -n 20`. Pass `-p`/`--patch`/`--format`/`--pretty`/`--graph`/`--stat`/`--shortstat`/`--dirstat`/`--name-only`/`--name-status`/`-L` to skip the override. Empty results emit a one-line hint pointing at common causes (untracked pathspec, missing `--all`, missing `--follow`) instead of nothing — this stops agents looping through flag variations trying to escape a non-existent filter |
 | `git/push` | `git push` |
 | `git/show` | `git show` |
-| `git/status` | `git status` — runs `git status --porcelain=v1 -b -uall --find-renames`; shows branch + upstream sync state (`[synced]`, `[ahead N]`, `[behind N]`, `(no upstream)`) and one porcelain line per changed file (`M  src/main.rs`, `?? scratch.rs`, `R  old.rs -> new.rs`). `-uall` lists every untracked file individually instead of collapsing newly-created directories |
+| `git/status` | `git status` — runs `git status --porcelain=v1 -b -uall --find-renames`; shows branch + upstream sync state (`[synced]`, `[ahead N]`, `[behind N]`, `(no upstream)`) and one porcelain line per changed file (`M  src/main.rs`, `?? scratch.rs`, `R  old.rs -> new.rs`). `-uall` lists every untracked file individually instead of collapsing newly-created directories. When 3+ files share a directory prefix the listing is restructured into a directory tree (see [`[tree]`](#tree-restructuring) in writing-filters), writing each shared prefix once. Measured 24.7% averaged token reduction across the bundled test fixtures |
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
 | `cargo/clippy` | `cargo clippy` |
