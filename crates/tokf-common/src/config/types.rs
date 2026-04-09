@@ -105,6 +105,11 @@ pub struct FilterConfig {
     /// Structured parsing rules (branch line, file grouping).
     pub parse: Option<ParseConfig>,
 
+    /// Directory-tree restructuring for path-list outputs. See
+    /// [`crate::config::tree::TreeConfig`] for the schema and
+    /// `crates/tokf-filter/src/filter/tree.rs` for the algorithm.
+    pub tree: Option<crate::config::tree::TreeConfig>,
+
     /// Output formatting configuration.
     pub output: Option<OutputConfig>,
 
