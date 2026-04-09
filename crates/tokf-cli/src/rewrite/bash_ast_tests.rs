@@ -48,6 +48,38 @@ fn pipe_not_a_separator() {
     assert_eq!(segs[0].0, "git diff HEAD | head -5");
 }
 
+#[test]
+fn three_segment_and_chain() {
+    // Regression: rable parses left-associatively as ((A && B) && C),
+    // so without recursive flattening this returned 2 segments and
+    // glued the middle command into the first. Verify we now get 3.
+    let p = ParsedCommand::parse("git add a && git commit -m x && git push").unwrap();
+    let segs = p.compound_segments();
+    assert_eq!(segs.len(), 3);
+    assert_eq!(segs[0].0, "git add a");
+    assert!(segs[0].1.contains("&&"));
+    assert_eq!(segs[1].0, "git commit -m x");
+    assert!(segs[1].1.contains("&&"));
+    assert_eq!(segs[2].0, "git push");
+    assert!(segs[2].1.is_empty());
+}
+
+#[test]
+fn mixed_and_or_chain() {
+    // Locks in operator inheritance for the recursive flattener:
+    // parsed as ((a && b) || c), the last child of the inner list (b)
+    // must inherit the outer "||" — not its own None operator.
+    let p = ParsedCommand::parse("a && b || c").unwrap();
+    let segs = p.compound_segments();
+    assert_eq!(segs.len(), 3);
+    assert_eq!(segs[0].0, "a");
+    assert!(segs[0].1.contains("&&"));
+    assert_eq!(segs[1].0, "b");
+    assert!(segs[1].1.contains("||"));
+    assert_eq!(segs[2].0, "c");
+    assert!(segs[2].1.is_empty());
+}
+
 // --- pipe detection ---
 
 #[test]
@@ -160,6 +192,33 @@ fn toplevel_heredoc() {
 fn no_heredoc_plain() {
     let p = ParsedCommand::parse("git status").unwrap();
     assert!(!p.has_toplevel_heredoc());
+}
+
+// --- has_substitution_heredoc ---
+
+#[test]
+fn substitution_heredoc_basic() {
+    assert!(has_substitution_heredoc(
+        "git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\""
+    ));
+}
+
+#[test]
+fn substitution_heredoc_in_compound() {
+    assert!(has_substitution_heredoc(
+        "git add a && git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\" && git push"
+    ));
+}
+
+#[test]
+fn no_substitution_heredoc_for_toplevel() {
+    // A bare top-level heredoc is caught by has_toplevel_heredoc, not this.
+    assert!(!has_substitution_heredoc("cat <<EOF\nhi\nEOF"));
+}
+
+#[test]
+fn no_substitution_heredoc_plain_command() {
+    assert!(!has_substitution_heredoc("git status"));
 }
 
 // --- output redirect ---

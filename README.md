@@ -1769,7 +1769,7 @@ patterns = ["(?:^|\\s)cargo\\s"]   # matches "cargo" anywhere after start or whi
 
 ## Implicit skip rules
 
-Two implicit skip rules are always active and can't be disabled. They cover cases where rewriting would silently corrupt the agent's data, so there's no plausible reading under which the rewrite would be correct.
+Three implicit skip rules are always active and can't be disabled. They cover cases where rewriting would silently corrupt the agent's data, so there's no plausible reading under which the rewrite would be correct.
 
 ### Heredocs
 
@@ -1781,6 +1781,28 @@ cat <<EOF > /tmp/cfg.yaml
 key: value
 EOF
 ```
+
+### Heredocs inside command substitution
+
+Commands that contain a heredoc anywhere inside a `$(...)` (or backtick) command substitution are also skipped — even when the substitution is buried deep inside an argument like `git commit -m "$(cat <<'EOF' … EOF)"`. The heredoc body lives in a logically-separate region of the source from the surrounding command, and downstream re-tokenization (clap argv parsing in `tokf run`, second-pass shell parsers, byte-offset pipe stripping) can slice through it. The canonical failure mode this prevents is `git commit -m "$(cat <<'EOF' … EOF)" 2>&1 | tail -10` mangling `-m`'s value into `git: error: switch 'm' requires a value`.
+
+```sh
+# Not rewritten — multi-line commit messages, gh PR bodies, etc.:
+git add foo && git commit -m "$(cat <<'EOF'
+feat: a thing
+
+with multi-line body
+EOF
+)" && git push
+
+gh pr create -b "$(cat <<EOF
+## Summary
+…
+EOF
+)"
+```
+
+Unlike the output-redirect skip below, this rule fires for the **whole compound**: if any segment contains a substitution-nested heredoc, sibling `git add` / `git push` segments are also passed through. This is intentionally conservative — re-emitting *any* part of a compound that contains this construct risks downstream byte-offset slicing into the heredoc body.
 
 ### Output redirection
 
