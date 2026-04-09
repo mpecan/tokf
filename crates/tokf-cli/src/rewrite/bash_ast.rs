@@ -307,11 +307,12 @@ fn has_heredoc(node: &Node, inside_substitution: bool) -> bool {
 ///   property of the outer command.
 /// - `Function` — a definition produces no output; the body runs at call
 ///   time, where the call site itself is what we'd evaluate.
-/// - `List` — segments are handled by the per-segment loop in
-///   [`super::rewrite_with_config_and_options`], so the whole-command
-///   check at line 280 returns false and each segment gets its own skip
-///   decision. Without this, `git diff > foo.txt; git status` would skip
-///   both segments instead of only the redirected one.
+/// - `List` — the top-level skip check in
+///   [`super::rewrite_with_config_and_options`] runs before
+///   [`split_compound`], while compound segments are re-checked in the
+///   per-segment loop. Returning `false` here lets each segment get its
+///   own skip decision. Without this, `git diff > foo.txt; git status`
+///   would skip both segments instead of only the redirected one.
 fn has_output_redirect_to_file(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Redirect { op, target, .. } => is_file_output_op(op, target),
@@ -354,11 +355,11 @@ fn is_file_output_op(op: &str, target: &Node) -> bool {
     if op == ">&-" {
         return false;
     }
-    // FD-to-FD duplication: `>&` (and `<&`) where the target is a digit
-    // word like `1` or `2`. The bash extension `>& filename` (target is a
-    // non-digit word) IS a file write, so we only return false for the
-    // digit-target case.
-    if op == ">&" || op == "<&" {
+    // FD-to-FD duplication: `>&` where the target is a digit word like
+    // `1` or `2`. The bash extension `>& filename` (target is a non-digit
+    // word) IS a file write, so we only return false for the digit-target
+    // case. (`<&` is already excluded by the early return above.)
+    if op == ">&" {
         return !is_fd_word(target);
     }
     // Everything else with `>` writes to a file: `>`, `>>`, `>|`, `&>`,

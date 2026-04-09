@@ -387,9 +387,10 @@ fn rewrite_does_not_skip_fd_merge_only() {
 #[test]
 fn rewrite_skips_command_with_pipeline_redirect() {
     // A pipeline whose first command has an output redirect is also
-    // skipped — the redirect "wins" over pipe-stripping. (Bash would
-    // actually error here because the pipe gets nothing, but we still
-    // shouldn't rewrite — the agent's intent is unmistakable.)
+    // skipped — the redirect "wins" over pipe-stripping. In Bash, the
+    // redirect sends stdout to the file, so the piped command just reads
+    // EOF; we still shouldn't rewrite because the agent's intent is
+    // unmistakable.
     let dir = TempDir::new().unwrap();
     fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
 
