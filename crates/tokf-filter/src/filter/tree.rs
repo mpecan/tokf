@@ -30,7 +30,7 @@ use tokf_common::config::tree::{TreeConfig, TreeStyle};
 /// as "use the original lines unchanged".
 ///
 /// Returns `Some(rendered)` when the transform engaged.
-pub fn apply_tree(cfg: &TreeConfig, lines: &[&str]) -> Option<Vec<String>> {
+pub(super) fn apply_tree(cfg: &TreeConfig, lines: &[&str]) -> Option<Vec<String>> {
     let re = compile_pattern(&cfg.pattern)?;
 
     // Phase 1: classify each line as matched (decoration + path + tail) or
@@ -335,8 +335,12 @@ fn render_child(
 
 // ───────────────────────── Regex caching ─────────────────────────
 
-/// Cache compiled regexes by pattern string. Same approach as `parse.rs` /
-/// `replace.rs` use elsewhere in this crate.
+/// Cache compiled regexes by pattern string so the same `[tree]` config
+/// doesn't re-compile its pattern on every call. The cache is mod-local
+/// (the filter pipeline doesn't have a shared regex cache today —
+/// `parse.rs` and `replace.rs` both call `Regex::new` directly per call).
+/// If a third call site is added later this can be lifted into a shared
+/// helper in `filter/mod.rs`.
 fn compile_pattern(pattern: &str) -> Option<Regex> {
     static CACHE: OnceLock<Mutex<std::collections::HashMap<String, Regex>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
@@ -351,6 +355,7 @@ fn compile_pattern(pattern: &str) -> Option<Regex> {
     Some(re)
 }
 
-// Tests live in `crate::filter::tree_tests` (sibling file) so this module
-// stays under the 500-line soft limit. Keeping the tests separate also
-// guarantees they exercise only the public API of `tree::apply_tree`.
+// Tests live in `crate::filter::tests_tree_unit` (sibling file) so this
+// module stays under the 500-line soft limit. Keeping the tests separate
+// also guarantees they exercise only the public API of `tree::apply_tree`.
+// End-to-end pipeline tests are in `tests_tree.rs`.

@@ -1,0 +1,14 @@
+name = "two-file output stays flat (below min_files=3 fallback)"
+# Negative-case proof: with min_files=3 in git/status.toml's [tree], a
+# 2-file output must NOT engage the tree. Verifies the engagement gate
+# fails closed and the original flat porcelain passes through unchanged.
+# This is the "tree is net-expansion" guard the issue called for.
+inline = """
+## main...origin/main
+M  src/foo.rs
+M  src/bar.rs
+"""
+exit_code = 0
+
+[[expect]]
+equals = "main [synced]\nM  src/foo.rs\nM  src/bar.rs"

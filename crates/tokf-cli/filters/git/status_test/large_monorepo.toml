@@ -5,27 +5,24 @@ name = "monorepo with many files clustered under a shared prefix renders as a tr
 fixture = "large_monorepo.txt"
 exit_code = 0
 
+# Pin the full rendered structure so a regression in collapse, ordering,
+# or indent width is caught immediately.
 [[expect]]
-contains = "main [synced]"
-
-# Top-level shared root
-[[expect]]
-contains = "crates/"
-
-# Single-child collapse merges tokf-common/src/config/ into one node
-[[expect]]
-contains = "tokf-common/src/config/"
-
-# Single-child collapse merges tokf-filter/src/filter/tree.rs into one leaf
-[[expect]]
-contains = "?? tokf-filter/src/filter/tree.rs"
-
-# All 10 file basenames must still appear individually
-[[expect]]
-contains = "cache.rs"
-
-[[expect]]
-contains = "main.rs"
-
-[[expect]]
-contains = "diff.toml"
+equals = """
+main [synced]
+crates/
+  tokf-cli/
+    src/
+      config/
+        M  cache.rs
+        M  types.rs
+      M  main.rs
+    filters/git/
+      M  diff.toml
+      M  status.toml
+      M  show.toml
+      ?? log.toml
+  tokf-common/src/config/
+    M  types.rs
+    M  tree.rs
+  ?? tokf-filter/src/filter/tree.rs"""

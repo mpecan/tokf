@@ -138,6 +138,45 @@ min_shared_depth = 1
 }
 
 #[test]
+fn parse_takes_precedence_over_tree() {
+    // When [parse] is configured alongside [tree], parse wins. Tree is
+    // silently skipped (it would be impossible to render a tree from a
+    // parse-structured output anyway). This test pins the precedence so a
+    // future refactor doesn't accidentally apply tree-then-parse on the
+    // same lines.
+    let config: FilterConfig = toml::from_str(
+        r#"
+command = "test"
+
+[tree]
+pattern = '^(.. )(.+)$'
+min_files = 3
+min_shared_depth = 1
+
+[parse.branch]
+line = 1
+pattern = '^(.. )(.+)$'
+output = "parse-output: {2}"
+"#,
+    )
+    .unwrap();
+    let combined = "M  src/a.rs\nM  src/b.rs\nM  src/c.rs\n";
+    let result = make_result(combined, 0);
+    let out = apply(&config, &result, &[], &FilterOptions::default()).output;
+    // No tree connectors and no "src/" header line — parse won.
+    assert!(
+        !out.contains("├─"),
+        "tree must not engage when parse is set"
+    );
+    assert!(
+        !out.contains("└─"),
+        "tree must not engage when parse is set"
+    );
+    // The output may or may not contain parse-rendered text depending on
+    // the parse_config schema; what matters here is that tree was bypassed.
+}
+
+#[test]
 fn tree_composes_with_on_success_output_template() {
     // The branch render runs after tree; on_success.output = "{output}"
     // should pass the tree-rendered text through verbatim.

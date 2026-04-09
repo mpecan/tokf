@@ -37,7 +37,10 @@ pub struct FilterOptions {
     ///
     /// **Limitations:** color passthrough only applies to the skip/keep/dedup
     /// pipeline (stages 2–2.5). The `match_output`, `parse`, and `lua_script`
-    /// stages operate on clean text and are unaffected by this flag.
+    /// stages operate on clean text and are unaffected by this flag. The
+    /// `[tree]` transform (stage 2.6) also bypasses color restoration when
+    /// active — tree-rendered lines are synthesized from path components,
+    /// so per-line ANSI color spans don't survive structural rearrangement.
     pub preserve_color: bool,
 }
 
@@ -263,12 +266,24 @@ fn apply_internal(
     // 2.6. Tree transform — restructures path-list output into a directory
     // tree. Returns Some(rendered) when engagement gates pass, None when
     // they don't (caller treats None as "use original lines unchanged").
+    //
+    // **Precedence:** when [parse] is also configured, parse wins and tree
+    // is silently skipped (parse early-returns at stage 3 below before the
+    // pre_filtered join that would consume tree_lines). Mixing the two
+    // doesn't make sense — tree restructures path-list output, parse
+    // structures arbitrary text — but we gate the computation here so the
+    // mutual exclusion is explicit and we don't pay for wasted work.
+    //
     // When active, color restoration is bypassed in the pre_filtered step
     // below — color spans don't survive structural rearrangement.
-    let tree_lines: Option<Vec<String>> = config
-        .tree
-        .as_ref()
-        .and_then(|tree_cfg| tree::apply_tree(tree_cfg, &lines));
+    let tree_lines: Option<Vec<String>> = if config.parse.is_some() {
+        None
+    } else {
+        config
+            .tree
+            .as_ref()
+            .and_then(|tree_cfg| tree::apply_tree(tree_cfg, &lines))
+    };
 
     // 2b. Lua script escape hatch (sandboxed)
     #[cfg(feature = "lua")]
@@ -536,4 +551,4 @@ mod tests_rtk_compat;
 mod tests_tree;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tree_tests;
+mod tests_tree_unit;

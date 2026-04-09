@@ -420,6 +420,7 @@ The tree transform runs **after** `dedup` and **before** `on_success.output` / `
 - **Engagement is opt-in.** Without a `[tree]` section, filters behave exactly as before — no magic detection.
 - **Engagement gates fail closed.** If `min_files` or `min_shared_depth` aren't met, the original flat lines pass through unchanged. There's no half-rendered intermediate state.
 - **Rename arrows** like `R  old.rs -> new.rs` are handled: the path is split on ` -> ` and the suffix stays attached to the leaf. The trie key is the *old* path.
+- **`[parse]` takes precedence.** A filter that declares both `[parse]` and `[tree]` will run parse and skip tree entirely. The two solve different problems (tree restructures path-list output, parse structures arbitrary text) and don't compose, so the precedence is fixed at parse-wins.
 
 ## Filter variants
 

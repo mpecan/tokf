@@ -166,6 +166,32 @@ fn min_shared_depth_fallback() {
 }
 
 #[test]
+fn min_files_inclusive_boundary() {
+    // Pin the inclusive boundary on min_files: with min_files = 3 and exactly
+    // 3 matched lines, the tree MUST engage. Catches an off-by-one (`<` vs `<=`).
+    let mut c = cfg(git_pattern());
+    c.min_files = 3;
+    let lines = vec!["M  src/a.rs", "M  src/b.rs", "M  src/c.rs"];
+    let out = apply_tree(&c, &lines);
+    assert!(out.is_some(), "exactly min_files matched lines must engage");
+}
+
+#[test]
+fn min_shared_depth_inclusive_boundary() {
+    // Pin the inclusive boundary on min_shared_depth: with min_shared_depth = 1
+    // and a single shared prefix component, the tree MUST engage.
+    let mut c = cfg(git_pattern());
+    c.min_shared_depth = 1;
+    c.min_files = 2;
+    let lines = vec!["M  src/foo.rs", "M  src/bar.rs"];
+    let out = apply_tree(&c, &lines);
+    assert!(
+        out.is_some(),
+        "exactly min_shared_depth shared components must engage"
+    );
+}
+
+#[test]
 fn unicode_style() {
     let mut c = cfg(git_pattern());
     c.style = TreeStyle::Unicode;
