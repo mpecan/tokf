@@ -342,3 +342,43 @@ To skip a command regardless of any env prefix, use a pattern that accounts for 
 [skip]
 patterns = ["(?:^|\\s)cargo\\s"]   # matches "cargo" anywhere after start or whitespace
 ```
+
+## Implicit skip rules
+
+Two implicit skip rules are always active and can't be disabled. They cover cases where rewriting would silently corrupt the agent's data, so there's no plausible reading under which the rewrite would be correct.
+
+### Heredocs
+
+Commands that contain a top-level heredoc (`<<EOF`, `<<-EOF`) are passed through unchanged. Wrapping them with `tokf run` would break the lexical binding between the command and its heredoc body.
+
+```sh
+# Not rewritten — heredoc body would be cut off:
+cat <<EOF > /tmp/cfg.yaml
+key: value
+EOF
+```
+
+### Output redirection
+
+Commands that redirect output to a file (`>`, `>>`, `&>`, `&>>`, `>|`, `1>`, `2>`, `<>`, etc.) are also passed through unchanged. The agent explicitly redirected to a file because they want the **raw** output for downstream processing — interposing tokf's filter would write filtered bytes into the file and silently corrupt what the agent reads back.
+
+```sh
+# These are NOT rewritten — tokf leaves them alone:
+git diff > /tmp/diff.txt          # explicit output redirect — agent wants raw form
+git log --all > history.txt       # for grep/awk processing on the file
+cargo test > test.log 2>&1        # combined output to file
+git status > /dev/null            # output discarded; nothing to filter
+exec 3<> /tmp/sock                # read+write file open
+
+# These ARE still rewritten — fd remap only, no file involved:
+git diff 2>&1                     # merges stderr into stdout, both still feed the agent
+git diff 1>&2                     # redirects stdout to stderr — still no file
+git diff >&-                      # closes a file descriptor
+
+# Compound commands are handled per-segment — only the segment with the
+# redirect is skipped, the other segments are still rewritten:
+git diff > foo.txt; git status    # → "git diff > foo.txt; tokf run git status"
+git status && git diff > foo.txt  # → "tokf run git status && git diff > foo.txt"
+```
+
+`tee` in a pipeline (`git diff | tee log.txt`) is **not** currently treated as an output redirect because `tee` is a command argument, not a redirect operator. The current pipe-handling behaviour is preserved. This is a known follow-up.

@@ -39,6 +39,17 @@ pub fn has_toplevel_heredoc(command: &str) -> bool {
     ParsedCommand::parse(command).is_some_and(|p| p.has_toplevel_heredoc())
 }
 
+/// Returns `true` if the command has an output redirect to a file at the
+/// top level (not inside a substitution, function body, or list segment).
+///
+/// This is the signal we use to bypass `tokf run` rewriting: when an agent
+/// explicitly redirects output to a file with `>`, `>>`, `&>`, etc., the
+/// intent is "give me the raw output for downstream processing", and
+/// interposing a filter would silently corrupt the file's contents.
+pub fn has_toplevel_output_redirect(command: &str) -> bool {
+    ParsedCommand::parse(command).is_some_and(|p| p.has_toplevel_output_redirect())
+}
+
 /// A parsed bash command backed by a rable AST.
 pub struct ParsedCommand {
     nodes: Vec<Node>,
@@ -148,6 +159,12 @@ impl ParsedCommand {
     /// Detect whether the command has a top-level heredoc redirect.
     pub fn has_toplevel_heredoc(&self) -> bool {
         self.nodes.iter().any(|n| has_heredoc(n, false))
+    }
+
+    /// Detect whether the command has a top-level output-to-file redirect.
+    /// See [`has_toplevel_output_redirect`] for the full semantics.
+    pub fn has_toplevel_output_redirect(&self) -> bool {
+        self.nodes.iter().any(has_output_redirect_to_file)
     }
 
     /// Extract command words (command name + arguments) from a simple command.
@@ -276,6 +293,91 @@ fn has_heredoc(node: &Node, inside_substitution: bool) -> bool {
             .iter()
             .any(|item| has_heredoc(&item.command, inside_substitution)),
         _ => false,
+    }
+}
+
+/// Recursively check for an output-to-file redirect on this node.
+///
+/// Recurses into command redirects, pipeline branches, subshells/brace
+/// groups (both their own redirects and their bodies), and the redirects
+/// of compound constructs (if/while/for/etc.). Does NOT recurse into:
+///
+/// - `CommandSubstitution` / `ProcessSubstitution` — separate scopes; an
+///   inner redirect to a file is a side effect of the substitution, not a
+///   property of the outer command.
+/// - `Function` — a definition produces no output; the body runs at call
+///   time, where the call site itself is what we'd evaluate.
+/// - `List` — the top-level skip check in
+///   [`super::rewrite_with_config_and_options`] runs before
+///   [`split_compound`], while compound segments are re-checked in the
+///   per-segment loop. Returning `false` here lets each segment get its
+///   own skip decision. Without this, `git diff > foo.txt; git status`
+///   would skip both segments instead of only the redirected one.
+fn has_output_redirect_to_file(node: &Node) -> bool {
+    match &node.kind {
+        NodeKind::Redirect { op, target, .. } => is_file_output_op(op, target),
+
+        NodeKind::Command { redirects, .. } => redirects.iter().any(has_output_redirect_to_file),
+        NodeKind::Pipeline { commands, .. } => commands.iter().any(has_output_redirect_to_file),
+
+        NodeKind::Subshell { body, redirects } | NodeKind::BraceGroup { body, redirects } => {
+            redirects.iter().any(has_output_redirect_to_file) || has_output_redirect_to_file(body)
+        }
+        NodeKind::If { redirects, .. }
+        | NodeKind::While { redirects, .. }
+        | NodeKind::Until { redirects, .. }
+        | NodeKind::For { redirects, .. }
+        | NodeKind::ForArith { redirects, .. }
+        | NodeKind::Select { redirects, .. }
+        | NodeKind::Case { redirects, .. }
+        | NodeKind::ArithmeticCommand { redirects, .. } => {
+            redirects.iter().any(has_output_redirect_to_file)
+        }
+
+        // All other node kinds (including the deliberately-not-descended
+        // scopes `CommandSubstitution`, `Function`, `ProcessSubstitution`,
+        // and `List` — see the doc comment above) cannot contribute a
+        // top-level output redirect.
+        _ => false,
+    }
+}
+
+/// Classify a redirect operator + target as "writes to a file" vs "fd
+/// remap or input redirect".
+fn is_file_output_op(op: &str, target: &Node) -> bool {
+    // Input redirects (`<`, `<<`, `<<<`, `<&`) — never writes a file.
+    if !op.contains('>') {
+        return false;
+    }
+    // Close-fd: `>&-`, and rable normalises `<&-` and `2>&-` to `>&-` too
+    // (see rable/parser/mod.rs:642-664), so this single arm covers all
+    // close-fd variants.
+    if op == ">&-" {
+        return false;
+    }
+    // FD-to-FD duplication: `>&` where the target is a digit word like
+    // `1` or `2`. The bash extension `>& filename` (target is a non-digit
+    // word) IS a file write, so we only return false for the digit-target
+    // case. (`<&` is already excluded by the early return above.)
+    if op == ">&" {
+        return !is_fd_word(target);
+    }
+    // Everything else with `>` writes to a file: `>`, `>>`, `>|`, `&>`,
+    // `&>>`, `1>`, `1>>`, `2>`, `2>>`, `<>` (read+write), and any
+    // fd-prefixed variant. For non-Word / variable-expansion targets like
+    // `cmd >&$fd`, we cannot statically resolve the target, so we err on
+    // the side of skipping (safer than filtering raw bytes into a file
+    // the agent will read back).
+    true
+}
+
+/// Returns true if `target` is a `Word` whose value is a non-empty digit
+/// string (i.e. a file descriptor reference like `1`, `2`, `42`).
+fn is_fd_word(target: &Node) -> bool {
+    if let NodeKind::Word { value, .. } = &target.kind {
+        !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit())
+    } else {
+        false
     }
 }
 

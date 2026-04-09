@@ -293,3 +293,113 @@ fn rewrite_pipe_grep_quoted_pattern_escaped() {
         "tokf run --baseline-pipe 'grep -E '\\''fail|error'\\''' cargo test"
     );
 }
+
+// --- output redirect skip (mpecan/tokf#322) ---
+
+#[test]
+fn rewrite_skips_command_with_output_redirect() {
+    // A redirected command must be left untouched: the agent explicitly
+    // redirected to a file because they want the raw output. Wrapping
+    // would write filtered bytes into the file.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "git status > /tmp/out.txt",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "git status > /tmp/out.txt");
+}
+
+#[test]
+fn rewrite_skips_only_redirected_segment_in_compound() {
+    // Headline behaviour from the issue: in a compound, only the segment
+    // with the redirect is left alone. The other segment still gets the
+    // normal `tokf run` wrapper.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
+    fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "git diff > foo.txt; git status",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "git diff > foo.txt; tokf run git status");
+}
+
+#[test]
+fn rewrite_skips_redirected_segment_after_and() {
+    // Same behaviour with `&&` joining the segments. The first segment
+    // (no redirect) is wrapped; the second (with redirect) is not.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
+    fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "git status && git diff > foo.txt",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "tokf run git status && git diff > foo.txt");
+}
+
+#[test]
+fn rewrite_does_not_skip_fd_merge_only() {
+    // `2>&1` redirects fd-to-fd; no file is written, so filtering still
+    // applies and the command should be wrapped normally.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("git-status.toml"),
+        "command = \"git status\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "git status 2>&1",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "tokf run git status 2>&1");
+}
+
+#[test]
+fn rewrite_skips_command_with_pipeline_redirect() {
+    // A pipeline whose first command has an output redirect is also
+    // skipped — the redirect "wins" over pipe-stripping. In Bash, the
+    // redirect sends stdout to the file, so the piped command just reads
+    // EOF; we still shouldn't rewrite because the agent's intent is
+    // unmistakable.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "git diff > foo.txt | head",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(r, "git diff > foo.txt | head");
+}
