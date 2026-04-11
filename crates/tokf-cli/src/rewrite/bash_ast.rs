@@ -39,6 +39,20 @@ pub fn has_toplevel_heredoc(command: &str) -> bool {
     ParsedCommand::parse(command).is_some_and(|p| p.has_toplevel_heredoc())
 }
 
+/// Returns `true` if the command has a heredoc nested inside a `$(...)`
+/// command substitution.
+///
+/// These are structurally fragile to re-emit through the rewrite engine:
+/// pipe positions and argv splits are computed against the source byte
+/// range, but the heredoc body lives in a logically-separate region of
+/// the source, and downstream re-tokenization (clap argv parsing, pipe
+/// stripping by byte offset) can slice through it. The canonical failure
+/// is `git commit -m "$(cat <<'EOF'…EOF)" 2>&1 | tail -10` mangling
+/// `-m`'s value into `git: error: switch 'm' requires a value`.
+pub fn has_substitution_heredoc(command: &str) -> bool {
+    ParsedCommand::parse(command).is_some_and(|p| p.has_substitution_heredoc())
+}
+
 /// Returns `true` if the command has an output redirect to a file at the
 /// top level (not inside a substitution, function body, or list segment).
 ///
@@ -66,29 +80,18 @@ impl ParsedCommand {
         })
     }
 
-    fn text(&self, node: &Node) -> &str {
-        node.source_text(&self.source)
-    }
-
     /// Split a compound command at chain operators.
+    ///
+    /// rable parses chain operators left-associatively, so `A && B && C`
+    /// becomes `((A && B) && C)`. We recursively flatten nested `List`
+    /// nodes so each leaf command becomes its own segment. The **last**
+    /// child of an inner list inherits its parent's operator, because in
+    /// source order that operator is what visually follows it.
     pub fn compound_segments(&self) -> Vec<(String, String)> {
         let mut result = Vec::new();
-
         for node in &self.nodes {
-            if let NodeKind::List { items } = &node.kind {
-                for item in items {
-                    let text = self.text(&item.command).to_string();
-                    let sep = item
-                        .operator
-                        .map(|op| format_operator(&self.source, op, &item.command))
-                        .unwrap_or_default();
-                    result.push((text, sep));
-                }
-            } else {
-                result.push((self.text(node).to_string(), String::new()));
-            }
+            flatten_segments(node, &self.source, String::new(), &mut result);
         }
-
         if result.is_empty() {
             return vec![(self.source.clone(), String::new())];
         }
@@ -158,7 +161,18 @@ impl ParsedCommand {
 
     /// Detect whether the command has a top-level heredoc redirect.
     pub fn has_toplevel_heredoc(&self) -> bool {
-        self.nodes.iter().any(|n| has_heredoc(n, false))
+        self.nodes
+            .iter()
+            .any(|n| has_heredoc(n, false, HeredocScope::TopLevel))
+    }
+
+    /// Detect whether the command has a heredoc nested inside a `$(...)`
+    /// command substitution. See [`has_substitution_heredoc`] for *why*
+    /// this is a structural skip rule.
+    pub fn has_substitution_heredoc(&self) -> bool {
+        self.nodes
+            .iter()
+            .any(|n| has_heredoc(n, false, HeredocScope::InSubstitution))
     }
 
     /// Detect whether the command has a top-level output-to-file redirect.
@@ -193,6 +207,43 @@ impl ParsedCommand {
 }
 
 // --- AST walking helpers ---
+
+/// Recursively flatten a node into `(segment_text, separator)` pairs.
+///
+/// When descending into a nested `List`, the **last** item inherits the
+/// `parent_sep` because in source order that's what visually follows it.
+/// For example, `A && B || C` parses as `((A && B) || C)`:
+/// - outer items: `[(InnerList, "||"), (C, None)]`
+/// - inner items: `[(A, "&&"), (B, None)]` — descended with `parent_sep` `"||"`
+///   - i=0 (A) not last → emit `(A, "&&")`
+///   - i=1 (B) last → inherit `"||"` → emit `(B, "||")`
+/// - back to outer, i=1 (C) last → emit `(C, "")`
+///
+/// Result: `[(A, "&&"), (B, "||"), (C, "")]`.
+fn flatten_segments(
+    node: &Node,
+    source: &str,
+    parent_sep: String,
+    out: &mut Vec<(String, String)>,
+) {
+    if let NodeKind::List { items } = &node.kind {
+        let last = items.len().saturating_sub(1);
+        for (i, item) in items.iter().enumerate() {
+            let local_sep = item
+                .operator
+                .map(|op| format_operator(source, op, &item.command))
+                .unwrap_or_default();
+            let sep = if i == last {
+                parent_sep.clone()
+            } else {
+                local_sep
+            };
+            flatten_segments(&item.command, source, sep, out);
+        }
+    } else {
+        out.push((node.source_text(source).to_string(), parent_sep));
+    }
+}
 
 /// Format the operator after a list item, preserving surrounding whitespace.
 fn format_operator(source: &str, op: ListOperator, cmd: &Node) -> String {
@@ -273,25 +324,59 @@ fn has_pipeline(kind: &NodeKind) -> bool {
     }
 }
 
-/// Recursively check for top-level heredoc redirects.
-fn has_heredoc(node: &Node, inside_substitution: bool) -> bool {
+/// Which heredoc population to look for in [`has_heredoc`].
+#[derive(Clone, Copy)]
+enum HeredocScope {
+    /// Heredocs that are NOT inside a `$(...)` command substitution.
+    /// Catches the `cat <<EOF` shape — the heredoc body is lexically
+    /// bound to the top-level command and a `tokf run` wrapper would
+    /// break that binding.
+    TopLevel,
+    /// Heredocs nested INSIDE a command substitution. Catches the
+    /// `cmd -m "$(cat <<EOF…)"` shape — see [`has_substitution_heredoc`]
+    /// for the failure mode this prevents.
+    InSubstitution,
+}
+
+/// Recursively walk the AST looking for a heredoc in the requested scope.
+///
+/// We always descend into `Command.words` and `Word.parts` because that's
+/// where rable parks `CommandSubstitution` nodes for the `cmd "$(...)"`
+/// shape (verified empirically via an AST dump). For `TopLevel` queries
+/// the extra walking is harmless: the predicate guard prevents matches on
+/// heredocs that turn out to live inside a substitution.
+fn has_heredoc(node: &Node, inside_substitution: bool, scope: HeredocScope) -> bool {
+    let fires = match scope {
+        HeredocScope::TopLevel => !inside_substitution,
+        HeredocScope::InSubstitution => inside_substitution,
+    };
     match &node.kind {
-        NodeKind::HereDoc { .. } if !inside_substitution => true,
+        NodeKind::HereDoc { .. } if fires => true,
         NodeKind::Redirect { op, .. }
-            if !inside_substitution && op.starts_with("<<") && !op.starts_with("<<<") =>
+            if fires && op.starts_with("<<") && !op.starts_with("<<<") =>
         {
             true
         }
-        NodeKind::CommandSubstitution { command, .. } => has_heredoc(command, true),
-        NodeKind::Command { redirects, .. } => redirects
-            .iter()
-            .any(|r| has_heredoc(r, inside_substitution)),
-        NodeKind::Pipeline { commands, .. } => {
-            commands.iter().any(|c| has_heredoc(c, inside_substitution))
+        NodeKind::CommandSubstitution { command, .. } => has_heredoc(command, true, scope),
+        NodeKind::Command {
+            redirects, words, ..
+        } => {
+            redirects
+                .iter()
+                .any(|r| has_heredoc(r, inside_substitution, scope))
+                || words
+                    .iter()
+                    .any(|w| has_heredoc(w, inside_substitution, scope))
         }
+        NodeKind::Word { parts, .. } => parts
+            .iter()
+            .any(|p| has_heredoc(p, inside_substitution, scope)),
+        NodeKind::Pipeline { commands, .. } => commands
+            .iter()
+            .any(|c| has_heredoc(c, inside_substitution, scope)),
         NodeKind::List { items } => items
             .iter()
-            .any(|item| has_heredoc(&item.command, inside_substitution)),
+            .any(|item| has_heredoc(&item.command, inside_substitution, scope)),
         _ => false,
     }
 }
