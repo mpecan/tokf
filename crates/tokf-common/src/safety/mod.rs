@@ -171,6 +171,7 @@ mod tests {
             on_success: None,
             on_failure: None,
             parse: None,
+            tree: None,
             output: None,
             fallback: None,
             replace: vec![],

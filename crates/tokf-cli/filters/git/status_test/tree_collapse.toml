@@ -1,0 +1,9 @@
+name = "single-child directory chain collapses into one node"
+# Demonstrates collapse_single_child: src/ → lib/ → inner/ all have one child
+# (the next dir), so they merge into a single 'src/lib/inner/' node, then the
+# 4 files render under it.
+fixture = "tree_collapse.txt"
+exit_code = 0
+
+[[expect]]
+equals = "main [synced]\nsrc/lib/inner/\n  M  foo.rs\n  M  bar.rs\n  M  baz.rs\n  M  qux.rs"

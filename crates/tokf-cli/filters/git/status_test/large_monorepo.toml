@@ -1,0 +1,28 @@
+name = "monorepo with many files clustered under a shared prefix renders as a tree"
+# Realistic medium-repo example: 10 files all under crates/. The tree
+# transform writes the shared 'crates/' prefix once and groups files by
+# subdirectory, communicating spatial structure to the model.
+fixture = "large_monorepo.txt"
+exit_code = 0
+
+# Pin the full rendered structure so a regression in collapse, ordering,
+# or indent width is caught immediately.
+[[expect]]
+equals = """
+main [synced]
+crates/
+  tokf-cli/
+    src/
+      config/
+        M  cache.rs
+        M  types.rs
+      M  main.rs
+    filters/git/
+      M  diff.toml
+      M  status.toml
+      M  show.toml
+      ?? log.toml
+  tokf-common/src/config/
+    M  types.rs
+    M  tree.rs
+  ?? tokf-filter/src/filter/tree.rs"""

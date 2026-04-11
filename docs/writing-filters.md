@@ -341,6 +341,89 @@ output = "Pods ({pods_count}):\n{pods | each: \"  {name}: {phase}\" | join: \"\\
 
 **Error handling**: if the input is not valid JSON, extraction is skipped and tokf falls back to raw output (templates are not rendered). Invalid JSONPath or dot-path expressions are silently skipped.
 
+## Tree restructuring
+
+When a filter emits a list of file paths, common directory prefixes are repeated on every line. The `[tree]` section restructures the output into a directory tree, writing each shared prefix once. Reusable across any path-shaped filter (`git status`, `git diff --name-only`, etc.).
+
+```toml
+command = "git status"
+
+[tree]
+# Regex with two capture groups: (1) decoration to keep on the leaf
+# (e.g. "M  ", "?? "), (2) the path itself.
+pattern = '^(.. )(.+)$'
+
+# Lines that don't match (e.g. "main [synced]" branch headers) are kept
+# verbatim: unmatched lines before the first matched path stay in place
+# above the tree, and any later unmatched lines are emitted after the
+# tree. Set to false to drop them.
+passthrough_unmatched = true
+
+# Engagement gates — when not satisfied, the original flat output is
+# returned unchanged. Tuned per filter.
+min_files = 3            # require at least N matched paths
+min_shared_depth = 1     # require at least N common directory levels
+
+# Visual style. "indent" is the cheapest in token count (plain 2-space
+# indent, no connectors). "unicode" uses ├─ │ └─ box-drawing characters
+# (prettier but each char is 3 bytes in UTF-8 — measurably more expensive
+# on deep trees). "ascii" uses |- | `-.
+style = "indent"
+
+# Collapse single-child internal directories. Without this, narrow-deep
+# paths like a/b/c/d/foo.rs render as four separate dir nodes.
+collapse_single_child = true
+
+# Sort children alphabetically. Off by default — source order is stable
+# and predictable for LLMs.
+sort = false
+```
+
+### Example
+
+Before (`git status` raw porcelain):
+
+```text
+## main...origin/main
+M  crates/tokf-cli/src/config/cache.rs
+M  crates/tokf-cli/src/config/types.rs
+M  crates/tokf-cli/src/main.rs
+M  crates/tokf-cli/filters/git/diff.toml
+M  crates/tokf-cli/filters/git/status.toml
+?? crates/tokf-filter/src/filter/tree.rs
+```
+
+After (with `[tree]` enabled, indent style):
+
+```text
+main [synced]
+crates/
+  tokf-cli/
+    src/
+      config/
+        M  cache.rs
+        M  types.rs
+      M  main.rs
+    filters/git/
+      M  diff.toml
+      M  status.toml
+  ?? tokf-filter/src/filter/tree.rs
+```
+
+The shared `crates/tokf-cli/` prefix is written once. The single-child chain `tokf-filter/src/filter/` collapses into one leaf. The model sees at a glance which directories cluster work.
+
+### Pipeline position
+
+The tree transform runs **after** `dedup` and **before** `on_success.output` / `max_lines`. Specifically: stage 2.6 in `apply_internal`, between dedup (2.5) and the lua/json/parse/section pipeline (2b–4).
+
+### Constraints
+
+- **Color restoration is bypassed** when `[tree]` is active. Tree-rendered lines are synthesized from path components, so per-line ANSI color spans from the original output don't survive structural rearrangement. If you need both colored output and tree structuring, you'll have to pick one.
+- **Engagement is opt-in.** Without a `[tree]` section, filters behave exactly as before — no magic detection.
+- **Engagement gates fail closed.** If `min_files` or `min_shared_depth` aren't met, the original flat lines pass through unchanged. There's no half-rendered intermediate state.
+- **Rename arrows** like `R  old.rs -> new.rs` are handled: the path is split on ` -> ` and the suffix stays attached to the leaf. The trie key is the *old* path.
+- **`[parse]` takes precedence.** A filter that declares both `[parse]` and `[tree]` will run parse and skip tree entirely. The two solve different problems (tree restructures path-list output, parse structures arbitrary text) and don't compose, so the precedence is fixed at parse-wins.
+
 ## Filter variants
 
 Some commands are wrappers around different underlying tools (e.g. `npm test` may run Jest, Vitest, or Mocha). A parent filter can declare `[[variant]]` entries that delegate to specialized child filters based on project context:
