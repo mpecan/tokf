@@ -3,6 +3,10 @@ name = "untracked files in newly created directories list individually"
 # directories to "?? new_module/" — the model couldn't see the file it had
 # just created and would loop trying to find it. With -uall in the run
 # override, every untracked file appears with its full path.
+#
+# With [tree] enabled (min_files=3), the 3 files share the new_module/ prefix
+# and render under a single dir node. Each file is still listed individually,
+# preserving the regression fix.
 inline = """
 ## main...origin/main
 ?? new_module/a.rs
@@ -12,4 +16,4 @@ inline = """
 exit_code = 0
 
 [[expect]]
-equals = "main [synced]\n?? new_module/a.rs\n?? new_module/b.rs\n?? new_module/sub/c.rs"
+equals = "main [synced]\nnew_module/\n  ?? a.rs\n  ?? b.rs\n  ?? sub/c.rs"

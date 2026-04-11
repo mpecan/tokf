@@ -37,3 +37,21 @@ replace = [
   { pattern = '^## (\S+)$', output = "{1} (no upstream)" },
   # File lines pass through unchanged (XY codes are standard and understood by models)
 ]
+
+# Restructure path-list output into a directory tree, writing each shared
+# prefix once. The transformed branch header is preserved at the top via
+# `passthrough_unmatched`. min_files=3 is below the global default (4)
+# because git status output where 3+ files share a directory is the common
+# case where the tree wins (e.g. untracked files inside a new directory).
+#
+# style = "indent" is chosen over the prettier "unicode" connectors because
+# Unicode box-drawing chars are 3 bytes each in UTF-8 and add up fast on
+# deep trees — measured net-negative on a 10-file mid-depth fixture. Plain
+# 2-space indent communicates the same hierarchy at a fraction of the cost.
+[tree]
+pattern = '^(.. )(.+)$'
+passthrough_unmatched = true
+min_files = 3
+min_shared_depth = 1
+style = "indent"
+collapse_single_child = true
