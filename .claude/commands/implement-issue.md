@@ -9,10 +9,13 @@ The user will provide a GitHub issue number: $ARGUMENTS
 
 ## Phase 1: Load Context & Determine Stacking
 
-1. Fetch the issue details: `gh api repos/mpecan/tokf/issues/<number>`
-2. If the issue references a parent/milestone issue, read it to understand the full implementation sequence
-3. Check that all dependencies (listed in the issue body) are complete — either closed/merged to main, or have an open PR in the current stack
-4. Read memory files (MEMORY.md) for project conventions
+1. Run the context loader script to fetch all issue data in one shot:
+   ```
+   .claude/scripts/load-issue-context.sh <number>
+   ```
+   This fetches: issue details, all comments, milestone issues, dependency states, open feat/ PRs, and git state.
+2. Read CLAUDE.md and MEMORY.md for project conventions
+3. From the script output, verify all dependencies are complete (closed/merged or open PR in current stack)
 
 ### Stacking Decision
 
@@ -26,17 +29,16 @@ Determine whether this issue should **stack** on a previous branch or **start fr
 5. If this issue has **multiple unmerged predecessors on different branches** → this is a **merge point**. STOP and tell the user the predecessor PRs must be merged first.
 
 **In practice:**
-```
-# Check for unmerged predecessor branch
-gh pr list --search "head:feat/" --json headRefName,state,title --jq '.[] | select(.state == "OPEN")'
+The script output includes an `=== Open Feature Branches ===` section listing all open PRs on feat/ branches and their targets. Use this to determine stacking:
 
+```
 # If stacking:
 git checkout <predecessor-branch>
 git checkout -b feat/<this-issue>
 
-# If fresh from main:
-git checkout main && git pull
-git checkout -b feat/<this-issue>
+# If fresh from main (works in worktrees where local main may not exist):
+git fetch origin main
+git checkout -b feat/<this-issue> origin/main
 ```
 
 Report the stacking decision to the user:
@@ -55,9 +57,8 @@ PR will target: main
 ## Phase 2: Plan
 
 1. Enter plan mode with `EnterPlanMode`
-2. Explore the codebase areas relevant to the issue using Grep/Glob/Read
-3. Read CLAUDE.md for project conventions (conventional commits, file limits, testing requirements)
-4. Design the implementation approach:
+2. Explore the codebase areas relevant to the issue using Grep/Glob and the Agent tool with Explore subagent
+3. Design the implementation approach:
    - Which files to create/modify
    - What types, traits, functions to add
    - How it integrates with existing code

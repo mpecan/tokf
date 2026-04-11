@@ -6,9 +6,10 @@ use super::types::RewriteRule;
 ///
 /// - `^tokf ` prevents double-wrapping
 ///
-/// Two implicit AST-based skip rules are also enforced (separate from the
+/// Three implicit AST-based skip rules are also enforced (separate from the
 /// regex patterns above):
 /// - Top-level heredocs via [`super::bash_ast::has_toplevel_heredoc`].
+/// - Heredocs nested inside `$(...)` via [`super::bash_ast::has_substitution_heredoc`].
 /// - Top-level output redirects to a file via
 ///   [`super::bash_ast::has_toplevel_output_redirect`]. When an agent uses
 ///   `>`, `>>`, `&>`, etc., they explicitly want raw output for downstream
@@ -27,6 +28,10 @@ pub fn should_skip(command: &str, user_patterns: &[String]) -> bool {
     }
 
     if super::bash_ast::has_toplevel_heredoc(command) {
+        return true;
+    }
+
+    if super::bash_ast::has_substitution_heredoc(command) {
         return true;
     }
 
@@ -105,9 +110,8 @@ mod tests {
     }
 
     #[test]
-    fn no_skip_heredoc_inside_subshell() {
-        // << inside $() is a nested heredoc — safe to rewrite
-        assert!(!should_skip(
+    fn skip_heredoc_inside_subshell() {
+        assert!(should_skip(
             r#"git commit -m "$(cat <<'EOF'
 feat: test
 EOF
@@ -136,9 +140,9 @@ EOF
     }
 
     #[test]
-    fn no_skip_heredoc_parens_in_quotes() {
-        // Parentheses inside quotes should not affect depth tracking
-        assert!(!should_skip(
+    fn skip_heredoc_parens_in_quotes() {
+        // Literal `()` in single quotes must not throw off the walker.
+        assert!(should_skip(
             r#"git commit -m "$(echo '()' <<'EOF'
 msg
 EOF
@@ -154,9 +158,24 @@ EOF
     }
 
     #[test]
-    fn no_skip_nested_subshell_heredoc() {
-        // Multiple levels of nesting
-        assert!(!should_skip("echo $(echo $(cat <<EOF\ntest\nEOF\n))", &[]));
+    fn skip_nested_subshell_heredoc() {
+        // Walker descends through multiple substitution layers.
+        assert!(should_skip("echo $(echo $(cat <<EOF\ntest\nEOF\n))", &[]));
+    }
+
+    #[test]
+    fn skip_heredoc_in_substitution_compound() {
+        // The skip must fire both for the whole compound and for the
+        // offending segment in isolation, since `should_skip_effective`
+        // calls us at both checkpoints.
+        assert!(should_skip(
+            "git add f && git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\" && git push",
+            &[],
+        ));
+        assert!(should_skip(
+            "git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\"",
+            &[],
+        ));
     }
 
     #[test]

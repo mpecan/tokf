@@ -140,6 +140,31 @@ fn hook_handle_tokf_command_silent() {
 }
 
 #[test]
+fn hook_handle_passthroughs_compound_with_substitution_heredoc() {
+    // Regression for the `git: error: switch 'm' requires a value` bug.
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git add foo && git commit -m \"$(cat <<'EOF'\nfeat: x\n\nbody\nEOF\n)\" && git push"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+    assert!(
+        stdout.trim().is_empty(),
+        "expected passthrough (empty stdout), got: {stdout}"
+    );
+}
+
+#[test]
+fn hook_handle_passthroughs_substitution_heredoc_with_pipe() {
+    // Locks in that the substitution-heredoc skip fires *before* pipe
+    // stripping. Without the skip, byte-offset slicing would mangle `-m`.
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git add foo && git commit -m \"$(cat <<'EOF'\nfeat: x\nEOF\n)\" 2>&1 | tail -10"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+    assert!(
+        stdout.trim().is_empty(),
+        "expected passthrough (empty stdout), got: {stdout}"
+    );
+}
+
+#[test]
 fn hook_handle_unmatched_command_silent() {
     // Use a command that has no filter in stdlib
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
