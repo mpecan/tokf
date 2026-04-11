@@ -8,8 +8,11 @@
 //! Algorithm:
 //!   1. Compile `cfg.pattern`. Each input line either matches (yielding a
 //!      decoration + path) or is unmatched and (optionally) preserved.
-//!   2. **Engagement gates** — if too few matched, too little shared depth,
-//!      or divergent multi-roots, return the original lines unchanged.
+//!   2. **Engagement gates** — if too few matched (`cfg.min_files`) or the
+//!      shared root depth is below `cfg.min_shared_depth`, return the
+//!      original lines unchanged. Note: with `min_shared_depth = 0`,
+//!      divergent multi-root inputs still render as a tree; set
+//!      `min_shared_depth >= 1` to require a common root.
 //!   3. Build a trie keyed on path components.
 //!   4. Optionally collapse single-child internal directories
 //!      (`src/lib/foo.rs` instead of nested `src/` → `lib/`).

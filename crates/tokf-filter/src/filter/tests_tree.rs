@@ -1,9 +1,10 @@
 //! End-to-end pipeline tests for the `[tree]` transform.
 //!
 //! Unit tests for `tree::apply_tree()` itself live in
-//! `crates/tokf-filter/src/filter/tree.rs`. The tests here exercise the
-//! integration into `apply_internal` — config parsing, pipeline ordering,
-//! and interaction with surrounding stages (skip, dedup, branches).
+//! `crates/tokf-filter/src/filter/tests_tree_unit.rs`. The tests here
+//! exercise the integration into `apply_internal` — config parsing,
+//! pipeline ordering, and interaction with surrounding stages (skip,
+//! dedup, branches).
 
 use super::*;
 use crate::CommandResult;

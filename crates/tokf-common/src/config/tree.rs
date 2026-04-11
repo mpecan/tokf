@@ -16,9 +16,12 @@ pub struct TreeConfig {
     /// (e.g. `"M  "`, `"?? "`, or `""`), (2) the path itself.
     pub pattern: String,
 
-    /// When `true`, lines that don't match `pattern` are kept verbatim
-    /// at their original position (e.g. branch headers in `git status`).
-    /// When `false`, unmatched lines are dropped.
+    /// When `true`, lines that don't match `pattern` are kept verbatim:
+    /// unmatched lines that appear before the first matched path stay in
+    /// place above the rendered tree, and any unmatched lines that appear
+    /// after the first match are emitted after the tree (e.g. branch
+    /// headers in `git status`, which appear above the file list, are
+    /// preserved at the top). When `false`, unmatched lines are dropped.
     #[serde(default = "default_true")]
     pub passthrough_unmatched: bool,
 

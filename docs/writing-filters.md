@@ -353,8 +353,10 @@ command = "git status"
 # (e.g. "M  ", "?? "), (2) the path itself.
 pattern = '^(.. )(.+)$'
 
-# Lines that don't match (e.g. "main [synced]" branch headers) stay
-# verbatim at their original position. Set to false to drop them.
+# Lines that don't match (e.g. "main [synced]" branch headers) are kept
+# verbatim: unmatched lines before the first matched path stay in place
+# above the tree, and any later unmatched lines are emitted after the
+# tree. Set to false to drop them.
 passthrough_unmatched = true
 
 # Engagement gates — when not satisfied, the original flat output is
