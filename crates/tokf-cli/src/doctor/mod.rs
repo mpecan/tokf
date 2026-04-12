@@ -17,9 +17,9 @@ use rusqlite::Connection;
 use crate::config::ResolvedFilter;
 
 use self::queries::{
-    BurstRow, EmptyRetryRow, EventRow, NegativeSavingsRow, WorkaroundFlagRow,
-    compute_negative_savings, detect_bursts, detect_empty_retries, detect_workaround_flags,
-    fetch_events,
+    BurstRow, EmptyChainRow, FilterStats, NegativeSavingsRow, ShapeBurstRow, WorkaroundFlagRow,
+    compute_filter_stats, compute_negative_savings, detect_bursts, detect_empty_chains,
+    detect_shape_bursts, detect_workaround_flags, fetch_events,
 };
 
 /// Options controlling a single `tokf doctor` invocation.
@@ -36,12 +36,9 @@ pub struct DoctorOpts<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortBy {
-    /// Composite health score ascending (worst first). Default.
     #[default]
     Health,
-    /// Total burst event count descending.
     Bursts,
-    /// Total token impact descending.
     Tokens,
 }
 
@@ -50,31 +47,32 @@ pub enum SortBy {
 pub struct FilterReport {
     pub filter_name: String,
     pub event_count: usize,
-    /// Number of distinct burst sessions for this filter.
+    // ── burst signals ──
     pub burst_count: usize,
-    /// Largest single burst seen for this filter.
     pub max_burst_size: usize,
-    /// Median arg-uniqueness ratio across this filter's burst sessions.
-    /// Each burst's ratio = `distinct_commands / burst_size`. A value near
-    /// 0 means the model is repeating the exact same command (confusion);
-    /// a value near 1 means it's varying args (exploration). `None` when
-    /// no bursts were detected.
+    /// Ratio of events in exact-match bursts that had non-zero exit code.
+    pub failed_burst_ratio: f64,
+    // ── shape-burst signals ──
+    pub shape_burst_count: usize,
+    /// Median arg-uniqueness across shape-burst sessions (0=confusion,
+    /// 1=exploration). `None` when no shape bursts were detected.
     pub median_arg_uniqueness: Option<f64>,
-    /// Workaround flags this filter received that are NOT in its
-    /// `passthrough_args`. Empty if cross-reference data isn't available.
+    // ── workaround flags ──
     pub untracked_workaround_flags: Vec<WorkaroundFlagSuggestion>,
-    /// Empty-output → retry pattern count for this filter.
-    pub empty_retry_count: usize,
-    /// Average excess tokens (positive = filter outputs more than raw).
-    /// `None` when the filter has no usable raw-token measurements.
+    // ── empty chains ──
+    pub empty_chain_count: usize,
+    pub max_empty_chain: usize,
+    // ── token signals ──
     pub avg_excess_tokens: Option<f64>,
-    /// Composite health score 0–100 (lower is worse).
+    // ── per-filter aggregates ──
+    /// Fraction of events where `--prefer-less` chose the piped output.
+    pub pipe_override_rate: f64,
+    /// Total filter processing time wasted in burst events (ms).
+    pub burst_time_wasted_ms: i64,
+    // ── composite ──
     pub health_score: u8,
 }
 
-/// A workaround flag the agent passes that the filter doesn't declare in
-/// its `passthrough_args`. The doctor surfaces these as "consider adding
-/// to the filter config" suggestions.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WorkaroundFlagSuggestion {
     pub flag: String,
@@ -90,20 +88,14 @@ pub struct DoctorReport {
     pub burst_threshold: usize,
     pub window_secs: u64,
     pub filters: Vec<FilterReport>,
-    /// Detailed burst breakdown — useful for the JSON output.
     pub bursts: Vec<BurstRow>,
-    pub empty_retries: Vec<EmptyRetryRow>,
+    pub shape_bursts: Vec<ShapeBurstRow>,
+    pub empty_chains: Vec<EmptyChainRow>,
     pub negative_savings: Vec<NegativeSavingsRow>,
     pub workaround_flags: Vec<WorkaroundFlagRow>,
 }
 
 /// Run the doctor analysis end-to-end.
-///
-/// `passthrough_args_by_filter` lets the caller cross-reference workaround
-/// flags against each filter's declared `passthrough_args`. Pass an empty
-/// map to disable cross-referencing — every workaround flag will then be
-/// reported as untracked. The CLI populates this from
-/// `crate::resolve::discover_filters`.
 ///
 /// # Errors
 /// Returns an error if the SQL fetch fails.
@@ -114,31 +106,31 @@ pub fn run(
 ) -> anyhow::Result<DoctorReport> {
     let events = fetch_events(conn, opts.project_filter, opts.include_noise)
         .context("doctor: fetch events")?;
-    let total_events_considered = events.len();
+    let total = events.len();
 
     let mut bursts = detect_bursts(&events, opts.burst_threshold, opts.window_secs);
+    let mut shape_bursts = detect_shape_bursts(&events, opts.burst_threshold, opts.window_secs);
     let mut workaround_flags = detect_workaround_flags(&events);
-    let mut empty_retries = detect_empty_retries(&events, opts.window_secs);
+    let mut empty_chains = detect_empty_chains(&events, opts.window_secs);
     let mut negative_savings = compute_negative_savings(&events);
+    let filter_stats = compute_filter_stats(&events);
 
-    // If `--filter <name>` is set, scope every section to that one filter
-    // so the burst-detail / suggestions / negative-savings blocks don't
-    // surface unrelated noise.
     if let Some(only) = opts.filter_filter {
         bursts.retain(|b| b.filter_name == only);
+        shape_bursts.retain(|b| b.filter_name == only);
         workaround_flags.retain(|w| w.filter_name == only);
-        empty_retries.retain(|r| r.filter_name == only);
+        empty_chains.retain(|r| r.filter_name == only);
         negative_savings.retain(|n| n.filter_name == only);
     }
 
-    // Cross-reference workaround flags with each filter's passthrough_args.
     let passthrough_lookup = build_passthrough_lookup(filters);
 
     let filter_reports = build_filter_reports(
-        &events,
+        &filter_stats,
         &bursts,
+        &shape_bursts,
         &workaround_flags,
-        &empty_retries,
+        &empty_chains,
         &negative_savings,
         &passthrough_lookup,
         opts.filter_filter,
@@ -146,30 +138,20 @@ pub fn run(
     );
 
     Ok(DoctorReport {
-        total_events_considered,
+        total_events_considered: total,
         project_filter: opts.project_filter.map(ToString::to_string),
         include_noise: opts.include_noise,
         burst_threshold: opts.burst_threshold,
         window_secs: opts.window_secs,
         filters: filter_reports,
         bursts,
+        shape_bursts,
         workaround_flags,
-        empty_retries,
+        empty_chains,
         negative_savings,
     })
 }
 
-/// Build a lookup `filter_name → set of passthrough_args` so the report
-/// can mark workaround flags as "already declared" vs "candidate to add".
-///
-/// The key uses the **first command pattern** of each filter (e.g.
-/// `"git diff"`), because that's what `commands.rs` stores in
-/// `events.filter_name` when it records a tracking event. The relative
-/// path form (`"git/diff"`) is *not* what's in the DB.
-///
-/// We additionally insert each filter under its slash-form name as an
-/// alias, so `--filter git/diff` works as a user-friendly shortcut even
-/// though the DB stores `"git diff"`.
 fn build_passthrough_lookup(filters: &[ResolvedFilter]) -> BTreeMap<String, BTreeSet<String>> {
     let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for f in filters {
@@ -183,141 +165,180 @@ fn build_passthrough_lookup(filters: &[ResolvedFilter]) -> BTreeMap<String, BTre
     out
 }
 
+struct SignalSlices<'a> {
+    bursts: &'a [BurstRow],
+    shape_bursts: &'a [ShapeBurstRow],
+    workaround_flags: &'a [WorkaroundFlagRow],
+    empty_chains: &'a [EmptyChainRow],
+    negative_savings: &'a [NegativeSavingsRow],
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_filter_reports(
-    events: &[EventRow],
+    filter_stats: &BTreeMap<String, FilterStats>,
     bursts: &[BurstRow],
+    shape_bursts: &[ShapeBurstRow],
     workaround_flags: &[WorkaroundFlagRow],
-    empty_retries: &[EmptyRetryRow],
+    empty_chains: &[EmptyChainRow],
     negative_savings: &[NegativeSavingsRow],
     passthrough_lookup: &BTreeMap<String, BTreeSet<String>>,
     filter_filter: Option<&str>,
     sort_by: SortBy,
 ) -> Vec<FilterReport> {
-    let mut event_counts: BTreeMap<String, usize> = BTreeMap::new();
-    let mut filter_names: BTreeSet<String> = BTreeSet::new();
-    for ev in events {
-        *event_counts.entry(ev.filter_name.clone()).or_insert(0) += 1;
-        filter_names.insert(ev.filter_name.clone());
-    }
-
     let signals = SignalSlices {
         bursts,
+        shape_bursts,
         workaround_flags,
-        empty_retries,
+        empty_chains,
         negative_savings,
     };
     let mut reports = Vec::new();
-    for filter_name in filter_names {
+    for (filter_name, stats) in filter_stats {
         if let Some(only) = filter_filter
-            && only != filter_name
+            && only != filter_name.as_str()
         {
             continue;
         }
         reports.push(build_one_filter_report(
-            &filter_name,
-            event_counts.get(&filter_name).copied().unwrap_or(0),
+            filter_name,
+            stats,
             &signals,
-            passthrough_lookup.get(&filter_name),
+            passthrough_lookup.get(filter_name.as_str()),
         ));
     }
-
     sort_reports(&mut reports, sort_by);
     reports
 }
 
-/// All the slices `build_one_filter_report` needs in one place — keeps
-/// the helper under the clippy `too_many_arguments` limit.
-struct SignalSlices<'a> {
-    bursts: &'a [BurstRow],
-    workaround_flags: &'a [WorkaroundFlagRow],
-    empty_retries: &'a [EmptyRetryRow],
-    negative_savings: &'a [NegativeSavingsRow],
+/// Aggregated burst stats for one filter.
+struct BurstAgg {
+    count: usize,
+    total_events: usize,
+    max_size: usize,
+    failed_ratio: f64,
+    time_wasted_ms: i64,
 }
 
-/// Build the per-filter row for a single filter. Split out of
-/// `build_filter_reports` to keep both functions under the 60-line clippy
-/// limit.
-fn build_one_filter_report(
-    filter_name: &str,
-    event_count: usize,
-    sig: &SignalSlices<'_>,
-    declared_passthrough: Option<&BTreeSet<String>>,
-) -> FilterReport {
-    let bursts = sig.bursts;
-    let workaround_flags = sig.workaround_flags;
-    let empty_retries = sig.empty_retries;
-    let negative_savings = sig.negative_savings;
-    let filter_bursts: Vec<&BurstRow> = bursts
+fn aggregate_bursts(bursts: &[BurstRow], filter_name: &str) -> BurstAgg {
+    let matching: Vec<&BurstRow> = bursts
         .iter()
         .filter(|b| b.filter_name == filter_name)
         .collect();
-    let burst_count = filter_bursts.len();
-    let total_burst_events: usize = filter_bursts.iter().map(|b| b.burst_size).sum();
-    let max_burst_size = filter_bursts
+    let total: usize = matching.iter().map(|b| b.burst_size).sum();
+    let failed: usize = matching.iter().map(|b| b.failed_count).sum();
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = if total == 0 {
+        0.0
+    } else {
+        failed as f64 / total as f64
+    };
+    BurstAgg {
+        count: matching.len(),
+        total_events: total,
+        max_size: matching.iter().map(|b| b.burst_size).max().unwrap_or(0),
+        failed_ratio: ratio,
+        time_wasted_ms: matching.iter().map(|b| b.total_time_ms).sum(),
+    }
+}
+
+fn build_one_filter_report(
+    filter_name: &str,
+    stats: &FilterStats,
+    sig: &SignalSlices<'_>,
+    declared_passthrough: Option<&BTreeSet<String>>,
+) -> FilterReport {
+    let ba = aggregate_bursts(sig.bursts, filter_name);
+
+    let shape_refs: Vec<&ShapeBurstRow> = sig
+        .shape_bursts
         .iter()
-        .map(|b| b.burst_size)
+        .filter(|b| b.filter_name == filter_name)
+        .collect();
+    let shape_burst_count = shape_refs.len();
+    let median_arg_uniqueness = shape_median_uniqueness(&shape_refs);
+
+    let (untracked_workaround_flags, workaround_count) =
+        collect_workaround_flags(sig.workaround_flags, filter_name, declared_passthrough);
+
+    let chain_refs: Vec<&EmptyChainRow> = sig
+        .empty_chains
+        .iter()
+        .filter(|c| c.filter_name == filter_name)
+        .collect();
+    let empty_chain_count: usize = chain_refs.iter().map(|c| c.chain_count).sum();
+    let max_empty_chain = chain_refs
+        .iter()
+        .map(|c| c.max_chain_length)
         .max()
         .unwrap_or(0);
-    let median_arg_uniqueness = median_uniqueness(&filter_bursts);
 
-    let mut untracked_workaround_flags: Vec<WorkaroundFlagSuggestion> = workaround_flags
+    let avg_excess_tokens = sig
+        .negative_savings
+        .iter()
+        .find(|n| n.filter_name == filter_name)
+        .map(|n| n.avg_excess_tokens);
+
+    #[allow(clippy::cast_precision_loss)]
+    let pipe_override_rate = if stats.event_count == 0 {
+        0.0
+    } else {
+        stats.pipe_override_count as f64 / stats.event_count as f64
+    };
+
+    let health_score = score_filter(&ScoreInput {
+        total_burst_events: ba.total_events,
+        event_count: stats.event_count,
+        failed_burst_ratio: ba.failed_ratio,
+        workaround_count,
+        max_empty_chain,
+        avg_excess_tokens,
+        pipe_override_rate,
+    });
+
+    FilterReport {
+        filter_name: filter_name.to_string(),
+        event_count: stats.event_count,
+        burst_count: ba.count,
+        max_burst_size: ba.max_size,
+        failed_burst_ratio: ba.failed_ratio,
+        shape_burst_count,
+        median_arg_uniqueness,
+        untracked_workaround_flags,
+        empty_chain_count,
+        max_empty_chain,
+        avg_excess_tokens,
+        pipe_override_rate,
+        burst_time_wasted_ms: ba.time_wasted_ms,
+        health_score,
+    }
+}
+
+fn collect_workaround_flags(
+    all: &[WorkaroundFlagRow],
+    filter_name: &str,
+    declared: Option<&BTreeSet<String>>,
+) -> (Vec<WorkaroundFlagSuggestion>, usize) {
+    let mut flags: Vec<WorkaroundFlagSuggestion> = all
         .iter()
         .filter(|w| w.filter_name == filter_name)
-        .filter(|w| declared_passthrough.is_none_or(|set| !set.contains(&w.flag)))
+        .filter(|w| declared.is_none_or(|set| !set.contains(&w.flag)))
         .map(|w| WorkaroundFlagSuggestion {
             flag: w.flag.clone(),
             count: w.count,
         })
         .collect();
-    untracked_workaround_flags.sort_by(|a, b| b.count.cmp(&a.count).then(a.flag.cmp(&b.flag)));
-    let workaround_count: usize = untracked_workaround_flags.iter().map(|w| w.count).sum();
-
-    let empty_retry_count: usize = empty_retries
-        .iter()
-        .filter(|r| r.filter_name == filter_name)
-        .map(|r| r.retry_count)
-        .sum();
-
-    let avg_excess_tokens = negative_savings
-        .iter()
-        .find(|n| n.filter_name == filter_name)
-        .map(|n| n.avg_excess_tokens);
-
-    let health_score = score_filter(
-        total_burst_events,
-        event_count,
-        workaround_count,
-        empty_retry_count,
-        avg_excess_tokens,
-    );
-
-    FilterReport {
-        filter_name: filter_name.to_string(),
-        event_count,
-        burst_count,
-        max_burst_size,
-        median_arg_uniqueness,
-        untracked_workaround_flags,
-        empty_retry_count,
-        avg_excess_tokens,
-        health_score,
-    }
+    flags.sort_by(|a, b| b.count.cmp(&a.count).then(a.flag.cmp(&b.flag)));
+    let total: usize = flags.iter().map(|w| w.count).sum();
+    (flags, total)
 }
 
-/// Compute the median arg-uniqueness ratio across a set of burst
-/// sessions. Each burst contributes `1 / burst_size` (since bursts are
-/// grouped by exact command, every burst has exactly one distinct
-/// command). Returns `None` when no bursts are present.
-fn median_uniqueness(bursts: &[&BurstRow]) -> Option<f64> {
+/// Compute the median arg-uniqueness across shape-burst sessions.
+/// Each session's ratio is `distinct_commands / burst_size`.
+fn shape_median_uniqueness(bursts: &[&ShapeBurstRow]) -> Option<f64> {
     if bursts.is_empty() {
         return None;
     }
-    #[allow(clippy::cast_precision_loss)]
-    let mut ratios: Vec<f64> = bursts
-        .iter()
-        .map(|b| 1.0 / b.burst_size.max(1) as f64)
-        .collect();
+    let mut ratios: Vec<f64> = bursts.iter().map(|b| b.arg_uniqueness).collect();
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = ratios.len() / 2;
     if ratios.len().is_multiple_of(2) {
@@ -330,7 +351,6 @@ fn median_uniqueness(bursts: &[&BurstRow]) -> Option<f64> {
 fn sort_reports(reports: &mut [FilterReport], sort_by: SortBy) {
     match sort_by {
         SortBy::Health => {
-            // Worst first (lowest score). Tie-break by filter name for stability.
             reports.sort_by(|a, b| {
                 a.health_score
                     .cmp(&b.health_score)
@@ -358,46 +378,68 @@ fn sort_reports(reports: &mut [FilterReport], sort_by: SortBy) {
     }
 }
 
-/// Composite health score 0–100, **lower is worse**. Each signal contributes
-/// a capped penalty so a single dimension cannot crash the score on its own.
+// ─────────────────────────── health score ───────────────────────────
+
+/// Inputs to the health-score formula, bundled to keep `score_filter`
+/// under the clippy argument limit.
+pub struct ScoreInput {
+    pub total_burst_events: usize,
+    pub event_count: usize,
+    pub failed_burst_ratio: f64,
+    pub workaround_count: usize,
+    pub max_empty_chain: usize,
+    pub avg_excess_tokens: Option<f64>,
+    pub pipe_override_rate: f64,
+}
+
+/// Composite health score 0–100, **lower is worse**.
 ///
-/// **Burst penalty uses rate, not raw count.** A filter with 16 bursts out
-/// of 13,682 events (0.1% burst rate) should not be penalized the same as
-/// one with 16 bursts out of 20 events (80% burst rate). The rate is
-/// `total_burst_events / event_count * 100` — the percentage of all
-/// events that participated in a burst.
-///
-/// Penalty caps (deliberately tunable from one place):
-/// - burst rate: up to 40
-/// - workaround flags: up to 20
-/// - empty retries: up to 20
-/// - negative savings: up to 20
-fn score_filter(
-    total_burst_events: usize,
-    event_count: usize,
-    workaround_count: usize,
-    empty_retry_count: usize,
-    avg_excess_tokens: Option<f64>,
-) -> u8 {
-    // Burst penalty: based on burst rate (% of events in bursts), not raw
-    // count. Scale factor: 1% burst rate → 1 penalty point. 10%+ → caps.
+/// Penalty breakdown (caps are tunable from one place):
+/// - **burst rate** (up to 30): `burst_events / event_count * 100`,
+///   further scaled by `1 + failed_burst_ratio` so bursts where the
+///   retried commands *also fail* are penalized harder.
+/// - **workaround flags** (up to 15): untracked passthrough flags.
+/// - **empty chains** (up to 15): longest consecutive empty-output
+///   chain. A chain of 5 empties is worse than 5 isolated empties.
+/// - **negative savings** (up to 15): average excess tokens.
+/// - **pipe override rate** (up to 10): how often `--prefer-less`
+///   chose piped output over filtered — signal that the filter is
+///   producing larger output than alternatives.
+/// - **time waste** (up to 15): implicit via burst rate — more burst
+///   events = more filter processing time wasted. Not a separate
+///   penalty to avoid double-counting, but `burst_time_wasted_ms` is
+///   in the report for the user to see.
+pub fn score_filter(input: &ScoreInput) -> u8 {
     #[allow(clippy::cast_precision_loss)]
-    let burst_rate_pct = if event_count == 0 {
+    let burst_rate_pct = if input.event_count == 0 {
         0.0
     } else {
-        total_burst_events as f64 / event_count as f64 * 100.0
+        input.total_burst_events as f64 / input.event_count as f64 * 100.0
     };
+    // Scale burst penalty by failure ratio: all-failing bursts get 2×
+    let failure_multiplier = 1.0 + input.failed_burst_ratio;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let burst_penalty = (burst_rate_pct.round() as usize).min(40);
-    let workaround_penalty = workaround_count.min(20);
-    let empty_penalty = empty_retry_count.min(20);
-    let negative_penalty = avg_excess_tokens.filter(|v| *v > 0.0).map_or(0, |v| {
+    let burst_penalty = ((burst_rate_pct * failure_multiplier).round() as usize).min(30);
+
+    let workaround_penalty = input.workaround_count.min(15);
+
+    // Empty chains: penalty scales with max chain length.
+    // Chain of 2 = 3 pts, chain of 5 = 10 pts, chain of 10+ = 15 pts.
+    let empty_penalty = (input.max_empty_chain.saturating_mul(2)).min(15);
+
+    let negative_penalty = input.avg_excess_tokens.filter(|v| *v > 0.0).map_or(0, |v| {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let p = (v / 2.0).round() as usize;
-        p.min(20)
+        let p = (v / 3.0).round() as usize;
+        p.min(15)
     });
-    let total_penalty = burst_penalty + workaround_penalty + empty_penalty + negative_penalty;
-    100u8.saturating_sub(u8::try_from(total_penalty).unwrap_or(100))
+
+    // Pipe override: >10% override rate → up to 10 pts penalty.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let pipe_penalty = ((input.pipe_override_rate * 100.0).round() as usize).min(10);
+
+    let total =
+        burst_penalty + workaround_penalty + empty_penalty + negative_penalty + pipe_penalty;
+    100u8.saturating_sub(u8::try_from(total).unwrap_or(100))
 }
 
 #[cfg(test)]

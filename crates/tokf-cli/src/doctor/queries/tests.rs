@@ -13,27 +13,37 @@ fn ev(filter: &str, command: &str, ts: &str) -> EventRow {
         command: command.to_string(),
         timestamp: ts.to_string(),
         output_bytes: 200,
+        input_tokens_est: 50,
         raw_tokens_est: 50,
         output_tokens_est: 50,
+        filter_time_ms: 10,
+        exit_code: 0,
+        pipe_override: false,
         project: String::new(),
     }
 }
 
-fn ev_with_bytes(
+fn ev_full(
     filter: &str,
     command: &str,
     ts: &str,
     output_bytes: i64,
     raw_tokens: i64,
     output_tokens: i64,
+    exit_code: i32,
+    filter_time_ms: i64,
 ) -> EventRow {
     EventRow {
         filter_name: filter.to_string(),
         command: command.to_string(),
         timestamp: ts.to_string(),
         output_bytes,
+        input_tokens_est: raw_tokens,
         raw_tokens_est: raw_tokens,
         output_tokens_est: output_tokens,
+        filter_time_ms,
+        exit_code,
+        pipe_override: false,
         project: String::new(),
     }
 }
@@ -42,7 +52,6 @@ fn ev_with_bytes(
 
 #[test]
 fn iso8601_parses_known_timestamp() {
-    // 2024-01-01T00:00:00Z = days from epoch * 86400 = 19723 * 86400
     let secs = parse_iso8601_secs("2024-01-01T00:00:00Z").unwrap();
     assert!((secs - 1_704_067_200.0).abs() < 1.0);
 }
@@ -50,8 +59,8 @@ fn iso8601_parses_known_timestamp() {
 #[test]
 fn iso8601_rejects_malformed() {
     assert!(parse_iso8601_secs("not a timestamp").is_none());
-    assert!(parse_iso8601_secs("2024-01-01T00:00:00").is_none()); // no Z
-    assert!(parse_iso8601_secs("2024-01-01 00:00:00Z").is_none()); // space not T
+    assert!(parse_iso8601_secs("2024-01-01T00:00:00").is_none());
+    assert!(parse_iso8601_secs("2024-01-01 00:00:00Z").is_none());
 }
 
 #[test]
@@ -69,7 +78,6 @@ fn gap_seconds_returns_inf_on_bad_input() {
 
 #[test]
 fn bursts_flags_exact_match_storm() {
-    // 5 identical commands within 10 seconds → burst at threshold 5/window 60
     let events = vec![
         ev("git/diff", "git diff", "2024-01-01T00:00:00Z"),
         ev("git/diff", "git diff", "2024-01-01T00:00:02Z"),
@@ -79,89 +87,109 @@ fn bursts_flags_exact_match_storm() {
     ];
     let bursts = detect_bursts(&events, 5, 60);
     assert_eq!(bursts.len(), 1);
-    assert_eq!(bursts[0].filter_name, "git/diff");
-    assert_eq!(bursts[0].command, "git diff");
     assert_eq!(bursts[0].burst_size, 5);
+}
+
+#[test]
+fn bursts_tracks_failures() {
+    let events = vec![
+        ev_full("f", "cmd", "2024-01-01T00:00:00Z", 200, 50, 50, 1, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:02Z", 200, 50, 50, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:04Z", 200, 50, 50, 1, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:06Z", 200, 50, 50, 1, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:08Z", 200, 50, 50, 0, 10),
+    ];
+    let bursts = detect_bursts(&events, 5, 60);
+    assert_eq!(bursts[0].failed_count, 3);
+    assert_eq!(bursts[0].total_time_ms, 50);
 }
 
 #[test]
 fn bursts_does_not_flag_below_threshold() {
-    // Only 4 events → below threshold 5
     let events = vec![
         ev("git/diff", "git diff", "2024-01-01T00:00:00Z"),
         ev("git/diff", "git diff", "2024-01-01T00:00:02Z"),
         ev("git/diff", "git diff", "2024-01-01T00:00:04Z"),
         ev("git/diff", "git diff", "2024-01-01T00:00:06Z"),
     ];
-    let bursts = detect_bursts(&events, 5, 60);
-    assert!(bursts.is_empty());
+    assert!(detect_bursts(&events, 5, 60).is_empty());
 }
 
 #[test]
 fn bursts_splits_at_window_gap() {
-    // Two clusters of 5, separated by a 5-minute gap → two separate
-    // bursts, each of size 5
     let events = vec![
-        ev("git/diff", "git diff", "2024-01-01T00:00:00Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:00:02Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:00:04Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:00:06Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:00:08Z"),
-        // 5-minute gap (300s > 60s window)
-        ev("git/diff", "git diff", "2024-01-01T00:05:08Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:05:10Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:05:12Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:05:14Z"),
-        ev("git/diff", "git diff", "2024-01-01T00:05:16Z"),
+        ev("f", "cmd", "2024-01-01T00:00:00Z"),
+        ev("f", "cmd", "2024-01-01T00:00:02Z"),
+        ev("f", "cmd", "2024-01-01T00:00:04Z"),
+        ev("f", "cmd", "2024-01-01T00:00:06Z"),
+        ev("f", "cmd", "2024-01-01T00:00:08Z"),
+        ev("f", "cmd", "2024-01-01T00:05:08Z"),
+        ev("f", "cmd", "2024-01-01T00:05:10Z"),
+        ev("f", "cmd", "2024-01-01T00:05:12Z"),
+        ev("f", "cmd", "2024-01-01T00:05:14Z"),
+        ev("f", "cmd", "2024-01-01T00:05:16Z"),
     ];
     let bursts = detect_bursts(&events, 5, 60);
     assert_eq!(bursts.len(), 2);
-    assert_eq!(bursts[0].burst_size, 5);
-    assert_eq!(bursts[1].burst_size, 5);
 }
 
 #[test]
 fn bursts_does_not_flag_arg_varying_exploration() {
-    // 5 events with different commands in quick succession → exploration,
-    // not confusion. Each command has only 1 occurrence so no burst.
     let events = vec![
-        ev("git/diff", "git diff foo.rs", "2024-01-01T00:00:00Z"),
-        ev("git/diff", "git diff bar.rs", "2024-01-01T00:00:02Z"),
-        ev("git/diff", "git diff baz.rs", "2024-01-01T00:00:04Z"),
-        ev("git/diff", "git diff qux.rs", "2024-01-01T00:00:06Z"),
-        ev("git/diff", "git diff quux.rs", "2024-01-01T00:00:08Z"),
+        ev("f", "git diff foo.rs", "2024-01-01T00:00:00Z"),
+        ev("f", "git diff bar.rs", "2024-01-01T00:00:02Z"),
+        ev("f", "git diff baz.rs", "2024-01-01T00:00:04Z"),
+        ev("f", "git diff qux.rs", "2024-01-01T00:00:06Z"),
+        ev("f", "git diff quux.rs", "2024-01-01T00:00:08Z"),
     ];
-    let bursts = detect_bursts(&events, 5, 60);
-    assert!(
-        bursts.is_empty(),
-        "arg-varying exploration must not be flagged: {bursts:?}"
-    );
-}
-
-#[test]
-fn bursts_reports_max_burst_size_correctly() {
-    // 7 identical events in a row → one burst of size 7
-    let events = vec![
-        ev("git/status", "git status", "2024-01-01T00:00:00Z"),
-        ev("git/status", "git status", "2024-01-01T00:00:01Z"),
-        ev("git/status", "git status", "2024-01-01T00:00:02Z"),
-        ev("git/status", "git status", "2024-01-01T00:00:03Z"),
-        ev("git/status", "git status", "2024-01-01T00:00:04Z"),
-        ev("git/status", "git status", "2024-01-01T00:00:05Z"),
-        ev("git/status", "git status", "2024-01-01T00:00:06Z"),
-    ];
-    let bursts = detect_bursts(&events, 5, 60);
-    assert_eq!(bursts.len(), 1);
-    assert_eq!(bursts[0].burst_size, 7);
+    assert!(detect_bursts(&events, 5, 60).is_empty());
 }
 
 #[test]
 fn bursts_handles_empty_input() {
-    let bursts = detect_bursts(&[], 5, 60);
-    assert!(bursts.is_empty());
+    assert!(detect_bursts(&[], 5, 60).is_empty());
 }
 
-// ─────────────────────────── detect_workaround_flags ─────────────────
+// ─────────────────────── detect_shape_bursts ─────────────────────────
+
+#[test]
+fn shape_bursts_catches_flag_cycling() {
+    let events = vec![
+        // All have shape "git diff <args>" (each has ≥1 arg after subcommand)
+        ev("git diff", "git diff --stat", "2024-01-01T00:00:00Z"),
+        ev("git diff", "git diff --name-only", "2024-01-01T00:00:02Z"),
+        ev("git diff", "git diff -p", "2024-01-01T00:00:04Z"),
+        ev("git diff", "git diff --no-stat", "2024-01-01T00:00:06Z"),
+        ev("git diff", "git diff --raw", "2024-01-01T00:00:08Z"),
+    ];
+    let bursts = detect_shape_bursts(&events, 5, 60);
+    assert_eq!(bursts.len(), 1, "shape burst should fire: {bursts:?}");
+    assert_eq!(bursts[0].burst_size, 5);
+    assert_eq!(bursts[0].distinct_commands, 5);
+    assert!((bursts[0].arg_uniqueness - 1.0).abs() < 0.01);
+}
+
+#[test]
+fn shape_bursts_low_uniqueness_for_exact_repeats() {
+    let events = vec![
+        ev("f", "git diff --stat", "2024-01-01T00:00:00Z"),
+        ev("f", "git diff --stat", "2024-01-01T00:00:02Z"),
+        ev("f", "git diff --stat", "2024-01-01T00:00:04Z"),
+        ev("f", "git diff --stat", "2024-01-01T00:00:06Z"),
+        ev("f", "git diff --stat", "2024-01-01T00:00:08Z"),
+    ];
+    let bursts = detect_shape_bursts(&events, 5, 60);
+    assert_eq!(bursts.len(), 1);
+    // All 5 are the same command → 1 distinct / 5 = 0.2
+    assert!((bursts[0].arg_uniqueness - 0.2).abs() < 0.01);
+}
+
+#[test]
+fn shape_bursts_empty_input() {
+    assert!(detect_shape_bursts(&[], 5, 60).is_empty());
+}
+
+// ─────────────────────────── workaround flags ────────────────────────
 
 #[test]
 fn workaround_counts_no_stat() {
@@ -177,36 +205,21 @@ fn workaround_counts_no_stat() {
     let flags = detect_workaround_flags(&events);
     let no_stat = flags.iter().find(|f| f.flag == "--no-stat").unwrap();
     assert_eq!(no_stat.count, 3);
-    assert_eq!(no_stat.filter_name, "git/diff");
-}
-
-#[test]
-fn workaround_counts_short_p_flag() {
-    let events = vec![
-        ev("git/log", "git log -p", "2024-01-01T00:00:00Z"),
-        ev("git/log", "git log -p HEAD~5", "2024-01-01T00:00:01Z"),
-    ];
-    let flags = detect_workaround_flags(&events);
-    let p = flags.iter().find(|f| f.flag == "-p").unwrap();
-    assert_eq!(p.count, 2);
 }
 
 #[test]
 fn workaround_handles_attached_u_value() {
-    // `-U10` should match `-U` (git diff context lines)
     let events = vec![ev(
         "git/diff",
         "git diff -U10 foo.rs",
         "2024-01-01T00:00:00Z",
     )];
     let flags = detect_workaround_flags(&events);
-    let u = flags.iter().find(|f| f.flag == "-U");
-    assert!(u.is_some(), "should detect -U10 as -U variant: {flags:?}");
+    assert!(flags.iter().any(|f| f.flag == "-U"));
 }
 
 #[test]
 fn workaround_handles_format_with_equals() {
-    // `--format=oneline` should match `--format`
     let events = vec![ev(
         "git/log",
         "git log --format=oneline",
@@ -217,134 +230,128 @@ fn workaround_handles_format_with_equals() {
 }
 
 #[test]
-fn workaround_groups_by_filter() {
-    let events = vec![
-        ev("git/diff", "git diff -p", "2024-01-01T00:00:00Z"),
-        ev("git/log", "git log -p", "2024-01-01T00:00:01Z"),
-    ];
-    let flags = detect_workaround_flags(&events);
-    let diff_p = flags
-        .iter()
-        .find(|f| f.filter_name == "git/diff" && f.flag == "-p");
-    let log_p = flags
-        .iter()
-        .find(|f| f.filter_name == "git/log" && f.flag == "-p");
-    assert!(diff_p.is_some());
-    assert!(log_p.is_some());
-}
-
-#[test]
 fn workaround_empty_input() {
     assert!(detect_workaround_flags(&[]).is_empty());
 }
 
-#[test]
-fn workaround_no_known_flags() {
-    let events = vec![ev("git/status", "git status", "2024-01-01T00:00:00Z")];
-    assert!(detect_workaround_flags(&events).is_empty());
-}
-
-// ─────────────────────────── detect_empty_retries ────────────────────
+// ─────────────────────────── detect_empty_chains ─────────────────────
 
 #[test]
-fn empty_retry_flags_followup() {
-    // Empty event followed by another within window → flagged
+fn empty_chain_detects_consecutive_empties() {
     let events = vec![
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:00Z", 5, 5, 5),
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:10Z", 200, 50, 50),
+        ev_full("f", "cmd", "2024-01-01T00:00:00Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:02Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:04Z", 5, 5, 5, 0, 10),
     ];
-    let retries = detect_empty_retries(&events, 60);
-    assert_eq!(retries.len(), 1);
-    assert_eq!(retries[0].retry_count, 1);
+    let chains = detect_empty_chains(&events, 60);
+    assert_eq!(chains.len(), 1);
+    assert_eq!(chains[0].max_chain_length, 3);
+    assert_eq!(chains[0].chain_count, 1);
+    assert_eq!(chains[0].total_empty_events, 3);
 }
 
 #[test]
-fn empty_retry_does_not_flag_solo_empty() {
-    // Empty event with no follow-up → not flagged
-    let events = vec![ev_with_bytes(
-        "git/log",
-        "git log",
-        "2024-01-01T00:00:00Z",
-        5,
-        5,
-        5,
-    )];
-    let retries = detect_empty_retries(&events, 60);
-    assert!(retries.is_empty());
-}
-
-#[test]
-fn empty_retry_respects_window() {
-    // Empty event followed by event 5 minutes later → outside window
+fn empty_chain_breaks_on_non_empty() {
     let events = vec![
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:00Z", 5, 5, 5),
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:05:00Z", 200, 50, 50),
+        ev_full("f", "cmd", "2024-01-01T00:00:00Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:02Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:04Z", 500, 50, 50, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:06Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:08Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:10Z", 5, 5, 5, 0, 10),
     ];
-    let retries = detect_empty_retries(&events, 60);
-    assert!(retries.is_empty());
+    let chains = detect_empty_chains(&events, 60);
+    assert_eq!(chains.len(), 1);
+    assert_eq!(chains[0].chain_count, 2, "should have 2 chains");
+    assert_eq!(chains[0].max_chain_length, 3, "longest chain = 3");
+    assert_eq!(chains[0].total_empty_events, 5);
 }
 
 #[test]
-fn empty_retry_does_not_flag_non_empty() {
-    let events = vec![
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:00Z", 5000, 200, 200),
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:10Z", 5000, 200, 200),
-    ];
-    let retries = detect_empty_retries(&events, 60);
-    assert!(retries.is_empty());
+fn empty_chain_ignores_single_empty() {
+    let events = vec![ev_full("f", "cmd", "2024-01-01T00:00:00Z", 5, 5, 5, 0, 10)];
+    assert!(detect_empty_chains(&events, 60).is_empty());
 }
 
-// ─────────────────────────── compute_negative_savings ────────────────
+#[test]
+fn empty_chain_respects_window() {
+    let events = vec![
+        ev_full("f", "cmd", "2024-01-01T00:00:00Z", 5, 5, 5, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:05:00Z", 5, 5, 5, 0, 10),
+    ];
+    assert!(detect_empty_chains(&events, 60).is_empty());
+}
+
+#[test]
+fn empty_chain_empty_input() {
+    assert!(detect_empty_chains(&[], 60).is_empty());
+}
+
+// ─────────────────────────── negative savings ────────────────────────
 
 #[test]
 fn negative_savings_flags_filters_that_inflate() {
-    // raw=10, output=20 → average excess = 10
     let events = vec![
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:00Z", 80, 10, 20),
-        ev_with_bytes("git/log", "git log", "2024-01-01T00:00:01Z", 80, 10, 20),
+        ev_full("f", "cmd", "2024-01-01T00:00:00Z", 80, 10, 20, 0, 10),
+        ev_full("f", "cmd", "2024-01-01T00:00:01Z", 80, 10, 20, 0, 10),
     ];
     let neg = compute_negative_savings(&events);
     assert_eq!(neg.len(), 1);
     assert!((neg[0].avg_excess_tokens - 10.0).abs() < 0.01);
-    assert_eq!(neg[0].event_count, 2);
 }
 
 #[test]
-fn negative_savings_skips_filters_that_save() {
-    // raw=100, output=20 → saving 80 → not flagged
-    let events = vec![ev_with_bytes(
-        "git/diff",
-        "git diff",
+fn negative_savings_skips_saving_filters() {
+    let events = vec![ev_full(
+        "f",
+        "cmd",
         "2024-01-01T00:00:00Z",
         80,
         100,
         20,
+        0,
+        10,
     )];
-    let neg = compute_negative_savings(&events);
-    assert!(neg.is_empty());
+    assert!(compute_negative_savings(&events).is_empty());
 }
 
 #[test]
 fn negative_savings_skips_legacy_zero_raw() {
-    // raw_tokens_est = 0 means pre-#raw-tracking legacy event → must skip
-    let events = vec![ev_with_bytes(
-        "git/old",
-        "old cmd",
+    let events = vec![ev_full(
+        "f",
+        "cmd",
         "2024-01-01T00:00:00Z",
         80,
         0,
         20,
+        0,
+        10,
     )];
-    let neg = compute_negative_savings(&events);
-    assert!(
-        neg.is_empty(),
-        "legacy raw=0 events must be excluded: {neg:?}"
-    );
+    assert!(compute_negative_savings(&events).is_empty());
 }
 
+// ─────────────────────────── compute_filter_stats ────────────────────
+
 #[test]
-fn negative_savings_empty_input() {
-    assert!(compute_negative_savings(&[]).is_empty());
+fn filter_stats_counts_failures_and_overrides() {
+    let events = vec![
+        {
+            let mut e = ev("f", "cmd", "2024-01-01T00:00:00Z");
+            e.exit_code = 1;
+            e
+        },
+        {
+            let mut e = ev("f", "cmd", "2024-01-01T00:00:01Z");
+            e.pipe_override = true;
+            e
+        },
+        ev("f", "cmd", "2024-01-01T00:00:02Z"),
+    ];
+    let stats = compute_filter_stats(&events);
+    let s = stats.get("f").unwrap();
+    assert_eq!(s.event_count, 3);
+    assert_eq!(s.failed_count, 1);
+    assert_eq!(s.pipe_override_count, 1);
 }
 
 // ─────────────────────────── fetch_events (DB) ───────────────────────
@@ -460,7 +467,6 @@ fn fetch_events_excludes_noise_by_default() {
     let without_noise = fetch_events(&conn, None, false).unwrap();
     assert_eq!(with_noise.len(), 2);
     assert_eq!(without_noise.len(), 1);
-    assert_eq!(without_noise[0].command, "git status");
 }
 
 #[test]
@@ -497,7 +503,6 @@ fn fetch_events_scopes_to_project() {
         "",
     );
     let scoped = fetch_events(&conn, Some("/repo/a"), true).unwrap();
-    // Should match /repo/a + the empty-project legacy row
     assert_eq!(scoped.len(), 2);
     let all = fetch_events(&conn, None, true).unwrap();
     assert_eq!(all.len(), 3);

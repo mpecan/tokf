@@ -1,9 +1,4 @@
 //! Human and JSON rendering for `DoctorReport`.
-//!
-//! The human renderer mirrors the convention used by `gain_render`:
-//! ANSI codes assembled by hand from a tiny `Colors` struct, with a
-//! `disabled()` constructor for `--no-color` / `NO_COLOR` env / non-TTY.
-//! No external table-rendering dep.
 
 use std::fmt::Write as _;
 
@@ -25,7 +20,6 @@ pub struct Colors {
     pub cyan: &'static str,
 }
 
-/// ANSI-enabled palette.
 pub const COLORS_ON: Colors = Colors {
     reset: "\x1b[0m",
     bold: "\x1b[1m",
@@ -36,8 +30,6 @@ pub const COLORS_ON: Colors = Colors {
     cyan: "\x1b[36m",
 };
 
-/// Plain-text palette (all fields empty). Used by `--no-color`, non-TTY
-/// output, and the `NO_COLOR` env var.
 pub const COLORS_OFF: Colors = Colors {
     reset: "",
     bold: "",
@@ -57,8 +49,6 @@ impl Colors {
     }
 }
 
-/// Returns `true` when color output should be disabled per the `--no-color`
-/// flag or the `NO_COLOR` env var (<https://no-color.org/>).
 pub fn should_disable_color(no_color_flag: bool) -> bool {
     if no_color_flag {
         return true;
@@ -66,8 +56,6 @@ pub fn should_disable_color(no_color_flag: bool) -> bool {
     std::env::var_os("NO_COLOR").is_some()
 }
 
-/// Pick a colour for a health score. Used in the per-filter table to make
-/// "needs attention" rows visually obvious.
 const fn score_color(score: u8, c: &Colors) -> &'static str {
     match score {
         0..=49 => c.red,
@@ -77,13 +65,6 @@ const fn score_color(score: u8, c: &Colors) -> &'static str {
 }
 
 /// Render the report as a human-readable text block.
-///
-/// Layout:
-///   - one-line summary header
-///   - per-filter table (filter, events, score, bursts/maxBurst, flags, retries)
-///   - if any bursts: top-3 burst detail block
-///   - if any workaround suggestions: per-filter suggestion list
-///   - if any negative-savings filters: a "filters making things worse" callout
 pub fn render_human(report: &DoctorReport, colors: &Colors) -> String {
     let mut out = String::new();
 
@@ -115,6 +96,10 @@ pub fn render_human(report: &DoctorReport, colors: &Colors) -> String {
         render_burst_detail(&mut out, report, colors);
     }
 
+    if !report.shape_bursts.is_empty() {
+        render_shape_burst_detail(&mut out, report, colors);
+    }
+
     let any_suggestions = report
         .filters
         .iter()
@@ -141,12 +126,12 @@ fn render_header(out: &mut String, report: &DoctorReport, c: &Colors) {
         .map_or_else(|| "all projects".to_string(), |p| format!("project={p}"));
     let _ = writeln!(
         out,
-        "{bold}tokf doctor{reset} — {dim}{events} events, {scope}, threshold≥{th} within {win}s{reset}",
+        "{bold}tokf doctor{reset} — {dim}{events} events, {scope}, \
+         threshold≥{th} within {win}s{reset}",
         bold = c.bold,
         reset = c.reset,
         dim = c.dim,
         events = report.total_events_considered,
-        scope = scope,
         th = report.burst_threshold,
         win = report.window_secs,
     );
@@ -156,44 +141,51 @@ fn render_filter_table(out: &mut String, filters: &[FilterReport], c: &Colors) {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{bold}{:<22} {:>7} {:>6} {:>9} {:>9} {:>7} {:>9}{reset}",
+        "{bold}{:<22} {:>6} {:>5} {:>7} {:>5} {:>5} {:>5} {:>5}{reset}",
         "filter",
         "events",
         "score",
         "bursts",
-        "max-burst",
+        "fail%",
         "uniq",
-        "retries",
+        "chain",
+        "pipe%",
         bold = c.bold,
         reset = c.reset,
     );
-    let _ = writeln!(out, "{}", "─".repeat(80));
+    let _ = writeln!(out, "{}", "─".repeat(72));
     for f in filters {
-        let score_col = score_color(f.health_score, c);
-        let max_burst = if f.max_burst_size == 0 {
+        let col = score_color(f.health_score, c);
+        let fail_pct = if f.burst_count == 0 {
             "-".to_string()
         } else {
-            f.max_burst_size.to_string()
+            format!("{:.0}%", f.failed_burst_ratio * 100.0)
         };
         let uniq = f
             .median_arg_uniqueness
             .map_or_else(|| "-".to_string(), |v| format!("{v:.2}"));
-        let retries = if f.empty_retry_count == 0 {
+        let chain = if f.max_empty_chain == 0 {
             "-".to_string()
         } else {
-            f.empty_retry_count.to_string()
+            f.max_empty_chain.to_string()
+        };
+        let pipe = if f.pipe_override_rate < 0.005 {
+            "-".to_string()
+        } else {
+            format!("{:.0}%", f.pipe_override_rate * 100.0)
         };
         let _ = writeln!(
             out,
-            "{:<22} {:>7} {col}{:>6}{reset} {:>9} {:>9} {:>7} {:>9}",
+            "{:<22} {:>6} {col}{:>5}{reset} {:>7} {:>5} {:>5} {:>5} {:>5}",
             truncate(&f.filter_name, 22),
             f.event_count,
             f.health_score,
             f.burst_count,
-            max_burst,
+            fail_pct,
             uniq,
-            retries,
-            col = score_col,
+            chain,
+            pipe,
+            col = col,
             reset = c.reset,
         );
     }
@@ -203,18 +195,66 @@ fn render_burst_detail(out: &mut String, report: &DoctorReport, c: &Colors) {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{bold}retry-burst detail{reset} {dim}(top 5 by size){reset}",
+        "{bold}retry-burst detail{reset} {dim}(top 5 exact-match by size){reset}",
         bold = c.bold,
         reset = c.reset,
         dim = c.dim,
     );
     for b in report.bursts.iter().take(5) {
+        let fail_note = if b.failed_count > 0 {
+            format!(
+                " {red}{} failed{reset}",
+                b.failed_count,
+                red = c.red,
+                reset = c.reset
+            )
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             out,
-            "  {yellow}×{}{reset} {} {dim}({}){reset}",
+            "  {yellow}×{}{reset} {} {dim}({}){reset}{fail_note}",
             b.burst_size,
             super::noise::command_shape(&b.command),
             b.filter_name,
+            yellow = c.yellow,
+            reset = c.reset,
+            dim = c.dim,
+        );
+    }
+}
+
+fn render_shape_burst_detail(out: &mut String, report: &DoctorReport, c: &Colors) {
+    // Only show shape bursts that have arg_uniqueness > 0.2 — those are
+    // the flag-cycling pattern. Exact-match bursts already cover the
+    // pure-confusion case (uniqueness ≈ 0).
+    let cycling: Vec<_> = report
+        .shape_bursts
+        .iter()
+        .filter(|b| b.arg_uniqueness > 0.2)
+        .take(5)
+        .collect();
+    if cycling.is_empty() {
+        return;
+    }
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "{bold}flag-cycling bursts{reset} {dim}(shape-grouped, top 5 by size){reset}",
+        bold = c.bold,
+        reset = c.reset,
+        dim = c.dim,
+    );
+    for b in &cycling {
+        let _ = writeln!(
+            out,
+            "  {yellow}×{}{reset} {} {dim}({}, {}/{} unique, uniq={:.2}){reset}",
+            b.burst_size,
+            b.shape,
+            b.filter_name,
+            b.distinct_commands,
+            b.burst_size,
+            b.arg_uniqueness,
             yellow = c.yellow,
             reset = c.reset,
             dim = c.dim,
@@ -226,7 +266,8 @@ fn render_workaround_suggestions(out: &mut String, filters: &[FilterReport], c: 
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{bold}workaround-flag suggestions{reset} {dim}(consider adding to passthrough_args){reset}",
+        "{bold}workaround-flag suggestions{reset} \
+         {dim}(consider adding to passthrough_args){reset}",
         bold = c.bold,
         reset = c.reset,
         dim = c.dim,
@@ -255,7 +296,8 @@ fn render_negative_savings(out: &mut String, filters: &[FilterReport], c: &Color
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{bold}filters with negative token savings{reset} {dim}(filtered output > raw){reset}",
+        "{bold}filters with negative token savings{reset} \
+         {dim}(filtered output > raw){reset}",
         bold = c.bold,
         reset = c.reset,
         dim = c.dim,

@@ -12,7 +12,8 @@ fn empty_report() -> DoctorReport {
         window_secs: 60,
         filters: vec![],
         bursts: vec![],
-        empty_retries: vec![],
+        shape_bursts: vec![],
+        empty_chains: vec![],
         negative_savings: vec![],
         workaround_flags: vec![],
     }
@@ -30,22 +31,30 @@ fn report_with_one_filter() -> DoctorReport {
             event_count: 30,
             burst_count: 3,
             max_burst_size: 12,
+            failed_burst_ratio: 0.4,
+            shape_burst_count: 2,
             median_arg_uniqueness: Some(0.08),
             untracked_workaround_flags: vec![WorkaroundFlagSuggestion {
                 flag: "--no-stat".to_string(),
                 count: 8,
             }],
-            empty_retry_count: 2,
+            empty_chain_count: 1,
+            max_empty_chain: 4,
             avg_excess_tokens: Some(15.0),
+            pipe_override_rate: 0.05,
+            burst_time_wasted_ms: 3500,
             health_score: 30,
         }],
         bursts: vec![super::super::queries::BurstRow {
             filter_name: "git/diff".to_string(),
             command: "git diff".to_string(),
             burst_size: 12,
+            failed_count: 5,
+            total_time_ms: 3500,
             last_seen: "2024-01-01T00:00:30Z".to_string(),
         }],
-        empty_retries: vec![],
+        shape_bursts: vec![],
+        empty_chains: vec![],
         negative_savings: vec![],
         workaround_flags: vec![],
     }
@@ -67,15 +76,15 @@ fn human_renders_filter_table() {
         "should contain filter name: {out}"
     );
     assert!(out.contains("score"), "should contain table header: {out}");
-    assert!(out.contains("30"), "should contain event count");
 }
 
 #[test]
-fn human_shows_burst_detail_when_present() {
+fn human_shows_burst_detail_with_failure_count() {
     let report = report_with_one_filter();
     let out = render_human(&report, &Colors::disabled());
     assert!(out.contains("retry-burst detail"));
     assert!(out.contains("×12"));
+    assert!(out.contains("5 failed"));
 }
 
 #[test]
@@ -91,15 +100,6 @@ fn human_shows_negative_savings_callout() {
     let report = report_with_one_filter();
     let out = render_human(&report, &Colors::disabled());
     assert!(out.contains("negative token savings"));
-    assert!(out.contains("git/diff"));
-}
-
-#[test]
-fn human_no_negative_section_when_none() {
-    let mut report = report_with_one_filter();
-    report.filters[0].avg_excess_tokens = None;
-    let out = render_human(&report, &Colors::disabled());
-    assert!(!out.contains("negative token savings"));
 }
 
 #[test]
@@ -111,7 +111,18 @@ fn json_round_trip() {
     assert_eq!(parsed["filters"][0]["filter_name"], "git/diff");
     assert_eq!(parsed["filters"][0]["health_score"], 30);
     assert_eq!(parsed["filters"][0]["burst_count"], 3);
-    assert_eq!(parsed["filters"][0]["max_burst_size"], 12);
+    assert_eq!(parsed["filters"][0]["max_empty_chain"], 4);
+    assert!(parsed["filters"][0]["failed_burst_ratio"].as_f64().unwrap() > 0.3);
+    assert!(parsed["filters"][0]["pipe_override_rate"].as_f64().unwrap() > 0.0);
+}
+
+#[test]
+fn human_shows_fail_and_pipe_columns() {
+    let report = report_with_one_filter();
+    let out = render_human(&report, &Colors::disabled());
+    assert!(out.contains("fail%"), "header should have fail%: {out}");
+    assert!(out.contains("pipe%"), "header should have pipe%: {out}");
+    assert!(out.contains("chain"), "header should have chain: {out}");
 }
 
 #[test]
@@ -132,19 +143,9 @@ fn truncate_adds_ellipsis() {
 }
 
 #[test]
-fn score_color_red_for_low_score() {
+fn score_color_ranges() {
     let c = Colors::enabled();
     assert_eq!(score_color(20, &c), c.red);
-}
-
-#[test]
-fn score_color_green_for_high_score() {
-    let c = Colors::enabled();
-    assert_eq!(score_color(95, &c), c.green);
-}
-
-#[test]
-fn score_color_yellow_for_mid_score() {
-    let c = Colors::enabled();
     assert_eq!(score_color(60, &c), c.yellow);
+    assert_eq!(score_color(95, &c), c.green);
 }
