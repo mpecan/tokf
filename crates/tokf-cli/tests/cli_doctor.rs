@@ -365,6 +365,88 @@ fn doctor_filter_arg_scopes_to_one_filter() {
 }
 
 #[test]
+fn doctor_filter_normalizes_slash_form() {
+    // `--filter git/diff` (slash form) should resolve to the DB's
+    // command-pattern form `git diff` (space form) via the filter
+    // discovery lookup. Even when no matching filter is discovered (test
+    // env has no stdlib), the pass-through should still work: the literal
+    // "git/diff" won't match any event, so the report should show zero
+    // filters instead of crashing.
+    let dir = temp_db_dir();
+    let db = dir.path().join("tracking.db");
+    seed_events(
+        &db,
+        &[
+            (
+                "2024-01-01T00:00:00Z",
+                "git diff",
+                "git diff",
+                200,
+                50,
+                50,
+                "",
+            ),
+            (
+                "2024-01-01T00:00:01Z",
+                "git status",
+                "git status",
+                200,
+                50,
+                50,
+                "",
+            ),
+        ],
+    );
+    // With --filter "git diff" (space form), we expect exactly 1 filter.
+    let out_space = tokf_with_db(&db)
+        .args(["doctor", "--all", "--filter", "git diff", "--json"])
+        .output()
+        .expect("run");
+    let parsed: serde_json::Value = serde_json::from_slice(&out_space.stdout).unwrap();
+    let filters = parsed["filters"].as_array().unwrap();
+    assert_eq!(filters.len(), 1);
+    assert_eq!(filters[0]["filter_name"], "git diff");
+}
+
+#[test]
+fn doctor_defaults_to_current_project_scope() {
+    // Without --all or --project, doctor should scope to the current
+    // project. In tests the cwd is inside the tokf repo, so the project
+    // value will be something like /Users/.../tokf. Events tagged with a
+    // *different* project and no legacy empty-string project should NOT
+    // show up.
+    let dir = temp_db_dir();
+    let db = dir.path().join("tracking.db");
+    seed_events(
+        &db,
+        &[
+            // This event has a different project — should be excluded
+            (
+                "2024-01-01T00:00:00Z",
+                "git diff",
+                "git diff",
+                200,
+                50,
+                50,
+                "/some/other/project",
+            ),
+        ],
+    );
+    // Run WITHOUT --all → doctor resolves current_project() from cwd,
+    // which won't match "/some/other/project".
+    let out = tokf_with_db(&db)
+        .args(["doctor", "--json"])
+        .output()
+        .expect("run");
+    let parsed: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        parsed["total_events_considered"].as_i64().unwrap(),
+        0,
+        "events from other projects should be excluded when not using --all"
+    );
+}
+
+#[test]
 fn doctor_help_lists_burst_threshold() {
     // Sanity check: --help renders without panic and mentions a known
     // option. Catches accidental clap mis-wiring.
