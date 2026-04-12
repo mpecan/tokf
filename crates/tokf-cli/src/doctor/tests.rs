@@ -3,60 +3,86 @@
 use super::*;
 
 // ─────────────────────────── score_filter ───────────────────────────
+// Signature: score_filter(total_burst_events, event_count, workaround, empty, excess)
 
 #[test]
 fn score_perfect_filter_is_100() {
-    assert_eq!(score_filter(0, 0, 0, None), 100);
-    assert_eq!(score_filter(0, 0, 0, Some(-50.0)), 100);
+    // No burst events out of 100 total → 0% rate → no penalty.
+    assert_eq!(score_filter(0, 100, 0, 0, None), 100);
+    assert_eq!(score_filter(0, 100, 0, 0, Some(-50.0)), 100);
 }
 
 #[test]
-fn score_drops_with_bursts() {
-    let baseline = score_filter(0, 0, 0, None);
-    let with_bursts = score_filter(5, 0, 0, None);
+fn score_drops_with_burst_rate() {
+    let baseline = score_filter(0, 100, 0, 0, None);
+    // 50 burst events out of 100 = 50% rate → big penalty
+    let with_bursts = score_filter(50, 100, 0, 0, None);
     assert!(with_bursts < baseline);
 }
 
 #[test]
+fn score_high_volume_low_burst_rate_is_healthy() {
+    // 16 burst events out of 13682 total = 0.12% rate → penalty ~0
+    // This is the cargo fmt case — lots of events, few bursts relative
+    // to total volume.
+    let s = score_filter(16, 13682, 0, 0, None);
+    assert!(
+        s >= 95,
+        "high-volume low-burst-rate should score well, got {s}"
+    );
+}
+
+#[test]
+fn score_low_volume_high_burst_rate_is_bad() {
+    // 15 burst events out of 20 total = 75% rate → penalty = 40 (capped)
+    let s = score_filter(15, 20, 0, 0, None);
+    assert!(
+        s <= 65,
+        "low-volume high-burst-rate should score poorly, got {s}"
+    );
+}
+
+#[test]
 fn score_caps_burst_penalty_at_40() {
-    // 100 bursts × 2 = 200 → capped at 40
-    let s = score_filter(100, 0, 0, None);
+    // 100% burst rate → capped at 40 penalty
+    let s = score_filter(100, 100, 0, 0, None);
     assert_eq!(s, 60, "burst penalty should max out at 40");
 }
 
 #[test]
 fn score_caps_workaround_penalty_at_20() {
-    let s = score_filter(0, 100, 0, None);
+    let s = score_filter(0, 100, 100, 0, None);
     assert_eq!(s, 80);
 }
 
 #[test]
 fn score_caps_empty_retry_penalty_at_20() {
-    let s = score_filter(0, 0, 100, None);
+    let s = score_filter(0, 100, 0, 100, None);
     assert_eq!(s, 80);
 }
 
 #[test]
 fn score_caps_negative_savings_at_20() {
-    let s = score_filter(0, 0, 0, Some(1000.0));
+    let s = score_filter(0, 100, 0, 0, Some(1000.0));
     assert_eq!(s, 80);
 }
 
 #[test]
 fn score_combines_all_signals() {
     // Max all four → 0
-    let s = score_filter(100, 100, 100, Some(1000.0));
+    let s = score_filter(100, 100, 100, 100, Some(1000.0));
     assert_eq!(s, 0);
 }
 
 #[test]
-fn score_is_monotonic_in_burst_count() {
-    let mut prev = score_filter(0, 0, 0, None);
-    for n in 1..=20 {
-        let cur = score_filter(n, 0, 0, None);
+fn score_is_monotonic_in_burst_rate() {
+    // Hold event_count at 100, increase burst events 0→100 (0%→100%)
+    let mut prev = score_filter(0, 100, 0, 0, None);
+    for n in 1..=100 {
+        let cur = score_filter(n, 100, 0, 0, None);
         assert!(
             cur <= prev,
-            "score must be monotonically non-increasing in burst count"
+            "score must be monotonically non-increasing in burst rate (n={n})"
         );
         prev = cur;
     }
@@ -64,9 +90,9 @@ fn score_is_monotonic_in_burst_count() {
 
 #[test]
 fn score_is_monotonic_in_workaround_count() {
-    let mut prev = score_filter(0, 0, 0, None);
+    let mut prev = score_filter(0, 100, 0, 0, None);
     for n in 1..=20 {
-        let cur = score_filter(0, n, 0, None);
+        let cur = score_filter(0, 100, n, 0, None);
         assert!(cur <= prev);
         prev = cur;
     }
@@ -75,7 +101,14 @@ fn score_is_monotonic_in_workaround_count() {
 #[test]
 fn score_negative_savings_doesnt_double_count_when_negative() {
     // Negative excess (filter is saving tokens) should give zero penalty.
-    let s = score_filter(0, 0, 0, Some(-100.0));
+    let s = score_filter(0, 100, 0, 0, Some(-100.0));
+    assert_eq!(s, 100);
+}
+
+#[test]
+fn score_zero_events_does_not_panic() {
+    // Edge case: no events at all → no division by zero.
+    let s = score_filter(0, 0, 0, 0, None);
     assert_eq!(s, 100);
 }
 

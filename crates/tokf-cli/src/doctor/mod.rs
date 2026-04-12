@@ -253,6 +253,7 @@ fn build_one_filter_report(
         .filter(|b| b.filter_name == filter_name)
         .collect();
     let burst_count = filter_bursts.len();
+    let total_burst_events: usize = filter_bursts.iter().map(|b| b.burst_size).sum();
     let max_burst_size = filter_bursts
         .iter()
         .map(|b| b.burst_size)
@@ -284,7 +285,8 @@ fn build_one_filter_report(
         .map(|n| n.avg_excess_tokens);
 
     let health_score = score_filter(
-        burst_count,
+        total_burst_events,
+        event_count,
         workaround_count,
         empty_retry_count,
         avg_excess_tokens,
@@ -359,18 +361,34 @@ fn sort_reports(reports: &mut [FilterReport], sort_by: SortBy) {
 /// Composite health score 0–100, **lower is worse**. Each signal contributes
 /// a capped penalty so a single dimension cannot crash the score on its own.
 ///
+/// **Burst penalty uses rate, not raw count.** A filter with 16 bursts out
+/// of 13,682 events (0.1% burst rate) should not be penalized the same as
+/// one with 16 bursts out of 20 events (80% burst rate). The rate is
+/// `total_burst_events / event_count * 100` — the percentage of all
+/// events that participated in a burst.
+///
 /// Penalty caps (deliberately tunable from one place):
-/// - bursts: up to 40
+/// - burst rate: up to 40
 /// - workaround flags: up to 20
 /// - empty retries: up to 20
 /// - negative savings: up to 20
 fn score_filter(
-    burst_count: usize,
+    total_burst_events: usize,
+    event_count: usize,
     workaround_count: usize,
     empty_retry_count: usize,
     avg_excess_tokens: Option<f64>,
 ) -> u8 {
-    let burst_penalty = (burst_count.saturating_mul(2)).min(40);
+    // Burst penalty: based on burst rate (% of events in bursts), not raw
+    // count. Scale factor: 1% burst rate → 1 penalty point. 10%+ → caps.
+    #[allow(clippy::cast_precision_loss)]
+    let burst_rate_pct = if event_count == 0 {
+        0.0
+    } else {
+        total_burst_events as f64 / event_count as f64 * 100.0
+    };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let burst_penalty = (burst_rate_pct.round() as usize).min(40);
     let workaround_penalty = workaround_count.min(20);
     let empty_penalty = empty_retry_count.min(20);
     let negative_penalty = avg_excess_tokens.filter(|v| *v > 0.0).map_or(0, |v| {
