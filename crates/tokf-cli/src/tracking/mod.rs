@@ -51,7 +51,8 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
             exit_code         INTEGER NOT NULL,
             pipe_override     INTEGER NOT NULL DEFAULT 0,
             raw_bytes         INTEGER NOT NULL DEFAULT 0,
-            raw_tokens_est    INTEGER NOT NULL DEFAULT 0
+            raw_tokens_est    INTEGER NOT NULL DEFAULT 0,
+            project           TEXT    NOT NULL DEFAULT ''
         );",
     )
     .context("create events table")?;
@@ -113,6 +114,31 @@ fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
         .context("migrate events table: add raw_bytes columns")?;
     }
 
+    // Migration: add project column when upgrading from a schema without it.
+    // Pre-existing rows get the empty-string default — `tokf doctor` treats
+    // empty as "unknown" and shows them under all projects.
+    let has_project: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='project'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_project == 0 {
+        conn.execute_batch("ALTER TABLE events ADD COLUMN project TEXT NOT NULL DEFAULT '';")
+            .context("migrate events table: add project column")?;
+    }
+
+    // Indexes used by `tokf doctor` burst-detection and per-filter queries.
+    // Created here (not in CREATE TABLE) so existing DBs pick them up too.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_events_command_timestamp \
+            ON events(command, timestamp DESC);
+         CREATE INDEX IF NOT EXISTS idx_events_filter_timestamp \
+            ON events(filter_name, timestamp DESC);",
+    )
+    .context("create events indexes")?;
+
     Ok(())
 }
 
@@ -153,6 +179,10 @@ pub fn build_event(
         filter_time_ms: filter_time_ms_i64,
         exit_code,
         pipe_override,
+        // `project` defaults to empty here. Callers that know the project
+        // (currently `resolve::record_run`) set it on the event before
+        // passing it to `record_event`.
+        project: String::new(),
     }
 }
 
@@ -167,10 +197,10 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
              input_bytes, output_bytes,
              input_tokens_est, output_tokens_est,
              raw_bytes, raw_tokens_est,
-             filter_time_ms, exit_code, pipe_override)
+             filter_time_ms, exit_code, pipe_override, project)
          VALUES
             (strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         rusqlite::params![
             event.command,
             event.filter_name,
@@ -184,6 +214,7 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
             event.filter_time_ms,
             event.exit_code,
             i64::from(event.pipe_override),
+            event.project,
         ],
     )
     .context("insert event")?;
@@ -537,6 +568,9 @@ mod tests_backfill;
 
 #[cfg(test)]
 mod tests_pipe_override;
+
+#[cfg(test)]
+mod tests_project;
 
 #[cfg(test)]
 mod tests_raw_bytes;

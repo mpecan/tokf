@@ -1,5 +1,6 @@
 use tokf::config;
 use tokf::config::types::FilterConfig;
+use tokf::history::current_project;
 use tokf::runner;
 use tokf::tracking;
 
@@ -269,7 +270,7 @@ pub fn record_run(
         }
     };
     let command = command_args.join(" ");
-    let event = tracking::build_event(
+    let mut event = tracking::build_event(
         &command,
         filter_name,
         filter_hash,
@@ -280,6 +281,7 @@ pub fn record_run(
         exit_code,
         pipe_override,
     );
+    event.project = current_project();
     if let Err(e) = tracking::record_event(&conn, &event) {
         eprintln!(
             "[tokf] tracking error (record) at {}: {e:#}",

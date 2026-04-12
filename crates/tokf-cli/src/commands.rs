@@ -49,6 +49,66 @@ pub enum HookFormat {
     Cursor,
 }
 
+/// CLI surface for `tokf doctor --sort`. Mirrors `tokf::doctor::SortBy`
+/// but lives here so the `clap::ValueEnum` derive doesn't pollute the
+/// library crate.
+#[derive(clap::ValueEnum, Clone, Copy, Default, Debug)]
+pub enum SortByCli {
+    /// Composite health score ascending (worst first)
+    #[default]
+    Health,
+    /// Burst count descending (most thrashing first)
+    Bursts,
+    /// Average excess tokens descending (worst-savings first)
+    Tokens,
+}
+
+impl From<SortByCli> for tokf::doctor::SortBy {
+    fn from(v: SortByCli) -> Self {
+        match v {
+            SortByCli::Health => Self::Health,
+            SortByCli::Bursts => Self::Bursts,
+            SortByCli::Tokens => Self::Tokens,
+        }
+    }
+}
+
+/// Args for `tokf doctor`. Defined here (not inline in `main.rs`) so the
+/// per-flag doc comments don't push `main.rs` over the 700-line hard
+/// limit. `#[command(flatten)]` in the `Commands::Doctor` variant inlines
+/// these into the doctor subcommand.
+#[derive(clap::Args, Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
+pub struct DoctorArgs {
+    /// Output as JSON instead of a human-readable table
+    #[arg(long)]
+    pub json: bool,
+    /// Disable ANSI colour in human output
+    #[arg(long)]
+    pub no_color: bool,
+    /// Minimum number of identical commands within `--window` to count as a burst
+    #[arg(long, default_value_t = 5)]
+    pub burst_threshold: usize,
+    /// Time window (seconds) within which identical commands count as a burst
+    #[arg(long, default_value_t = 60)]
+    pub window: u64,
+    /// Restrict the report to one filter (e.g. `git/diff`)
+    #[arg(long)]
+    pub filter: Option<String>,
+    /// Scope to a specific project path (defaults to the current project)
+    #[arg(long, conflicts_with = "all")]
+    pub project: Option<String>,
+    /// Show events from all projects, not just the current one
+    #[arg(long)]
+    pub all: bool,
+    /// Don't filter out events from temp dirs / test fixtures
+    #[arg(long)]
+    pub include_noise: bool,
+    /// Sort the per-filter table by `health` (default), `bursts`, or `tokens`
+    #[arg(long, value_enum, default_value_t = SortByCli::Health)]
+    pub sort: SortByCli,
+}
+
 #[derive(Subcommand)]
 pub enum HookAction {
     /// Handle a hook invocation (reads JSON from stdin)
