@@ -2,16 +2,15 @@
 //!
 //! Strategy: fetch all relevant columns from `events` into memory once,
 //! then run signal detectors as **pure functions** over `&[EventRow]`.
-//! This keeps the SQL trivial (one indexed `SELECT`) and makes every
-//! analysis directly unit-testable from synthetic data.
+
+use std::collections::HashMap;
 
 use anyhow::Context as _;
 use rusqlite::Connection;
 
 use super::noise::{command_shape, is_noise_command};
 
-/// Row pulled from `events` — all columns the doctor needs for its
-/// signal detectors.
+/// Row pulled from `events`.
 #[derive(Debug, Clone)]
 pub struct EventRow {
     pub filter_name: String,
@@ -75,15 +74,43 @@ pub fn fetch_events(
     Ok(out)
 }
 
+// ─────────────────────── shared session splitter ─────────────────────
+
+/// A contiguous run of events whose consecutive timestamps are all
+/// within `window` seconds of each other, and whose total size meets
+/// or exceeds `threshold`.
+struct Session {
+    start: usize,
+    end: usize, // exclusive
+}
+
+/// Split a time-ordered slice of events into session windows.
+///
+/// A session breaks when the gap between consecutive events exceeds
+/// `window_secs`. Only sessions of `size >= threshold` are returned.
+fn split_sessions(events: &[&EventRow], threshold: usize, window_f64: f64) -> Vec<Session> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    for i in 1..=events.len() {
+        let gap_too_large = i == events.len()
+            || gap_seconds(&events[i - 1].timestamp, &events[i].timestamp) > window_f64;
+        if gap_too_large {
+            if i - start >= threshold {
+                out.push(Session { start, end: i });
+            }
+            start = i;
+        }
+    }
+    out
+}
+
 // ─────────────────────────── burst detection ───────────────────────────
 
-/// One detected burst session (exact-match grouping).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct BurstRow {
     pub filter_name: String,
     pub command: String,
     pub burst_size: usize,
-    /// How many events in this burst had a non-zero exit code.
     pub failed_count: usize,
     /// Total `filter_time_ms` across all events in the burst.
     pub total_time_ms: i64,
@@ -92,8 +119,6 @@ pub struct BurstRow {
 
 /// Detect retry-burst sessions using **exact string match** grouping.
 pub fn detect_bursts(events: &[EventRow], threshold: usize, window_secs: u64) -> Vec<BurstRow> {
-    use std::collections::HashMap;
-    // Group by (filter, command) → sorted Vec of event refs
     let mut groups: HashMap<(&str, &str), Vec<&EventRow>> = HashMap::new();
     for ev in events {
         groups
@@ -101,32 +126,24 @@ pub fn detect_bursts(events: &[EventRow], threshold: usize, window_secs: u64) ->
             .or_default()
             .push(ev);
     }
-    let mut out = Vec::new();
     #[allow(clippy::cast_precision_loss)]
     let window_f64 = window_secs as f64;
-    for ((filter, command), group) in groups {
-        let mut session_start = 0usize;
-        for i in 1..=group.len() {
-            let gap_too_large = i == group.len()
-                || gap_seconds(&group[i - 1].timestamp, &group[i].timestamp) > window_f64;
-            if gap_too_large {
-                let session = &group[session_start..i];
-                if session.len() >= threshold {
-                    let failed = session.iter().filter(|e| e.exit_code != 0).count();
-                    let time: i64 = session.iter().map(|e| e.filter_time_ms).sum();
-                    out.push(BurstRow {
-                        filter_name: filter.to_string(),
-                        command: command.to_string(),
-                        burst_size: session.len(),
-                        failed_count: failed,
-                        total_time_ms: time,
-                        last_seen: session
-                            .last()
-                            .map_or_else(String::new, |e| e.timestamp.clone()),
-                    });
-                }
-                session_start = i;
-            }
+    let mut out = Vec::new();
+    for ((filter, command), group) in &groups {
+        for s in split_sessions(group, threshold, window_f64) {
+            let session = &group[s.start..s.end];
+            let failed = session.iter().filter(|e| e.exit_code != 0).count();
+            let time: i64 = session.iter().map(|e| e.filter_time_ms).sum();
+            out.push(BurstRow {
+                filter_name: (*filter).to_string(),
+                command: (*command).to_string(),
+                burst_size: session.len(),
+                failed_count: failed,
+                total_time_ms: time,
+                last_seen: session
+                    .last()
+                    .map_or_else(String::new, |e| e.timestamp.clone()),
+            });
         }
     }
     out.sort_by(|a, b| {
@@ -149,65 +166,58 @@ pub struct ShapeBurstRow {
     pub filter_name: String,
     pub shape: String,
     pub burst_size: usize,
-    /// Number of distinct full command strings in the burst. High
-    /// uniqueness = exploration (varying args); low = confusion (same
-    /// command repeated).
     pub distinct_commands: usize,
-    /// `distinct_commands / burst_size` — 0.0–1.0. Near-0 = confusion,
-    /// near-1 = exploration.
+    /// `distinct_commands / burst_size` — 0.0–1.0.
     pub arg_uniqueness: f64,
     pub failed_count: usize,
     pub last_seen: String,
 }
 
 /// Detect shape-based burst sessions.
-///
-/// Groups events by `(filter, command_shape)` and finds sessions where
-/// the total events (across all arg variants) exceed `threshold` within
-/// `window_secs`. This catches the "flag cycling" pattern that exact-
-/// match detection misses.
 pub fn detect_shape_bursts(
     events: &[EventRow],
     threshold: usize,
     window_secs: u64,
 ) -> Vec<ShapeBurstRow> {
-    use std::collections::{HashMap, HashSet};
-    // Group by (filter, shape) → sorted Vec of event refs
-    let mut groups: HashMap<(&str, String), Vec<&EventRow>> = HashMap::new();
+    use std::collections::HashSet;
+    // Pre-compute shapes with dedup: same command → same shape.
+    let mut shape_cache: HashMap<&str, String> = HashMap::new();
     for ev in events {
-        let shape = command_shape(&ev.command);
-        groups.entry((&ev.filter_name, shape)).or_default().push(ev);
+        shape_cache
+            .entry(&ev.command)
+            .or_insert_with(|| command_shape(&ev.command));
     }
-    let mut out = Vec::new();
+    let mut groups: HashMap<(&str, &str), Vec<&EventRow>> = HashMap::new();
+    for ev in events {
+        let Some(shape) = shape_cache.get(ev.command.as_str()) else {
+            continue; // shouldn't happen — pre-computed above
+        };
+        groups
+            .entry((&ev.filter_name, shape.as_str()))
+            .or_default()
+            .push(ev);
+    }
     #[allow(clippy::cast_precision_loss)]
     let window_f64 = window_secs as f64;
+    let mut out = Vec::new();
     for ((filter, shape), group) in &groups {
-        let mut session_start = 0usize;
-        for i in 1..=group.len() {
-            let gap_too_large = i == group.len()
-                || gap_seconds(&group[i - 1].timestamp, &group[i].timestamp) > window_f64;
-            if gap_too_large {
-                let session = &group[session_start..i];
-                if session.len() >= threshold {
-                    let distinct: HashSet<&str> =
-                        session.iter().map(|e| e.command.as_str()).collect();
-                    let failed = session.iter().filter(|e| e.exit_code != 0).count();
-                    #[allow(clippy::cast_precision_loss)]
-                    let uniqueness = distinct.len() as f64 / session.len().max(1) as f64;
-                    out.push(ShapeBurstRow {
-                        filter_name: filter.to_string(),
-                        shape: shape.clone(),
-                        burst_size: session.len(),
-                        distinct_commands: distinct.len(),
-                        arg_uniqueness: uniqueness,
-                        failed_count: failed,
-                        last_seen: session
-                            .last()
-                            .map_or_else(String::new, |e| e.timestamp.clone()),
-                    });
-                }
-                session_start = i;
-            }
+        for s in split_sessions(group, threshold, window_f64) {
+            let session = &group[s.start..s.end];
+            let distinct: HashSet<&str> = session.iter().map(|e| e.command.as_str()).collect();
+            let failed = session.iter().filter(|e| e.exit_code != 0).count();
+            #[allow(clippy::cast_precision_loss)]
+            let uniqueness = distinct.len() as f64 / session.len().max(1) as f64;
+            out.push(ShapeBurstRow {
+                filter_name: (*filter).to_string(),
+                shape: (*shape).to_string(),
+                burst_size: session.len(),
+                distinct_commands: distinct.len(),
+                arg_uniqueness: uniqueness,
+                failed_count: failed,
+                last_seen: session
+                    .last()
+                    .map_or_else(String::new, |e| e.timestamp.clone()),
+            });
         }
     }
     out.sort_by(|a, b| {
@@ -218,7 +228,6 @@ pub fn detect_shape_bursts(
     out
 }
 
-/// Compute the gap in seconds between two ISO-8601 timestamps.
 fn gap_seconds(earlier: &str, later: &str) -> f64 {
     let Some(e) = parse_iso8601_secs(earlier) else {
         return f64::INFINITY;
@@ -281,16 +290,26 @@ pub struct WorkaroundFlagRow {
     pub count: usize,
 }
 
+/// Check if `token` matches a workaround flag (exact, `=`-prefixed, or
+/// `-U` numeric form). Avoids per-iteration `format!` allocation.
+fn token_matches_flag(token: &str, flag: &str) -> bool {
+    if token == flag {
+        return true;
+    }
+    // `--format=oneline` style: flag followed by `=`
+    if token.len() > flag.len() && token.starts_with(flag) && token.as_bytes()[flag.len()] == b'=' {
+        return true;
+    }
+    // `-U10` style: `-U` prefix with attached numeric
+    flag == "-U" && token.starts_with("-U") && token.len() > 2
+}
+
 pub fn detect_workaround_flags(events: &[EventRow]) -> Vec<WorkaroundFlagRow> {
-    use std::collections::HashMap;
     let mut counts: HashMap<(&str, &'static str), usize> = HashMap::new();
     for ev in events {
         for token in ev.command.split_whitespace() {
             for &flag in WORKAROUND_FLAGS {
-                if token == flag
-                    || token.starts_with(&format!("{flag}="))
-                    || (flag == "-U" && token.starts_with("-U") && token.len() > 2)
-                {
+                if token_matches_flag(token, flag) {
                     *counts.entry((&ev.filter_name, flag)).or_insert(0) += 1;
                 }
             }
@@ -324,20 +343,14 @@ pub fn detect_workaround_flags(events: &[EventRow]) -> Vec<WorkaroundFlagRow> {
 pub struct EmptyChainRow {
     pub filter_name: String,
     pub command: String,
-    /// Number of distinct empty chains detected.
     pub chain_count: usize,
-    /// Length of the longest consecutive empty chain.
     pub max_chain_length: usize,
-    /// Total events across all chains.
     pub total_empty_events: usize,
 }
 
 const EMPTY_OUTPUT_THRESHOLD_BYTES: i64 = 50;
 
-/// Detect chains of consecutive empty-output events for the same
-/// command within the window. Replaces the simpler pair-based detection.
 pub fn detect_empty_chains(events: &[EventRow], window_secs: u64) -> Vec<EmptyChainRow> {
-    use std::collections::HashMap;
     let mut by_command: HashMap<(&str, &str), Vec<&EventRow>> = HashMap::new();
     for ev in events {
         by_command
@@ -345,9 +358,9 @@ pub fn detect_empty_chains(events: &[EventRow], window_secs: u64) -> Vec<EmptyCh
             .or_default()
             .push(ev);
     }
-    let mut out = Vec::new();
     #[allow(clippy::cast_precision_loss)]
     let window_f64 = window_secs as f64;
+    let mut out = Vec::new();
     for ((filter, command), group) in by_command {
         let mut chain_count = 0usize;
         let mut max_chain = 0usize;
@@ -373,7 +386,6 @@ pub fn detect_empty_chains(events: &[EventRow], window_secs: u64) -> Vec<EmptyCh
                 chain_start_ts = if is_empty { Some(&ev.timestamp) } else { None };
             }
         }
-        // Flush final chain
         if current_chain >= 2 {
             chain_count += 1;
             max_chain = max_chain.max(current_chain);
@@ -408,7 +420,6 @@ pub struct NegativeSavingsRow {
 }
 
 pub fn compute_negative_savings(events: &[EventRow]) -> Vec<NegativeSavingsRow> {
-    use std::collections::HashMap;
     let mut acc: HashMap<&str, (f64, usize)> = HashMap::new();
     for ev in events {
         if ev.raw_tokens_est <= 0 {
@@ -449,8 +460,6 @@ pub fn compute_negative_savings(events: &[EventRow]) -> Vec<NegativeSavingsRow> 
 
 // ─────────────────────────── per-filter aggregates ──────────────────────
 
-/// Per-filter aggregate stats computed from the raw event rows.
-/// These feed directly into the health score.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct FilterStats {
     pub event_count: usize,

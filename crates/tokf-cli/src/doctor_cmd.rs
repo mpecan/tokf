@@ -55,15 +55,6 @@ pub fn cmd_doctor(opts: &DoctorCliOpts<'_>) -> i32 {
         Some(tokf::history::current_project())
     };
 
-    let doctor_opts = DoctorOpts {
-        burst_threshold: opts.burst_threshold,
-        window_secs: opts.window_secs,
-        project_filter: resolved_project.as_deref(),
-        include_noise: opts.include_noise,
-        filter_filter: opts.filter,
-        sort_by: opts.sort,
-    };
-
     // Cross-reference workaround flags against each filter's
     // passthrough_args. Failures here are non-fatal — we just lose the
     // suggestion enrichment, the rest of the report still works.
@@ -81,9 +72,14 @@ pub fn cmd_doctor(opts: &DoctorCliOpts<'_>) -> i32 {
                 |f| f.config.command.first().to_string(),
             )
     });
+
     let doctor_opts = DoctorOpts {
+        burst_threshold: opts.burst_threshold,
+        window_secs: opts.window_secs,
+        project_filter: resolved_project.as_deref(),
+        include_noise: opts.include_noise,
         filter_filter: normalized_filter.as_deref(),
-        ..doctor_opts
+        sort_by: opts.sort,
     };
 
     let report = match run(&conn, &doctor_opts, &filters) {

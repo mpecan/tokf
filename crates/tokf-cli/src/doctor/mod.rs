@@ -9,7 +9,7 @@ pub mod noise;
 pub mod queries;
 pub mod render;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use anyhow::Context as _;
 use rusqlite::Connection;
@@ -165,12 +165,49 @@ fn build_passthrough_lookup(filters: &[ResolvedFilter]) -> BTreeMap<String, BTre
     out
 }
 
-struct SignalSlices<'a> {
+/// Pre-indexed signal data — O(1) per-filter lookups instead of
+/// O(filters × signals) linear scans.
+struct IndexedSignals<'a> {
+    bursts: HashMap<&'a str, Vec<&'a BurstRow>>,
+    shape_bursts: HashMap<&'a str, Vec<&'a ShapeBurstRow>>,
+    workaround_flags: HashMap<&'a str, Vec<&'a WorkaroundFlagRow>>,
+    empty_chains: HashMap<&'a str, Vec<&'a EmptyChainRow>>,
+    negative_savings: HashMap<&'a str, &'a NegativeSavingsRow>,
+}
+
+fn index_signals<'a>(
     bursts: &'a [BurstRow],
     shape_bursts: &'a [ShapeBurstRow],
     workaround_flags: &'a [WorkaroundFlagRow],
     empty_chains: &'a [EmptyChainRow],
     negative_savings: &'a [NegativeSavingsRow],
+) -> IndexedSignals<'a> {
+    let mut idx = IndexedSignals {
+        bursts: HashMap::new(),
+        shape_bursts: HashMap::new(),
+        workaround_flags: HashMap::new(),
+        empty_chains: HashMap::new(),
+        negative_savings: HashMap::new(),
+    };
+    for b in bursts {
+        idx.bursts.entry(&b.filter_name).or_default().push(b);
+    }
+    for b in shape_bursts {
+        idx.shape_bursts.entry(&b.filter_name).or_default().push(b);
+    }
+    for w in workaround_flags {
+        idx.workaround_flags
+            .entry(&w.filter_name)
+            .or_default()
+            .push(w);
+    }
+    for c in empty_chains {
+        idx.empty_chains.entry(&c.filter_name).or_default().push(c);
+    }
+    for n in negative_savings {
+        idx.negative_savings.insert(&n.filter_name, n);
+    }
+    idx
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -185,13 +222,18 @@ fn build_filter_reports(
     filter_filter: Option<&str>,
     sort_by: SortBy,
 ) -> Vec<FilterReport> {
-    let signals = SignalSlices {
+    let idx = index_signals(
         bursts,
         shape_bursts,
         workaround_flags,
         empty_chains,
         negative_savings,
-    };
+    );
+    let empty_bursts: Vec<&BurstRow> = Vec::new();
+    let empty_shapes: Vec<&ShapeBurstRow> = Vec::new();
+    let empty_flags: Vec<&WorkaroundFlagRow> = Vec::new();
+    let empty_chains_v: Vec<&EmptyChainRow> = Vec::new();
+
     let mut reports = Vec::new();
     for (filter_name, stats) in filter_stats {
         if let Some(only) = filter_filter
@@ -199,84 +241,63 @@ fn build_filter_reports(
         {
             continue;
         }
+        let f = filter_name.as_str();
         reports.push(build_one_filter_report(
             filter_name,
             stats,
-            &signals,
-            passthrough_lookup.get(filter_name.as_str()),
+            idx.bursts.get(f).unwrap_or(&empty_bursts),
+            idx.shape_bursts.get(f).unwrap_or(&empty_shapes),
+            idx.workaround_flags.get(f).unwrap_or(&empty_flags),
+            idx.empty_chains.get(f).unwrap_or(&empty_chains_v),
+            idx.negative_savings.get(f).copied(),
+            passthrough_lookup.get(f),
         ));
     }
     sort_reports(&mut reports, sort_by);
     reports
 }
 
-/// Aggregated burst stats for one filter.
-struct BurstAgg {
-    count: usize,
-    total_events: usize,
-    max_size: usize,
-    failed_ratio: f64,
-    time_wasted_ms: i64,
-}
-
-fn aggregate_bursts(bursts: &[BurstRow], filter_name: &str) -> BurstAgg {
-    let matching: Vec<&BurstRow> = bursts
-        .iter()
-        .filter(|b| b.filter_name == filter_name)
-        .collect();
-    let total: usize = matching.iter().map(|b| b.burst_size).sum();
-    let failed: usize = matching.iter().map(|b| b.failed_count).sum();
-    #[allow(clippy::cast_precision_loss)]
-    let ratio = if total == 0 {
-        0.0
-    } else {
-        failed as f64 / total as f64
-    };
-    BurstAgg {
-        count: matching.len(),
-        total_events: total,
-        max_size: matching.iter().map(|b| b.burst_size).max().unwrap_or(0),
-        failed_ratio: ratio,
-        time_wasted_ms: matching.iter().map(|b| b.total_time_ms).sum(),
-    }
-}
-
+#[allow(clippy::too_many_arguments)]
 fn build_one_filter_report(
     filter_name: &str,
     stats: &FilterStats,
-    sig: &SignalSlices<'_>,
+    bursts: &[&BurstRow],
+    shape_bursts: &[&ShapeBurstRow],
+    workaround_flags: &[&WorkaroundFlagRow],
+    empty_chains: &[&EmptyChainRow],
+    neg_savings: Option<&NegativeSavingsRow>,
     declared_passthrough: Option<&BTreeSet<String>>,
 ) -> FilterReport {
-    let ba = aggregate_bursts(sig.bursts, filter_name);
+    // ── exact-match bursts ──
+    let burst_count = bursts.len();
+    let total_burst_events: usize = bursts.iter().map(|b| b.burst_size).sum();
+    let max_burst_size = bursts.iter().map(|b| b.burst_size).max().unwrap_or(0);
+    let burst_failures: usize = bursts.iter().map(|b| b.failed_count).sum();
+    #[allow(clippy::cast_precision_loss)]
+    let failed_burst_ratio = if total_burst_events == 0 {
+        0.0
+    } else {
+        burst_failures as f64 / total_burst_events as f64
+    };
+    let burst_time_wasted_ms: i64 = bursts.iter().map(|b| b.total_time_ms).sum();
 
-    let shape_refs: Vec<&ShapeBurstRow> = sig
-        .shape_bursts
-        .iter()
-        .filter(|b| b.filter_name == filter_name)
-        .collect();
-    let shape_burst_count = shape_refs.len();
-    let median_arg_uniqueness = shape_median_uniqueness(&shape_refs);
+    // ── shape bursts ──
+    let shape_burst_count = shape_bursts.len();
+    let median_arg_uniqueness = shape_median_uniqueness(shape_bursts);
 
+    // ── workaround flags ──
     let (untracked_workaround_flags, workaround_count) =
-        collect_workaround_flags(sig.workaround_flags, filter_name, declared_passthrough);
+        collect_workaround_flags(workaround_flags, declared_passthrough);
 
-    let chain_refs: Vec<&EmptyChainRow> = sig
-        .empty_chains
-        .iter()
-        .filter(|c| c.filter_name == filter_name)
-        .collect();
-    let empty_chain_count: usize = chain_refs.iter().map(|c| c.chain_count).sum();
-    let max_empty_chain = chain_refs
+    // ── empty chains ──
+    let empty_chain_count: usize = empty_chains.iter().map(|c| c.chain_count).sum();
+    let max_empty_chain = empty_chains
         .iter()
         .map(|c| c.max_chain_length)
         .max()
         .unwrap_or(0);
 
-    let avg_excess_tokens = sig
-        .negative_savings
-        .iter()
-        .find(|n| n.filter_name == filter_name)
-        .map(|n| n.avg_excess_tokens);
+    let avg_excess_tokens = neg_savings.map(|n| n.avg_excess_tokens);
 
     #[allow(clippy::cast_precision_loss)]
     let pipe_override_rate = if stats.event_count == 0 {
@@ -286,9 +307,9 @@ fn build_one_filter_report(
     };
 
     let health_score = score_filter(&ScoreInput {
-        total_burst_events: ba.total_events,
+        total_burst_events,
         event_count: stats.event_count,
-        failed_burst_ratio: ba.failed_ratio,
+        failed_burst_ratio,
         workaround_count,
         max_empty_chain,
         avg_excess_tokens,
@@ -298,9 +319,9 @@ fn build_one_filter_report(
     FilterReport {
         filter_name: filter_name.to_string(),
         event_count: stats.event_count,
-        burst_count: ba.count,
-        max_burst_size: ba.max_size,
-        failed_burst_ratio: ba.failed_ratio,
+        burst_count,
+        max_burst_size,
+        failed_burst_ratio,
         shape_burst_count,
         median_arg_uniqueness,
         untracked_workaround_flags,
@@ -308,19 +329,17 @@ fn build_one_filter_report(
         max_empty_chain,
         avg_excess_tokens,
         pipe_override_rate,
-        burst_time_wasted_ms: ba.time_wasted_ms,
+        burst_time_wasted_ms,
         health_score,
     }
 }
 
 fn collect_workaround_flags(
-    all: &[WorkaroundFlagRow],
-    filter_name: &str,
+    filter_flags: &[&WorkaroundFlagRow],
     declared: Option<&BTreeSet<String>>,
 ) -> (Vec<WorkaroundFlagSuggestion>, usize) {
-    let mut flags: Vec<WorkaroundFlagSuggestion> = all
+    let mut flags: Vec<WorkaroundFlagSuggestion> = filter_flags
         .iter()
-        .filter(|w| w.filter_name == filter_name)
         .filter(|w| declared.is_none_or(|set| !set.contains(&w.flag)))
         .map(|w| WorkaroundFlagSuggestion {
             flag: w.flag.clone(),
