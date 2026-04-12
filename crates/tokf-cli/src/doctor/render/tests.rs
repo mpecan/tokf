@@ -30,6 +30,7 @@ fn report_with_one_filter() -> DoctorReport {
             event_count: 30,
             burst_count: 3,
             max_burst_size: 12,
+            median_arg_uniqueness: Some(0.08),
             untracked_workaround_flags: vec![WorkaroundFlagSuggestion {
                 flag: "--no-stat".to_string(),
                 count: 8,

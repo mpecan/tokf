@@ -54,6 +54,12 @@ pub struct FilterReport {
     pub burst_count: usize,
     /// Largest single burst seen for this filter.
     pub max_burst_size: usize,
+    /// Median arg-uniqueness ratio across this filter's burst sessions.
+    /// Each burst's ratio = `distinct_commands / burst_size`. A value near
+    /// 0 means the model is repeating the exact same command (confusion);
+    /// a value near 1 means it's varying args (exploration). `None` when
+    /// no bursts were detected.
+    pub median_arg_uniqueness: Option<f64>,
     /// Workaround flags this filter received that are NOT in its
     /// `passthrough_args`. Empty if cross-reference data isn't available.
     pub untracked_workaround_flags: Vec<WorkaroundFlagSuggestion>,
@@ -252,6 +258,7 @@ fn build_one_filter_report(
         .map(|b| b.burst_size)
         .max()
         .unwrap_or(0);
+    let median_arg_uniqueness = median_uniqueness(&filter_bursts);
 
     let mut untracked_workaround_flags: Vec<WorkaroundFlagSuggestion> = workaround_flags
         .iter()
@@ -288,10 +295,33 @@ fn build_one_filter_report(
         event_count,
         burst_count,
         max_burst_size,
+        median_arg_uniqueness,
         untracked_workaround_flags,
         empty_retry_count,
         avg_excess_tokens,
         health_score,
+    }
+}
+
+/// Compute the median arg-uniqueness ratio across a set of burst
+/// sessions. Each burst contributes `1 / burst_size` (since bursts are
+/// grouped by exact command, every burst has exactly one distinct
+/// command). Returns `None` when no bursts are present.
+fn median_uniqueness(bursts: &[&BurstRow]) -> Option<f64> {
+    if bursts.is_empty() {
+        return None;
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let mut ratios: Vec<f64> = bursts
+        .iter()
+        .map(|b| 1.0 / b.burst_size.max(1) as f64)
+        .collect();
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = ratios.len() / 2;
+    if ratios.len().is_multiple_of(2) {
+        Some(f64::midpoint(ratios[mid - 1], ratios[mid]))
+    } else {
+        Some(ratios[mid])
     }
 }
 

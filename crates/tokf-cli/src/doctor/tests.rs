@@ -87,6 +87,7 @@ fn make_report(name: &str, health: u8, bursts: usize, max_burst: usize) -> Filte
         event_count: 10,
         burst_count: bursts,
         max_burst_size: max_burst,
+        median_arg_uniqueness: None,
         untracked_workaround_flags: vec![],
         empty_retry_count: 0,
         avg_excess_tokens: None,
@@ -129,4 +130,48 @@ fn sort_health_breaks_ties_by_name() {
     sort_reports(&mut reports, SortBy::Health);
     assert_eq!(reports[0].filter_name, "alpha");
     assert_eq!(reports[1].filter_name, "zebra");
+}
+
+// ─────────────────────────── median_uniqueness ───────────────────────
+
+#[test]
+fn median_uniqueness_none_for_empty_bursts() {
+    assert!(median_uniqueness(&[]).is_none());
+}
+
+#[test]
+fn median_uniqueness_single_burst() {
+    let b = queries::BurstRow {
+        filter_name: "f".to_string(),
+        command: "cmd".to_string(),
+        burst_size: 10,
+        last_seen: "t".to_string(),
+    };
+    let m = median_uniqueness(&[&b]).unwrap();
+    assert!((m - 0.1).abs() < 0.001, "expected ~0.1, got {m}");
+}
+
+#[test]
+fn median_uniqueness_odd_count() {
+    let b1 = queries::BurstRow {
+        filter_name: "f".to_string(),
+        command: "a".to_string(),
+        burst_size: 5,
+        last_seen: "t".to_string(),
+    };
+    let b2 = queries::BurstRow {
+        filter_name: "f".to_string(),
+        command: "b".to_string(),
+        burst_size: 10,
+        last_seen: "t".to_string(),
+    };
+    let b3 = queries::BurstRow {
+        filter_name: "f".to_string(),
+        command: "c".to_string(),
+        burst_size: 20,
+        last_seen: "t".to_string(),
+    };
+    // ratios: 1/5=0.2, 1/10=0.1, 1/20=0.05 → sorted: 0.05, 0.1, 0.2 → median=0.1
+    let m = median_uniqueness(&[&b1, &b2, &b3]).unwrap();
+    assert!((m - 0.1).abs() < 0.001, "expected 0.1, got {m}");
 }

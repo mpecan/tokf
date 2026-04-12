@@ -156,17 +156,18 @@ fn render_filter_table(out: &mut String, filters: &[FilterReport], c: &Colors) {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{bold}{:<22} {:>7} {:>6} {:>9} {:>9} {:>9}{reset}",
+        "{bold}{:<22} {:>7} {:>6} {:>9} {:>9} {:>7} {:>9}{reset}",
         "filter",
         "events",
         "score",
         "bursts",
         "max-burst",
+        "uniq",
         "retries",
         bold = c.bold,
         reset = c.reset,
     );
-    let _ = writeln!(out, "{}", "─".repeat(70));
+    let _ = writeln!(out, "{}", "─".repeat(80));
     for f in filters {
         let score_col = score_color(f.health_score, c);
         let max_burst = if f.max_burst_size == 0 {
@@ -174,6 +175,9 @@ fn render_filter_table(out: &mut String, filters: &[FilterReport], c: &Colors) {
         } else {
             f.max_burst_size.to_string()
         };
+        let uniq = f
+            .median_arg_uniqueness
+            .map_or_else(|| "-".to_string(), |v| format!("{v:.2}"));
         let retries = if f.empty_retry_count == 0 {
             "-".to_string()
         } else {
@@ -181,12 +185,13 @@ fn render_filter_table(out: &mut String, filters: &[FilterReport], c: &Colors) {
         };
         let _ = writeln!(
             out,
-            "{:<22} {:>7} {col}{:>6}{reset} {:>9} {:>9} {:>9}",
+            "{:<22} {:>7} {col}{:>6}{reset} {:>9} {:>9} {:>7} {:>9}",
             truncate(&f.filter_name, 22),
             f.event_count,
             f.health_score,
             f.burst_count,
             max_burst,
+            uniq,
             retries,
             col = score_col,
             reset = c.reset,
