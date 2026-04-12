@@ -6,6 +6,7 @@ mod commands;
 mod completions_cmd;
 mod config_cmd;
 mod discover_cmd;
+mod doctor_cmd;
 mod eject_cmd;
 mod gain;
 mod gain_render;
@@ -289,6 +290,8 @@ enum Commands {
         #[command(subcommand)]
         action: TelemetryAction,
     },
+    /// Detect filters that may be causing agent confusion (post-hoc analysis of tracking.db)
+    Doctor(commands::DoctorArgs),
     /// Find missed token savings in Claude Code sessions
     Discover {
         /// Project path to scan (defaults to current directory)
@@ -609,6 +612,18 @@ fn main() {
             no_cache: cli.no_cache,
             include_filtered: *include_filtered,
         })),
+        Commands::Doctor(args) => doctor_cmd::cmd_doctor(&doctor_cmd::DoctorCliOpts {
+            burst_threshold: args.burst_threshold,
+            window_secs: args.window,
+            project: args.project.as_deref(),
+            all_projects: args.all,
+            include_noise: args.include_noise,
+            filter: args.filter.as_deref(),
+            sort: args.sort.into(),
+            json: args.json,
+            no_color: args.no_color,
+            no_cache: cli.no_cache,
+        }),
         Commands::Err {
             context,
             baseline_pipe,

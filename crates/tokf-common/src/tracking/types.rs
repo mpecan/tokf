@@ -15,6 +15,10 @@ pub struct TrackingEvent {
     pub exit_code: i32,
     /// True when `--prefer-less` chose the piped output over the filtered output.
     pub pipe_override: bool,
+    /// Project identifier — typically the cwd's directory name when the
+    /// event was recorded. Empty string means "unknown" (legacy events
+    /// recorded before this column existed, or test fixtures).
+    pub project: String,
 }
 
 #[derive(serde::Serialize)]

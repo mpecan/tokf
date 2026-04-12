@@ -2,6 +2,7 @@ pub mod auth;
 pub mod baseline;
 pub mod config;
 pub mod discover;
+pub mod doctor;
 pub mod fs;
 pub mod history;
 pub mod hook;
