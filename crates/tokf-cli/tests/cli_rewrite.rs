@@ -596,3 +596,91 @@ fn rewrite_always_exits_zero() {
     assert!(output.status.success());
     assert_eq!(output.status.code(), Some(0));
 }
+
+// --- Debug: log_parse_failures ---
+
+/// Helper: run `tokf rewrite` with a `rewrites.toml` that enables
+/// `[debug] log_parse_failures = true`.
+fn rewrite_with_debug_logging(command: &str) -> (String, String) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let tokf_dir = dir.path().join(".tokf");
+    std::fs::create_dir_all(&tokf_dir).unwrap();
+    std::fs::write(
+        tokf_dir.join("rewrites.toml"),
+        "[debug]\nlog_parse_failures = true\n",
+    )
+    .unwrap();
+
+    let output = tokf()
+        .args(["rewrite", command])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "tokf rewrite failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    (stdout, stderr)
+}
+
+#[test]
+fn debug_log_parse_failure_on_malformed_syntax() {
+    // A bare `(` is a syntax error that makes rable fail.
+    let (stdout, stderr) = rewrite_with_debug_logging("git commit (");
+    assert!(
+        stderr.contains("bash parser failed to parse"),
+        "expected parse failure log, got stderr: {stderr}"
+    );
+    // The command should still be rewritten via string fallback.
+    assert!(stdout.starts_with("tokf run"));
+}
+
+#[test]
+fn debug_log_silent_when_disabled() {
+    // Without the debug flag, parse failures should be silent.
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = tokf()
+        .args(["rewrite", "git commit ("])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("bash parser failed"),
+        "expected no parse failure log without debug flag, got stderr: {stderr}"
+    );
+}
+
+#[test]
+fn debug_log_no_false_positive_on_valid_command() {
+    // A valid command should not trigger a parse failure log.
+    let (_stdout, stderr) = rewrite_with_debug_logging("git status");
+    assert!(
+        !stderr.contains("bash parser failed"),
+        "valid command should not trigger parse failure log, got stderr: {stderr}"
+    );
+}
+
+// --- Regression: rable#26 heredoc with unmatched parens in body ---
+
+#[test]
+fn rewrite_heredoc_commit_with_unmatched_parens_not_mangled() {
+    // Real-world command that was destructively rewritten before rable 0.1.14:
+    // the `(recommended, review, autopilot)` line has parens that previously
+    // confused the paren-depth tracker, producing `tokf run git commit -m`
+    // without the message value.
+    let cmd = "git add . && git commit -m \"$(cat <<'EOF'\n\
+               docs: test\n\
+               \n\
+               (see issue for details\n\
+               EOF\n\
+               )\"";
+    let result = rewrite_with_stdlib(cmd);
+    assert!(
+        !result.contains("tokf run git commit"),
+        "heredoc commit must not be wrapped with tokf run, got: {result}"
+    );
+}

@@ -27,6 +27,7 @@ fn rewrite_pipe_strip_disabled_preserves_pipe() {
         }),
         rewrite: vec![],
         permissions: None,
+        debug: None,
     };
     let r = rewrite_with_config(
         "cargo test | tail -5",
@@ -55,6 +56,7 @@ fn rewrite_pipe_strip_disabled_non_piped_still_rewritten() {
         }),
         rewrite: vec![],
         permissions: None,
+        debug: None,
     };
     let r = rewrite_with_config(
         "cargo test --lib",
@@ -85,6 +87,7 @@ fn rewrite_prefer_less_injects_flag() {
         }),
         rewrite: vec![],
         permissions: None,
+        debug: None,
     };
     let r = rewrite_with_config(
         "cargo test | tail -5",
@@ -115,6 +118,7 @@ fn rewrite_prefer_less_without_pipe_no_effect() {
         }),
         rewrite: vec![],
         permissions: None,
+        debug: None,
     };
     let r = rewrite_with_config(
         "cargo test --lib",
@@ -143,6 +147,7 @@ fn rewrite_strip_false_overrides_prefer_less() {
         }),
         rewrite: vec![],
         permissions: None,
+        debug: None,
     };
     let r = rewrite_with_config(
         "cargo test | tail -5",
@@ -168,6 +173,7 @@ fn rewrite_compound_prefer_less_per_segment() {
         }),
         rewrite: vec![],
         permissions: None,
+        debug: None,
     };
     let r = rewrite_with_config(
         "git add . && git diff | head -5",

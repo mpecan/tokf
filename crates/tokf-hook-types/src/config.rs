@@ -21,6 +21,19 @@ pub struct RewriteConfig {
 
     /// Permission engine configuration (external sub-hook delegation).
     pub permissions: Option<PermissionsConfig>,
+
+    /// Debug/diagnostic settings (all off by default).
+    pub debug: Option<DebugConfig>,
+}
+
+/// Debug and diagnostic settings for the rewrite system.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct DebugConfig {
+    /// When true, log to stderr when the bash parser (rable) fails to parse a
+    /// command. This helps diagnose "unmatched quote" errors by showing whether
+    /// tokf fell back to simple string matching because the AST parse failed.
+    #[serde(default)]
+    pub log_parse_failures: bool,
 }
 
 /// Configuration for the permission decision engine.

@@ -217,4 +217,31 @@ command = "my-engine"
             crate::hook::permission_engine::ErrorFallback::Ask
         );
     }
+
+    #[test]
+    fn deserialize_debug_section() {
+        let toml_str = r"
+[debug]
+log_parse_failures = true
+";
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let debug = config.debug.unwrap();
+        assert!(debug.log_parse_failures);
+    }
+
+    #[test]
+    fn deserialize_debug_defaults() {
+        let toml_str = r"
+[debug]
+";
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let debug = config.debug.unwrap();
+        assert!(!debug.log_parse_failures);
+    }
+
+    #[test]
+    fn deserialize_no_debug_section() {
+        let config: RewriteConfig = toml::from_str("").unwrap();
+        assert!(config.debug.is_none());
+    }
 }

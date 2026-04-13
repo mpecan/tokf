@@ -115,6 +115,8 @@ struct SegmentRules<'a> {
     filter_patterns: &'a [String],
     /// Options controlling `tokf run` generation (e.g. `--no-mask-exit-code`).
     options: &'a RewriteOptions,
+    /// When true, log to stderr when the bash parser fails to parse a command.
+    log_parse_failures: bool,
 }
 
 /// Rewrite a single command segment, handling pipe stripping and env var
@@ -143,6 +145,11 @@ fn rewrite_segment(
 ) -> String {
     // Parse once — reuse the AST for env_prefix, pipe detection, and stripping.
     let parsed = bash_ast::ParsedCommand::parse(segment);
+    if parsed.is_none() && rules.log_parse_failures {
+        eprintln!(
+            "[tokf] debug: bash parser failed to parse command, falling back to string matching: {segment}"
+        );
+    }
     let (env_prefix, cmd_owned) = parsed
         .as_ref()
         .and_then(bash_ast::ParsedCommand::env_prefix)
@@ -163,7 +170,11 @@ fn rewrite_segment(
     let cmd_parsed = if env_prefix.is_empty() {
         parsed
     } else {
-        bash_ast::ParsedCommand::parse(cmd)
+        let p = bash_ast::ParsedCommand::parse(cmd);
+        if p.is_none() && rules.log_parse_failures {
+            eprintln!("[tokf] debug: bash parser failed to parse env-stripped command: {cmd}");
+        }
+        p
     };
 
     if cmd_parsed
@@ -289,10 +300,15 @@ pub(crate) fn rewrite_with_config_and_options(
 
     let wrapper_rules = build_wrapper_rules();
     let filter_patterns = collect_filter_patterns(search_dirs);
+    let log_parse_failures = user_config
+        .debug
+        .as_ref()
+        .is_some_and(|d| d.log_parse_failures);
     let rules = SegmentRules {
         wrapper: &wrapper_rules,
         filter_patterns: &filter_patterns,
         options,
+        log_parse_failures,
     };
     let segments = split_compound(command);
 
