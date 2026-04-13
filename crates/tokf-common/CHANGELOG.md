@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.40](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.39...tokf-common-v0.2.40) (2026-04-13)
+
+
+### Features
+
+* **cli:** tokf doctor — detect filters causing agent confusion ([#329](https://github.com/mpecan/tokf/issues/329)) ([694c66c](https://github.com/mpecan/tokf/commit/694c66c6c0ee186209dec47ca3f21c0ccfbc3c7e))
+* **filter:** generic [tree] transform for path-list outputs ([#325](https://github.com/mpecan/tokf/issues/325)) ([322e133](https://github.com/mpecan/tokf/commit/322e133323ad3e78583577a1ed9c694193845508))
+
 ## [0.2.39](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.38...tokf-common-v0.2.39) (2026-03-26)
 
 

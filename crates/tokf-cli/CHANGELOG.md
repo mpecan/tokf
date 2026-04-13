@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.40](https://github.com/mpecan/tokf/compare/tokf-v0.2.39...tokf-v0.2.40) (2026-04-13)
+
+
+### Features
+
+* **cli:** tokf doctor — detect filters causing agent confusion ([#329](https://github.com/mpecan/tokf/issues/329)) ([694c66c](https://github.com/mpecan/tokf/commit/694c66c6c0ee186209dec47ca3f21c0ccfbc3c7e))
+* **filter:** generic [tree] transform for path-list outputs ([#325](https://github.com/mpecan/tokf/issues/325)) ([322e133](https://github.com/mpecan/tokf/commit/322e133323ad3e78583577a1ed9c694193845508))
+* **filter:** reduce observed agent confusion in git diff/status/log ([#320](https://github.com/mpecan/tokf/issues/320)) ([6992712](https://github.com/mpecan/tokf/commit/69927126e8cbb6b90ce803a51a22692981e47b02))
+* **hook:** forward permission decision reasons to AI tools ([#317](https://github.com/mpecan/tokf/issues/317)) ([cf6b5d7](https://github.com/mpecan/tokf/commit/cf6b5d7bc9eaa2bbf1f8b3dececd1741ffa0bb58))
+
+
+### Bug Fixes
+
+* **rewrite:** skip filtering when output is redirected to a file ([#323](https://github.com/mpecan/tokf/issues/323)) ([dd66681](https://github.com/mpecan/tokf/commit/dd66681e68bd96a907b9f2203bdbb679c0626109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.39 to 0.2.40
+    * tokf-filter bumped from 0.2.39 to 0.2.40
+    * tokf-hook-types bumped from 0.2.39 to 0.2.40
+
 ## [0.2.39](https://github.com/mpecan/tokf/compare/tokf-v0.2.38...tokf-v0.2.39) (2026-03-26)
 
 
