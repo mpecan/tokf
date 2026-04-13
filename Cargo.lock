@@ -2559,9 +2559,9 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rable"
-version = "0.1.8"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce365873d8ca60e686ae332a9837290f99c4dc52eb989c7caa07f69ec9cbd913"
+checksum = "cd5c645283dbe1200494efb0ae088f898daf6bc960920b2749977a30a1fd858f"
 dependencies = [
  "thiserror 2.0.18",
 ]
