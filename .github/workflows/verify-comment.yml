@@ -37,7 +37,7 @@ jobs:
 
       - name: Post filter verification PR comment
         if: steps.download.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
