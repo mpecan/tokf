@@ -442,3 +442,56 @@ fn command_words_with_env() {
     assert_eq!(words[0], "git");
     assert_eq!(words[1], "commit");
 }
+
+#[test]
+fn parse_unmatched_double_quote_succeeds() {
+    // rable treats unmatched quotes as implicit close-at-end, so parse succeeds.
+    let result = ParsedCommand::parse(r#"git commit -m "unfinished"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn parse_unmatched_single_quote_succeeds() {
+    // Same as double quote — rable is lenient.
+    let result = ParsedCommand::parse("git commit -m 'unfinished");
+    assert!(result.is_some());
+}
+
+// Regression tests for rable#26: unmatched parens in heredoc body inside $(...)
+// were corrupting the AST and causing has_substitution_heredoc() to miss the
+// heredoc, leading to destructive rewrites of git commit commands.
+
+#[test]
+fn substitution_heredoc_with_unmatched_paren_detected() {
+    let input = "git commit -m \"$(cat <<'EOF'\nfoo\n(bar\nEOF\n)\"";
+    let p = ParsedCommand::parse(input).unwrap();
+    assert!(
+        p.has_substitution_heredoc(),
+        "heredoc inside $() must be detected even with unmatched ( in body"
+    );
+}
+
+#[test]
+fn substitution_heredoc_with_unmatched_paren_skipped() {
+    assert!(has_substitution_heredoc(
+        "git commit -m \"$(cat <<'EOF'\nfoo\n(bar\nEOF\n)\""
+    ));
+}
+
+#[test]
+fn compound_with_heredoc_unmatched_paren_skipped() {
+    assert!(has_substitution_heredoc(
+        "git add . && git commit -m \"$(cat <<'EOF'\ndocs: test\n(see issue\nEOF\n)\""
+    ));
+}
+
+#[test]
+fn parse_malformed_syntax_returns_none() {
+    // Exercise inputs where rable actually returns Err.
+    // Bare `(` without closing `)` is a syntax error.
+    let result = ParsedCommand::parse("git commit (");
+    assert!(
+        result.is_none(),
+        "expected parse failure for malformed syntax"
+    );
+}
