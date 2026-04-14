@@ -366,12 +366,12 @@ filter = "echo-special"
     )
     .unwrap();
 
-    // Child filter: different command pattern so it doesn't match standalone
-    // (in real usage, the parent matches first by priority; in tests, we
-    // avoid the ambiguity by using a two-word command for the child).
+    // Child filter: synthetic command that won't match any real invocation.
+    // Variant child filters are only loaded via lookup_filter_by_name, never
+    // by command matching, so the command field is just a placeholder.
     std::fs::write(
         filters_dir.join("echo-special.toml"),
-        r#"command = "echo --special"
+        r#"command = "echo-special"
 
 [on_success]
 output = "CHILD_FILTERED"

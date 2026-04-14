@@ -1,8 +1,12 @@
 # git/log-name-list.toml — tree-structured output for git log --name-only / --name-status
-# Delegated from git/log when args contain these flags.
+# Delegated from git/log via [[variant]] args_pattern.
 # No `run` override — the original command runs as-is.
+#
+# This filter is only reachable via variant delegation — the command below
+# uses a synthetic name that won't match any real invocation, preventing
+# it from shadowing the parent during filter discovery.
 
-command = "git log"
+command = "git log-name-list"
 description = "Tree-structured name-only / name-status log output"
 
 strip_ansi = true
