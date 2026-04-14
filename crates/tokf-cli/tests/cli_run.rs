@@ -335,3 +335,77 @@ fn no_mask_exit_code_propagates_exit_code() {
         "should not have error line with --no-mask-exit-code, got: {stdout}"
     );
 }
+
+// --- args-pattern variant routing ---
+
+#[test]
+fn args_pattern_variant_routes_to_child_filter() {
+    // A parent filter with passthrough_args would normally skip filtering
+    // for --special. With an args-pattern variant, the child filter takes
+    // over instead of passing through.
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+
+    // Parent filter: forces "run" override, passes through --special
+    std::fs::write(
+        filters_dir.join("echo.toml"),
+        r#"command = "echo"
+run = "echo PARENT_OVERRIDE"
+
+passthrough_args = ["--other"]
+
+[on_success]
+output = "PARENT_FILTERED"
+
+[[variant]]
+name = "special"
+detect.args_pattern = "--special"
+filter = "echo-special"
+"#,
+    )
+    .unwrap();
+
+    // Child filter: different command pattern so it doesn't match standalone
+    // (in real usage, the parent matches first by priority; in tests, we
+    // avoid the ambiguity by using a two-word command for the child).
+    std::fs::write(
+        filters_dir.join("echo-special.toml"),
+        r#"command = "echo --special"
+
+[on_success]
+output = "CHILD_FILTERED"
+"#,
+    )
+    .unwrap();
+
+    // With --special: args-pattern variant fires, child filter applies
+    let output = tokf()
+        .args(["run", "echo", "--special", "hello"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("CHILD_FILTERED"),
+        "expected child filter to apply via args-pattern variant, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("PARENT"),
+        "parent filter should not apply when args variant matched, got: {stdout}"
+    );
+
+    // Without --special: parent filter applies normally
+    let output = tokf()
+        .args(["run", "echo", "hello"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("PARENT_FILTERED"),
+        "expected parent filter when no args variant matches, got: {stdout}"
+    );
+}
