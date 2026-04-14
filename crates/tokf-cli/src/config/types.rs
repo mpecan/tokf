@@ -251,8 +251,6 @@ empty = "nothing to show"
             "--stat",
             "--shortstat",
             "--dirstat",
-            "--name-only",
-            "--name-status",
             "-L",
         ] {
             assert!(
@@ -260,9 +258,14 @@ empty = "nothing to show"
                 "git/log.toml is missing passthrough_args entry: {flag}",
             );
         }
+        // --name-only and --name-status are now routed via [[variant]] args_pattern.
+        assert!(!cfg.should_passthrough(&["--name-only".to_string()]));
+        assert!(!cfg.should_passthrough(&["--name-status".to_string()]));
+        assert_eq!(cfg.variant.len(), 1);
+        assert_eq!(cfg.variant[0].name, "name-list");
+
         // Sanity-check prefix matching for line-history (-L1,10:file).
         assert!(cfg.should_passthrough(&["-L1,10:src/main.rs".to_string()]));
-        assert!(cfg.should_passthrough(&["--name-only".to_string()]));
         assert!(!cfg.should_passthrough(&["--all".to_string()]));
 
         let success = cfg.on_success.unwrap();
@@ -288,8 +291,6 @@ empty = "nothing to show"
             "--no-stat",
             "-U",
             "--unified",
-            "--name-only",
-            "--name-status",
             "--numstat",
             "--shortstat",
             "--raw",
@@ -299,6 +300,13 @@ empty = "nothing to show"
                 "git/diff.toml is missing passthrough_args entry: {flag}",
             );
         }
+        // --name-only and --name-status are now routed to a child filter via
+        // [[variant]] args_pattern instead of passthrough_args.
+        assert!(!cfg.should_passthrough(&["--name-only".to_string()]));
+        assert!(!cfg.should_passthrough(&["--name-status".to_string()]));
+        assert_eq!(cfg.variant.len(), 1);
+        assert_eq!(cfg.variant[0].name, "name-list");
+
         // Sanity-check the prefix-matching behaviour for context-line flags
         // (e.g. -U3, -U10) and patch variants (--patch-with-stat).
         assert!(cfg.should_passthrough(&["-U3".to_string()]));

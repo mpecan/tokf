@@ -1,0 +1,11 @@
+name = "name-status with commit metadata preserved"
+fixture = "name_status.txt"
+exit_code = 0
+
+# Commit header should survive
+[[expect]]
+contains = "commit abc1234"
+
+# Paths should be collapsed into a tree node
+[[expect]]
+contains = "config/"

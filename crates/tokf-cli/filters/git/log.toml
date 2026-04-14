@@ -30,8 +30,6 @@ passthrough_args = [
   "--stat",        # diffstat per commit
   "--shortstat",   # one-line diffstat per commit
   "--dirstat",     # per-directory change stats
-  "--name-only",   # file paths per commit (new)
-  "--name-status", # status + file paths per commit (new)
   "-L",            # line-history (-L 1,10:file or -L:funcName:file) — patch output
 ]
 
@@ -43,3 +41,10 @@ on_empty = "(no matching commits — if querying a path, verify it's tracked: `g
 # But if args include --stat or --patch, passthrough
 [on_success]
 output = "{output}"
+
+# Route --name-only / --name-status to a tree-structured child filter
+# instead of passing through unfiltered.
+[[variant]]
+name = "name-list"
+detect.args_pattern = '--(name-only|name-status)'
+filter = "git/log-name-list"

@@ -1,0 +1,6 @@
+name = "below min_files threshold passes through unchanged"
+inline = "src/lib.rs\nsrc/main.rs"
+exit_code = 0
+
+[[expect]]
+equals = "src/lib.rs\nsrc/main.rs"

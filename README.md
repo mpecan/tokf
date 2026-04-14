@@ -855,10 +855,20 @@ detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
 filter = "npm/test-jest"
 ```
 
-Detection is two-phase:
+Detection has three modes, checked in order:
 
-1. **File detection** (before execution) — checks if config files exist in the current directory. First match wins.
-2. **Output pattern** (after execution) — regex-matches command output. Used as a fallback when no file was detected.
+1. **File detection** (Phase A, before execution) — checks if config files exist in the current directory. First match wins.
+2. **Args pattern** (Phase A.5, before execution) — regex-matches the remaining command-line arguments (joined with spaces). Fires after file detection but before the `passthrough_args` check, so a matched variant's own `passthrough_args` apply instead of the parent's.
+3. **Output pattern** (Phase B, after execution) — regex-matches command output. Used as a fallback when no file or args pattern matched.
+
+Args-pattern example — route `git diff --name-only` to a tree-structured child filter:
+
+```toml
+[[variant]]
+name = "name-list"
+detect.args_pattern = '--(name-only|name-status)'
+filter = "git/diff-name-list"
+```
 
 When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback.
 

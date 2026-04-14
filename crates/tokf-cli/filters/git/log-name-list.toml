@@ -1,0 +1,21 @@
+# git/log-name-list.toml — tree-structured output for git log --name-only / --name-status
+# Delegated from git/log when args contain these flags.
+# No `run` override — the original command runs as-is.
+
+command = "git log"
+description = "Tree-structured name-only / name-status log output"
+
+strip_ansi = true
+
+# git log --name-status interleaves commit metadata with file lists.
+# The pattern requires a `/` in the path so commit headers, author lines,
+# dates, and message body lines (which are indented or don't contain `/`)
+# pass through unmatched.
+# Group 1: optional status+tab; Group 2: path (must contain /).
+[tree]
+pattern = '^([ACDMR]\t)?(\S+/.+)$'
+passthrough_unmatched = true
+min_files = 3
+min_shared_depth = 1
+style = "indent"
+collapse_single_child = true

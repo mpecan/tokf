@@ -1,0 +1,11 @@
+name = "commit metadata passes through, paths get tree treatment"
+fixture = "name_only.txt"
+exit_code = 0
+
+# Commit header should survive (passthrough_unmatched)
+[[expect]]
+contains = "commit abc1234"
+
+# Paths should be collapsed into a tree node
+[[expect]]
+contains = "config/"

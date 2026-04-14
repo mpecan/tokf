@@ -1,0 +1,19 @@
+# git/diff-name-list.toml — tree-structured output for --name-only / --name-status
+# Delegated from git/diff when args contain these flags.
+# No `run` override — the original command runs as-is.
+
+command = "git diff"
+description = "Tree-structured name-only / name-status diff output"
+
+strip_ansi = true
+
+# --name-status: "M\tsrc/foo.rs" (status + tab + path)
+# --name-only:   "src/foo.rs"   (bare path)
+# Group 1 captures optional status+tab; group 2 captures the path.
+[tree]
+pattern = '^([ACDMR]\t)?(.+)$'
+passthrough_unmatched = true
+min_files = 3
+min_shared_depth = 1
+style = "indent"
+collapse_single_child = true

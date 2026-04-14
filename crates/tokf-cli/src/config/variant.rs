@@ -42,10 +42,11 @@ pub fn resolve_variants(
     for variant in &parent.variant {
         let has_files = !variant.detect.files.is_empty();
         let has_output = variant.detect.output_pattern.is_some();
+        let has_args = variant.detect.args_pattern.is_some();
 
-        if !has_files && !has_output {
+        if !has_files && !has_output && !has_args {
             eprintln!(
-                "[tokf] warning: variant '{}' has no detection criteria (no files or output_pattern), skipping",
+                "[tokf] warning: variant '{}' has no detection criteria (no files, args_pattern, or output_pattern), skipping",
                 variant.name
             );
             continue;
@@ -131,6 +132,55 @@ pub fn resolve_output_variants(
     None
 }
 
+/// Resolve variants using args-pattern detection (Phase A.5).
+///
+/// Called after `remaining_args` is computed but before `should_passthrough()`.
+/// Iterates `parent.variant` in declaration order. For each variant with
+/// `detect.args_pattern`, compiles the regex and tests it against
+/// `remaining_args.join(" ")`. On first match, looks up the variant's filter
+/// and returns the replacement config.
+///
+/// Returns `None` when no args variant matches (parent config unchanged).
+pub fn resolve_args_variants(
+    parent: &FilterConfig,
+    all_filters: &[ResolvedFilter],
+    remaining_args: &[String],
+    verbose: bool,
+) -> Option<FilterConfig> {
+    if remaining_args.is_empty() {
+        return None;
+    }
+    let args_str = remaining_args.join(" ");
+    for variant in &parent.variant {
+        let Some(pattern) = &variant.detect.args_pattern else {
+            continue;
+        };
+        let Ok(re) = Regex::new(pattern) else {
+            eprintln!(
+                "[tokf] warning: variant '{}' has invalid args_pattern '{}', skipping",
+                variant.name, pattern
+            );
+            continue;
+        };
+        if re.is_match(&args_str) {
+            if let Some(cfg) = lookup_filter_by_name(&variant.filter, all_filters) {
+                if verbose {
+                    eprintln!(
+                        "[tokf] variant '{}' matched by args pattern, delegating to {}",
+                        variant.name, variant.filter
+                    );
+                }
+                return Some(cfg);
+            }
+            eprintln!(
+                "[tokf] warning: variant '{}' references filter '{}' which was not found, skipping",
+                variant.name, variant.filter
+            );
+        }
+    }
+    None
+}
+
 /// Look up a filter by its display name (relative path without `.toml`).
 pub fn lookup_filter_by_name(name: &str, filters: &[ResolvedFilter]) -> Option<FilterConfig> {
     filters
@@ -175,6 +225,7 @@ mod tests {
         name: &str,
         files: Vec<&str>,
         output_pattern: Option<&str>,
+        args_pattern: Option<&str>,
         filter: &str,
     ) -> Variant {
         Variant {
@@ -182,6 +233,7 @@ mod tests {
             detect: VariantDetect {
                 files: files.into_iter().map(String::from).collect(),
                 output_pattern: output_pattern.map(String::from),
+                args_pattern: args_pattern.map(String::from),
             },
             filter: filter.to_string(),
         }
@@ -195,6 +247,7 @@ mod tests {
         let parent = make_parent_with_variants(vec![make_variant(
             "vitest",
             vec!["vitest.config.ts"],
+            None,
             None,
             "npm/test-vitest",
         )]);
@@ -212,8 +265,20 @@ mod tests {
         // No vitest.config.ts created
 
         let parent = make_parent_with_variants(vec![
-            make_variant("vitest", vec!["vitest.config.ts"], None, "npm/test-vitest"),
-            make_variant("mocha", vec![], Some("passing|failing"), "npm/test-mocha"),
+            make_variant(
+                "vitest",
+                vec!["vitest.config.ts"],
+                None,
+                None,
+                "npm/test-vitest",
+            ),
+            make_variant(
+                "mocha",
+                vec![],
+                Some("passing|failing"),
+                None,
+                "npm/test-mocha",
+            ),
         ]);
         let all_filters = vec![
             make_resolved("npm/test-vitest", "vitest"),
@@ -269,6 +334,7 @@ mod tests {
             "vitest",
             vec!["vitest.config.ts"],
             None,
+            None,
             "npm/test-vitest",
         )]);
         // No filters available — the variant filter doesn't exist
@@ -300,8 +366,14 @@ mod tests {
         std::fs::write(tmp.path().join("jest.config.js"), "").unwrap();
 
         let parent = make_parent_with_variants(vec![
-            make_variant("vitest", vec!["vitest.config.ts"], None, "npm/test-vitest"),
-            make_variant("jest", vec!["jest.config.js"], None, "npm/test-jest"),
+            make_variant(
+                "vitest",
+                vec!["vitest.config.ts"],
+                None,
+                None,
+                "npm/test-vitest",
+            ),
+            make_variant("jest", vec!["jest.config.js"], None, None, "npm/test-jest"),
         ]);
         let all_filters = vec![
             make_resolved("npm/test-vitest", "vitest"),
@@ -335,6 +407,7 @@ mod tests {
             "vitest",
             vec!["vitest.config.ts"],
             Some("vitest|PASS|FAIL"),
+            None,
             "npm/test-vitest",
         )]);
         let all_filters = vec![make_resolved("npm/test-vitest", "vitest")];
@@ -410,6 +483,7 @@ mod tests {
             detect: VariantDetect {
                 files: vec![],
                 output_pattern: None,
+                args_pattern: None,
             },
             filter: "npm/test-whatever".to_string(),
         }]);
@@ -464,5 +538,145 @@ filter = "npm/test-vitest"
         assert_eq!(cfg.variant[0].name, "vitest");
         assert!(cfg.on_success.is_some());
         assert!(cfg.on_failure.is_some());
+    }
+
+    // --- args_pattern variant detection (Phase A.5) ---
+
+    #[test]
+    fn args_pattern_matches_variant() {
+        let parent = make_parent_with_variants(vec![make_variant(
+            "name-list",
+            vec![],
+            None,
+            Some("--(name-only|name-status)"),
+            "git/diff-name-list",
+        )]);
+        let all_filters = vec![make_resolved("git/diff-name-list", "git diff")];
+        let args: Vec<String> = vec!["--name-only".into()];
+
+        let result = resolve_args_variants(&parent, &all_filters, &args, false);
+
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().command.first(), "git diff");
+    }
+
+    #[test]
+    fn args_pattern_no_match_returns_none() {
+        let parent = make_parent_with_variants(vec![make_variant(
+            "name-list",
+            vec![],
+            None,
+            Some("--(name-only|name-status)"),
+            "git/diff-name-list",
+        )]);
+        let all_filters = vec![make_resolved("git/diff-name-list", "git diff")];
+        let args: Vec<String> = vec!["--stat".into()];
+
+        let result = resolve_args_variants(&parent, &all_filters, &args, false);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn args_pattern_empty_args_returns_none() {
+        let parent = make_parent_with_variants(vec![make_variant(
+            "name-list",
+            vec![],
+            None,
+            Some("--(name-only|name-status)"),
+            "git/diff-name-list",
+        )]);
+        let all_filters = vec![make_resolved("git/diff-name-list", "git diff")];
+
+        let result = resolve_args_variants(&parent, &all_filters, &[], false);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn args_pattern_invalid_regex_skips() {
+        let parent = make_parent_with_variants(vec![make_variant(
+            "bad-regex",
+            vec![],
+            None,
+            Some("[invalid(regex"),
+            "git/diff-name-list",
+        )]);
+        let all_filters = vec![make_resolved("git/diff-name-list", "git diff")];
+        let args: Vec<String> = vec!["--name-only".into()];
+
+        let result = resolve_args_variants(&parent, &all_filters, &args, false);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn args_pattern_first_match_wins() {
+        let parent = make_parent_with_variants(vec![
+            make_variant(
+                "name-list",
+                vec![],
+                None,
+                Some("--name-only"),
+                "git/diff-name-list",
+            ),
+            make_variant(
+                "name-status",
+                vec![],
+                None,
+                Some("--name-status"),
+                "git/diff-name-status",
+            ),
+        ]);
+        let all_filters = vec![
+            make_resolved("git/diff-name-list", "git diff --name-only"),
+            make_resolved("git/diff-name-status", "git diff --name-status"),
+        ];
+        // Matches both patterns — first wins
+        let args: Vec<String> = vec!["--name-only".into(), "--name-status".into()];
+
+        let result = resolve_args_variants(&parent, &all_filters, &args, false);
+
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().command.first(), "git diff --name-only");
+    }
+
+    #[test]
+    fn args_pattern_missing_filter_skips() {
+        let parent = make_parent_with_variants(vec![make_variant(
+            "name-list",
+            vec![],
+            None,
+            Some("--name-only"),
+            "git/diff-nonexistent",
+        )]);
+        let all_filters: Vec<ResolvedFilter> = vec![];
+        let args: Vec<String> = vec!["--name-only".into()];
+
+        let result = resolve_args_variants(&parent, &all_filters, &args, false);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn args_only_variant_not_deferred_in_file_resolution() {
+        // An args-only variant (no files, no output_pattern) should NOT be
+        // deferred to Phase B output variants — it's resolved in Phase A.5.
+        let tmp = TempDir::new().unwrap();
+        let parent = make_parent_with_variants(vec![make_variant(
+            "name-list",
+            vec![],
+            None,
+            Some("--name-only"),
+            "git/diff-name-list",
+        )]);
+        let all_filters: Vec<ResolvedFilter> = vec![];
+
+        let result = resolve_variants(&parent, &all_filters, tmp.path(), false);
+
+        // No files to match, no output_pattern → nothing deferred
+        assert!(result.output_variants.is_empty());
+        // Parent config unchanged (args resolution happens later in Phase A.5)
+        assert_eq!(result.config.command.first(), "npm test");
     }
 }
