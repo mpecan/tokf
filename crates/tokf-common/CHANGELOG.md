@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.41](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.40...tokf-common-v0.2.41) (2026-04-14)
+
+
+### Features
+
+* **filter:** args-based variant detection ([#326](https://github.com/mpecan/tokf/issues/326)) ([#334](https://github.com/mpecan/tokf/issues/334)) ([19c4d0e](https://github.com/mpecan/tokf/commit/19c4d0e4e4243ad38d876aef1f2442ed52b57b9b))
+
 ## [0.2.40](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.39...tokf-common-v0.2.40) (2026-04-13)
 
 

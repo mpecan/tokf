@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.41](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.40...tokf-hook-types-v0.2.41) (2026-04-14)
+
+
+### Miscellaneous
+
+* **tokf-hook-types:** Synchronize workspace versions
+
 ## [0.2.40](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.39...tokf-hook-types-v0.2.40) (2026-04-13)
 
 
