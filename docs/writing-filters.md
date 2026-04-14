@@ -99,7 +99,7 @@ passthrough_args = ["--watch", "--web", "-w"]
 
 **Matching semantics**: each user arg is checked with `starts_with` against each prefix. This handles `--format=table` matching `--format`, while `-w` does **not** match `--watch` (correct — they are different flags). Short-flag prefixes like `-o` also match concatenated forms like `-oyaml` (common in tools like `kubectl`). Empty-string prefixes are ignored. When any arg matches, no `run` override is applied and no filter pipeline runs.
 
-**Variant interaction**: passthrough is checked on the resolved filter config after file-based variant detection. If a parent filter delegates to a variant via file detection, the variant's own `passthrough_args` apply. Output-pattern variants (post-execution) are not resolved when passthrough is active.
+**Variant interaction**: passthrough is checked on the resolved filter config after file-based and args-based variant detection. If a parent filter delegates to a variant (via file detection or `args_pattern`), the variant's own `passthrough_args` apply — not the parent's. Output-pattern variants (post-execution) are not resolved when passthrough is active.
 
 Use `--verbose` to see when passthrough activates:
 
@@ -451,10 +451,20 @@ detect.files = ["jest.config.js", "jest.config.ts", "jest.config.json"]
 filter = "npm/test-jest"
 ```
 
-Detection is two-phase:
+Detection has three modes, checked in order:
 
-1. **File detection** (before execution) — checks if config files exist in the current directory. First match wins.
-2. **Output pattern** (after execution) — regex-matches command output. Used as a fallback when no file was detected.
+1. **File detection** (Phase A, before execution) — checks if config files exist in the current directory. First match wins.
+2. **Args pattern** (Phase A.5, before execution) — regex-matches the remaining command-line arguments (joined with spaces). Fires after file detection but before the `passthrough_args` check, so a matched variant's own `passthrough_args` apply instead of the parent's.
+3. **Output pattern** (Phase B, after execution) — regex-matches command output. Used as a fallback when no file or args pattern matched.
+
+Args-pattern example — route `git diff --name-only` to a tree-structured child filter:
+
+```toml
+[[variant]]
+name = "name-list"
+detect.args_pattern = '--(name-only|name-status)'
+filter = "git/diff-name-list"
+```
 
 When no variant matches, the parent filter's own fields (`skip`, `on_success`, etc.) apply as the fallback.
 

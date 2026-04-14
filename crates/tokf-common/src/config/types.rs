@@ -538,6 +538,10 @@ pub struct VariantDetect {
     pub files: Vec<String>,
     /// Regex pattern to match against command output (post-execution fallback).
     pub output_pattern: Option<String>,
+    /// Regex pattern to match against remaining command-line arguments
+    /// (pre-execution detection, Phase A.5). The pattern is tested against
+    /// the remaining args joined with spaces.
+    pub args_pattern: Option<String>,
 }
 
 /// A variant entry that delegates to a specialized child filter.

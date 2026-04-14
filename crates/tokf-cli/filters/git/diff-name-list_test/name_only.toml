@@ -1,0 +1,9 @@
+name = "name-only output gets tree treatment"
+fixture = "name_only.txt"
+exit_code = 0
+
+[[expect]]
+contains = "config/"
+
+[[expect]]
+contains = "mod.rs"

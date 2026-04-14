@@ -215,6 +215,12 @@ pub fn cmd_run(
         vec![]
     };
 
+    // Phase A.5: resolve args-pattern variants before passthrough check.
+    // If an args variant matches, its config replaces the parent (including
+    // its passthrough_args), so the passthrough check below uses the correct set.
+    let filter_match =
+        filter_match.map(|m| resolve::resolve_args_variants(m, &remaining_args, cli.verbose));
+
     let passthrough = filter_match
         .as_ref()
         .is_some_and(|m| m.config.should_passthrough(&remaining_args));

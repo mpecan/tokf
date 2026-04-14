@@ -1,0 +1,9 @@
+commit abc1234
+Author: Test User <test@example.com>
+Date:   Mon Jan 1 12:00:00 2026 +0000
+
+    feat: add config parsing
+
+M	src/config/mod.rs
+A	src/config/types.rs
+M	src/config/variant.rs

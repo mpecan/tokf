@@ -1,0 +1,9 @@
+name = "name-status output gets tree treatment"
+fixture = "name_status.txt"
+exit_code = 0
+
+[[expect]]
+contains = "config/"
+
+[[expect]]
+contains = "mod.rs"

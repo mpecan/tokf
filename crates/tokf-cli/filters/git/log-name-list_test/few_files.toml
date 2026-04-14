@@ -1,0 +1,9 @@
+name = "below min_files threshold passes through unchanged"
+inline = "commit abc1234\n\nsrc/lib.rs\nsrc/main.rs"
+exit_code = 0
+
+[[expect]]
+contains = "src/lib.rs"
+
+[[expect]]
+contains = "src/main.rs"

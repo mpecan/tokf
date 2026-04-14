@@ -83,6 +83,39 @@ pub fn find_filter(
     Ok(None)
 }
 
+/// Resolve Phase A.5 args-pattern variants.
+///
+/// When an args variant matches, returns an updated `FilterMatch` with the
+/// variant's config (and clears `output_variants`, since the parent's
+/// deferred variants no longer apply to the delegated filter).
+pub fn resolve_args_variants(
+    filter_match: FilterMatch,
+    remaining_args: &[String],
+    verbose: bool,
+) -> FilterMatch {
+    if filter_match.config.variant.is_empty() || remaining_args.is_empty() {
+        return filter_match;
+    }
+    if let Some(cfg) = config::variant::resolve_args_variants(
+        &filter_match.config,
+        &filter_match.resolved_filters,
+        remaining_args,
+        verbose,
+    ) {
+        let hash =
+            tokf_common::hash::canonical_hash(&cfg).unwrap_or_else(|_| filter_match.hash.clone());
+        FilterMatch {
+            config: cfg,
+            hash,
+            words_consumed: filter_match.words_consumed,
+            output_variants: vec![],
+            resolved_filters: filter_match.resolved_filters,
+        }
+    } else {
+        filter_match
+    }
+}
+
 /// Resolve Phase B output-pattern variants using the already-discovered filter list.
 ///
 /// Returns `(FilterConfig, hash)` where `hash` is recomputed from the final config

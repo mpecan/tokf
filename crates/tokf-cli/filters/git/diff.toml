@@ -24,8 +24,6 @@ passthrough_args = [
   "--no-stat",     # explicitly disable our forced --stat
   "-U",            # -U3, -U10, ... custom unified context line counts
   "--unified",
-  "--name-only",   # alternative summary: file paths only
-  "--name-status", # alternative summary: status + file paths
   "--numstat",     # alternative summary: machine-readable
   "--shortstat",   # alternative summary: one line
   "--raw",         # alternative summary: raw format
@@ -40,3 +38,10 @@ output = "{output}"
 
 [on_failure]
 tail = 5
+
+# Route --name-only / --name-status to a tree-structured child filter
+# instead of passing through unfiltered.
+[[variant]]
+name = "name-list"
+detect.args_pattern = '--(name-only|name-status)'
+filter = "git/diff-name-list"
