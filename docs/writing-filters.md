@@ -99,7 +99,7 @@ passthrough_args = ["--watch", "--web", "-w"]
 
 **Matching semantics**: each user arg is checked with `starts_with` against each prefix. This handles `--format=table` matching `--format`, while `-w` does **not** match `--watch` (correct — they are different flags). Short-flag prefixes like `-o` also match concatenated forms like `-oyaml` (common in tools like `kubectl`). Empty-string prefixes are ignored. When any arg matches, no `run` override is applied and no filter pipeline runs.
 
-**Variant interaction**: passthrough is checked on the resolved filter config after file-based variant detection. If a parent filter delegates to a variant via file detection, the variant's own `passthrough_args` apply. Output-pattern variants (post-execution) are not resolved when passthrough is active.
+**Variant interaction**: passthrough is checked on the resolved filter config after file-based and args-based variant detection. If a parent filter delegates to a variant (via file detection or `args_pattern`), the variant's own `passthrough_args` apply — not the parent's. Output-pattern variants (post-execution) are not resolved when passthrough is active.
 
 Use `--verbose` to see when passthrough activates:
 

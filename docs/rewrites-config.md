@@ -404,3 +404,16 @@ git status && git diff > foo.txt  # → "tokf run git status && git diff > foo.t
 ```
 
 `tee` in a pipeline (`git diff | tee log.txt`) is **not** currently treated as an output redirect because `tee` is a command argument, not a redirect operator. The current pipe-handling behaviour is preserved. This is a known follow-up.
+
+## Debug settings
+
+The `[debug]` section enables diagnostic logging for the rewrite system. All settings are off by default.
+
+```toml
+[debug]
+log_parse_failures = true
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `log_parse_failures` | `false` | Log to stderr when the bash parser (rable) fails to parse a command, causing the rewrite system to fall back to simple string matching. Helps diagnose unexpected "unmatched quote" errors or commands that should have been skipped but weren't. |
