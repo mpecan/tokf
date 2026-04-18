@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.41](https://github.com/mpecan/tokf/compare/tokf-v0.2.40...tokf-v0.2.41) (2026-04-14)
+
+
+### Features
+
+* **filter:** args-based variant detection ([#326](https://github.com/mpecan/tokf/issues/326)) ([#334](https://github.com/mpecan/tokf/issues/334)) ([19c4d0e](https://github.com/mpecan/tokf/commit/19c4d0e4e4243ad38d876aef1f2442ed52b57b9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.40 to 0.2.41
+    * tokf-filter bumped from 0.2.40 to 0.2.41
+    * tokf-hook-types bumped from 0.2.40 to 0.2.41
+
 ## [0.2.40](https://github.com/mpecan/tokf/compare/tokf-v0.2.39...tokf-v0.2.40) (2026-04-13)
 
 
