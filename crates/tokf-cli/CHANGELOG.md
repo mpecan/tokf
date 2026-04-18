@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.41](https://github.com/mpecan/tokf/compare/tokf-v0.2.40...tokf-v0.2.41) (2026-04-14)
+## [0.2.41](https://github.com/mpecan/tokf/compare/tokf-v0.2.40...tokf-v0.2.41) (2026-04-18)
 
 
 ### Features
