@@ -27,7 +27,7 @@ clap = { version = "4", features = ["derive"] }
 sqlx = { version = "=0.8.6", default-features = false, features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "macros", "migrate"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
-sha2 = "0.10"
+sha2 = "0.11"
 rand = "0.9"
 hex = "0.4"
 async-trait = "0.1"
