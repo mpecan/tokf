@@ -1,5 +1,6 @@
 pub use tokf_hook_types::{
     PermissionEngineType, PermissionsConfig, PipeConfig, RewriteConfig, RewriteRule, SkipConfig,
+    TransparentConfig,
 };
 
 /// Options that control how the rewrite system generates `tokf run` commands.
@@ -243,5 +244,32 @@ log_parse_failures = true
     fn deserialize_no_debug_section() {
         let config: RewriteConfig = toml::from_str("").unwrap();
         assert!(config.debug.is_none());
+    }
+
+    #[test]
+    fn deserialize_transparent_section() {
+        let toml_str = r#"
+[transparent]
+commands = ["kubectl", "doctl"]
+"#;
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let t = config.transparent.unwrap();
+        assert_eq!(t.commands, vec!["kubectl".to_string(), "doctl".to_string()]);
+    }
+
+    #[test]
+    fn deserialize_transparent_empty_commands() {
+        let toml_str = r"
+[transparent]
+";
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let t = config.transparent.unwrap();
+        assert!(t.commands.is_empty());
+    }
+
+    #[test]
+    fn deserialize_no_transparent_section() {
+        let config: RewriteConfig = toml::from_str("").unwrap();
+        assert!(config.transparent.is_none());
     }
 }

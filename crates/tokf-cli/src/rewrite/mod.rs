@@ -2,6 +2,7 @@ pub mod types;
 
 pub(crate) mod bash_ast;
 pub(crate) mod rules;
+pub(crate) mod transparent;
 pub(crate) mod user_config;
 
 use std::path::PathBuf;
@@ -292,10 +293,21 @@ pub(crate) fn rewrite_with_config_and_options(
         return command.to_string();
     }
 
+    let transparent_extras: &[String] = user_config
+        .transparent
+        .as_ref()
+        .map_or(&[] as &[String], |t| &t.commands);
+
     // User rules run before everything — they can override built-in wrappers.
-    let user_result = apply_rules(&user_config.rewrite, command);
-    if user_result != command {
-        return user_result;
+    // Skipped when *any* compound segment is a transparent-arg invocation
+    // (#338): regex rewrites operate on the full command string, so even an
+    // ssh segment buried behind a `cd … &&` could have text spliced into its
+    // opaque payload. Argv-preserving wraps below still apply per-segment.
+    if !transparent::any_segment_is_transparent(command, transparent_extras) {
+        let user_result = apply_rules(&user_config.rewrite, command);
+        if user_result != command {
+            return user_result;
+        }
     }
 
     let wrapper_rules = build_wrapper_rules();
@@ -349,3 +361,5 @@ mod tests_compound;
 mod tests_env;
 #[cfg(test)]
 mod tests_pipe;
+#[cfg(test)]
+mod tests_transparent;

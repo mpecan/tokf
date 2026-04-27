@@ -495,3 +495,79 @@ fn parse_malformed_syntax_returns_none() {
         "expected parse failure for malformed syntax"
     );
 }
+
+// --- first_command_basename ---
+
+#[test]
+fn first_command_basename_simple() {
+    assert_eq!(
+        first_command_basename("ssh HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_strips_path() {
+    assert_eq!(
+        first_command_basename("/usr/bin/ssh HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_unquotes() {
+    // A quoted command name shouldn't fool the check — `'ssh'` runs `ssh`.
+    assert_eq!(
+        first_command_basename("'ssh' HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_skips_env_prefix() {
+    // The first *command* word, after env assignments, is what runs.
+    assert_eq!(
+        first_command_basename("FOO=bar ssh HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_empty_input() {
+    assert_eq!(first_command_basename(""), None);
+}
+
+#[test]
+fn first_command_basename_only_env_prefix() {
+    // Just env assignments, no command — nothing to identify.
+    assert_eq!(first_command_basename("FOO=bar"), None);
+}
+
+#[test]
+fn first_command_basename_preserves_other_names() {
+    // Sibling commands (e.g. ssh-add) must not be conflated with ssh.
+    assert_eq!(
+        first_command_basename("ssh-add").as_deref(),
+        Some("ssh-add")
+    );
+}
+
+#[test]
+fn first_command_basename_command_substitution_first_token() {
+    // rable parses `$(echo ssh)` as a Word whose `value` is the literal
+    // source text including the `$(…)`. We don't try to resolve it — we
+    // just extract whatever literal we got. The important property is
+    // that this never produces `Some("ssh")` and so cannot accidentally
+    // mark the whole command as transparent.
+    let result = first_command_basename("$(echo ssh) HOST cmd");
+    assert_ne!(result.as_deref(), Some("ssh"));
+}
+
+#[test]
+fn first_command_basename_mismatched_quotes() {
+    // `unquote` only strips matching outer quotes. Mismatched outer quotes
+    // must not yield a false-positive ssh match — the important property
+    // is no panic and that the result, whatever it is, isn't `Some("ssh")`.
+    let result = first_command_basename("'ssh\" HOST cmd");
+    assert_ne!(result.as_deref(), Some("ssh"));
+}

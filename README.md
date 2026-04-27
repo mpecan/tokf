@@ -1922,6 +1922,33 @@ git status && git diff > foo.txt  # → "tokf run git status && git diff > foo.t
 
 `tee` in a pipeline (`git diff | tee log.txt`) is **not** currently treated as an output redirect because `tee` is a command argument, not a redirect operator. The current pipe-handling behaviour is preserved. This is a known follow-up.
 
+## Transparent-arg commands
+
+Some commands take a shell-code payload that runs in a *different* environment — `ssh HOST 'cmd'` runs `cmd` on the remote host, where tokf is not installed and shouldn't be referenced. For these commands tokf must be especially conservative: it can still wrap the local invocation with `tokf run` (which preserves the argv byte-for-byte), but **user `[[rewrite]]` regex rules are not applied** because a sufficiently broad pattern can splice text into the opaque payload and break the remote call.
+
+The built-in list — always active, can't be disabled — is `ssh`, `mosh`, `slogin`. Basename matching applies, so `/usr/bin/ssh` is treated identically to `ssh`.
+
+You can extend the list via `[transparent]` for tools like `kubectl exec`, `docker exec`, etc.:
+
+```toml
+[transparent]
+commands = ["kubectl", "doctl"]
+```
+
+Names are matched against the basename of the command's first word. `commands` extends — not replaces — the built-in list, so `kubectl` is added on top of `ssh`/`mosh`/`slogin`.
+
+What still happens for transparent commands:
+- The standard `tokf run <cmd>` wrap from a matching filter (argv-preserving prefix only).
+- Pipe stripping with `--baseline-pipe '<suffix>'` (flags inserted between `tokf run` and `<cmd>`; the inner argv is untouched).
+- The built-in `^tokf ` skip and the heredoc / output-redirect skips above.
+
+What is gated:
+- User `[[rewrite]]` regex rules in `rewrites.toml`. They run on the full command string and could splice text into the inner argv, so they're skipped when the first command word's basename is in the transparent list.
+
+If you genuinely need a regex rewrite for an ssh-class command, invoke it explicitly: `tokf run ssh …` is preserved by the `^tokf ` skip rule, so it won't be re-rewritten.
+
+This was added to address [#338](https://github.com/mpecan/tokf/issues/338), where a long-output `ssh HOST 'cmd'` would land `tokf` on the remote bash and exit 127.
+
 ## Debug settings
 
 The `[debug]` section enables diagnostic logging for the rewrite system. All settings are off by default.

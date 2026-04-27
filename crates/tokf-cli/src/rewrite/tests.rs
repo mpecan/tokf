@@ -204,6 +204,7 @@ fn rewrite_user_rule_takes_priority() {
         }],
         permissions: None,
         debug: None,
+        transparent: None,
     };
     let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "custom-wrapper git status");
@@ -226,6 +227,7 @@ fn rewrite_user_skip_prevents_rewrite() {
         rewrite: vec![],
         permissions: None,
         debug: None,
+        transparent: None,
     };
     let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "git status");
@@ -397,6 +399,7 @@ fn wrapper_user_rule_overrides_builtin_wrapper() {
         }],
         permissions: None,
         debug: None,
+        transparent: None,
     };
     let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "custom-make check");
@@ -413,6 +416,7 @@ fn wrapper_skip_pattern_prevents_wrapper() {
         rewrite: vec![],
         permissions: None,
         debug: None,
+        transparent: None,
     };
     let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "make check");
