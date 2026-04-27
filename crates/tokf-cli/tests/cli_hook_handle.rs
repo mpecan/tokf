@@ -374,3 +374,68 @@ fn hook_handle_stdlib_yarn_test_rewrites() {
         "tokf run yarn test"
     );
 }
+
+// --- External permission engine ask verdict (regression for #343) ---
+
+/// Regression for #343: when the external permission engine returns an "ask"
+/// verdict, the binary must exit 0 so Claude Code reads the JSON
+/// `permissionDecision: "ask"` and shows the native prompt. Exit 2 would
+/// short-circuit that path and turn ask into an unconditional block.
+#[cfg(unix)]
+#[test]
+fn hook_handle_ask_verdict_exits_zero_and_emits_ask_json() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::TempDir::new().unwrap();
+
+    // Mock external permission engine: always returns an "ask" verdict.
+    let engine = dir.path().join("engine.sh");
+    std::fs::write(
+        &engine,
+        "#!/bin/sh\ncat >/dev/null\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"needs confirmation\",\"updatedInput\":{\"command\":\"git push\"}}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    // Project-local rewrites.toml wires the engine in.
+    let rewrites_dir = dir.path().join(".tokf");
+    std::fs::create_dir_all(&rewrites_dir).unwrap();
+    let rewrites = format!(
+        "[permissions]\nengine = \"external\"\n\n[permissions.external]\ncommand = \"{}\"\n",
+        engine.display(),
+    );
+    std::fs::write(rewrites_dir.join("rewrites.toml"), rewrites).unwrap();
+
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git push"}}"#;
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        output.status.success(),
+        "expected exit 0 for ask verdict (issue #343), got status {:?}, stdout: {stdout}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["permissionDecision"], "ask",
+        "exit 0 alone is not enough — the JSON ask verdict must reach Claude Code"
+    );
+}

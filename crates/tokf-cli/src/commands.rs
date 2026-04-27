@@ -595,9 +595,19 @@ pub fn cmd_hook_handle(format: &HookFormat) -> i32 {
         HookFormat::Gemini => hook::handle_gemini(),
         HookFormat::Cursor => hook::handle_cursor(),
     };
+    hook_outcome_exit_code(outcome)
+}
+
+/// Map a `HookOutcome` to the process exit code expected by the host AI tool.
+///
+/// `Ask` must exit 0 so Claude Code reads the JSON `permissionDecision: "ask"`
+/// from stdout and shows the user the native prompt. Exit 2 would short-circuit
+/// that path and trigger an unconditional block. `Deny` keeps exit 2 because
+/// the JSON is already paired with a hard block in every supported host.
+const fn hook_outcome_exit_code(outcome: hook::HookOutcome) -> i32 {
     match outcome {
-        hook::HookOutcome::Deny | hook::HookOutcome::Ask => 2,
-        hook::HookOutcome::Allow | hook::HookOutcome::PassThrough => 0,
+        hook::HookOutcome::Deny => 2,
+        hook::HookOutcome::Ask | hook::HookOutcome::Allow | hook::HookOutcome::PassThrough => 0,
     }
 }
 
@@ -625,5 +635,32 @@ pub fn cmd_hook_install(
             eprintln!("[tokf] hook install failed: {e:#}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ask_outcome_exits_zero_so_claude_reads_json_decision() {
+        // Regression for #343: exit 2 short-circuits the JSON path and turns
+        // an "ask" verdict into an unconditional block.
+        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::Ask), 0);
+    }
+
+    #[test]
+    fn allow_outcome_exits_zero() {
+        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::Allow), 0);
+    }
+
+    #[test]
+    fn passthrough_outcome_exits_zero() {
+        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::PassThrough), 0);
+    }
+
+    #[test]
+    fn deny_outcome_exits_two() {
+        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::Deny), 2);
     }
 }
