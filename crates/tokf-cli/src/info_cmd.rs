@@ -2,13 +2,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use tokf::config;
+use tokf::config::{self, ResolvedFilter};
 use tokf::tracking;
 
 /// Write-access status for a path that tokf needs to write to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum WriteAccess {
+pub enum WriteAccess {
     /// Path exists and is writable by the current process.
     Writable,
     /// Path exists but is not writable.
@@ -22,7 +22,7 @@ enum WriteAccess {
 }
 
 impl WriteAccess {
-    const fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Writable => "writable",
             Self::ReadOnly => "read-only!",
@@ -90,54 +90,54 @@ fn check_write_access(path: &Path) -> WriteAccess {
 }
 
 #[derive(Serialize)]
-struct SearchDir {
-    scope: &'static str,
-    path: String,
-    exists: bool,
+pub struct SearchDir {
+    pub scope: &'static str,
+    pub path: String,
+    pub exists: bool,
     /// `Some(access)` when the directory exists; `None` when it does not.
-    access: Option<WriteAccess>,
+    pub access: Option<WriteAccess>,
 }
 
 #[derive(Serialize)]
-struct TrackingDb {
-    env_override: Option<String>,
-    path: Option<String>,
-    exists: bool,
-    access: Option<WriteAccess>,
+pub struct TrackingDb {
+    pub env_override: Option<String>,
+    pub path: Option<String>,
+    pub exists: bool,
+    pub access: Option<WriteAccess>,
 }
 
 #[derive(Serialize)]
-struct CacheInfo {
-    path: Option<String>,
-    exists: bool,
-    access: Option<WriteAccess>,
+pub struct CacheInfo {
+    pub path: Option<String>,
+    pub exists: bool,
+    pub access: Option<WriteAccess>,
 }
 
 #[derive(Serialize)]
-struct FilterCounts {
-    local: usize,
-    user: usize,
-    builtin: usize,
-    total: usize,
+pub struct FilterCounts {
+    pub local: usize,
+    pub user: usize,
+    pub builtin: usize,
+    pub total: usize,
 }
 
 #[derive(Serialize)]
-struct ConfigFileEntry {
-    scope: &'static str,
-    path: String,
-    exists: bool,
+pub struct ConfigFileEntry {
+    pub scope: &'static str,
+    pub path: String,
+    pub exists: bool,
 }
 
 #[derive(Serialize)]
-struct InfoOutput {
-    version: String,
+pub struct InfoOutput {
+    pub version: String,
     /// `TOKF_HOME` env var value when set; affects all user-level paths.
-    home_override: Option<String>,
-    search_dirs: Vec<SearchDir>,
-    tracking_db: TrackingDb,
-    cache: CacheInfo,
-    config_files: Vec<ConfigFileEntry>,
-    filters: Option<FilterCounts>,
+    pub home_override: Option<String>,
+    pub search_dirs: Vec<SearchDir>,
+    pub tracking_db: TrackingDb,
+    pub cache: CacheInfo,
+    pub config_files: Vec<ConfigFileEntry>,
+    pub filters: Option<FilterCounts>,
 }
 
 pub fn cmd_info(json: bool) -> i32 {
@@ -178,30 +178,39 @@ fn collect_search_dirs(search_dirs: &[PathBuf]) -> Vec<SearchDir> {
     dirs
 }
 
-fn collect_filter_counts(search_dirs: &[PathBuf]) -> Option<FilterCounts> {
-    match config::discover_all_filters(search_dirs) {
-        Ok(f) => {
-            let local = f.iter().filter(|fi| fi.priority == 0).count();
-            let user = f
-                .iter()
-                .filter(|fi| fi.priority > 0 && fi.priority < u8::MAX)
-                .count();
-            let builtin = f.iter().filter(|fi| fi.priority == u8::MAX).count();
-            Some(FilterCounts {
-                local,
-                user,
-                builtin,
-                total: f.len(),
-            })
-        }
+/// Bucket a discovered filter list into the counts shown in `tokf info`.
+pub fn count_filters_by_priority(filters: &[ResolvedFilter]) -> FilterCounts {
+    let local = filters.iter().filter(|fi| fi.priority == 0).count();
+    let user = filters
+        .iter()
+        .filter(|fi| fi.priority > 0 && fi.priority < u8::MAX)
+        .count();
+    let builtin = filters.iter().filter(|fi| fi.priority == u8::MAX).count();
+    FilterCounts {
+        local,
+        user,
+        builtin,
+        total: filters.len(),
+    }
+}
+
+pub fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
+    let filters = match config::discover_all_filters(search_dirs) {
+        Ok(f) => Some(f),
         Err(e) => {
             eprintln!("[tokf] error discovering filters: {e:#}");
             None
         }
-    }
+    };
+    collect_info_with_filters(search_dirs, filters.as_deref())
 }
 
-fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
+/// Build an `InfoOutput` from a pre-discovered filter list. Pass `None` when
+/// discovery failed; the caller is expected to have already logged the error.
+pub fn collect_info_with_filters(
+    search_dirs: &[PathBuf],
+    filters: Option<&[ResolvedFilter]>,
+) -> InfoOutput {
     let dirs = collect_search_dirs(search_dirs);
 
     // Normalise to None when empty/whitespace-only, matching paths::resolve_user_path() behaviour.
@@ -238,7 +247,7 @@ fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
         tracking_db,
         cache,
         config_files,
-        filters: collect_filter_counts(search_dirs),
+        filters: filters.map(count_filters_by_priority),
     }
 }
 
