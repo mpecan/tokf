@@ -144,6 +144,48 @@ The doctor excludes events whose command path looks like a temp-dir or test-fixt
 
 `tokf doctor` is the **post-hoc** half of the diagnostics story. Phase 2 will add **runtime surfacing** — an in-process LRU that detects bursts as they happen and prints a `[tokf] notice:` line on stderr in the same tool result the agent sees. Phase 3 will add an `--apply-suggestions` interactive mode that proposes config patches. Both are explicitly out of scope for the current release.
 
+## tokf issue
+
+`tokf issue` builds a GitHub bug report with a non-PII diagnostic snapshot of your installation, **shows you the full body before anything is sent**, and submits it via `gh` if available — falling back to a printable markdown document otherwise. Transparency is the contract: every byte that would be uploaded is rendered to your terminal first.
+
+```sh
+tokf issue                                       # interactive: title prompt + $EDITOR for body
+tokf issue --title "panic in cargo/test" \
+           --body "Filter crashes on empty input"
+tokf issue --title "..." --body "..." --print    # print markdown only, never call gh
+tokf issue --title "..." --body-from bug.md      # body from file (or `-` for stdin)
+tokf issue --title "..." --body "..." -y         # skip the confirmation prompt
+tokf issue --title "..." --body "..." \
+           --include-filters                     # opt in to attaching filter names
+tokf issue --title "..." --body "..." \
+           --repo my-fork/tokf                   # file against a different repo
+```
+
+### What gets included
+
+The diagnostic snapshot is the same data shape as `tokf info`, with the user's home directory replaced by `~`:
+
+- `tokf` version, OS, architecture, shell name (e.g. `zsh`, never the full `$SHELL` path).
+- Whether `gh` and `git` are on `PATH`.
+- `TOKF_HOME` value, filter search directories with existence + writable status, tracking DB and cache paths and writability, filter counts by scope (built-in / user / local), and which config files exist.
+
+### What is intentionally excluded
+
+A footer comment in every report enumerates what was withheld:
+
+- Hostname, username, machine UUID
+- Auth tokens (server credentials live in the OS keyring; `tokf issue` never reads them)
+- Environment variables, command history, filter contents
+- Filter **names** by default — user/local filter names can encode internal command names. Add `--include-filters` to attach them; the preview always shows what would be sent. In interactive mode (title or body coming from a prompt), tokf asks once whether to include your custom filter names — useful for debugging filter-resolution bugs.
+
+### Submission flow
+
+1. The full markdown body is printed to **stderr** between `--- ISSUE PREVIEW ---` markers, every time.
+2. With `--print`, that's the end — the body is also written to stdout for piping.
+3. Without `--print`:
+   - If `gh` is missing, tokf prints the markdown and a pre-filled `https://github.com/<repo>/issues/new?title=...&body=...` URL (when the body fits in URL limits — otherwise a copy/paste hint).
+   - If `gh` is present, tokf asks `Submit to mpecan/tokf? [y/N]` (skip with `-y`), runs `gh issue create --body-file <tmpfile>`, and prints the resulting issue URL on success. On `gh` failure, the same fallback markdown is emitted so you don't lose the body.
+
 ## Cache management
 
 tokf caches the filter discovery index for faster startup. The cache rebuilds automatically when filters change, but you can manage it manually:

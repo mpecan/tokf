@@ -42,6 +42,7 @@ clap_complete_nushell = "4.5"
 dialoguer = { version = "0.12", default-features = false }
 which = "8"
 rable = "0.1.15"
+tempfile = "3"
 opentelemetry     = { version = "0.31", optional = true, features = ["metrics"] }
 opentelemetry_sdk = { version = "0.31", optional = true, features = ["metrics"] }
 opentelemetry-otlp = { version = "0.31", optional = true }
@@ -77,7 +78,6 @@ otel-grpc = [
 
 [dev-dependencies]
 tokf-dev = { path = ".", package = "tokf", features = ["test-keyring"] }
-tempfile = "3"
 serial_test = "3"
 mockito = "1.7.2"
 filetime = "0.2"

@@ -14,6 +14,7 @@ mod generic;
 mod history_cmd;
 mod info_cmd;
 mod install_cmd;
+mod issue_cmd;
 mod output;
 mod publish_cmd;
 #[cfg(feature = "stdlib-publish")]
@@ -220,6 +221,8 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// File a GitHub issue with a non-PII diagnostic snapshot (uses `gh` if available)
+    Issue(issue_cmd::IssueArgs),
     /// Authenticate with the tokf server (credentials stored in OS keyring)
     Auth {
         #[command(subcommand)]
@@ -538,6 +541,7 @@ fn main() {
             *safety,
         ),
         Commands::Info { json } => info_cmd::cmd_info(*json),
+        Commands::Issue(args) => issue_cmd::cmd_issue(args),
         Commands::Auth { action } => or_exit(match action {
             AuthAction::Login => auth_cmd::cmd_auth_login(),
             AuthAction::Logout => auth_cmd::cmd_auth_logout(),
