@@ -206,6 +206,14 @@ async fn download_returns_toml_content(pool: PgPool) {
         json["filter_toml"].as_str().unwrap(),
         std::str::from_utf8(filter_toml).unwrap()
     );
+    // For a freshly-published filter the URL hash and the server's
+    // recomputed content_hash must agree — they're computed by the same
+    // canonical_hash on the same parsed FilterConfig.
+    assert_eq!(
+        json["content_hash"].as_str().unwrap(),
+        hash,
+        "content_hash should match URL hash for a freshly-published filter"
+    );
     // publish_filter_helper auto-adds a default passing test when none provided
     let test_files = json["test_files"].as_array().unwrap();
     assert_eq!(test_files.len(), 1, "expected 1 auto-added default test");

@@ -40,14 +40,17 @@ fn install(
 ) -> anyhow::Result<i32> {
     let client = Client::authed()?;
 
-    let (hash, author) = resolve_hash(&client, filter)?;
-    let downloaded = filter_client::download_filter(&client, &hash)?;
+    let (url_hash, author) = resolve_hash(&client, filter)?;
+    let downloaded = filter_client::download_filter(&client, &url_hash)?;
 
     // Parse TOML once; derive command pattern and detect Lua in a single pass.
     let (command_pattern, config) = parse_filter_toml(&downloaded.filter_toml)?;
 
-    // Verify the downloaded content matches the requested hash (tamper detection).
-    verify_content_hash(&hash, &config)?;
+    // The hash actually used for attribution: the server-recomputed
+    // `content_hash` when present, else the URL hash. The URL hash is a
+    // stable lookup key; the recomputed hash is the authoritative identity
+    // under the current schema. See issue #350.
+    let hash = verify_and_resolve_hash(&url_hash, downloaded.content_hash.as_deref(), &config)?;
 
     let install_base = resolve_install_base(local)?;
     let rel_path = command_pattern_to_path(&command_pattern);
@@ -117,21 +120,60 @@ fn parse_filter_toml(toml_str: &str) -> anyhow::Result<(String, FilterConfig)> {
     Ok((pattern, config))
 }
 
-/// Verify the downloaded filter matches the expected content hash (tamper detection).
+/// Verify the downloaded filter and resolve the authoritative content hash.
+///
+/// The server (when up-to-date — see issue #350) recomputes `canonical_hash`
+/// over the stored TOML and returns it as `server_content_hash`. The client
+/// trusts that value as the filter's identity under the current schema, but
+/// still hashes the wire bytes to detect any tampering between server and
+/// client.
+///
+/// When the server is older than this client and doesn't return a
+/// `server_content_hash`, fall back to verifying that the URL hash itself
+/// matches the locally-computed hash (the historical behaviour, broken for
+/// filters published before recent `FilterConfig` schema additions but kept
+/// for graceful degradation).
+///
+/// Returns the hash to use for attribution and display.
 ///
 /// # Errors
 ///
-/// Returns an error if the computed hash differs from the expected hash.
-fn verify_content_hash(expected_hash: &str, config: &FilterConfig) -> anyhow::Result<()> {
-    let computed = tokf_common::hash::canonical_hash(config)
+/// - Server provided a hash that doesn't match the wire bytes (tamper).
+/// - Old server, and the URL hash doesn't match the locally-computed hash.
+fn verify_and_resolve_hash(
+    url_hash: &str,
+    server_content_hash: Option<&str>,
+    config: &FilterConfig,
+) -> anyhow::Result<String> {
+    let client_hash = tokf_common::hash::canonical_hash(config)
         .map_err(|e| anyhow::anyhow!("could not compute filter hash: {e}"))?;
-    if computed != expected_hash {
+    if let Some(server_hash) = server_content_hash {
+        if client_hash != server_hash {
+            anyhow::bail!(
+                "filter content hash mismatch with server-provided value: \
+                 server={server_hash}, computed={client_hash} — \
+                 the connection may have been tampered with"
+            );
+        }
+        if url_hash != server_hash {
+            eprintln!(
+                "[tokf] note: filter URL hash {url_hash} differs from current \
+                 content hash {server_hash}; the filter was published under an \
+                 older schema and re-identifies under the current one."
+            );
+        }
+        return Ok(server_hash.to_string());
+    }
+    // Old-server fallback: the URL hash is the only identity we have.
+    if client_hash != url_hash {
         anyhow::bail!(
-            "filter hash mismatch: expected {expected_hash}, got {computed} — \
-             the server may have returned tampered content"
+            "filter hash mismatch: expected {url_hash}, computed {client_hash} — \
+             the server may have returned tampered content, or the filter may \
+             have been published under a `FilterConfig` schema this client \
+             cannot reproduce (see issue #350)"
         );
     }
-    Ok(())
+    Ok(url_hash.to_string())
 }
 
 /// Show the filter TOML and prompt for installation consent.
@@ -347,6 +389,79 @@ fn write_filter(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// Build a `FilterConfig` whose canonical hash is known so we can drive
+    /// `verify_and_resolve_hash` deterministically.
+    fn sample_config_and_hash() -> (FilterConfig, String) {
+        let toml = r#"command = "git push""#;
+        let cfg: FilterConfig = toml::from_str(toml).unwrap();
+        let hash = tokf_common::hash::canonical_hash(&cfg).unwrap();
+        (cfg, hash)
+    }
+
+    #[test]
+    fn verify_and_resolve_uses_server_content_hash_when_provided() {
+        let (cfg, current) = sample_config_and_hash();
+        // URL hash is "stale" (a 64-char placeholder); server says the
+        // current hash is `current`. Client trusts the server and returns it.
+        let url = "0".repeat(64);
+        let resolved = verify_and_resolve_hash(&url, Some(&current), &cfg).unwrap();
+        assert_eq!(resolved, current);
+    }
+
+    #[test]
+    fn verify_and_resolve_errors_when_server_hash_disagrees_with_computed() {
+        let (cfg, _current) = sample_config_and_hash();
+        // Server claims a hash that doesn't match what we'd compute from the
+        // bytes we received — wire-tampering between server and client.
+        let url = "0".repeat(64);
+        let bogus_server_hash = "1".repeat(64);
+        let err = verify_and_resolve_hash(&url, Some(&bogus_server_hash), &cfg).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("hash mismatch with server-provided value"),
+            "wrong error: {msg}"
+        );
+        // Both hashes must be present so users can copy them when reporting.
+        let (_, current) = sample_config_and_hash();
+        assert!(
+            msg.contains(&bogus_server_hash) && msg.contains(&current),
+            "error should include both server-claimed and locally-computed hashes: {msg}"
+        );
+    }
+
+    #[test]
+    fn verify_and_resolve_falls_back_to_url_hash_on_old_server() {
+        let (cfg, current) = sample_config_and_hash();
+        // Old server: no content_hash field. URL hash equals the locally
+        // computed hash — the post-fix happy path against an old server.
+        let resolved = verify_and_resolve_hash(&current, None, &cfg).unwrap();
+        assert_eq!(resolved, current);
+    }
+
+    #[test]
+    fn verify_and_resolve_errors_on_old_server_with_url_mismatch() {
+        let (cfg, _current) = sample_config_and_hash();
+        // Old server, URL hash doesn't match — the original #350 failure mode
+        // when we can't repair it from the client.
+        let url = "0".repeat(64);
+        let err = verify_and_resolve_hash(&url, None, &cfg).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("hash mismatch"), "wrong error: {msg}");
+        assert!(msg.contains("issue #350"), "should reference issue: {msg}");
+    }
+
+    #[test]
+    fn verify_and_resolve_returns_server_hash_even_when_url_differs() {
+        let (cfg, current) = sample_config_and_hash();
+        let url = "feedface".repeat(8); // 64 chars, different from `current`
+        let resolved = verify_and_resolve_hash(&url, Some(&current), &cfg).unwrap();
+        // The user requested a stale URL hash; the resolved identity is the
+        // server's recomputed hash, used everywhere downstream (attribution,
+        // display).
+        assert_eq!(resolved, current);
+        assert_ne!(resolved, url);
+    }
 
     #[test]
     fn command_pattern_to_install_path_single_word() {

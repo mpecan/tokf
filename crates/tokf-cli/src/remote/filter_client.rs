@@ -50,6 +50,12 @@ pub struct TestFilePayload {
 pub struct DownloadedFilter {
     pub filter_toml: String,
     pub test_files: Vec<TestFilePayload>,
+    /// Server-recomputed canonical hash under the current `FilterConfig`
+    /// schema. `None` when the server is older than this client (graceful
+    /// degradation). When present, it's the authoritative identity used by
+    /// the install command — see issue #350.
+    #[serde(default)]
+    pub content_hash: Option<String>,
 }
 
 /// Search the community filter registry.
@@ -151,6 +157,27 @@ mod tests {
         let json = r#"{"filter_toml": "command = \"cargo build\"\n", "test_files": []}"#;
         let dl: DownloadedFilter = serde_json::from_str(json).unwrap();
         assert!(dl.test_files.is_empty());
+    }
+
+    /// Old-server compatibility: response without `content_hash` deserialises
+    /// fine and the field is `None`.
+    #[test]
+    fn deserialize_downloaded_filter_without_content_hash() {
+        let json = r#"{"filter_toml": "command = \"x\"\n", "test_files": []}"#;
+        let dl: DownloadedFilter = serde_json::from_str(json).unwrap();
+        assert!(dl.content_hash.is_none());
+    }
+
+    /// New-server response includes `content_hash`.
+    #[test]
+    fn deserialize_downloaded_filter_with_content_hash() {
+        let json = r#"{
+            "filter_toml": "command = \"x\"\n",
+            "test_files": [],
+            "content_hash": "abc123"
+        }"#;
+        let dl: DownloadedFilter = serde_json::from_str(json).unwrap();
+        assert_eq!(dl.content_hash.as_deref(), Some("abc123"));
     }
 
     #[test]
