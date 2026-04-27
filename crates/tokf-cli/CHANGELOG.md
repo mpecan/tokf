@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.42](https://github.com/mpecan/tokf/compare/tokf-v0.2.41...tokf-v0.2.42) (2026-04-27)
+
+
+### Features
+
+* **cli:** add tokf issue subcommand for diagnostic reports ([#349](https://github.com/mpecan/tokf/issues/349)) ([ee87fa7](https://github.com/mpecan/tokf/commit/ee87fa7c1d0b2773f194e65488eebafc4f3e543b))
+
+
+### Bug Fixes
+
+* **hook:** exit 0 for Ask so Claude Code reads JSON verdict ([#347](https://github.com/mpecan/tokf/issues/347)) ([9077b17](https://github.com/mpecan/tokf/commit/9077b170b1f7b7c2b0dac865894dd950b6b1a730))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.41 to 0.2.42
+    * tokf-filter bumped from 0.2.41 to 0.2.42
+    * tokf-hook-types bumped from 0.2.41 to 0.2.42
+
 ## [0.2.41](https://github.com/mpecan/tokf/compare/tokf-v0.2.40...tokf-v0.2.41) (2026-04-14)
 
 
