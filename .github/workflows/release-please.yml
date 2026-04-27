@@ -20,7 +20,7 @@ jobs:
           app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
           private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
 
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           config-file: .release-please-config.json
