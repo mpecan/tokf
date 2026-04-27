@@ -31,3 +31,15 @@ pub fn is_transparent_command(command: &str, user_extras: &[String]) -> bool {
     BUILTIN_TRANSPARENT_COMMANDS.iter().any(|b| *b == name)
         || user_extras.iter().any(|u| u == &name)
 }
+
+/// Return true if **any** segment of a compound command is a transparent-arg
+/// invocation. Used to gate user `[[rewrite]]` regex rules at the top level
+/// of `rewrite_with_config_and_options`: those rules run on the *whole*
+/// command string, so even one ssh segment hidden behind a `cd … &&` is
+/// enough to make it unsafe to splice text anywhere in the command.
+pub fn any_segment_is_transparent(command: &str, user_extras: &[String]) -> bool {
+    super::bash_ast::split_compound(command)
+        .iter()
+        .map(|(seg, _sep)| seg.trim())
+        .any(|seg| is_transparent_command(seg, user_extras))
+}

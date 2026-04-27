@@ -299,10 +299,11 @@ pub(crate) fn rewrite_with_config_and_options(
         .map_or(&[] as &[String], |t| &t.commands);
 
     // User rules run before everything — they can override built-in wrappers.
-    // Skipped for transparent-arg commands (#338): regex rewrites can splice
-    // text into an opaque payload that runs in a different shell, breaking
-    // ssh and similar invocations. Argv-preserving wraps below still apply.
-    if !transparent::is_transparent_command(command, transparent_extras) {
+    // Skipped when *any* compound segment is a transparent-arg invocation
+    // (#338): regex rewrites operate on the full command string, so even an
+    // ssh segment buried behind a `cd … &&` could have text spliced into its
+    // opaque payload. Argv-preserving wraps below still apply per-segment.
+    if !transparent::any_segment_is_transparent(command, transparent_extras) {
         let user_result = apply_rules(&user_config.rewrite, command);
         if user_result != command {
             return user_result;

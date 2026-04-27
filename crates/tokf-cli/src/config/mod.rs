@@ -80,7 +80,7 @@ pub fn pattern_specificity(pattern: &str) -> usize {
 
 /// Extract the basename from a word that might be a path.
 /// Examples: `/usr/bin/ls` -> `ls`, `./mvnw` -> `mvnw`, `git` -> `git`
-pub fn extract_basename(word: &str) -> &str {
+pub(crate) fn extract_basename(word: &str) -> &str {
     // Find the last path separator (/ or \)
     word.rfind(['/', '\\']).map_or(word, |pos| &word[pos + 1..])
 }

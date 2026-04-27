@@ -13,7 +13,9 @@ use std::fs;
 use tempfile::TempDir;
 
 use super::*;
-use crate::rewrite::transparent::{BUILTIN_TRANSPARENT_COMMANDS, is_transparent_command};
+use crate::rewrite::transparent::{
+    BUILTIN_TRANSPARENT_COMMANDS, any_segment_is_transparent, is_transparent_command,
+};
 
 /// Build a config with one wildcard `[[rewrite]]` rule whose replacement
 /// would mangle any inner argv. Used to assert that the rule is *not*
@@ -199,6 +201,86 @@ fn ssh_pipe_strip_preserves_inner_argv() {
     );
 }
 
+#[test]
+fn ssh_with_pipe_inside_quotes_unchanged() {
+    // The `|` is inside the quoted ssh argument and runs on the remote.
+    // rable's AST treats this as a single Command (no top-level pipe), so
+    // pipe-strip logic must not fire. The inner argv must be byte-for-byte
+    // preserved regardless of the user's `[pipe]` settings.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("ssh.toml"), "command = \"ssh\"").unwrap();
+
+    let config = RewriteConfig::default();
+    let result = rewrite_with_config(
+        "ssh HOST 'cmd | head -5'",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    // ssh has a filter, so the outer wrap fires — but the inner pipe is
+    // sealed inside the quoted argument and must not be stripped or
+    // injected as `--baseline-pipe`.
+    assert_eq!(result, "tokf run ssh HOST 'cmd | head -5'");
+}
+
+#[test]
+fn compound_with_ssh_segment_blocks_user_rule() {
+    // The wildcard rule's regex matches the *whole* compound, so even when
+    // ssh is in a later segment, applying the rule could splice text into
+    // the ssh argv. Gate must trip via any_segment_is_transparent.
+    let dir = TempDir::new().unwrap();
+    let config = config_with_mangling_rule();
+    let result = rewrite_with_config(
+        "cd /tmp && ssh HOST 'cmd'",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    // Whole compound is left untouched by the user rule; per-segment
+    // wraps below still try to fire (cd has no filter, ssh has no filter
+    // in this test, so the result is byte-for-byte identical to input).
+    assert_eq!(result, "cd /tmp && ssh HOST 'cmd'");
+}
+
+#[test]
+fn user_skip_pattern_takes_precedence_over_transparent_gate() {
+    // `[skip]` runs first and is the documented escape hatch. A user who
+    // has explicitly suppressed `ssh ` should still see no rewrite at all,
+    // not even the argv-preserving filter wrap.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("ssh.toml"), "command = \"ssh\"").unwrap();
+
+    let config = RewriteConfig {
+        skip: Some(types::SkipConfig {
+            patterns: vec!["^ssh ".to_string()],
+        }),
+        pipe: None,
+        rewrite: vec![],
+        permissions: None,
+        debug: None,
+        transparent: None,
+    };
+    let result = rewrite_with_config(
+        "ssh HOST 'cmd'",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(result, "ssh HOST 'cmd'");
+}
+
+#[test]
+fn ssh_basename_match_case_sensitive() {
+    // Shell PATH lookup is case-sensitive on Linux, and even on macOS
+    // (case-insensitive FS notwithstanding) we follow that convention.
+    // `SSH HOST cmd` is a different command name and must NOT be
+    // transparent — the user rule should mangle it.
+    let dir = TempDir::new().unwrap();
+    let config = config_with_mangling_rule();
+    let result = rewrite_with_config("SSH HOST cmd", &config, &[dir.path().to_path_buf()], false);
+    assert_eq!(result, "mangled SSH HOST cmd");
+}
+
 // --- is_transparent_command unit tests ---
 
 #[test]
@@ -244,4 +326,51 @@ fn builtin_list_contains_expected() {
     assert!(BUILTIN_TRANSPARENT_COMMANDS.contains(&"ssh"));
     assert!(BUILTIN_TRANSPARENT_COMMANDS.contains(&"mosh"));
     assert!(BUILTIN_TRANSPARENT_COMMANDS.contains(&"slogin"));
+}
+
+// --- any_segment_is_transparent unit tests ---
+
+#[test]
+fn any_segment_is_transparent_single_segment() {
+    assert!(any_segment_is_transparent("ssh HOST cmd", &[]));
+    assert!(!any_segment_is_transparent("git status", &[]));
+}
+
+#[test]
+fn any_segment_is_transparent_compound_first() {
+    assert!(any_segment_is_transparent("ssh HOST cmd && echo done", &[]));
+}
+
+#[test]
+fn any_segment_is_transparent_compound_middle() {
+    assert!(any_segment_is_transparent(
+        "cd /tmp && ssh HOST cmd && echo done",
+        &[]
+    ));
+}
+
+#[test]
+fn any_segment_is_transparent_compound_last() {
+    assert!(any_segment_is_transparent("cd /tmp && ssh HOST cmd", &[]));
+}
+
+#[test]
+fn any_segment_is_transparent_no_match_anywhere() {
+    assert!(!any_segment_is_transparent(
+        "cd /tmp && ls -la && echo done",
+        &[]
+    ));
+}
+
+#[test]
+fn any_segment_is_transparent_extras_apply_per_segment() {
+    let extras = vec!["kubectl".to_string()];
+    assert!(any_segment_is_transparent(
+        "cd /tmp && kubectl get pods",
+        &extras
+    ));
+    assert!(!any_segment_is_transparent(
+        "cd /tmp && kubectl get pods",
+        &[]
+    ));
 }
