@@ -24,6 +24,27 @@ pub struct RewriteConfig {
 
     /// Debug/diagnostic settings (all off by default).
     pub debug: Option<DebugConfig>,
+
+    /// Commands whose argv is opaque to tokf because it executes in a
+    /// different shell environment (typically a remote host or container).
+    /// User regex `[[rewrite]]` rules are not applied to these commands —
+    /// only argv-preserving wraps (`tokf run <cmd>`) and pipe-flag injection
+    /// remain.
+    pub transparent: Option<TransparentConfig>,
+}
+
+/// "Transparent-arg" commands: their last argument is opaque shell code.
+///
+/// Built-in list (always active): `ssh`, `mosh`, `slogin`. The `commands`
+/// field extends — does not replace — the built-in list. tokf must not
+/// splice text into the argv of these commands via regex rewrites.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TransparentConfig {
+    /// Additional command basenames to treat as transparent. Matched against
+    /// the basename of the command's first word, so `kubectl` matches both
+    /// `kubectl` and `/usr/local/bin/kubectl`.
+    #[serde(default)]
+    pub commands: Vec<String>,
 }
 
 /// Debug and diagnostic settings for the rewrite system.

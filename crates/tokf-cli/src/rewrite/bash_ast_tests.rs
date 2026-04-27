@@ -495,3 +495,59 @@ fn parse_malformed_syntax_returns_none() {
         "expected parse failure for malformed syntax"
     );
 }
+
+// --- first_command_basename ---
+
+#[test]
+fn first_command_basename_simple() {
+    assert_eq!(
+        first_command_basename("ssh HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_strips_path() {
+    assert_eq!(
+        first_command_basename("/usr/bin/ssh HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_unquotes() {
+    // A quoted command name shouldn't fool the check — `'ssh'` runs `ssh`.
+    assert_eq!(
+        first_command_basename("'ssh' HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_skips_env_prefix() {
+    // The first *command* word, after env assignments, is what runs.
+    assert_eq!(
+        first_command_basename("FOO=bar ssh HOST cmd").as_deref(),
+        Some("ssh")
+    );
+}
+
+#[test]
+fn first_command_basename_empty_input() {
+    assert_eq!(first_command_basename(""), None);
+}
+
+#[test]
+fn first_command_basename_only_env_prefix() {
+    // Just env assignments, no command — nothing to identify.
+    assert_eq!(first_command_basename("FOO=bar"), None);
+}
+
+#[test]
+fn first_command_basename_preserves_other_names() {
+    // Sibling commands (e.g. ssh-add) must not be conflated with ssh.
+    assert_eq!(
+        first_command_basename("ssh-add").as_deref(),
+        Some("ssh-add")
+    );
+}

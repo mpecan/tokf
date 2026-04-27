@@ -64,6 +64,32 @@ pub fn has_toplevel_output_redirect(command: &str) -> bool {
     ParsedCommand::parse(command).is_some_and(|p| p.has_toplevel_output_redirect())
 }
 
+/// Return the basename of the first command word, with shell quotes
+/// stripped. Used to identify commands whose argv is opaque to tokf —
+/// e.g. `ssh HOST 'cmd'`, where the quoted payload runs in a different
+/// shell.
+///
+/// Returns `None` for empty input, parse failures, env-only inputs
+/// (`FOO=bar` with no command), and command-substitution-only inputs
+/// (`$(echo ssh)`) where there is no literal first word.
+///
+/// Examples: `ssh HOST cmd` → `Some("ssh")`, `/usr/bin/ssh …` →
+/// `Some("ssh")`, `'ssh' …` → `Some("ssh")`,
+/// `FOO=bar ssh …` → `Some("ssh")`.
+pub fn first_command_basename(command: &str) -> Option<String> {
+    let parsed = ParsedCommand::parse(command)?;
+    let cmd = find_first_command(&parsed.nodes)?;
+    let NodeKind::Command { words, .. } = &cmd.kind else {
+        return None;
+    };
+    let first = words.first()?;
+    let NodeKind::Word { value, .. } = &first.kind else {
+        return None;
+    };
+    let unquoted = unquote(value);
+    Some(crate::config::extract_basename(&unquoted).to_string())
+}
+
 /// A parsed bash command backed by a rable AST.
 pub struct ParsedCommand {
     nodes: Vec<Node>,
@@ -549,7 +575,9 @@ fn is_strippable_grep(args: &[&str]) -> bool {
     has_pattern
 }
 
-#[cfg(test)]
+/// Strip a single layer of matching outer quotes (single or double).
+/// Inner quotes and escapes are not interpreted — this is a shallow
+/// helper used for command-name extraction only.
 fn unquote(s: &str) -> String {
     if (s.starts_with('\'') && s.ends_with('\'')) || (s.starts_with('"') && s.ends_with('"')) {
         s[1..s.len() - 1].to_string()

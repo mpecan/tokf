@@ -201,6 +201,7 @@ fn rewrite_user_rule_wraps_piped_command() {
         }],
         permissions: None,
         debug: None,
+        transparent: None,
     };
     let r = rewrite_with_config(
         "cargo test | grep FAILED",
@@ -224,6 +225,7 @@ fn rewrite_skip_pattern_wins_over_pipe_guard() {
         rewrite: vec![],
         permissions: None,
         debug: None,
+        transparent: None,
     };
     let r = rewrite_with_config(
         "git status | grep M",
