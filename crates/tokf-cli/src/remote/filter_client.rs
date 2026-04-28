@@ -56,6 +56,12 @@ pub struct DownloadedFilter {
     /// the install command — see issue #350.
     #[serde(default)]
     pub content_hash: Option<String>,
+    /// Server-computed canonical v1 hash (ADR-0002). Schema-independent;
+    /// the long-term identity for every filter. `None` against pre-v1
+    /// servers; on those, the client falls back to `content_hash` and
+    /// then to the URL hash.
+    #[serde(default)]
+    pub v1_hash: Option<String>,
 }
 
 /// Search the community filter registry.

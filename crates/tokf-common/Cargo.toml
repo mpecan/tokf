@@ -13,17 +13,21 @@ categories = ["command-line-utilities", "development-tools"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-toml = { version = "1.0", optional = true }
+# Required by `canonical_v1`. Pinned exactly because v1's hash output depends
+# on the toml crate's emission for canonical bytes; any change to its
+# emission (escape choices, float formatting, key ordering) silently changes
+# every published hash. Per ADR-0002, version bumps must be gated by the
+# frozen v1 corpus; if the corpus drifts, either stay pinned or ship v2.
+toml = "=1.0.3"
 regex = { version = "1", optional = true }
 unicode-normalization = "0.1"
 
 [features]
 default = []
-validation = ["toml", "regex"]
+validation = ["regex"]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
-toml = "1.0"
 ts-rs = "12"
