@@ -1,0 +1,5 @@
+command = "my-tool"
+
+[lua_script]
+lang = "luau"
+source = "return input:upper()"

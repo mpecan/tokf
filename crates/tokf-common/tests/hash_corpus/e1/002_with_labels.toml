@@ -1,0 +1,12 @@
+# Validates that BTreeMap label ordering produces a stable hash regardless of
+# how the source TOML happens to spell the keys.
+command = "git status"
+
+[parse.group.key]
+pattern = "^(.{2}) "
+output = "{1}"
+
+[parse.group.labels]
+M = "modified"
+A = "added"
+D = "deleted"

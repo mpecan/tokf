@@ -1,33 +1,19 @@
+//! The current, schema-tied `canonical_hash` function.
+//!
+//! Operates on a parsed [`FilterConfig`] under whatever shape it has at the
+//! time the binary was compiled — so adding a default-valued field here
+//! changes the output for filters that don't reference it (the regression
+//! that motivated issue #350). New filters should publish under a versioned
+//! epoch in [`super::epochs`] going forward; this function is retained for
+//! the existing call sites that still hash freshly-parsed configs (publish
+//! flow, resolver, server validation).
+
 use std::fmt::Write as _;
 
 use sha2::{Digest, Sha256};
 
 use crate::config::types::FilterConfig;
-
-/// Error returned when a [`FilterConfig`] cannot be hashed.
-///
-/// Wraps the underlying serialization error without exposing `serde_json` as
-/// a public dependency of this crate.
-#[derive(Debug)]
-pub struct HashError(serde_json::Error);
-
-impl std::fmt::Display for HashError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for HashError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.0)
-    }
-}
-
-impl From<serde_json::Error> for HashError {
-    fn from(e: serde_json::Error) -> Self {
-        Self(e)
-    }
-}
+use crate::hash::HashError;
 
 /// Compute a deterministic SHA-256 content hash for a [`FilterConfig`].
 ///

@@ -1,0 +1,44 @@
+command = ["pnpm test", "npm test"]
+run = "pnpm test --reporter=line"
+skip = ["^\\s+✓", "^Slow test file:"]
+keep = ["^FAIL\\b"]
+dedup = true
+strip_ansi = true
+trim_lines = true
+
+[[step]]
+run = "node --version"
+as = "node_version"
+
+[[match_output]]
+contains = "no tests found"
+output = "(no tests)"
+
+[[section]]
+name = "summary"
+enter = "^─+$"
+collect_as = "summary_lines"
+
+[on_success]
+output = "{summary_lines}"
+tail = 20
+
+[on_failure]
+output = "FAILED:\n{output}"
+head = 5
+skip = ["^\\s+at "]
+
+[parse.branch]
+line = 1
+pattern = "Running ([^ ]+)"
+output = "{1}"
+
+[output]
+format = "{branch}: {body}"
+
+[fallback]
+tail = 10
+
+[[replace]]
+pattern = "/Users/[^/]+"
+output = "/Users/<redacted>"

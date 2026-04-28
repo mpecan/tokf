@@ -13,17 +13,19 @@ categories = ["command-line-utilities", "development-tools"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-toml = { version = "1.0", optional = true }
+# Required by `hash::epochs::*` for parsing filter TOML against frozen
+# historical schemas (issue #350). Previously feature-gated under
+# `validation`; promoted to a regular dep in 0.2.43.
+toml = "1.0"
 regex = { version = "1", optional = true }
 unicode-normalization = "0.1"
 
 [features]
 default = []
-validation = ["toml", "regex"]
+validation = ["regex"]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
-toml = "1.0"
 ts-rs = "12"
