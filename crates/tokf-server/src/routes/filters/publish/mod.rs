@@ -88,6 +88,7 @@ async fn parse_multipart(
 /// Grouped fields for inserting a filter record.
 struct FilterInsert<'a> {
     content_hash: &'a str,
+    v1_hash: &'a str,
     command_pattern: &'a str,
     canonical_command: &'a str,
     author_id: i64,
@@ -101,17 +102,44 @@ struct FilterInsert<'a> {
 /// Uploading to R2 before this call means orphaned objects are possible on DB
 /// failure, but they are harmless (no user-visible state and R2 uploads are
 /// idempotent on retry).
+///
+/// Performs a v1-collision pre-check: if a row already exists with the same
+/// `v1_hash` but a different `content_hash`, returns that row's author and
+/// does not insert. This stops new publishes from re-splitting canonically
+/// equivalent filters across `content_hash` variants. Legacy rows with NULL
+/// `v1_hash` are excluded from the check until they are backfilled.
 async fn upsert_filter_record(
     state: &AppState,
     insert: &FilterInsert<'_>,
     author_username: &str,
 ) -> Result<(String, bool), AppError> {
+    if let Some((existing_hash, existing_author)) = sqlx::query_as::<_, (String, String)>(
+        "SELECT f.content_hash, u.username FROM filters f
+         JOIN users u ON u.id = f.author_id
+         WHERE f.v1_hash = $1 AND f.content_hash <> $2
+         LIMIT 1",
+    )
+    .bind(insert.v1_hash)
+    .bind(insert.content_hash)
+    .fetch_optional(&state.db)
+    .await?
+    {
+        tracing::info!(
+            new_hash = %insert.content_hash,
+            existing_hash = %existing_hash,
+            v1 = %insert.v1_hash,
+            "publish rejected as v1-equivalent of existing filter",
+        );
+        return Ok((existing_author, false));
+    }
+
     let result = sqlx::query(
-        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO filters (content_hash, v1_hash, command_pattern, canonical_command, author_id, r2_key, safety_passed)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (content_hash) DO NOTHING",
     )
     .bind(insert.content_hash)
+    .bind(insert.v1_hash)
     .bind(insert.command_pattern)
     .bind(insert.canonical_command)
     .bind(insert.author_id)
@@ -195,6 +223,7 @@ pub(super) async fn set_examples_generated_at(pool: &sqlx::PgPool, content_hash:
 /// Validated, hashed filter ready for storage.
 pub(super) struct PreparedFilter {
     pub(super) content_hash: String,
+    pub(super) v1_hash: String,
     pub(super) command_pattern: String,
     pub(super) canonical_command: String,
     pub(super) config: FilterConfig,
@@ -252,8 +281,11 @@ pub(super) fn validate_and_prepare(
     }
 
     let content_hash = canonical_hash(&config).map_err(|e| format!("hash error: {e}"))?;
+    let v1_hash =
+        tokf_common::canonical_v1::hash(toml_str).map_err(|e| format!("v1 hash error: {e}"))?;
     Ok(PreparedFilter {
         content_hash,
+        v1_hash,
         command_pattern,
         canonical_command,
         config,
@@ -411,6 +443,7 @@ pub async fn publish_filter(
 
     let insert = FilterInsert {
         content_hash: &prepared.content_hash,
+        v1_hash: &prepared.v1_hash,
         command_pattern: &prepared.command_pattern,
         canonical_command: &prepared.canonical_command,
         author_id: auth.user_id,

@@ -99,3 +99,121 @@ pub async fn backfill_versions(
         Json(BackfillVersionsResponse { updated, skipped }),
     ))
 }
+
+// ── v1_hash backfill ──────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct BackfillV1Request {
+    /// Maximum rows to process in this call. Operator iterates until
+    /// `processed == 0`. Defaults to 100; capped at `MAX_BACKFILL_V1_LIMIT`.
+    #[serde(default = "default_v1_batch_size")]
+    pub limit: usize,
+}
+
+const fn default_v1_batch_size() -> usize {
+    100
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackfillV1Response {
+    pub processed: usize,
+    pub updated: usize,
+    pub failed: Vec<BackfillV1Failure>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackfillV1Failure {
+    pub content_hash: String,
+    pub error: String,
+}
+
+const MAX_BACKFILL_V1_LIMIT: usize = 500;
+
+/// `POST /api/filters/backfill-v1-hashes` — populate `v1_hash` for legacy rows.
+///
+/// Service-token auth. Idempotent. Picks up to `limit` rows where
+/// `v1_hash IS NULL`, fetches the TOML from R2, computes the v1 hash
+/// (ADR-0002), writes it back. Rows whose R2 object is missing or whose
+/// TOML fails to canonicalise are reported in `failed` and skipped — the
+/// operator inspects the response and triages those manually.
+///
+/// Operator runbook: invoke repeatedly until `processed == 0`. Failures
+/// don't stop the batch.
+pub async fn backfill_v1_hashes(
+    _auth: ServiceAuth,
+    State(state): State<AppState>,
+    Json(req): Json<BackfillV1Request>,
+) -> Result<(StatusCode, Json<BackfillV1Response>), AppError> {
+    let limit = req.limit.clamp(1, MAX_BACKFILL_V1_LIMIT);
+    // Safe: `limit` is clamped to [1, MAX_BACKFILL_V1_LIMIT] (= 500) which fits in i64.
+    #[allow(clippy::cast_possible_wrap)]
+    let limit_i64 = limit as i64;
+
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT content_hash, r2_key FROM filters
+         WHERE v1_hash IS NULL
+         ORDER BY created_at ASC
+         LIMIT $1",
+    )
+    .bind(limit_i64)
+    .fetch_all(&state.db)
+    .await?;
+
+    tracing::info!(
+        candidates = rows.len(),
+        limit,
+        "backfill-v1-hashes request received"
+    );
+
+    let mut updated = 0usize;
+    let mut failed = Vec::new();
+
+    for (content_hash, r2_key) in &rows {
+        match compute_and_store_v1(&state, content_hash, r2_key).await {
+            Ok(()) => updated += 1,
+            Err(e) => {
+                tracing::warn!(hash = %content_hash, "backfill-v1 failed: {e}");
+                failed.push(BackfillV1Failure {
+                    content_hash: content_hash.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    tracing::info!(
+        processed = rows.len(),
+        updated,
+        failed = failed.len(),
+        "backfill-v1-hashes complete"
+    );
+
+    Ok((
+        StatusCode::OK,
+        Json(BackfillV1Response {
+            processed: rows.len(),
+            updated,
+            failed,
+        }),
+    ))
+}
+
+async fn compute_and_store_v1(
+    state: &AppState,
+    content_hash: &str,
+    r2_key: &str,
+) -> anyhow::Result<()> {
+    let bytes = state
+        .storage
+        .get(r2_key)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("R2 object missing: {r2_key}"))?;
+    let toml_str = std::str::from_utf8(&bytes)?;
+    let v1 = tokf_common::canonical_v1::hash(toml_str)?;
+    sqlx::query("UPDATE filters SET v1_hash = $1 WHERE content_hash = $2")
+        .bind(&v1)
+        .bind(content_hash)
+        .execute(&state.db)
+        .await?;
+    Ok(())
+}

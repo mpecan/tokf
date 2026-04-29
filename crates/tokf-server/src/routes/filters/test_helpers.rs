@@ -148,6 +148,27 @@ pub async fn get_request(app: axum::Router, token: &str, uri: &str) -> axum::res
     .unwrap()
 }
 
+/// POST a JSON body to a URI with a bearer token. Used by every endpoint
+/// test whose handler accepts `Json<...>` over `application/json`.
+pub async fn post_json(
+    app: axum::Router,
+    token: &str,
+    uri: &str,
+    body: &serde_json::Value,
+) -> axum::response::Response {
+    app.oneshot(
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(body).unwrap()))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
 /// POST `/api/filters` helper that returns the full response (for publish-specific tests).
 pub async fn post_filter(
     app: axum::Router,

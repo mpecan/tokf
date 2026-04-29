@@ -536,3 +536,114 @@ async fn publish_filter_stores_examples_in_r2(pool: PgPool) {
         examples_json["safety"]
     );
 }
+
+// ── v1_hash persistence + collision tests ─────────────────────────────────
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn publish_stores_v1_hash_on_new_row(pool: PgPool) {
+    let (_, token) = insert_test_user(&pool, "alice_v1_store").await;
+    let app = crate::routes::create_router(make_state(pool.clone()));
+
+    let resp = post_filter(
+        app,
+        &token,
+        &[
+            ("filter", VALID_FILTER_TOML),
+            MIT_ACCEPT,
+            DEFAULT_PASSING_TEST,
+        ],
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let content_hash = json["content_hash"].as_str().unwrap();
+
+    let v1_hash: Option<String> =
+        sqlx::query_scalar("SELECT v1_hash FROM filters WHERE content_hash = $1")
+            .bind(content_hash)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let v1_hash = v1_hash.expect("v1_hash should be populated on publish");
+
+    let expected = tokf_common::canonical_v1::hash(std::str::from_utf8(VALID_FILTER_TOML).unwrap())
+        .expect("canonical_v1::hash should succeed for valid TOML");
+    assert_eq!(
+        v1_hash, expected,
+        "stored v1_hash should match canonical_v1 of the published TOML"
+    );
+}
+
+/// Two byte-different but canonically-equivalent filters published by
+/// different authors: the second is rejected as a v1-equivalent of the
+/// first; `is_new` is false; only one row exists in the DB; the response
+/// reports the original author.
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn publish_v1_collision_returns_existing_author(pool: PgPool) {
+    let (_, alice_token) = insert_test_user(&pool, "alice_v1").await;
+    let (_, bob_token) = insert_test_user(&pool, "bob_v1").await;
+
+    // Whitespace + leading comment differ; v1 canonicalisation collapses both.
+    let alice_toml: &[u8] = b"command = \"my-tool\"\n";
+    let bob_toml: &[u8] = b"# bob's slightly different version\n\ncommand   =   \"my-tool\"\n\n";
+
+    // Sanity check: same v1, different bytes.
+    let v1_alice =
+        tokf_common::canonical_v1::hash(std::str::from_utf8(alice_toml).unwrap()).unwrap();
+    let v1_bob = tokf_common::canonical_v1::hash(std::str::from_utf8(bob_toml).unwrap()).unwrap();
+    assert_eq!(
+        v1_alice, v1_bob,
+        "test setup: filters must canonicalise to the same v1 hash"
+    );
+    assert_ne!(alice_toml, bob_toml, "test setup: filter bytes must differ");
+
+    let app = crate::routes::create_router(make_state(pool.clone()));
+    let alice_resp = post_filter(
+        app,
+        &alice_token,
+        &[("filter", alice_toml), MIT_ACCEPT, DEFAULT_PASSING_TEST],
+    )
+    .await;
+    assert_eq!(alice_resp.status(), StatusCode::CREATED);
+    let alice_body = alice_resp.into_body().collect().await.unwrap().to_bytes();
+    let alice_json: serde_json::Value = serde_json::from_slice(&alice_body).unwrap();
+    let alice_content_hash = alice_json["content_hash"].as_str().unwrap().to_string();
+
+    let app = crate::routes::create_router(make_state(pool.clone()));
+    let bob_resp = post_filter(
+        app,
+        &bob_token,
+        &[("filter", bob_toml), MIT_ACCEPT, DEFAULT_PASSING_TEST],
+    )
+    .await;
+    assert_eq!(
+        bob_resp.status(),
+        StatusCode::OK,
+        "v1-equivalent republish should be 200 OK (treated as duplicate)"
+    );
+
+    let bob_body = bob_resp.into_body().collect().await.unwrap().to_bytes();
+    let bob_json: serde_json::Value = serde_json::from_slice(&bob_body).unwrap();
+    assert_eq!(
+        bob_json["author"], "alice_v1",
+        "response should report the original author, not bob"
+    );
+    assert_eq!(
+        bob_json["content_hash"].as_str().unwrap(),
+        alice_content_hash,
+        "response should report the existing content_hash, not bob's"
+    );
+
+    // Only one row exists in DB.
+    let row_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM filters WHERE v1_hash = $1")
+        .bind(&v1_alice)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        row_count, 1,
+        "only one row should exist for canonically-equivalent filters"
+    );
+}
