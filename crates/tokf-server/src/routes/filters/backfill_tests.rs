@@ -13,7 +13,7 @@ use crate::storage::StorageClient as _;
 use crate::storage::mock::InMemoryStorageClient;
 
 use super::test_helpers::{
-    insert_test_user, make_state_with_storage, post_json, publish_filter_helper,
+    expected_v1, insert_test_user, make_state_with_storage, post_json, publish_filter_helper,
 };
 
 const VALID_FILTER_TOML: &[u8] = b"command = \"my-tool\"\n";
@@ -75,10 +75,7 @@ async fn backfill_v1_populates_null_rows(pool: PgPool) {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(
-        alice_v1.unwrap(),
-        tokf_common::canonical_v1::hash(std::str::from_utf8(alice_toml).unwrap()).unwrap()
-    );
+    assert_eq!(alice_v1.unwrap(), expected_v1(alice_toml));
 
     let bob_v1: Option<String> =
         sqlx::query_scalar("SELECT v1_hash FROM filters WHERE content_hash = $1")
@@ -86,10 +83,7 @@ async fn backfill_v1_populates_null_rows(pool: PgPool) {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(
-        bob_v1.unwrap(),
-        tokf_common::canonical_v1::hash(std::str::from_utf8(bob_toml).unwrap()).unwrap()
-    );
+    assert_eq!(bob_v1.unwrap(), expected_v1(bob_toml));
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
@@ -176,39 +170,52 @@ async fn r2_key_for(pool: &PgPool, hash: &str) -> String {
         .unwrap()
 }
 
-#[crdb_test_macro::crdb_test(migrations = "./migrations")]
-async fn backfill_v1_reports_failure_when_r2_object_missing(pool: PgPool) {
-    let storage = Arc::new(InMemoryStorageClient::new());
-    let (_, user) = insert_test_user(&pool, "alice_missing").await;
-    let service_token = insert_service_token(&pool, "bf-missing").await;
-
-    let hash = publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
-    storage
-        .delete(&r2_key_for(&pool, &hash).await)
-        .await
-        .unwrap();
-
-    run_backfill_expecting_one_failure(&pool, storage, &service_token, &hash).await;
+/// Each kind of corrupted R2 state that `compute_and_store_v1` should
+/// surface as a per-row failure (without aborting the batch or writing
+/// `v1_hash`).
+enum CorruptR2 {
+    /// Object deleted — `storage.get` returns None.
+    Missing,
+    /// Bytes that fail both UTF-8 decode and TOML parse, exercising both
+    /// post-fetch failure branches in `compute_and_store_v1`.
+    Unparseable,
 }
 
-/// Exercises both UTF-8 and TOML-parse failure branches in
-/// `compute_and_store_v1` by writing bytes that are invalid as both.
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
-async fn backfill_v1_reports_failure_when_r2_object_unparseable(pool: PgPool) {
-    let storage = Arc::new(InMemoryStorageClient::new());
-    let (_, user) = insert_test_user(&pool, "alice_corrupt").await;
-    let service_token = insert_service_token(&pool, "bf-corrupt").await;
+async fn backfill_v1_reports_per_row_failures(pool: PgPool) {
+    let service_token = insert_service_token(&pool, "bf-failures").await;
 
-    let hash = publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
-    storage
-        .put(
-            &r2_key_for(&pool, &hash).await,
-            b"\xff\xfe not valid toml [[[".to_vec(),
-        )
-        .await
-        .unwrap();
-
-    run_backfill_expecting_one_failure(&pool, storage, &service_token, &hash).await;
+    for (idx, kind) in [CorruptR2::Missing, CorruptR2::Unparseable]
+        .into_iter()
+        .enumerate()
+    {
+        let storage = Arc::new(InMemoryStorageClient::new());
+        let (_, user) = insert_test_user(&pool, &format!("alice_fail_{idx}")).await;
+        let hash =
+            publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
+        let r2_key = r2_key_for(&pool, &hash).await;
+        match kind {
+            CorruptR2::Missing => storage.delete(&r2_key).await.unwrap(),
+            CorruptR2::Unparseable => {
+                storage
+                    .put(&r2_key, b"\xff\xfe not valid toml [[[".to_vec())
+                    .await
+                    .unwrap();
+            }
+        }
+        run_backfill_expecting_one_failure(&pool, storage, &service_token, &hash).await;
+        // Reset for next iteration so the second case starts from a clean
+        // "v1_hash IS NULL" set (the failure left the row NULL — we just
+        // want to make sure the backfill's `LIMIT` finds the right row).
+        sqlx::query("DELETE FROM filter_tests")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM filters")
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]

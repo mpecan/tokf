@@ -15,8 +15,8 @@ use crate::storage::mock::InMemoryStorageClient;
 use crate::storage::StorageClient as _;
 
 use super::super::test_helpers::{
-    DEFAULT_PASSING_TEST, MIT_ACCEPT, insert_test_user, make_multipart, make_state,
-    make_state_with_storage, post_filter,
+    DEFAULT_PASSING_TEST, MIT_ACCEPT, expected_v1, insert_test_user, make_multipart, make_state,
+    make_state_with_storage, post_filter, publish_filter_helper,
 };
 
 const VALID_FILTER_TOML: &[u8] = b"command = \"my-tool\"\n";
@@ -543,37 +543,15 @@ async fn publish_filter_stores_examples_in_r2(pool: PgPool) {
 async fn publish_stores_v1_hash_on_new_row(pool: PgPool) {
     let (_, token) = insert_test_user(&pool, "alice_v1_store").await;
     let app = crate::routes::create_router(make_state(pool.clone()));
+    let hash = publish_filter_helper(app, &token, VALID_FILTER_TOML, &[]).await;
 
-    let resp = post_filter(
-        app,
-        &token,
-        &[
-            ("filter", VALID_FILTER_TOML),
-            MIT_ACCEPT,
-            DEFAULT_PASSING_TEST,
-        ],
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::CREATED);
-
-    let body = resp.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    let content_hash = json["content_hash"].as_str().unwrap();
-
-    let v1_hash: Option<String> =
+    let v1: Option<String> =
         sqlx::query_scalar("SELECT v1_hash FROM filters WHERE content_hash = $1")
-            .bind(content_hash)
+            .bind(&hash)
             .fetch_one(&pool)
             .await
             .unwrap();
-    let v1_hash = v1_hash.expect("v1_hash should be populated on publish");
-
-    let expected = tokf_common::canonical_v1::hash(std::str::from_utf8(VALID_FILTER_TOML).unwrap())
-        .expect("canonical_v1::hash should succeed for valid TOML");
-    assert_eq!(
-        v1_hash, expected,
-        "stored v1_hash should match canonical_v1 of the published TOML"
-    );
+    assert_eq!(v1.unwrap(), expected_v1(VALID_FILTER_TOML));
 }
 
 /// Two byte-different but canonically-equivalent filters published by
@@ -596,9 +574,8 @@ async fn publish_v1_collision_returns_existing_author(pool: PgPool) {
     let bob_toml: &[u8] = b"command = [\"my-tool\"]\n";
 
     // Sanity check: same v1, different content_hash.
-    let v1_alice =
-        tokf_common::canonical_v1::hash(std::str::from_utf8(alice_toml).unwrap()).unwrap();
-    let v1_bob = tokf_common::canonical_v1::hash(std::str::from_utf8(bob_toml).unwrap()).unwrap();
+    let v1_alice = expected_v1(alice_toml);
+    let v1_bob = expected_v1(bob_toml);
     assert_eq!(
         v1_alice, v1_bob,
         "test setup: filters must canonicalise to the same v1 hash"

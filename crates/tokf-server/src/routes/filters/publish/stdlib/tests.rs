@@ -7,7 +7,7 @@ use axum::{
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use crate::routes::filters::test_helpers::make_state;
+use crate::routes::filters::test_helpers::{expected_v1, make_state};
 use crate::routes::test_helpers::insert_service_token;
 use crate::storage::mock::InMemoryStorageClient;
 
@@ -320,6 +320,5 @@ async fn publish_stdlib_stores_v1_hash(pool: PgPool) {
         .await
         .unwrap();
     let v1_hash = v1_hash.expect("stdlib publish must populate v1_hash");
-    let expected = tokf_common::canonical_v1::hash(&req.filters[0].filter_toml).unwrap();
-    assert_eq!(v1_hash, expected);
+    assert_eq!(v1_hash, expected_v1(&req.filters[0].filter_toml));
 }

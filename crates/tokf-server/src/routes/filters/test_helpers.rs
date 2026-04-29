@@ -148,6 +148,14 @@ pub async fn get_request(app: axum::Router, token: &str, uri: &str) -> axum::res
     .unwrap()
 }
 
+/// Compute the canonical-v1 hash of TOML for assertion in tests. Accepts
+/// `&[u8]` or `&str`. Panics if the bytes aren't UTF-8 or
+/// `canonical_v1::hash` errors — both impossible for the small inline
+/// fixtures used here.
+pub fn expected_v1(toml: impl AsRef<[u8]>) -> String {
+    tokf_common::canonical_v1::hash(std::str::from_utf8(toml.as_ref()).unwrap()).unwrap()
+}
+
 /// POST a JSON body to a URI with a bearer token. Used by every endpoint
 /// test whose handler accepts `Json<...>` over `application/json`.
 pub async fn post_json(

@@ -96,32 +96,26 @@ struct FilterInsert<'a> {
     safety_passed: bool,
 }
 
-/// Result of upserting a published filter.
+/// Resolved view of a publish attempt: the author and `content_hash` of
+/// the row that ends up in the registry. For v1-equivalent duplicates
+/// these come from the *existing* row, not the rejected submission.
 struct UpsertResult {
-    /// The username of the row's author. For new inserts this matches the
-    /// publisher; for duplicates it's the original author.
     author: String,
-    /// The canonical `content_hash` of the row in the DB. Equals
-    /// `insert.content_hash` for new inserts and byte-identical
-    /// resubmissions; for v1-equivalent duplicates this is the *existing*
-    /// row's `content_hash`, not the rejected publisher's.
     content_hash: String,
-    /// True when a new row was inserted, false for any duplicate path.
     is_new: bool,
 }
 
-/// Insert or detect an existing filter row.
+/// Insert a new filter row, or resolve a duplicate.
 ///
-/// Uploading to R2 before this call means orphaned objects are possible on DB
-/// failure, but they are harmless (no user-visible state and R2 uploads are
-/// idempotent on retry).
+/// Two duplicate paths: byte-identical (caught by `ON CONFLICT (content_hash)`)
+/// and v1-equivalent (caught by the pre-check below — same canonical TOML
+/// shape, different `content_hash`). Both return the existing row's author
+/// and canonical hash. Legacy rows with NULL `v1_hash` are excluded from the
+/// v1-equivalence check via SQL three-valued logic until they are backfilled.
 ///
-/// Performs a v1-collision pre-check: if a row already exists with the same
-/// `v1_hash` but a different `content_hash`, returns that row's author and
-/// canonical hash without inserting. This stops new publishes from
-/// re-splitting canonically equivalent filters across `content_hash`
-/// variants. Legacy rows with NULL `v1_hash` are excluded from the check
-/// until they are backfilled.
+/// Uploading to R2 before this call means orphaned objects are possible on
+/// DB failure, but they are harmless (no user-visible state and R2 uploads
+/// are idempotent on retry).
 async fn upsert_filter_record(
     state: &AppState,
     insert: &FilterInsert<'_>,
@@ -478,11 +472,10 @@ pub async fn publish_filter(
     };
     let upserted = upsert_filter_record(&state, &insert, &auth.username).await?;
 
-    // For v1-collision duplicates, `upserted.content_hash` is the existing
-    // row's canonical hash, not `prepared.content_hash`. Examples and test
-    // rows below are still keyed by `prepared.content_hash` because:
-    // - examples upload is best-effort and orphaned R2 objects are harmless,
-    // - `insert_filter_tests` is gated on `is_new` so it only runs for genuinely new rows.
+    // Below, examples + test rows are keyed by `prepared.content_hash` (the
+    // submitted hash) while the response uses `upserted.content_hash` (the
+    // existing-row hash on a v1-collision). Safe because examples uploads
+    // tolerate orphans and `insert_filter_tests` is gated on `is_new`.
     if let Ok((examples_json, _)) = examples_result {
         if let Err(e) =
             storage::upload_examples(&*state.storage, &prepared.content_hash, examples_json).await

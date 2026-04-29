@@ -27,8 +27,9 @@ pub struct BackfillVersionsResponse {
     pub skipped: usize,
 }
 
-/// Maximum number of entries in a single backfill request.
-const MAX_BACKFILL_ENTRIES: usize = 500;
+/// Maximum batch size for either backfill endpoint. Bounds operator load
+/// against the DB / R2.
+const MAX_BACKFILL_BATCH: usize = 500;
 
 /// `POST /api/filters/backfill-versions` — Backfill version data for filters.
 ///
@@ -39,9 +40,9 @@ pub async fn backfill_versions(
     State(state): State<AppState>,
     Json(req): Json<BackfillVersionsRequest>,
 ) -> Result<(StatusCode, Json<BackfillVersionsResponse>), AppError> {
-    if req.entries.len() > MAX_BACKFILL_ENTRIES {
+    if req.entries.len() > MAX_BACKFILL_BATCH {
         return Err(AppError::BadRequest(format!(
-            "batch size {} exceeds maximum of {MAX_BACKFILL_ENTRIES}",
+            "batch size {} exceeds maximum of {MAX_BACKFILL_BATCH}",
             req.entries.len()
         )));
     }
@@ -105,7 +106,7 @@ pub async fn backfill_versions(
 #[derive(Debug, Deserialize)]
 pub struct BackfillV1Request {
     /// Maximum rows to process in this call. Operator iterates until
-    /// `processed == 0`. Defaults to 100; capped at `MAX_BACKFILL_V1_LIMIT`.
+    /// `processed == 0`. Defaults to 100; capped at `MAX_BACKFILL_BATCH`.
     #[serde(default = "default_v1_batch_size")]
     pub limit: usize,
 }
@@ -127,8 +128,6 @@ pub struct BackfillV1Failure {
     pub error: String,
 }
 
-const MAX_BACKFILL_V1_LIMIT: usize = 500;
-
 /// `POST /api/filters/backfill-v1-hashes` — populate `v1_hash` for legacy rows.
 ///
 /// Service-token auth. Idempotent. Picks up to `limit` rows where
@@ -144,8 +143,8 @@ pub async fn backfill_v1_hashes(
     State(state): State<AppState>,
     Json(req): Json<BackfillV1Request>,
 ) -> Result<(StatusCode, Json<BackfillV1Response>), AppError> {
-    let limit = req.limit.clamp(1, MAX_BACKFILL_V1_LIMIT);
-    // Safe: `limit` is clamped to [1, MAX_BACKFILL_V1_LIMIT] (= 500) which fits in i64.
+    let limit = req.limit.clamp(1, MAX_BACKFILL_BATCH);
+    // Safe: `limit` is clamped to [1, MAX_BACKFILL_BATCH] (= 500) which fits in i64.
     #[allow(clippy::cast_possible_wrap)]
     let limit_i64 = limit as i64;
 
@@ -203,13 +202,8 @@ async fn compute_and_store_v1(
     content_hash: &str,
     r2_key: &str,
 ) -> anyhow::Result<()> {
-    let bytes = state
-        .storage
-        .get(r2_key)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("R2 object missing: {r2_key}"))?;
-    let toml_str = std::str::from_utf8(&bytes)?;
-    let v1 = tokf_common::canonical_v1::hash(toml_str)?;
+    let toml_str = crate::storage::get_utf8(&*state.storage, r2_key).await?;
+    let v1 = tokf_common::canonical_v1::hash(&toml_str)?;
     sqlx::query("UPDATE filters SET v1_hash = $1 WHERE content_hash = $2")
         .bind(&v1)
         .bind(content_hash)
