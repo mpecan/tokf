@@ -240,3 +240,39 @@ eval (tokf completions elvish | slurp)
 tokf completions nushell | save -f ~/.config/nushell/tokf.nu
 source ~/.config/nushell/tokf.nu
 ```
+
+## Logging hook activity (`TOKF_HOOK_LOG`)
+
+When chasing a rewrite bug that only manifests during a live AI-tool session, set the `TOKF_HOOK_LOG` environment variable to a writable file path. Every `tokf hook handle` invocation then appends a YAML record covering the BEFORE / AFTER command strings and the resulting outcome. Activate it in the same process group as Claude Code (or whichever tool is running the hook) — for Claude Code, that means setting it in your shell profile (`.zshrc`/`.bashrc`) before launching the agent.
+
+```sh
+export TOKF_HOOK_LOG=$HOME/.cache/tokf/hook.log
+```
+
+Each record looks like:
+
+```yaml
+---
+ts: 1714408876
+tool: Bash
+format: claude-code
+outcome: Allow
+before: |-
+  cargo test
+  ls | head -1
+  echo hi
+after: |-
+  tokf run cargo test
+  tokf run --baseline-pipe 'head -1' ls
+  echo hi
+```
+
+- `ts` is Unix epoch seconds (use `date -r <ts>` on macOS / `date -d @<ts>` on Linux to humanise).
+- `tool` is the AI tool's tool-name (`Bash`, `run_shell_command`, etc.).
+- `format` is `claude-code` / `gemini` / `cursor`.
+- `outcome` is one of `Allow`, `Ask`, `Deny`, `PassThrough`.
+- `after: ~` (YAML null) means the hook chose not to rewrite — the agent ran the original command verbatim.
+
+Records are appended; nothing rotates or trims the file, so prune it yourself if it grows large. When the variable is unset (the default), nothing is written and the hook has zero filesystem overhead.
+
+This was added in response to issue #355, where stray `1echo` files in the agent's cwd turned out to come from a multi-line rewrite collapsing newlines into adjacent tokens — the kind of bug that's invisible in `tokf rewrite "..."` runs but obvious in a hook log.

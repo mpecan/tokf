@@ -87,10 +87,26 @@ impl ParsedCommand {
     /// nodes so each leaf command becomes its own segment. The **last**
     /// child of an inner list inherits its parent's operator, because in
     /// source order that operator is what visually follows it.
+    ///
+    /// Newline-separated commands (`cmd1\ncmd2`) are returned as multiple
+    /// **top-level** rable nodes rather than a single `List`, so the
+    /// separator between them is computed as the source slice between
+    /// each node's end-span and the next node's start-span. That captures
+    /// `\n`, `;`, whitespace, comments, etc. byte-for-byte, so a downstream
+    /// rebuild via `seg + sep` reproduces the original source. Without this
+    /// (issue #355) `head -1\necho` collapsed to `head -1echo`, producing
+    /// stray files in the agent's cwd.
     pub fn compound_segments(&self) -> Vec<(String, String)> {
         let mut result = Vec::new();
-        for node in &self.nodes {
-            flatten_segments(node, &self.source, String::new(), &mut result);
+        let n = self.nodes.len();
+        for (i, node) in self.nodes.iter().enumerate() {
+            let parent_sep = if i + 1 < n {
+                let next = &self.nodes[i + 1];
+                self.source[node.span.end..next.span.start].to_string()
+            } else {
+                String::new()
+            };
+            flatten_segments(node, &self.source, parent_sep, &mut result);
         }
         if result.is_empty() {
             return vec![(self.source.clone(), String::new())];

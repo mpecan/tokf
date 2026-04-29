@@ -439,3 +439,136 @@ fn hook_handle_ask_verdict_exits_zero_and_emits_ask_json() {
         "exit 0 alone is not enough — the JSON ask verdict must reach Claude Code"
     );
 }
+
+// --- TOKF_HOOK_LOG diagnostic logging (issue #355) ---
+
+/// Run a hook invocation with `TOKF_HOOK_LOG` set to a file, then return
+/// the file's contents. The hook is invoked from a temp cwd so embedded
+/// stdlib filters apply with no project config.
+fn hook_handle_with_log(json: &str) -> (bool, String) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let log_path = dir.path().join("hook.log");
+
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .env("TOKF_HOOK_LOG", &log_path)
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    let success = output.status.success();
+    let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+    (success, log)
+}
+
+#[test]
+fn hook_log_records_rewrite() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let (success, log) = hook_handle_with_log(json);
+    assert!(success);
+    assert!(log.starts_with("---\n"), "log not YAML: {log:?}");
+    assert!(log.contains("tool: Bash\n"), "missing tool field: {log:?}");
+    assert!(
+        log.contains("format: claude-code\n"),
+        "missing format field: {log:?}"
+    );
+    assert!(
+        log.contains("outcome: Allow\n"),
+        "missing outcome field: {log:?}"
+    );
+    assert!(
+        log.contains("before: |-\n  git status\n"),
+        "missing/malformed before block: {log:?}"
+    );
+    assert!(
+        log.contains("after: |-\n  tokf run git status\n"),
+        "missing/malformed after block: {log:?}"
+    );
+}
+
+#[test]
+fn hook_log_records_passthrough_with_null_after() {
+    // No filter for `unknown-tool`, so the hook returns PassThrough and
+    // the log records `after: ~` to make the no-rewrite case unambiguous.
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-tool foo"}}"#;
+    let (success, log) = hook_handle_with_log(json);
+    assert!(success);
+    assert!(
+        log.contains("outcome: PassThrough\n"),
+        "expected PassThrough outcome: {log:?}"
+    );
+    assert!(log.contains("after: ~\n"), "expected null after: {log:?}");
+}
+
+#[test]
+fn hook_log_preserves_multiline_command_355() {
+    // Regression for #355: the BEFORE block must show the original
+    // newline-separated command, and the AFTER block must show the
+    // rewritten command with newlines preserved between segments
+    // (not glued into `head -1echo` style malformed output).
+    let json =
+        r#"{"tool_name":"Bash","tool_input":{"command":"git status\nls | head -1\necho hi"}}"#;
+    let (success, log) = hook_handle_with_log(json);
+    assert!(success);
+    assert!(
+        log.contains("before: |-\n  git status\n  ls | head -1\n  echo hi\n"),
+        "BEFORE block not preserved verbatim: {log:?}"
+    );
+    assert!(
+        log.contains(
+            "after: |-\n  tokf run git status\n  tokf run --baseline-pipe 'head -1' ls\n  echo hi\n"
+        ),
+        "AFTER block does not show preserved newlines: {log:?}"
+    );
+    assert!(
+        !log.contains("head -1echo"),
+        "AFTER block contains the bug-shape malformed token: {log:?}"
+    );
+}
+
+#[test]
+fn hook_log_skipped_when_env_unset() {
+    // Sanity: with no TOKF_HOOK_LOG env var, the hook still runs but
+    // creates no log file. Avoids surprise file writes for users who
+    // didn't opt into logging.
+    let dir = tempfile::TempDir::new().unwrap();
+    let log_path = dir.path().join("hook.log");
+
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .env_remove("TOKF_HOOK_LOG")
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    assert!(
+        !log_path.exists(),
+        "hook should not create log file when env unset"
+    );
+}

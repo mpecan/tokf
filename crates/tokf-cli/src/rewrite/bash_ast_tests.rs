@@ -80,6 +80,72 @@ fn mixed_and_or_chain() {
     assert!(segs[2].1.is_empty());
 }
 
+// --- Regression tests for #355: top-level newline-separated commands ---
+//
+// rable parses `cmd1\ncmd2` as TWO top-level nodes (not a single List with
+// a Newline operator), so each lands in `compound_segments` with the
+// hard-coded empty separator. When the rewrite engine reassembles segments
+// via `out.push_str(&rewritten); out.push_str(sep);`, the dropped newline
+// glued e.g. `head -1` to a following `echo`, producing `head -1echo` as
+// both a malformed flag and a redirect target file in the agent's cwd.
+
+#[test]
+fn compound_segments_preserves_newline_separator() {
+    let p = ParsedCommand::parse("cmd1\ncmd2").unwrap();
+    let segs = p.compound_segments();
+    assert_eq!(segs.len(), 2);
+    assert_eq!(segs[0].0, "cmd1");
+    assert!(
+        segs[0].1.contains('\n'),
+        "expected newline in separator, got {:?}",
+        segs[0].1
+    );
+    assert_eq!(segs[1].0, "cmd2");
+    assert!(segs[1].1.is_empty());
+}
+
+#[test]
+fn compound_segments_round_trip_byte_for_byte() {
+    // The reassembled `seg + sep` chain must reproduce the original source
+    // for any compound command, otherwise a downstream rewriter that
+    // returns segments unchanged could still corrupt the command.
+    for input in [
+        "cmd1\ncmd2",
+        "cmd1\ncmd2\ncmd3",
+        "cmd1 && cmd2\ncmd3",
+        "cmd1\ncmd2 | head -1\ncmd3",
+        "cmd1; cmd2\ncmd3 && cmd4",
+    ] {
+        let p = ParsedCommand::parse(input).unwrap();
+        let mut rebuilt = String::new();
+        for (seg, sep) in p.compound_segments() {
+            rebuilt.push_str(&seg);
+            rebuilt.push_str(&sep);
+        }
+        assert_eq!(rebuilt, input, "round-trip failed for {input:?}");
+    }
+}
+
+#[test]
+fn compound_segments_mixed_newline_and_and() {
+    // `cmd1 && cmd2\ncmd3` parses as a List(cmd1, cmd2) followed by a
+    // top-level Command(cmd3). The list's last item inherits a parent_sep
+    // computed from the gap between the list's source span and cmd3's span.
+    let p = ParsedCommand::parse("cmd1 && cmd2\ncmd3").unwrap();
+    let segs = p.compound_segments();
+    assert_eq!(segs.len(), 3);
+    assert_eq!(segs[0].0, "cmd1");
+    assert!(segs[0].1.contains("&&"));
+    assert_eq!(segs[1].0, "cmd2");
+    assert!(
+        segs[1].1.contains('\n'),
+        "expected newline after cmd2, got {:?}",
+        segs[1].1
+    );
+    assert_eq!(segs[2].0, "cmd3");
+    assert!(segs[2].1.is_empty());
+}
+
 // --- pipe detection ---
 
 #[test]

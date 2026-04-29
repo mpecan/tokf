@@ -542,3 +542,36 @@ fn wrapper_build_rules_count() {
         regex::Regex::new(&rule.match_pattern).expect("built-in wrapper regex should compile");
     }
 }
+
+// --- Regression test for #355: multi-line rewrite must preserve newlines ---
+
+#[test]
+fn rewrite_multiline_preserves_newline_separators() {
+    // Reproducer for #355: when an agent submits a multi-line bash command
+    // and at least one segment matches a filter, the rewrite engine used to
+    // drop the newline between segments, producing `tokf run cargo testls`
+    // style runs and stray `1echo` files in cwd from `head -1\necho` glomming.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("cargo-test.toml"),
+        "command = \"cargo test\"",
+    )
+    .unwrap();
+
+    let config = RewriteConfig::default();
+    let result = rewrite_with_config(
+        "cargo test\nls | head -1\necho hi",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    // Each segment that matches a filter is rewritten; the unchanged ones
+    // (echo) are preserved; and crucially the newlines between segments
+    // are preserved byte-for-byte. The embedded stdlib has filters for
+    // `cargo test` and `ls`, so both are rewritten — `ls | head -1` via
+    // pipe-stripping into `--baseline-pipe`.
+    assert_eq!(
+        result, "tokf run cargo test\ntokf run --baseline-pipe 'head -1' ls\necho hi",
+        "multi-line separator must be preserved verbatim"
+    );
+}

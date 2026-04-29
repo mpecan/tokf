@@ -3,6 +3,7 @@ pub mod cline;
 pub mod codex;
 pub mod copilot;
 pub mod cursor;
+mod debug_log;
 pub mod gemini;
 pub mod instructions;
 pub mod opencode;
@@ -199,7 +200,8 @@ fn handle_cursor_json_inner(
     };
 
     process_command(
-        command,
+        &command,
+        "shell",
         json,
         HookFormat::Cursor,
         user_config,
@@ -273,7 +275,8 @@ fn handle_generic<R: serde::Serialize>(
     };
 
     process_command(
-        command,
+        &command,
+        expected_tool,
         json,
         format,
         user_config,
@@ -287,10 +290,12 @@ fn handle_generic<R: serde::Serialize>(
 /// Shared post-deserialization logic for all hook formats.
 ///
 /// Handles both the external-engine path (verdict on every command) and
-/// the no-engine path (rewrite-only, auto-allow).
+/// the no-engine path (rewrite-only, auto-allow). When `TOKF_HOOK_LOG`
+/// is set in the env, every invocation appends one diagnostic record.
 #[allow(clippy::too_many_arguments)]
 fn process_command<R: serde::Serialize>(
-    command: String,
+    command: &str,
+    tool_name: &str,
     json: &str,
     format: HookFormat,
     user_config: &RewriteConfig,
@@ -299,42 +304,73 @@ fn process_command<R: serde::Serialize>(
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
 ) -> HookOutcome {
+    let (outcome, after) = decide(
+        command,
+        json,
+        format,
+        user_config,
+        search_dirs,
+        build_allow,
+        build_ask,
+        build_deny,
+    );
+    debug_log::log_event(tool_name, format, command, after.as_deref(), outcome);
+    outcome
+}
+
+/// Compute the hook decision and emit the response for it. Returns the
+/// outcome plus the rewritten command string when one was emitted (for
+/// the diagnostic log; `None` means no rewrite was sent to the agent).
+#[allow(clippy::too_many_arguments)]
+fn decide<R: serde::Serialize>(
+    command: &str,
+    json: &str,
+    format: HookFormat,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    build_allow: impl FnOnce(String, Option<String>) -> R,
+    build_ask: impl FnOnce(String, Option<String>) -> R,
+    build_deny: impl FnOnce(String, Option<String>) -> R,
+) -> (HookOutcome, Option<String>) {
     // When an external permission engine is configured, consult it on every
     // command — even ones tokf has no filter for.
-    if let Some(verdict) = query_external_engine(&command, json, format, user_config) {
+    if let Some(verdict) = query_external_engine(command, json, format, user_config) {
         // Deny doesn't need a rewrite — the command won't execute.
         if verdict.decision == PermissionDecision::Deny {
-            if emit_response(&build_deny(command, verdict.reason)) {
-                return HookOutcome::Deny;
+            if emit_response(&build_deny(command.to_string(), verdict.reason)) {
+                return (HookOutcome::Deny, None);
             }
-            return HookOutcome::PassThrough;
+            return (HookOutcome::PassThrough, None);
         }
-        let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
-        let output_cmd = if rewritten == command {
-            command
-        } else {
+        let rewritten = rewrite::rewrite_with_config(command, user_config, search_dirs, false);
+        let rewrite_changed = rewritten != command;
+        let output_cmd = if rewrite_changed {
             rewritten
+        } else {
+            command.to_string()
         };
+        let logged_after = rewrite_changed.then(|| output_cmd.clone());
         let (response, outcome) = match verdict.decision {
             PermissionDecision::Ask => (build_ask(output_cmd, verdict.reason), HookOutcome::Ask),
             _ => (build_allow(output_cmd, verdict.reason), HookOutcome::Allow),
         };
         if emit_response(&response) {
-            return outcome;
+            return (outcome, logged_after);
         }
-        return HookOutcome::PassThrough;
+        return (HookOutcome::PassThrough, logged_after);
     }
 
     // No external engine — only act when tokf has a matching filter.
-    let rewritten = rewrite::rewrite_with_config(&command, user_config, search_dirs, false);
+    let rewritten = rewrite::rewrite_with_config(command, user_config, search_dirs, false);
     if rewritten == command {
-        return HookOutcome::PassThrough;
+        return (HookOutcome::PassThrough, None);
     }
 
+    let logged_after = Some(rewritten.clone());
     if emit_response(&build_allow(rewritten, None)) {
-        HookOutcome::Allow
+        (HookOutcome::Allow, logged_after)
     } else {
-        HookOutcome::PassThrough
+        (HookOutcome::PassThrough, logged_after)
     }
 }
 
