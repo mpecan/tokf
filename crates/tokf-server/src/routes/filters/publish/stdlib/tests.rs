@@ -303,3 +303,23 @@ async fn publish_stdlib_rejects_invalid_username(pool: PgPool) {
         "error should mention username: {error}"
     );
 }
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn publish_stdlib_stores_v1_hash(pool: PgPool) {
+    let token = insert_service_token(&pool, "ci-test").await;
+    let state = make_state(pool.clone());
+    let app = crate::routes::create_router(state);
+
+    let req = make_valid_request();
+    let resp = post_stdlib(app, &token, &req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Stdlib publish goes through its own INSERT; assert v1_hash is populated.
+    let v1_hash: Option<String> = sqlx::query_scalar("SELECT v1_hash FROM filters LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let v1_hash = v1_hash.expect("stdlib publish must populate v1_hash");
+    let expected = tokf_common::canonical_v1::hash(&req.filters[0].filter_toml).unwrap();
+    assert_eq!(v1_hash, expected);
+}

@@ -96,23 +96,37 @@ struct FilterInsert<'a> {
     safety_passed: bool,
 }
 
-/// Returns `(author_username, was_new)` for the filter with `content_hash`.
+/// Result of upserting a published filter.
+struct UpsertResult {
+    /// The username of the row's author. For new inserts this matches the
+    /// publisher; for duplicates it's the original author.
+    author: String,
+    /// The canonical `content_hash` of the row in the DB. Equals
+    /// `insert.content_hash` for new inserts and byte-identical
+    /// resubmissions; for v1-equivalent duplicates this is the *existing*
+    /// row's `content_hash`, not the rejected publisher's.
+    content_hash: String,
+    /// True when a new row was inserted, false for any duplicate path.
+    is_new: bool,
+}
+
+/// Insert or detect an existing filter row.
 ///
-/// Attempts an INSERT and uses the result to distinguish new vs duplicate.
 /// Uploading to R2 before this call means orphaned objects are possible on DB
 /// failure, but they are harmless (no user-visible state and R2 uploads are
 /// idempotent on retry).
 ///
 /// Performs a v1-collision pre-check: if a row already exists with the same
 /// `v1_hash` but a different `content_hash`, returns that row's author and
-/// does not insert. This stops new publishes from re-splitting canonically
-/// equivalent filters across `content_hash` variants. Legacy rows with NULL
-/// `v1_hash` are excluded from the check until they are backfilled.
+/// canonical hash without inserting. This stops new publishes from
+/// re-splitting canonically equivalent filters across `content_hash`
+/// variants. Legacy rows with NULL `v1_hash` are excluded from the check
+/// until they are backfilled.
 async fn upsert_filter_record(
     state: &AppState,
     insert: &FilterInsert<'_>,
     author_username: &str,
-) -> Result<(String, bool), AppError> {
+) -> Result<UpsertResult, AppError> {
     if let Some((existing_hash, existing_author)) = sqlx::query_as::<_, (String, String)>(
         "SELECT f.content_hash, u.username FROM filters f
          JOIN users u ON u.id = f.author_id
@@ -130,7 +144,11 @@ async fn upsert_filter_record(
             v1 = %insert.v1_hash,
             "publish rejected as v1-equivalent of existing filter",
         );
-        return Ok((existing_author, false));
+        return Ok(UpsertResult {
+            author: existing_author,
+            content_hash: existing_hash,
+            is_new: false,
+        });
     }
 
     let result = sqlx::query(
@@ -149,7 +167,7 @@ async fn upsert_filter_record(
     .await?;
 
     if result.rows_affected() == 0 {
-        // Duplicate — fetch the original author's username
+        // Byte-identical duplicate — fetch the original author's username.
         let existing_author: String = sqlx::query_scalar(
             "SELECT u.username FROM filters f
              JOIN users u ON u.id = f.author_id
@@ -158,10 +176,18 @@ async fn upsert_filter_record(
         .bind(insert.content_hash)
         .fetch_one(&state.db)
         .await?;
-        return Ok((existing_author, false));
+        return Ok(UpsertResult {
+            author: existing_author,
+            content_hash: insert.content_hash.to_string(),
+            is_new: false,
+        });
     }
 
-    Ok((author_username.to_string(), true))
+    Ok(UpsertResult {
+        author: author_username.to_string(),
+        content_hash: insert.content_hash.to_string(),
+        is_new: true,
+    })
 }
 
 pub async fn upload_tests(
@@ -450,9 +476,13 @@ pub async fn publish_filter(
         r2_key: &r2_key,
         safety_passed,
     };
-    let (author, is_new) = upsert_filter_record(&state, &insert, &auth.username).await?;
+    let upserted = upsert_filter_record(&state, &insert, &auth.username).await?;
 
-    // Upload examples to R2 AFTER insert so set_examples_generated_at finds the row.
+    // For v1-collision duplicates, `upserted.content_hash` is the existing
+    // row's canonical hash, not `prepared.content_hash`. Examples and test
+    // rows below are still keyed by `prepared.content_hash` because:
+    // - examples upload is best-effort and orphaned R2 objects are harmless,
+    // - `insert_filter_tests` is gated on `is_new` so it only runs for genuinely new rows.
     if let Ok((examples_json, _)) = examples_result {
         if let Err(e) =
             storage::upload_examples(&*state.storage, &prepared.content_hash, examples_json).await
@@ -463,7 +493,7 @@ pub async fn publish_filter(
         }
     }
 
-    if is_new {
+    if upserted.is_new {
         insert_filter_tests(&state.db, &prepared.content_hash, &test_r2_keys).await?;
 
         // Fire-and-forget: materialize per-filter metadata + catalog index to R2
@@ -474,8 +504,8 @@ pub async fn publish_filter(
         );
     }
 
-    let registry_url = format!("{}/filters/{}", state.public_url, prepared.content_hash);
-    let status = if is_new {
+    let registry_url = format!("{}/filters/{}", state.public_url, upserted.content_hash);
+    let status = if upserted.is_new {
         StatusCode::CREATED
     } else {
         StatusCode::OK
@@ -484,9 +514,9 @@ pub async fn publish_filter(
         status,
         crate::routes::ip::rate_limit_headers(&rl),
         Json(PublishFilterResponse {
-            content_hash: prepared.content_hash,
+            content_hash: upserted.content_hash,
             command_pattern: prepared.command_pattern,
-            author,
+            author: upserted.author,
             registry_url,
         }),
     ))

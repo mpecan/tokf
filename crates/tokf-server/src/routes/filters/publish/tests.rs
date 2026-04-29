@@ -585,11 +585,17 @@ async fn publish_v1_collision_returns_existing_author(pool: PgPool) {
     let (_, alice_token) = insert_test_user(&pool, "alice_v1").await;
     let (_, bob_token) = insert_test_user(&pool, "bob_v1").await;
 
-    // Whitespace + leading comment differ; v1 canonicalisation collapses both.
+    // `command = "x"` vs `command = ["x"]` — these parse to different
+    // `CommandPattern` enum variants (`Single` vs `Multiple`), so
+    // `canonical_hash` (which serialises the parsed FilterConfig) yields
+    // different content_hashes. canonical_v1 collapses both into the
+    // single-string form, so they share a v1_hash. This is the smallest
+    // fixture that exercises the v1-collision branch in
+    // `upsert_filter_record` rather than the byte-equal duplicate path.
     let alice_toml: &[u8] = b"command = \"my-tool\"\n";
-    let bob_toml: &[u8] = b"# bob's slightly different version\n\ncommand   =   \"my-tool\"\n\n";
+    let bob_toml: &[u8] = b"command = [\"my-tool\"]\n";
 
-    // Sanity check: same v1, different bytes.
+    // Sanity check: same v1, different content_hash.
     let v1_alice =
         tokf_common::canonical_v1::hash(std::str::from_utf8(alice_toml).unwrap()).unwrap();
     let v1_bob = tokf_common::canonical_v1::hash(std::str::from_utf8(bob_toml).unwrap()).unwrap();
@@ -597,7 +603,16 @@ async fn publish_v1_collision_returns_existing_author(pool: PgPool) {
         v1_alice, v1_bob,
         "test setup: filters must canonicalise to the same v1 hash"
     );
-    assert_ne!(alice_toml, bob_toml, "test setup: filter bytes must differ");
+    let alice_cfg: tokf_common::config::types::FilterConfig =
+        toml::from_str(std::str::from_utf8(alice_toml).unwrap()).unwrap();
+    let bob_cfg: tokf_common::config::types::FilterConfig =
+        toml::from_str(std::str::from_utf8(bob_toml).unwrap()).unwrap();
+    assert_ne!(
+        tokf_common::hash::canonical_hash(&alice_cfg).unwrap(),
+        tokf_common::hash::canonical_hash(&bob_cfg).unwrap(),
+        "test setup: content_hashes must differ — otherwise the test exercises \
+         the byte-duplicate path, not the v1-collision branch",
+    );
 
     let app = crate::routes::create_router(make_state(pool.clone()));
     let alice_resp = post_filter(

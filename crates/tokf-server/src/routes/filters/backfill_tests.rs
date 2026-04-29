@@ -133,31 +133,19 @@ async fn backfill_v1_skips_already_populated(pool: PgPool) {
     );
 }
 
-#[crdb_test_macro::crdb_test(migrations = "./migrations")]
-async fn backfill_v1_reports_failure_when_r2_object_missing(pool: PgPool) {
-    let storage = Arc::new(InMemoryStorageClient::new());
-    let (_, user) = insert_test_user(&pool, "alice_missing").await;
-    let service_token = insert_service_token(&pool, "bf-missing").await;
-
-    let hash = publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
-
-    // Wipe the R2 object so the backfill can't find it.
-    let r2_key: String = sqlx::query_scalar("SELECT r2_key FROM filters WHERE content_hash = $1")
-        .bind(&hash)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    storage.delete(&r2_key).await.unwrap();
-
+/// Drive a backfill against a single corrupted-R2 row and assert that:
+/// the call succeeds with `processed=1, updated=0`, the row appears in
+/// `failed[]`, and the row's `v1_hash` remains NULL. Used by every
+/// per-failure-mode test below.
+async fn run_backfill_expecting_one_failure(
+    pool: &PgPool,
+    storage: Arc<InMemoryStorageClient>,
+    service_token: &str,
+    hash: &str,
+) {
     let app =
         crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
-    let resp = post_json(
-        app,
-        &service_token,
-        URI,
-        &serde_json::json!({ "limit": 10 }),
-    )
-    .await;
+    let resp = post_json(app, service_token, URI, &serde_json::json!({ "limit": 10 })).await;
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = resp.into_body().collect().await.unwrap().to_bytes();
@@ -168,17 +156,59 @@ async fn backfill_v1_reports_failure_when_r2_object_missing(pool: PgPool) {
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0]["content_hash"], hash);
 
-    // v1_hash should still be NULL since compute failed.
     let v1: Option<String> =
         sqlx::query_scalar("SELECT v1_hash FROM filters WHERE content_hash = $1")
-            .bind(&hash)
-            .fetch_one(&pool)
+            .bind(hash)
+            .fetch_one(pool)
             .await
             .unwrap();
     assert!(
         v1.is_none(),
         "v1_hash must remain NULL when backfill failed"
     );
+}
+
+async fn r2_key_for(pool: &PgPool, hash: &str) -> String {
+    sqlx::query_scalar("SELECT r2_key FROM filters WHERE content_hash = $1")
+        .bind(hash)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn backfill_v1_reports_failure_when_r2_object_missing(pool: PgPool) {
+    let storage = Arc::new(InMemoryStorageClient::new());
+    let (_, user) = insert_test_user(&pool, "alice_missing").await;
+    let service_token = insert_service_token(&pool, "bf-missing").await;
+
+    let hash = publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
+    storage
+        .delete(&r2_key_for(&pool, &hash).await)
+        .await
+        .unwrap();
+
+    run_backfill_expecting_one_failure(&pool, storage, &service_token, &hash).await;
+}
+
+/// Exercises both UTF-8 and TOML-parse failure branches in
+/// `compute_and_store_v1` by writing bytes that are invalid as both.
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn backfill_v1_reports_failure_when_r2_object_unparseable(pool: PgPool) {
+    let storage = Arc::new(InMemoryStorageClient::new());
+    let (_, user) = insert_test_user(&pool, "alice_corrupt").await;
+    let service_token = insert_service_token(&pool, "bf-corrupt").await;
+
+    let hash = publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
+    storage
+        .put(
+            &r2_key_for(&pool, &hash).await,
+            b"\xff\xfe not valid toml [[[".to_vec(),
+        )
+        .await
+        .unwrap();
+
+    run_backfill_expecting_one_failure(&pool, storage, &service_token, &hash).await;
 }
 
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
