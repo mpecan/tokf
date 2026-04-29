@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.43](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.42...tokf-hook-types-v0.2.43) (2026-04-29)
+
+
+### Bug Fixes
+
+* **rewrite:** protect remote-shell argv from regex rewrites ([#348](https://github.com/mpecan/tokf/issues/348)) ([08b86ab](https://github.com/mpecan/tokf/commit/08b86ab9b3347093a21241dd7f706a8d1a17ce65))
+
 ## [0.2.42](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.41...tokf-hook-types-v0.2.42) (2026-04-27)
 
 

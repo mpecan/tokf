@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.43](https://github.com/mpecan/tokf/compare/tokf-v0.2.42...tokf-v0.2.43) (2026-04-29)
+
+
+### Bug Fixes
+
+* **rewrite:** preserve newline separators in compound commands ([#356](https://github.com/mpecan/tokf/issues/356)) ([dc5de0f](https://github.com/mpecan/tokf/commit/dc5de0f7958cc20487d465d812499449d47e6364))
+* **rewrite:** protect remote-shell argv from regex rewrites ([#348](https://github.com/mpecan/tokf/issues/348)) ([08b86ab](https://github.com/mpecan/tokf/commit/08b86ab9b3347093a21241dd7f706a8d1a17ce65))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.42 to 0.2.43
+    * tokf-filter bumped from 0.2.42 to 0.2.43
+    * tokf-hook-types bumped from 0.2.42 to 0.2.43
+
 ## [0.2.42](https://github.com/mpecan/tokf/compare/tokf-v0.2.41...tokf-v0.2.42) (2026-04-27)
 
 
