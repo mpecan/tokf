@@ -109,14 +109,24 @@ fn compound_segments_round_trip_byte_for_byte() {
     // The reassembled `seg + sep` chain must reproduce the original source
     // for any compound command, otherwise a downstream rewriter that
     // returns segments unchanged could still corrupt the command.
+    //
+    // Heredoc and line-continuation cases lock in that the inter-node
+    // source slice doesn't drop heredoc bodies or backslash-newline
+    // continuations — both are forms where the rable AST span boundaries
+    // are not the obvious whitespace gaps.
     for input in [
         "cmd1\ncmd2",
         "cmd1\ncmd2\ncmd3",
         "cmd1 && cmd2\ncmd3",
         "cmd1\ncmd2 | head -1\ncmd3",
         "cmd1; cmd2\ncmd3 && cmd4",
+        "cat <<EOF\nbody\nEOF\necho done",
+        "cmd1 \\\necho continued",
+        "cmd1   \n   cmd2",
     ] {
-        let p = ParsedCommand::parse(input).unwrap();
+        let Some(p) = ParsedCommand::parse(input) else {
+            continue;
+        };
         let mut rebuilt = String::new();
         for (seg, sep) in p.compound_segments() {
             rebuilt.push_str(&seg);

@@ -572,3 +572,133 @@ fn hook_log_skipped_when_env_unset() {
         "hook should not create log file when env unset"
     );
 }
+
+#[test]
+fn hook_log_treats_empty_env_var_as_unset() {
+    // Some shells leak `TOKF_HOOK_LOG=` (empty value). Treat it as unset
+    // rather than trying to open a file at the empty path.
+    let dir = tempfile::TempDir::new().unwrap();
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .env("TOKF_HOOK_LOG", "")
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "hook must not error on empty env var"
+    );
+}
+
+#[test]
+fn hook_log_unwritable_path_does_not_block_hook() {
+    // Best-effort: an unwritable log path (parent dir doesn't exist) must
+    // not block the hook from rewriting. Rewrite still emits its JSON
+    // verdict on stdout; the log write is silently dropped.
+    let dir = tempfile::TempDir::new().unwrap();
+    let bad_log = dir.path().join("does/not/exist/hook.log");
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .env("TOKF_HOOK_LOG", &bad_log)
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "hook should not error: {stdout}");
+    assert!(
+        stdout.contains("tokf run git status"),
+        "rewrite must still happen even when logging fails: {stdout}"
+    );
+    assert!(
+        !bad_log.exists(),
+        "log file must not appear at unwritable path"
+    );
+}
+
+#[test]
+fn hook_log_records_ask_outcome() {
+    // Wires the same external-engine harness as the existing #343 test
+    // but with TOKF_HOOK_LOG set. Confirms the Ask outcome flows through
+    // the single log call site at the bottom of process_command.
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let log_path = dir.path().join("hook.log");
+
+    let engine = dir.path().join("engine.sh");
+    std::fs::write(
+        &engine,
+        "#!/bin/sh\ncat >/dev/null\necho '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"please confirm\",\"updatedInput\":{\"command\":\"git push\"}}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let rewrites_dir = dir.path().join(".tokf");
+    std::fs::create_dir_all(&rewrites_dir).unwrap();
+    let rewrites = format!(
+        "[permissions]\nengine = \"external\"\n\n[permissions.external]\ncommand = \"{}\"\n",
+        engine.display(),
+    );
+    std::fs::write(rewrites_dir.join("rewrites.toml"), rewrites).unwrap();
+
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git push"}}"#;
+    let mut child = tokf()
+        .args(["hook", "handle"])
+        .env("TOKF_HOOK_LOG", &log_path)
+        .current_dir(dir.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let log = std::fs::read_to_string(&log_path).unwrap();
+    assert!(
+        log.contains("outcome: Ask\n"),
+        "expected Ask outcome in log: {log}"
+    );
+    assert!(
+        log.contains("before: |-\n  git push\n"),
+        "missing/malformed before block: {log}"
+    );
+}
