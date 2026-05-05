@@ -87,6 +87,44 @@ fn run_nonexistent_command_exits_with_error() {
 }
 
 #[test]
+fn run_builtin_git_status_filter_succeeds() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let init = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        init.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    let output = tokf()
+        .args(["run", "--verbose", "git", "status"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("matched git/status.toml"),
+        "expected built-in git status filter to match, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("program not found"),
+        "built-in git status filter should not depend on sh, got: {stderr}"
+    );
+}
+
+#[test]
 fn run_no_filter_preserves_failing_exit_code() {
     let output = tokf()
         .args([

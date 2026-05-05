@@ -111,9 +111,35 @@ pub fn resolve_program(program: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Escape a string for safe inclusion in a shell command (single-quote wrapping).
+/// Build the system shell command for a shell snippet.
+fn build_shell_command(command: &str) -> Command {
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("powershell.exe");
+        cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+            .arg(command);
+        cmd
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(command);
+        cmd
+    }
+}
+
+/// Escape a string for safe inclusion in a shell command.
 pub(crate) fn shell_escape(arg: &str) -> String {
-    format!("'{}'", arg.replace('\'', "'\\''"))
+    #[cfg(windows)]
+    {
+        format!("'{}'", arg.replace('\'', "''"))
+    }
+
+    #[cfg(not(windows))]
+    {
+        format!("'{}'", arg.replace('\'', "'\\''"))
+    }
 }
 
 /// Execute a command with the given arguments.
@@ -200,10 +226,8 @@ pub fn execute_shell_with_env(
     #[allow(clippy::literal_string_with_formatting_args)]
     let shell_cmd = run.replace("{args}", &joined_args);
 
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c")
-        .arg(&shell_cmd)
-        .stdout(Stdio::piped())
+    let mut cmd = build_shell_command(&shell_cmd);
+    cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for (k, v) in extra_env {
         cmd.env(k, v);
@@ -322,6 +346,13 @@ mod tests {
         assert!(stdout.contains("; echo injected"));
         // "injected" should not appear as a separate execution
         assert!(!stdout.contains("\ninjected"));
+    }
+
+    #[test]
+    fn test_execute_shell_args_with_single_quote() {
+        let args = vec!["it's quoted".to_string()];
+        let result = execute_shell("echo {args}", &args).unwrap();
+        assert_eq!(result.stdout.trim(), "it's quoted");
     }
 
     // --- build_result / combined field tests ---
