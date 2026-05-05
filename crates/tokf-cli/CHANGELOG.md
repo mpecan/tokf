@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.44](https://github.com/mpecan/tokf/compare/tokf-v0.2.43...tokf-v0.2.44) (2026-05-05)
+
+
+### Bug Fixes
+
+* **cli:** use PowerShell for run filters on Windows ([#361](https://github.com/mpecan/tokf/issues/361)) ([99621c9](https://github.com/mpecan/tokf/commit/99621c9f4cbe3837d03b2f741fd425fd5f4a3994))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.43 to 0.2.44
+    * tokf-filter bumped from 0.2.43 to 0.2.44
+    * tokf-hook-types bumped from 0.2.43 to 0.2.44
+
 ## [0.2.43](https://github.com/mpecan/tokf/compare/tokf-v0.2.42...tokf-v0.2.43) (2026-04-29)
 
 
