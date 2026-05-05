@@ -1,4 +1,7 @@
 mod backfill;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod backfill_tests;
 mod publish;
 mod regenerate;
 mod search;
@@ -9,7 +12,7 @@ mod search_tests;
 pub mod test_helpers;
 mod update_tests;
 
-pub use backfill::backfill_versions;
+pub use backfill::{backfill_v1_hashes, backfill_versions};
 pub use publish::publish_filter;
 pub use publish::stdlib::publish_stdlib;
 pub use regenerate::regenerate_examples;
