@@ -227,7 +227,7 @@ pub fn execute_shell_with_env(
     let shell_cmd = run.replace("{args}", &joined_args);
 
     let mut cmd = build_shell_command(&shell_cmd);
-cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
