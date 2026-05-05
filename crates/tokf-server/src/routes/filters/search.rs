@@ -76,6 +76,11 @@ pub struct DownloadPayload {
     /// differ from the URL hash when the filter was published before recent
     /// schema additions — see issue #350.
     pub content_hash: String,
+    /// Canonical v1 hash (schema-independent; see ADR-0002). Stable
+    /// across `FilterConfig` schema additions, the long-term identity for
+    /// all filters going forward. Clients aware of v1 verify against
+    /// this; older clients ignore the field.
+    pub v1_hash: String,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -342,6 +347,14 @@ pub async fn download_filter(
         AppError::Internal("filter content cannot be re-hashed".to_string())
     })?;
 
+    // Compute the schema-independent v1 hash (ADR-0002). Stable across
+    // future `FilterConfig` schema additions; the long-term identity for
+    // every filter going forward.
+    let v1_hash = tokf_common::canonical_v1::hash(&filter_toml).map_err(|e| {
+        tracing::warn!("v1 hash computation failed for {hash}: {e}");
+        AppError::Internal("filter content cannot be hashed under v1".to_string())
+    })?;
+
     let test_keys: Vec<String> =
         sqlx::query_scalar("SELECT r2_key FROM filter_tests WHERE filter_hash = $1")
             .bind(&hash)
@@ -379,6 +392,7 @@ pub async fn download_filter(
             filter_toml,
             test_files,
             content_hash,
+            v1_hash,
         }),
     ))
 }
