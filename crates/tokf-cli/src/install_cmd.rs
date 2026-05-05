@@ -46,11 +46,17 @@ fn install(
     // Parse TOML once; derive command pattern and detect Lua in a single pass.
     let (command_pattern, config) = parse_filter_toml(&downloaded.filter_toml)?;
 
-    // The hash actually used for attribution: the server-recomputed
-    // `content_hash` when present, else the URL hash. The URL hash is a
-    // stable lookup key; the recomputed hash is the authoritative identity
-    // under the current schema. See issue #350.
-    let hash = verify_and_resolve_hash(&url_hash, downloaded.content_hash.as_deref(), &config)?;
+    // The hash actually used for attribution. Preference order:
+    //  1. Server-provided `v1_hash` (schema-independent; ADR-0002).
+    //  2. Server-provided `content_hash` (schema-tied recompute; #351).
+    //  3. URL hash (legacy fallback for old servers; #350 scaffolding).
+    let hash = verify_and_resolve_hash(
+        &url_hash,
+        downloaded.v1_hash.as_deref(),
+        downloaded.content_hash.as_deref(),
+        &config,
+        &downloaded.filter_toml,
+    )?;
 
     let install_base = resolve_install_base(local)?;
     let rel_path = command_pattern_to_path(&command_pattern);
@@ -122,29 +128,56 @@ fn parse_filter_toml(toml_str: &str) -> anyhow::Result<(String, FilterConfig)> {
 
 /// Verify the downloaded filter and resolve the authoritative content hash.
 ///
-/// The server (when up-to-date — see issue #350) recomputes `canonical_hash`
-/// over the stored TOML and returns it as `server_content_hash`. The client
-/// trusts that value as the filter's identity under the current schema, but
-/// still hashes the wire bytes to detect any tampering between server and
-/// client.
+/// Preference order, highest to lowest trust:
 ///
-/// When the server is older than this client and doesn't return a
-/// `server_content_hash`, fall back to verifying that the URL hash itself
-/// matches the locally-computed hash (the historical behaviour, broken for
-/// filters published before recent `FilterConfig` schema additions but kept
-/// for graceful degradation).
+/// 1. **`server_v1_hash`** — schema-independent canonical TOML hash
+///    (ADR-0002). When both client and server speak v1, this is the
+///    long-term identity. Verified by recomputing v1 locally and
+///    matching.
+/// 2. **`server_content_hash`** — server's recomputed `canonical_hash`
+///    (#351). Schema-tied; trusted because the server is the wire-tamper
+///    boundary, but susceptible to drift across `FilterConfig` schema
+///    changes. Verified by recomputing locally.
+/// 3. **URL hash** — legacy fallback for servers that emit neither
+///    `v1_hash` nor `content_hash`. Equivalent to the pre-#351 behaviour;
+///    fails for filters whose URL hash is from a different schema epoch
+///    than the client knows about.
 ///
-/// Returns the hash to use for attribution and display.
+/// Returns the hash to use for attribution and display, preferring v1.
 ///
 /// # Errors
 ///
-/// - Server provided a hash that doesn't match the wire bytes (tamper).
-/// - Old server, and the URL hash doesn't match the locally-computed hash.
+/// - Any server-provided hash disagrees with the locally-recomputed value
+///   for that same form (wire tamper between server and client).
+/// - All server hashes are absent and the URL hash doesn't match the
+///   client's `canonical_hash`.
 fn verify_and_resolve_hash(
     url_hash: &str,
+    server_v1_hash: Option<&str>,
     server_content_hash: Option<&str>,
     config: &FilterConfig,
+    filter_toml: &str,
 ) -> anyhow::Result<String> {
+    if let Some(server_v1) = server_v1_hash {
+        let client_v1 = tokf_common::canonical_v1::hash(filter_toml)
+            .map_err(|e| anyhow::anyhow!("could not compute v1 hash: {e}"))?;
+        if client_v1 != server_v1 {
+            anyhow::bail!(
+                "v1 hash mismatch with server-provided value: \
+                 server={server_v1}, computed={client_v1} — \
+                 the connection may have been tampered with"
+            );
+        }
+        if url_hash != server_v1 {
+            eprintln!(
+                "[tokf] note: filter URL hash {url_hash} differs from current \
+                 v1 content hash {server_v1}; the filter is now identified \
+                 under v1."
+            );
+        }
+        return Ok(server_v1.to_string());
+    }
+
     let client_hash = tokf_common::hash::canonical_hash(config)
         .map_err(|e| anyhow::anyhow!("could not compute filter hash: {e}"))?;
     if let Some(server_hash) = server_content_hash {
@@ -164,7 +197,7 @@ fn verify_and_resolve_hash(
         }
         return Ok(server_hash.to_string());
     }
-    // Old-server fallback: the URL hash is the only identity we have.
+    // Pre-#351 server: the URL hash is the only identity we have.
     if client_hash != url_hash {
         anyhow::bail!(
             "filter hash mismatch: expected {url_hash}, computed {client_hash} — \
@@ -390,77 +423,88 @@ fn write_filter(
 mod tests {
     use super::*;
 
-    /// Build a `FilterConfig` whose canonical hash is known so we can drive
-    /// `verify_and_resolve_hash` deterministically.
-    fn sample_config_and_hash() -> (FilterConfig, String) {
-        let toml = r#"command = "git push""#;
-        let cfg: FilterConfig = toml::from_str(toml).unwrap();
-        let hash = tokf_common::hash::canonical_hash(&cfg).unwrap();
-        (cfg, hash)
+    /// Sample TOML, parsed config, and the three relevant hashes for
+    /// driving `verify_and_resolve_hash` deterministically.
+    fn sample_filter() -> (String, FilterConfig, String, String) {
+        let toml = r#"command = "git push""#.to_string();
+        let cfg: FilterConfig = toml::from_str(&toml).unwrap();
+        let canonical = tokf_common::hash::canonical_hash(&cfg).unwrap();
+        let v1 = tokf_common::canonical_v1::hash(&toml).unwrap();
+        (toml, cfg, canonical, v1)
     }
 
     #[test]
-    fn verify_and_resolve_uses_server_content_hash_when_provided() {
-        let (cfg, current) = sample_config_and_hash();
-        // URL hash is "stale" (a 64-char placeholder); server says the
-        // current hash is `current`. Client trusts the server and returns it.
+    fn verify_and_resolve_prefers_v1_when_provided() {
+        let (toml, cfg, _canonical, v1) = sample_filter();
+        // URL hash is stale; server provides v1. Client picks v1.
         let url = "0".repeat(64);
-        let resolved = verify_and_resolve_hash(&url, Some(&current), &cfg).unwrap();
-        assert_eq!(resolved, current);
+        let resolved = verify_and_resolve_hash(&url, Some(&v1), None, &cfg, &toml).unwrap();
+        assert_eq!(resolved, v1);
     }
 
     #[test]
-    fn verify_and_resolve_errors_when_server_hash_disagrees_with_computed() {
-        let (cfg, _current) = sample_config_and_hash();
-        // Server claims a hash that doesn't match what we'd compute from the
-        // bytes we received — wire-tampering between server and client.
+    fn verify_and_resolve_v1_takes_precedence_over_content_hash() {
+        let (toml, cfg, canonical, v1) = sample_filter();
+        // Both v1 and content_hash present: v1 wins.
         let url = "0".repeat(64);
-        let bogus_server_hash = "1".repeat(64);
-        let err = verify_and_resolve_hash(&url, Some(&bogus_server_hash), &cfg).unwrap_err();
+        let resolved =
+            verify_and_resolve_hash(&url, Some(&v1), Some(&canonical), &cfg, &toml).unwrap();
+        assert_eq!(resolved, v1);
+        assert_ne!(resolved, canonical);
+    }
+
+    #[test]
+    fn verify_and_resolve_errors_when_v1_disagrees() {
+        let (toml, cfg, _canonical, _v1) = sample_filter();
+        let url = "0".repeat(64);
+        let bogus_v1 = "v1:".to_string() + &"1".repeat(64);
+        let err = verify_and_resolve_hash(&url, Some(&bogus_v1), None, &cfg, &toml).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
-            msg.contains("hash mismatch with server-provided value"),
+            msg.contains("v1 hash mismatch with server-provided value"),
             "wrong error: {msg}"
         );
-        // Both hashes must be present so users can copy them when reporting.
-        let (_, current) = sample_config_and_hash();
+    }
+
+    #[test]
+    fn verify_and_resolve_falls_back_to_content_hash_when_v1_absent() {
+        let (toml, cfg, canonical, _v1) = sample_filter();
+        // Pre-v1 server: provides content_hash but no v1.
+        let url = "0".repeat(64);
+        let resolved = verify_and_resolve_hash(&url, None, Some(&canonical), &cfg, &toml).unwrap();
+        assert_eq!(resolved, canonical);
+    }
+
+    #[test]
+    fn verify_and_resolve_errors_when_content_hash_disagrees() {
+        let (toml, cfg, _canonical, _v1) = sample_filter();
+        let url = "0".repeat(64);
+        let bogus = "1".repeat(64);
+        let err = verify_and_resolve_hash(&url, None, Some(&bogus), &cfg, &toml).unwrap_err();
+        let msg = format!("{err:#}");
         assert!(
-            msg.contains(&bogus_server_hash) && msg.contains(&current),
-            "error should include both server-claimed and locally-computed hashes: {msg}"
+            msg.contains("filter content hash mismatch with server-provided value"),
+            "wrong error: {msg}"
         );
     }
 
     #[test]
-    fn verify_and_resolve_falls_back_to_url_hash_on_old_server() {
-        let (cfg, current) = sample_config_and_hash();
-        // Old server: no content_hash field. URL hash equals the locally
-        // computed hash — the post-fix happy path against an old server.
-        let resolved = verify_and_resolve_hash(&current, None, &cfg).unwrap();
-        assert_eq!(resolved, current);
+    fn verify_and_resolve_falls_back_to_url_hash_on_pre_351_server() {
+        let (toml, cfg, canonical, _v1) = sample_filter();
+        // Pre-#351 server: no v1_hash, no content_hash; URL hash equals
+        // the client's canonical_hash.
+        let resolved = verify_and_resolve_hash(&canonical, None, None, &cfg, &toml).unwrap();
+        assert_eq!(resolved, canonical);
     }
 
     #[test]
-    fn verify_and_resolve_errors_on_old_server_with_url_mismatch() {
-        let (cfg, _current) = sample_config_and_hash();
-        // Old server, URL hash doesn't match — the original #350 failure mode
-        // when we can't repair it from the client.
+    fn verify_and_resolve_errors_on_pre_351_server_with_url_mismatch() {
+        let (toml, cfg, _canonical, _v1) = sample_filter();
         let url = "0".repeat(64);
-        let err = verify_and_resolve_hash(&url, None, &cfg).unwrap_err();
+        let err = verify_and_resolve_hash(&url, None, None, &cfg, &toml).unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains("hash mismatch"), "wrong error: {msg}");
         assert!(msg.contains("issue #350"), "should reference issue: {msg}");
-    }
-
-    #[test]
-    fn verify_and_resolve_returns_server_hash_even_when_url_differs() {
-        let (cfg, current) = sample_config_and_hash();
-        let url = "feedface".repeat(8); // 64 chars, different from `current`
-        let resolved = verify_and_resolve_hash(&url, Some(&current), &cfg).unwrap();
-        // The user requested a stale URL hash; the resolved identity is the
-        // server's recomputed hash, used everywhere downstream (attribution,
-        // display).
-        assert_eq!(resolved, current);
-        assert_ne!(resolved, url);
     }
 
     #[test]

@@ -18,6 +18,21 @@ pub trait StorageClient: Send + Sync {
     async fn delete(&self, key: &str) -> anyhow::Result<()>;
 }
 
+/// Fetch an object as a UTF-8 string. Errors when the key is missing or
+/// when the bytes are not valid UTF-8.
+///
+/// # Errors
+///
+/// Returns an error if the storage call fails, the key does not exist, or
+/// the content is not valid UTF-8.
+pub async fn get_utf8(storage: &dyn StorageClient, key: &str) -> anyhow::Result<String> {
+    let bytes = storage
+        .get(key)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("storage object missing: {key}"))?;
+    String::from_utf8(bytes).map_err(|e| anyhow::anyhow!("storage object not UTF-8: {e}"))
+}
+
 /// Upload a filter TOML if not already stored. Returns the R2 key.
 ///
 /// Key format: `filters/{content_hash}/filter.toml`
