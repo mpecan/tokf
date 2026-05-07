@@ -84,6 +84,10 @@ fn run_nonexistent_command_exits_with_error() {
         stderr.contains("[tokf] error"),
         "expected error on stderr, got: {stderr}"
     );
+    assert!(
+        stderr.contains("program not found: nonexistent_cmd_xyz_99"),
+        "expected missing program name on stderr, got: {stderr}"
+    );
 }
 
 #[test]
