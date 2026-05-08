@@ -125,6 +125,56 @@ fn run_builtin_git_status_filter_succeeds() {
 }
 
 #[test]
+fn run_git_status_preserves_global_c_dir_with_run_override() {
+    let cwd_repo = tempfile::TempDir::new().unwrap();
+    let target_repo = tempfile::TempDir::new().unwrap();
+
+    for dir in [cwd_repo.path(), target_repo.path()] {
+        let init = Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            init.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+    }
+
+    std::fs::write(cwd_repo.path().join("wrong-repo.txt"), "wrong").unwrap();
+    std::fs::write(target_repo.path().join("right-repo.txt"), "right").unwrap();
+
+    let output = tokf()
+        .args([
+            "run",
+            "git",
+            "-C",
+            target_repo.path().to_str().unwrap(),
+            "status",
+        ])
+        .current_dir(cwd_repo.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("right-repo.txt"),
+        "expected target repo status, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("wrong-repo.txt"),
+        "status came from current working repo instead of -C target: {stdout}"
+    );
+}
+
+#[test]
 fn run_no_filter_preserves_failing_exit_code() {
     let output = tokf()
         .args([

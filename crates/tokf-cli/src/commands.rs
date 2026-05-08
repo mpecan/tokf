@@ -232,8 +232,14 @@ pub fn cmd_run(
     } else {
         filter_match.as_ref().map(|m| &m.config)
     };
-    let cmd_result =
-        resolve::run_command(filter_cfg, words_consumed, command_args, &remaining_args)?;
+    let matched_command = filter_match.as_ref().map(|m| m.matched_command.as_str());
+    let cmd_result = resolve::run_command(
+        filter_cfg,
+        words_consumed,
+        matched_command,
+        command_args,
+        &remaining_args,
+    )?;
 
     let filter_match = if passthrough { None } else { filter_match };
     let Some(filter_match) = filter_match else {

@@ -10,6 +10,7 @@ pub struct FilterMatch {
     /// Canonical hash of the Phase A resolved config.
     pub hash: String,
     pub words_consumed: usize,
+    pub matched_command: String,
     pub output_variants: Vec<config::variant::DeferredVariant>,
     /// The full resolved filter list, kept for Phase B output-pattern resolution.
     pub resolved_filters: Vec<config::ResolvedFilter>,
@@ -36,7 +37,7 @@ pub fn find_filter(
     let cwd = std::env::current_dir().unwrap_or_default();
 
     for filter in &resolved {
-        if let Some(consumed) = filter.matches(&words) {
+        if let Some((matched_command, consumed)) = filter.matching_pattern(&words) {
             if verbose {
                 eprintln!(
                     "[tokf] matched {} (command: \"{}\") in {}",
@@ -55,6 +56,7 @@ pub fn find_filter(
                     config: filter.config.clone(),
                     hash: filter.hash.clone(),
                     words_consumed: consumed,
+                    matched_command: matched_command.to_string(),
                     output_variants: vec![],
                     resolved_filters: resolved,
                 }));
@@ -68,6 +70,7 @@ pub fn find_filter(
                 config: resolution.config,
                 hash,
                 words_consumed: consumed,
+                matched_command: matched_command.to_string(),
                 output_variants: resolution.output_variants,
                 resolved_filters: resolved,
             }));
@@ -108,6 +111,7 @@ pub fn resolve_args_variants(
             config: cfg,
             hash,
             words_consumed: filter_match.words_consumed,
+            matched_command: filter_match.matched_command,
             output_variants: vec![],
             resolved_filters: filter_match.resolved_filters,
         }
@@ -187,9 +191,53 @@ fn build_inject_env(filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> 
     ]
 }
 
+fn run_command_with_consumed_prefix(
+    run_cmd: &str,
+    matched_command: &str,
+    command_args: &[String],
+    words_consumed: usize,
+) -> String {
+    let pattern_words = matched_command.split_whitespace().count();
+    if words_consumed <= pattern_words || command_args.len() < words_consumed {
+        return run_cmd.to_string();
+    }
+
+    let trimmed = run_cmd.trim_start();
+    let leading_len = run_cmd.len() - trimmed.len();
+    let leading = &run_cmd[..leading_len];
+    let Some(suffix) = trimmed.strip_prefix(matched_command) else {
+        return run_cmd.to_string();
+    };
+    if !suffix.is_empty() && !suffix.starts_with(char::is_whitespace) {
+        return run_cmd.to_string();
+    }
+
+    let mut prefix_parts = vec![command_args[0].clone()];
+    prefix_parts.extend(
+        command_args[1..words_consumed]
+            .iter()
+            .map(|arg| shell_escape_arg(arg)),
+    );
+    let prefix = prefix_parts.join(" ");
+    format!("{leading}{prefix}{suffix}")
+}
+
+fn shell_escape_arg(arg: &str) -> String {
+    #[cfg(windows)]
+    {
+        format!("'{}'", arg.replace('\'', "''"))
+    }
+
+    #[cfg(not(windows))]
+    {
+        format!("'{}'", arg.replace('\'', "'\\''"))
+    }
+}
+
 pub fn run_command(
     filter_cfg: Option<&FilterConfig>,
     words_consumed: usize,
+    matched_command: Option<&str>,
     command_args: &[String],
     remaining_args: &[String],
 ) -> anyhow::Result<runner::CommandResult> {
@@ -202,7 +250,18 @@ pub fn run_command(
     if let Some(cfg) = filter_cfg
         && let Some(run_cmd) = &cfg.run
     {
-        runner::execute_shell_with_env(run_cmd, remaining_args, &env_refs)
+        let run_cmd = matched_command.map_or_else(
+            || String::clone(run_cmd),
+            |matched_command| {
+                run_command_with_consumed_prefix(
+                    run_cmd,
+                    matched_command,
+                    command_args,
+                    words_consumed,
+                )
+            },
+        );
+        runner::execute_shell_with_env(&run_cmd, remaining_args, &env_refs)
     } else if words_consumed > 0 {
         let cmd_str = command_args[..words_consumed].join(" ");
         runner::execute_with_env(&cmd_str, remaining_args, &env_refs)
@@ -333,6 +392,98 @@ mod tests {
     fn config_with_inject(inject: bool) -> FilterConfig {
         let toml = format!("command = \"git commit\"\ninject_path = {inject}");
         toml::from_str(&toml).unwrap()
+    }
+
+    fn config_with_run() -> FilterConfig {
+        toml::from_str(
+            r#"
+command = "git status"
+run = "git status --porcelain=v1 -b -uall --find-renames"
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn run_command_with_consumed_prefix_preserves_global_args_for_run_override() {
+        let cfg = config_with_run();
+        let command_args = vec![
+            "git".to_string(),
+            "-C".to_string(),
+            "/tmp/repo with spaces".to_string(),
+            "status".to_string(),
+        ];
+
+        let run_cmd = run_command_with_consumed_prefix(
+            cfg.run.as_ref().unwrap(),
+            "git status",
+            &command_args,
+            4,
+        );
+
+        assert_eq!(
+            run_cmd,
+            "git '-C' '/tmp/repo with spaces' 'status' --porcelain=v1 -b -uall --find-renames"
+        );
+    }
+
+    #[test]
+    fn run_command_with_consumed_prefix_keeps_plain_run_override_unchanged() {
+        let cfg = config_with_run();
+        let command_args = vec!["git".to_string(), "status".to_string()];
+
+        let run_cmd = run_command_with_consumed_prefix(
+            cfg.run.as_ref().unwrap(),
+            "git status",
+            &command_args,
+            2,
+        );
+
+        assert_eq!(run_cmd, cfg.run.as_ref().unwrap().as_str());
+    }
+
+    #[test]
+    fn run_command_with_consumed_prefix_ignores_nonmatching_run_override() {
+        let command_args = vec![
+            "git".to_string(),
+            "-C".to_string(),
+            "/tmp/repo".to_string(),
+            "status".to_string(),
+        ];
+
+        let run_cmd =
+            run_command_with_consumed_prefix("echo git status", "git status", &command_args, 4);
+
+        assert_eq!(run_cmd, "echo git status");
+    }
+
+    #[test]
+    fn run_command_with_consumed_prefix_uses_matched_array_pattern() {
+        let cfg: FilterConfig = toml::from_str(
+            r#"
+command = ["npm test", "pnpm test"]
+run = "pnpm test --reporter=dot {args}"
+"#,
+        )
+        .unwrap();
+        let command_args = vec![
+            "pnpm".to_string(),
+            "--dir".to_string(),
+            "webapp".to_string(),
+            "test".to_string(),
+        ];
+
+        let run_cmd = run_command_with_consumed_prefix(
+            cfg.run.as_ref().unwrap(),
+            "pnpm test",
+            &command_args,
+            4,
+        );
+
+        assert_eq!(
+            run_cmd,
+            "pnpm '--dir' 'webapp' 'test' --reporter=dot {args}"
+        );
     }
 
     #[test]
