@@ -139,11 +139,12 @@ fn parse_engine_output(
 /// Returns `None` if the response doesn't contain a recognisable verdict.
 /// Also extracts the reason string (per-format field names):
 /// - Claude: `hookSpecificOutput.permissionDecisionReason`
+/// - Codex: `hookSpecificOutput.permissionDecisionReason`
 /// - Gemini: `reason`
 /// - Cursor: `userMessage`
 pub fn extract_verdict(json: &Value, format: HookFormat) -> Option<PermissionVerdict> {
     let (decision_str, reason_str) = match format {
-        HookFormat::ClaudeCode => {
+        HookFormat::ClaudeCode | HookFormat::Codex => {
             let hso = json.get("hookSpecificOutput")?;
             let decision = hso.get("permissionDecision").and_then(Value::as_str);
             let reason = hso.get("permissionDecisionReason").and_then(Value::as_str);

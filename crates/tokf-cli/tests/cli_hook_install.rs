@@ -282,6 +282,37 @@ fn hook_install_codex_creates_skill_file() {
 }
 
 #[test]
+fn hook_install_codex_creates_hook_config() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["hook", "install", "--tool", "codex"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hook install --tool codex failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    #[cfg(windows)]
+    let hook_script = dir.path().join(".tokf/hooks/codex-pre-tool-use.cmd");
+    #[cfg(not(windows))]
+    let hook_script = dir.path().join(".tokf/hooks/codex-pre-tool-use.sh");
+    let hooks_json = dir.path().join(".codex/hooks.json");
+    assert!(hook_script.exists(), "Codex hook shim should exist");
+    assert!(hooks_json.exists(), "Codex hooks.json should exist");
+
+    let script = std::fs::read_to_string(hook_script).unwrap();
+    assert!(script.contains("--no-cache hook handle --format codex"));
+
+    let content = std::fs::read_to_string(hooks_json).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(value["hooks"]["PreToolUse"][0]["matcher"], "Bash");
+}
+
+#[test]
 fn hook_install_codex_is_idempotent() {
     let dir = tempfile::TempDir::new().unwrap();
 
@@ -343,11 +374,11 @@ fn hook_install_codex_shows_info_on_stderr() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Codex skill") && stderr.contains("installed"),
+        stderr.contains("Codex hook") && stderr.contains("installed"),
         "expected install confirmation, got: {stderr}"
     );
     assert!(
-        stderr.contains("SKILL.md"),
-        "expected skill file path in output, got: {stderr}"
+        stderr.contains("hooks.json"),
+        "expected hooks.json path in output, got: {stderr}"
     );
 }

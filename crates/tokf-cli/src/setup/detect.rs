@@ -126,7 +126,7 @@ fn detect_binary_tools(found: &mut Vec<DetectedTool>) {
         found,
         Tool::Codex,
         "OpenAI Codex CLI",
-        false,
+        true,
         has_binary("codex").then(|| "binary in PATH".into()),
     );
 }

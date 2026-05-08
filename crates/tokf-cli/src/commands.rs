@@ -47,6 +47,8 @@ pub enum HookFormat {
     Gemini,
     #[value(name = "cursor")]
     Cursor,
+    #[value(name = "codex")]
+    Codex,
 }
 
 /// CLI surface for `tokf doctor --sort`. Mirrors `tokf::doctor::SortBy`
@@ -595,13 +597,14 @@ pub fn cmd_skill_install(global: bool) -> i32 {
     }
 }
 
-pub fn cmd_hook_handle(format: &HookFormat) -> i32 {
+pub fn cmd_hook_handle(format: &HookFormat, no_cache: bool) -> i32 {
     let outcome = match format {
-        HookFormat::ClaudeCode => hook::handle(),
-        HookFormat::Gemini => hook::handle_gemini(),
-        HookFormat::Cursor => hook::handle_cursor(),
+        HookFormat::ClaudeCode => hook::handle(no_cache),
+        HookFormat::Gemini => hook::handle_gemini(no_cache),
+        HookFormat::Cursor => hook::handle_cursor(no_cache),
+        HookFormat::Codex => hook::handle_codex(no_cache),
     };
-    hook_outcome_exit_code(outcome)
+    hook_outcome_exit_code(format, outcome)
 }
 
 /// Map a `HookOutcome` to the process exit code expected by the host AI tool.
@@ -610,8 +613,11 @@ pub fn cmd_hook_handle(format: &HookFormat) -> i32 {
 /// from stdout and shows the user the native prompt. Exit 2 would short-circuit
 /// that path and trigger an unconditional block. `Deny` keeps exit 2 because
 /// the JSON is already paired with a hard block in every supported host.
-const fn hook_outcome_exit_code(outcome: hook::HookOutcome) -> i32 {
+const fn hook_outcome_exit_code(format: &HookFormat, outcome: hook::HookOutcome) -> i32 {
     match outcome {
+        // Codex parses blocking JSON only from successful hook exits; exit 2
+        // requires stderr text and would discard the structured rerun hint.
+        hook::HookOutcome::Deny if matches!(format, HookFormat::Codex) => 0,
         hook::HookOutcome::Deny => 2,
         hook::HookOutcome::Ask | hook::HookOutcome::Allow | hook::HookOutcome::PassThrough => 0,
     }
@@ -627,7 +633,7 @@ pub fn cmd_hook_install(
     let result = match tool {
         HookTool::ClaudeCode => hook::install(global, &tokf_bin, install_context),
         HookTool::OpenCode => hook::opencode::install(global, &tokf_bin),
-        HookTool::Codex => hook::codex::install(global),
+        HookTool::Codex => hook::codex::install(global, &tokf_bin, install_context),
         HookTool::GeminiCli => hook::gemini::install(global, &tokf_bin, install_context),
         HookTool::Cursor => hook::cursor::install(global, &tokf_bin, install_context),
         HookTool::Cline => hook::cline::install(global),
@@ -652,21 +658,41 @@ mod tests {
     fn ask_outcome_exits_zero_so_claude_reads_json_decision() {
         // Regression for #343: exit 2 short-circuits the JSON path and turns
         // an "ask" verdict into an unconditional block.
-        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::Ask), 0);
+        assert_eq!(
+            hook_outcome_exit_code(&HookFormat::ClaudeCode, hook::HookOutcome::Ask),
+            0
+        );
     }
 
     #[test]
     fn allow_outcome_exits_zero() {
-        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::Allow), 0);
+        assert_eq!(
+            hook_outcome_exit_code(&HookFormat::ClaudeCode, hook::HookOutcome::Allow),
+            0
+        );
     }
 
     #[test]
     fn passthrough_outcome_exits_zero() {
-        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::PassThrough), 0);
+        assert_eq!(
+            hook_outcome_exit_code(&HookFormat::ClaudeCode, hook::HookOutcome::PassThrough),
+            0
+        );
     }
 
     #[test]
     fn deny_outcome_exits_two() {
-        assert_eq!(hook_outcome_exit_code(hook::HookOutcome::Deny), 2);
+        assert_eq!(
+            hook_outcome_exit_code(&HookFormat::ClaudeCode, hook::HookOutcome::Deny),
+            2
+        );
+    }
+
+    #[test]
+    fn codex_deny_outcome_exits_zero_so_codex_reads_json_block() {
+        assert_eq!(
+            hook_outcome_exit_code(&HookFormat::Codex, hook::HookOutcome::Deny),
+            0
+        );
     }
 }

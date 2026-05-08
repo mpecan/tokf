@@ -13,10 +13,14 @@ fn manifest_dir() -> &'static str {
 /// Helper: pipe JSON to `tokf hook handle` from a fresh tempdir.
 /// Embedded stdlib is always available, so no filters need to be copied.
 fn hook_handle_with_stdlib(json: &str) -> (String, bool) {
+    hook_handle_format_with_stdlib(json, "claude-code")
+}
+
+fn hook_handle_format_with_stdlib(json: &str, format: &str) -> (String, bool) {
     let dir = tempfile::TempDir::new().unwrap();
 
     let mut child = tokf()
-        .args(["hook", "handle"])
+        .args(["hook", "handle", "--format", format])
         .current_dir(dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -33,6 +37,34 @@ fn hook_handle_with_stdlib(json: &str) -> (String, bool) {
     let output = child.wait_with_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     (stdout, output.status.success())
+}
+
+fn hook_handle_format_with_args(
+    dir: &std::path::Path,
+    json: &str,
+    args: &[&str],
+) -> (String, String, bool) {
+    let mut child = tokf()
+        .args(args)
+        .current_dir(dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    {
+        use std::io::Write;
+        let stdin = child.stdin.as_mut().unwrap();
+        stdin.write_all(json.as_bytes()).unwrap();
+    }
+
+    let output = child.wait_with_output().unwrap();
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.success(),
+    )
 }
 
 /// Helper: pipe JSON to `tokf hook handle` with a single custom filter.
@@ -103,6 +135,62 @@ fn hook_handle_rewrites_bash_with_args() {
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
         "tokf run git push origin main"
+    );
+}
+
+#[test]
+fn hook_handle_codex_blocks_with_rerun_hint() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let (stdout, success) = hook_handle_format_with_stdlib(json, "codex");
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["hookEventName"],
+        "PreToolUse"
+    );
+    assert_eq!(response["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert_eq!(
+        response["hookSpecificOutput"]["permissionDecisionReason"],
+        "Run with tokf: tokf run git status"
+    );
+    assert!(
+        response["hookSpecificOutput"].get("updatedInput").is_none(),
+        "Codex hook output must not use unsupported updatedInput"
+    );
+}
+
+#[test]
+fn hook_handle_codex_unmatched_command_silent() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"unknown-xyz-cmd-99"}}"#;
+    let (stdout, success) = hook_handle_format_with_stdlib(json, "codex");
+    assert!(success);
+    assert!(
+        stdout.trim().is_empty(),
+        "expected no output for unmatched command, got: {stdout}"
+    );
+}
+
+#[test]
+fn hook_handle_no_cache_skips_project_cache_for_matching_command() {
+    let dir = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join(".tokf/hooks")).unwrap();
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+
+    let (stdout, stderr, success) = hook_handle_format_with_args(
+        dir.path(),
+        json,
+        &["--no-cache", "hook", "handle", "--format", "codex"],
+    );
+
+    assert!(success);
+    assert!(
+        stderr.trim().is_empty(),
+        "--no-cache hook handling should stay silent on stderr, got: {stderr}"
+    );
+    assert!(
+        stdout.contains("Run with tokf: tokf run git status"),
+        "expected Codex rerun hint, got: {stdout}"
     );
 }
 
@@ -446,11 +534,15 @@ fn hook_handle_ask_verdict_exits_zero_and_emits_ask_json() {
 /// the file's contents. The hook is invoked from a temp cwd so embedded
 /// stdlib filters apply with no project config.
 fn hook_handle_with_log(json: &str) -> (bool, String) {
+    hook_handle_format_with_log(json, "claude-code")
+}
+
+fn hook_handle_format_with_log(json: &str, format: &str) -> (bool, String) {
     let dir = tempfile::TempDir::new().unwrap();
     let log_path = dir.path().join("hook.log");
 
     let mut child = tokf()
-        .args(["hook", "handle"])
+        .args(["hook", "handle", "--format", format])
         .env("TOKF_HOOK_LOG", &log_path)
         .current_dir(dir.path())
         .stdin(Stdio::piped())
@@ -510,6 +602,25 @@ fn hook_log_records_passthrough_with_null_after() {
         "expected PassThrough outcome: {log:?}"
     );
     assert!(log.contains("after: ~\n"), "expected null after: {log:?}");
+}
+
+#[test]
+fn hook_log_records_codex_rewrite_as_deny() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let (success, log) = hook_handle_format_with_log(json, "codex");
+    assert!(success);
+    assert!(
+        log.contains("format: codex\n"),
+        "missing Codex format field: {log:?}"
+    );
+    assert!(
+        log.contains("outcome: Deny\n"),
+        "Codex block-and-rerun should log Deny outcome: {log:?}"
+    );
+    assert!(
+        log.contains("after: |-\n  tokf run git status\n"),
+        "missing/malformed after block: {log:?}"
+    );
 }
 
 #[test]
