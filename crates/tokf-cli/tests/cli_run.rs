@@ -81,7 +81,7 @@ fn run_nonexistent_command_exits_with_error() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("[tokf] error"),
+        stderr.contains("[tokf] error: command not found: nonexistent_cmd_xyz_99"),
         "expected error on stderr, got: {stderr}"
     );
 }

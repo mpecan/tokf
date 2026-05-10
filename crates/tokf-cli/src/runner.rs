@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, ErrorKind};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -129,6 +129,20 @@ fn build_shell_command(command: &str) -> Command {
     }
 }
 
+fn spawn_with_context(
+    mut cmd: Command,
+    program: &str,
+    actual_program: &str,
+) -> anyhow::Result<std::process::Child> {
+    cmd.spawn().map_err(|err| {
+        if err.kind() == ErrorKind::NotFound {
+            anyhow::anyhow!("command not found: {program}")
+        } else {
+            anyhow::anyhow!("failed to spawn command `{actual_program}`: {err}")
+        }
+    })
+}
+
 /// Escape a string for safe inclusion in a shell command.
 pub(crate) fn shell_escape(arg: &str) -> String {
     #[cfg(windows)]
@@ -193,7 +207,7 @@ pub fn execute_with_env(
         cmd.env(k, v);
     }
 
-    run_interleaved(cmd.spawn()?)
+    run_interleaved(spawn_with_context(cmd, program, actual_program)?)
 }
 
 /// Execute a shell command with `{args}` interpolation.
