@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -129,6 +130,16 @@ fn build_shell_command(command: &str) -> Command {
     }
 }
 
+fn spawn_command(mut cmd: Command, program: &str) -> anyhow::Result<std::process::Child> {
+    match cmd.spawn() {
+        Ok(child) => Ok(child),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            Err(anyhow::anyhow!("program not found: {program}"))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
 /// Escape a string for safe inclusion in a shell command.
 pub(crate) fn shell_escape(arg: &str) -> String {
     #[cfg(windows)]
@@ -193,7 +204,7 @@ pub fn execute_with_env(
         cmd.env(k, v);
     }
 
-    run_interleaved(cmd.spawn()?)
+    run_interleaved(spawn_command(cmd, actual_program)?)
 }
 
 /// Execute a shell command with `{args}` interpolation.
@@ -226,13 +237,18 @@ pub fn execute_shell_with_env(
     #[allow(clippy::literal_string_with_formatting_args)]
     let shell_cmd = run.replace("{args}", &joined_args);
 
+    let shell_program = if cfg!(windows) {
+        "powershell.exe"
+    } else {
+        "sh"
+    };
     let mut cmd = build_shell_command(&shell_cmd);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
 
-    run_interleaved(cmd.spawn()?)
+    run_interleaved(spawn_command(cmd, shell_program)?)
 }
 
 #[cfg(test)]
@@ -295,7 +311,8 @@ mod tests {
     #[test]
     fn test_execute_nonexistent_command() {
         let result = execute("nonexistent_cmd_xyz", &[]);
-        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert_eq!(err, "program not found: nonexistent_cmd_xyz");
     }
 
     #[test]
