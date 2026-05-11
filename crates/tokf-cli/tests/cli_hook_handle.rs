@@ -256,7 +256,7 @@ fn hook_handle_strips_pipe_to_grep() {
     let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
     assert_eq!(
         response["hookSpecificOutput"]["updatedInput"]["command"],
-        "tokf run --baseline-pipe 'grep FAILED' --prefer-less cargo test"
+        "tokf run --baseline-pipe 'grep FAILED' cargo test"
     );
 }
 
@@ -528,7 +528,7 @@ fn hook_log_preserves_multiline_command_355() {
     );
     assert!(
         log.contains(
-            "after: |-\n  tokf run git status\n  tokf run --baseline-pipe 'head -1' --prefer-less ls\n  echo hi\n"
+            "after: |-\n  tokf run git status\n  tokf run --baseline-pipe 'head -1' ls\n  echo hi\n"
         ),
         "AFTER block does not show preserved newlines: {log:?}"
     );

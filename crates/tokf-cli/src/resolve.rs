@@ -212,26 +212,13 @@ fn run_command_with_consumed_prefix(
         return run_cmd.to_string();
     }
 
-    let mut prefix_parts = vec![command_args[0].clone()];
-    prefix_parts.extend(
-        command_args[1..words_consumed]
-            .iter()
-            .map(|arg| shell_escape_arg(arg)),
-    );
-    let prefix = prefix_parts.join(" ");
+    let mut prefix = command_args[0].clone();
+    let quoted_args = crate::shell::quote_argv(&command_args[1..words_consumed]);
+    if !quoted_args.is_empty() {
+        prefix.push(' ');
+        prefix.push_str(&quoted_args);
+    }
     format!("{leading}{prefix}{suffix}")
-}
-
-fn shell_escape_arg(arg: &str) -> String {
-    #[cfg(windows)]
-    {
-        format!("'{}'", arg.replace('\'', "''"))
-    }
-
-    #[cfg(not(windows))]
-    {
-        format!("'{}'", arg.replace('\'', "'\\''"))
-    }
 }
 
 pub fn run_command(
