@@ -217,6 +217,7 @@ pub struct CodexHookSpecificOutput {
 impl CodexHookResponse {
     /// Create a Codex response that blocks and asks Codex to rerun the rewritten command.
     pub fn rewrite(command: String, _reason: Option<String>) -> Self {
+        // For rewrites, Codex needs the exact rerun command more than the engine reason.
         Self::deny_with_reason(format!("Run with tokf: {command}"))
     }
 

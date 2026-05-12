@@ -305,7 +305,8 @@ fn hook_install_codex_creates_hook_config() {
     assert!(hooks_json.exists(), "Codex hooks.json should exist");
 
     let script = std::fs::read_to_string(hook_script).unwrap();
-    assert!(script.contains("--no-cache hook handle --format codex"));
+    assert!(!script.contains("--no-cache"));
+    assert!(script.contains("hook handle --format codex"));
 
     let content = std::fs::read_to_string(hooks_json).unwrap();
     let value: serde_json::Value = serde_json::from_str(&content).unwrap();

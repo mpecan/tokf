@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use super::{
     patch_json_hook_config_with_command, patch_md_with_reference, resolve_paths, write_context_doc,
-    write_hook_shim_with_global_args,
+    write_hook_shim,
 };
 use crate::runner;
 
@@ -106,13 +106,9 @@ fn write_codex_hook_shim_for_platform(
 ) -> anyhow::Result<PathBuf> {
     let hook_script = hook_dir.join(codex_hook_script_name(platform));
     match platform {
-        HookScriptPlatform::Unix => write_hook_shim_with_global_args(
-            hook_dir,
-            &hook_script,
-            tokf_bin,
-            "--no-cache",
-            "--format codex",
-        )?,
+        HookScriptPlatform::Unix => {
+            write_hook_shim(hook_dir, &hook_script, tokf_bin, "--format codex")?;
+        }
         HookScriptPlatform::Windows => {
             std::fs::create_dir_all(hook_dir)?;
             let escaped_bin = if tokf_bin == "tokf" {
@@ -121,7 +117,7 @@ fn write_codex_hook_shim_for_platform(
                 cmd_quote(tokf_bin)
             };
             let content = format!(
-                "@echo off\r\n{escaped_bin} --no-cache hook handle --format codex\r\nexit /b %ERRORLEVEL%\r\n"
+                "@echo off\r\n{escaped_bin} hook handle --format codex\r\nexit /b %ERRORLEVEL%\r\n"
             );
             std::fs::write(&hook_script, content)?;
         }
@@ -295,7 +291,8 @@ mod tests {
         let hook_script = hook_dir.join(codex_hook_script_name(current_hook_script_platform()));
         assert!(hook_script.exists());
         let script = std::fs::read_to_string(&hook_script).unwrap();
-        assert!(script.contains("--no-cache hook handle --format codex"));
+        assert!(!script.contains("--no-cache"));
+        assert!(script.contains("hook handle --format codex"));
 
         let hooks_json = codex_dir.join("hooks.json");
         let content = std::fs::read_to_string(hooks_json).unwrap();
@@ -304,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn unix_codex_shim_uses_no_cache_shell_script() {
+    fn unix_codex_shim_uses_shell_script() {
         let dir = TempDir::new().unwrap();
         let hook_dir = dir.path().join(".tokf/hooks");
 
@@ -315,7 +312,8 @@ mod tests {
         assert_eq!(hook_script.file_name().unwrap(), "codex-pre-tool-use.sh");
         let script = std::fs::read_to_string(&hook_script).unwrap();
         assert!(script.starts_with("#!/bin/sh\n"));
-        assert!(script.contains("exec tokf --no-cache hook handle --format codex"));
+        assert!(!script.contains("--no-cache"));
+        assert!(script.contains("exec tokf hook handle --format codex"));
 
         let command =
             codex_hook_command_for_platform(&hook_script, HookScriptPlatform::Unix).unwrap();
@@ -338,11 +336,8 @@ mod tests {
         assert_eq!(hook_script.file_name().unwrap(), "codex-pre-tool-use.cmd");
         let script = std::fs::read_to_string(&hook_script).unwrap();
         assert!(script.starts_with("@echo off\r\n"));
-        assert!(
-            script.contains(
-                r#""C:\Program Files\tokf\tokf.exe" --no-cache hook handle --format codex"#
-            )
-        );
+        assert!(!script.contains("--no-cache"));
+        assert!(script.contains(r#""C:\Program Files\tokf\tokf.exe" hook handle --format codex"#));
         assert!(script.ends_with("exit /b %ERRORLEVEL%\r\n"));
 
         let command =

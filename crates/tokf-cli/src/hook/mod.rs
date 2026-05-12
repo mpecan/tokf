@@ -21,7 +21,7 @@ use install::install_to;
 use install::{
     append_or_replace_section, patch_json_hook_config, patch_json_hook_config_with_command,
     patch_md_with_reference, resolve_paths, write_context_doc, write_hook_shim,
-    write_hook_shim_with_global_args, write_instruction_file,
+    write_instruction_file,
 };
 use permission_engine::ErrorFallback;
 use permissions::PermissionVerdict;
