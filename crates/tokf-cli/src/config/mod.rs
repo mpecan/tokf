@@ -265,14 +265,20 @@ pub struct ResolvedFilter {
 }
 
 impl ResolvedFilter {
-    /// Returns `words_consumed` if any of this filter's patterns match `words`.
-    pub fn matches(&self, words: &[&str]) -> Option<usize> {
+    /// Returns the matching command pattern and `words_consumed`.
+    pub fn matching_pattern<'a>(&'a self, words: &[&str]) -> Option<(&'a str, usize)> {
         for pattern in self.config.command.patterns() {
             if let Some(consumed) = pattern_matches_prefix(pattern, words) {
-                return Some(consumed);
+                return Some((pattern, consumed));
             }
         }
         None
+    }
+
+    /// Returns `words_consumed` if any of this filter's patterns match `words`.
+    pub fn matches(&self, words: &[&str]) -> Option<usize> {
+        self.matching_pattern(words)
+            .map(|(_pattern, consumed)| consumed)
     }
 
     /// Maximum specificity across all patterns (used for sorting).

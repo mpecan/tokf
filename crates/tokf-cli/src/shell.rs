@@ -96,7 +96,7 @@ pub fn cmd_shell(flags: &str, command: &str) -> i32 {
 }
 
 /// Build a shell-safe command string by single-quoting each argument.
-fn quote_argv(args: &[String]) -> String {
+pub fn quote_argv(args: &[String]) -> String {
     args.iter()
         .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
         .collect::<Vec<_>>()
