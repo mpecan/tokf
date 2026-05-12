@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::SystemTime;
@@ -136,14 +137,24 @@ fn write_manifest(
     };
     let data = rkyv::to_bytes::<rancor::Error>(&manifest)
         .map_err(|e| anyhow::anyhow!("serialize cache: {e}"))?;
+    write_manifest_bytes(path, &data)
+}
+
+fn write_manifest_bytes(path: &Path, data: &[u8]) -> anyhow::Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("cache path has no parent"))?;
     std::fs::create_dir_all(parent).context("create cache dir")?;
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, &data).context("write cache tmp")?;
-    std::fs::rename(&tmp, path).context("rename cache tmp to final")?;
-    Ok(())
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".manifest-")
+        .suffix(".tmp")
+        .tempfile_in(parent)
+        .context("create cache tmp")?;
+    tmp.write_all(data).context("write cache tmp")?;
+    tmp.flush().context("flush cache tmp")?;
+    tmp.persist(path)
+        .map(|_| ())
+        .map_err(|err| anyhow::Error::new(err.error).context("rename cache tmp to final"))
 }
 
 /// Generate shim scripts for all filter command basenames.
@@ -393,6 +404,51 @@ mod tests {
         let search_dirs = vec![tokf_dir.join("filters")];
         let result = discover_with_cache(&search_dirs);
         assert!(result.is_ok());
+    }
+
+    fn write_payloads_in_parallel(path: &Path, payloads: &[Vec<u8>]) {
+        std::thread::scope(|scope| {
+            let handles = payloads
+                .iter()
+                .map(|payload| {
+                    let path = &path;
+                    scope.spawn(move || write_manifest_bytes(path, payload))
+                })
+                .collect::<Vec<_>>();
+
+            for handle in handles {
+                handle.join().unwrap().unwrap();
+            }
+        });
+    }
+
+    fn leftover_paths(dir: &Path, final_path: &Path) -> Vec<PathBuf> {
+        fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|entry_path| entry_path != final_path)
+            .collect()
+    }
+
+    #[test]
+    fn manifest_write_allows_parallel_writers() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.bin");
+        let payloads = (0..32).map(|i| vec![i; 128 * 1024]).collect::<Vec<_>>();
+
+        write_payloads_in_parallel(&path, &payloads);
+
+        let data = fs::read(&path).unwrap();
+        assert!(
+            payloads.iter().any(|payload| payload.as_slice() == data),
+            "final manifest should be one complete writer payload"
+        );
+
+        let leftovers = leftover_paths(tmp.path(), &path);
+        assert!(
+            leftovers.is_empty(),
+            "temporary files should be cleaned up: {leftovers:?}"
+        );
     }
 
     #[test]
