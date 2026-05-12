@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.45](https://github.com/mpecan/tokf/compare/tokf-v0.2.44...tokf-v0.2.45) (2026-05-12)
+
+
+### Bug Fixes
+
+* **cli:** avoid cache manifest temp-file races ([#375](https://github.com/mpecan/tokf/issues/375)) ([2fe62b2](https://github.com/mpecan/tokf/commit/2fe62b2b835523eaea0a036a824c0f27dfe04ea0))
+* **cli:** include missing program in not found errors ([#364](https://github.com/mpecan/tokf/issues/364)) ([f63580a](https://github.com/mpecan/tokf/commit/f63580aa5903066e1ca8a189574d09a5721e5ca1))
+* **cli:** preserve global flags in run overrides ([#366](https://github.com/mpecan/tokf/issues/366)) ([7c93126](https://github.com/mpecan/tokf/commit/7c93126b127e8f29de94234a9f06be6286c770cc))
+* **hook:** opencode plugin shape + Electron Node-runtime compat ([#378](https://github.com/mpecan/tokf/issues/378)) ([f8f8d3d](https://github.com/mpecan/tokf/commit/f8f8d3d7b26329d986c542a4d74a93596bc3a023))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.44 to 0.2.45
+    * tokf-filter bumped from 0.2.44 to 0.2.45
+    * tokf-hook-types bumped from 0.2.44 to 0.2.45
+
 ## [0.2.44](https://github.com/mpecan/tokf/compare/tokf-v0.2.43...tokf-v0.2.44) (2026-05-05)
 
 

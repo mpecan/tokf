@@ -986,7 +986,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "e2e-tests"
-version = "0.1.32"
+version = "0.1.33"
 dependencies = [
  "anyhow",
  "axum",
@@ -3708,7 +3708,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokf"
-version = "0.2.44"
+version = "0.2.45"
 dependencies = [
  "anyhow",
  "clap",
@@ -3747,7 +3747,7 @@ dependencies = [
 
 [[package]]
 name = "tokf-common"
-version = "0.2.44"
+version = "0.2.45"
 dependencies = [
  "regex",
  "serde",
@@ -3760,7 +3760,7 @@ dependencies = [
 
 [[package]]
 name = "tokf-filter"
-version = "0.2.44"
+version = "0.2.45"
 dependencies = [
  "anyhow",
  "mlua",
@@ -3774,14 +3774,14 @@ dependencies = [
 
 [[package]]
 name = "tokf-hook-types"
-version = "0.2.44"
+version = "0.2.45"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "tokf-server"
-version = "0.2.44"
+version = "0.2.45"
 dependencies = [
  "anyhow",
  "async-trait",
