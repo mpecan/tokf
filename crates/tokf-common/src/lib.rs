@@ -1,3 +1,4 @@
+pub mod canonical_v1;
 pub mod config;
 pub mod examples;
 pub mod hash;
