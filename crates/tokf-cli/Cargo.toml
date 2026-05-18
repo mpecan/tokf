@@ -33,7 +33,7 @@ rkyv = { version = "0.8", features = ["bytecheck", "unaligned"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "blocking", "multipart", "query"] }
 # linux-native uses kernel keyutils (no libdbus-sys dependency).
 # sync-secret-service would need libdbus-1-dev on Linux CI/build hosts.
-keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
+keyring = { version = "4", features = ["apple-native", "windows-native", "linux-native"] }
 open = "5"
 uuid = { version = "1", features = ["v4"] }
 gethostname = "1"
