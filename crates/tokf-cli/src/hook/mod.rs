@@ -56,6 +56,31 @@ pub enum HookOutcome {
     PassThrough,
 }
 
+/// Codex rewrite protocol selected for the installed hook shim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexRewriteMode {
+    /// Codex 0.131.0+ supports transparent `updatedInput` rewrites.
+    UpdatedInput,
+    /// Older Codex builds parse but ignore `updatedInput`, so deny with a rerun hint.
+    DenyRerun,
+}
+
+impl CodexRewriteMode {
+    pub const fn env_value(self) -> &'static str {
+        match self {
+            Self::UpdatedInput => "updated-input",
+            Self::DenyRerun => "deny-rerun",
+        }
+    }
+
+    fn from_env() -> Self {
+        match std::env::var("TOKF_CODEX_REWRITE_MODE") {
+            Ok(value) if value == Self::UpdatedInput.env_value() => Self::UpdatedInput,
+            _ => Self::DenyRerun,
+        }
+    }
+}
+
 /// Process a `PreToolUse` hook invocation.
 ///
 /// Reads JSON from stdin, checks if it's a Bash tool call, rewrites the command
@@ -91,6 +116,8 @@ fn handle_json_with_cache(json: &str, no_cache: bool) -> HookOutcome {
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
         HookResponse::deny,
+        HookOutcome::Allow,
+        HookOutcome::Ask,
     )
 }
 
@@ -111,6 +138,8 @@ pub(crate) fn handle_json_with_rules(
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
         HookResponse::deny,
+        HookOutcome::Allow,
+        HookOutcome::Ask,
     )
 }
 
@@ -138,6 +167,8 @@ fn handle_gemini_json_with_cache(json: &str, no_cache: bool) -> HookOutcome {
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
         GeminiHookResponse::deny,
+        HookOutcome::Allow,
+        HookOutcome::Ask,
     )
 }
 
@@ -158,6 +189,8 @@ pub(crate) fn handle_gemini_json_with_rules(
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
         GeminiHookResponse::deny,
+        HookOutcome::Allow,
+        HookOutcome::Ask,
     )
 }
 
@@ -172,6 +205,8 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
+    allow_outcome: HookOutcome,
+    ask_outcome: HookOutcome,
 ) -> HookOutcome {
     let user_config = rewrite::load_user_config().unwrap_or_default();
     let search_dirs = crate::config::default_search_dirs();
@@ -185,6 +220,8 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
         build_allow,
         build_ask,
         build_deny,
+        allow_outcome,
+        ask_outcome,
     )
 }
 
@@ -238,15 +275,34 @@ pub(crate) fn handle_codex_json(json: &str) -> HookOutcome {
 }
 
 fn handle_codex_json_with_cache(json: &str, no_cache: bool) -> HookOutcome {
-    handle_with_autodiscovery(
-        json,
-        "Bash",
-        HookFormat::Codex,
-        no_cache,
-        CodexHookResponse::rewrite,
-        CodexHookResponse::rewrite_ask,
-        CodexHookResponse::deny,
-    )
+    handle_codex_json_with_mode(json, no_cache, CodexRewriteMode::from_env())
+}
+
+fn handle_codex_json_with_mode(json: &str, no_cache: bool, mode: CodexRewriteMode) -> HookOutcome {
+    match mode {
+        CodexRewriteMode::UpdatedInput => handle_with_autodiscovery(
+            json,
+            "Bash",
+            HookFormat::Codex,
+            no_cache,
+            CodexHookResponse::rewrite,
+            CodexHookResponse::rewrite_ask,
+            CodexHookResponse::deny,
+            HookOutcome::Allow,
+            HookOutcome::Deny,
+        ),
+        CodexRewriteMode::DenyRerun => handle_with_autodiscovery(
+            json,
+            "Bash",
+            HookFormat::Codex,
+            no_cache,
+            CodexHookResponse::rewrite_deny_rerun,
+            CodexHookResponse::rewrite_ask,
+            CodexHookResponse::deny,
+            HookOutcome::Deny,
+            HookOutcome::Deny,
+        ),
+    }
 }
 
 /// Cursor handle logic with explicit permission rules.
@@ -275,6 +331,8 @@ fn handle_cursor_json_inner(
         CursorHookResponse::rewrite,
         CursorHookResponse::rewrite_ask,
         CursorHookResponse::deny,
+        HookOutcome::Allow,
+        HookOutcome::Ask,
     )
 }
 
@@ -328,6 +386,8 @@ fn handle_generic<R: serde::Serialize>(
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
+    allow_outcome: HookOutcome,
+    ask_outcome: HookOutcome,
 ) -> HookOutcome {
     let Ok(hook_input) = serde_json::from_str::<HookInput>(json) else {
         return HookOutcome::PassThrough;
@@ -352,6 +412,8 @@ fn handle_generic<R: serde::Serialize>(
         build_allow,
         build_ask,
         build_deny,
+        allow_outcome,
+        ask_outcome,
     )
 }
 
@@ -373,6 +435,8 @@ fn process_command<R: serde::Serialize>(
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
+    allow_outcome: HookOutcome,
+    ask_outcome: HookOutcome,
 ) -> HookOutcome {
     let (outcome, after) = decide(
         command,
@@ -384,6 +448,8 @@ fn process_command<R: serde::Serialize>(
         build_allow,
         build_ask,
         build_deny,
+        allow_outcome,
+        ask_outcome,
     );
     debug_log::log_event(tool_name, format, command, after.as_deref(), outcome);
     outcome
@@ -403,6 +469,8 @@ fn decide<R: serde::Serialize>(
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
+    allow_outcome: HookOutcome,
+    ask_outcome: HookOutcome,
 ) -> (HookOutcome, Option<String>) {
     // When an external permission engine is configured, consult it on every
     // command — even ones tokf has no filter for.
@@ -427,17 +495,11 @@ fn decide<R: serde::Serialize>(
                 build_deny(command.to_string(), verdict.reason),
                 HookOutcome::Deny,
             ),
-            PermissionDecision::Ask => (
-                build_ask(output_cmd, verdict.reason),
-                host_rewrite_ask_outcome(format),
-            ),
+            PermissionDecision::Ask => (build_ask(output_cmd, verdict.reason), ask_outcome),
             _ if format == HookFormat::Codex && !rewrite_changed => {
                 return (HookOutcome::PassThrough, None);
             }
-            _ => (
-                build_allow(output_cmd, verdict.reason),
-                host_rewrite_allow_outcome(format),
-            ),
+            _ => (build_allow(output_cmd, verdict.reason), allow_outcome),
         };
         if emit_response(&response) {
             return (outcome, logged_after);
@@ -453,26 +515,9 @@ fn decide<R: serde::Serialize>(
 
     let logged_after = Some(rewritten.clone());
     if emit_response(&build_allow(rewritten, None)) {
-        (host_rewrite_allow_outcome(format), logged_after)
+        (allow_outcome, logged_after)
     } else {
         (HookOutcome::PassThrough, logged_after)
-    }
-}
-
-const fn host_rewrite_allow_outcome(format: HookFormat) -> HookOutcome {
-    match format {
-        // Codex cannot transparently apply updatedInput; a successful tokf
-        // rewrite is represented as a structured block plus rerun hint.
-        HookFormat::Codex => HookOutcome::Deny,
-        HookFormat::ClaudeCode | HookFormat::Gemini | HookFormat::Cursor => HookOutcome::Allow,
-    }
-}
-
-const fn host_rewrite_ask_outcome(format: HookFormat) -> HookOutcome {
-    match format {
-        // Codex has no supported ask decision, so ask maps to block.
-        HookFormat::Codex => HookOutcome::Deny,
-        HookFormat::ClaudeCode | HookFormat::Gemini | HookFormat::Cursor => HookOutcome::Ask,
     }
 }
 

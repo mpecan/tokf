@@ -136,7 +136,7 @@ Codex CLI 0.124.0 and newer enable lifecycle hooks by default. tokf's Codex inte
 
 If the installed hook does not run, upgrade Codex or check that hooks are enabled, then restart Codex. Codex 0.129.0+ prefers `[features].hooks = true`; older builds used the legacy alias `[features].codex_hooks = true`.
 
-Codex currently does not support hook `updatedInput`, so tokf cannot transparently rewrite the Bash command in-place. Instead, the hook blocks commands that have a tokf rewrite and tells Codex the exact `tokf run ...` command to run next. Commands without a matching tokf filter pass through unchanged.
+Codex CLI 0.131.0 and newer support `PreToolUse` `updatedInput`, so tokf transparently rewrites matching Bash commands in-place. During installation, tokf checks the local `codex --version` output and installs a conservative deny-and-rerun fallback for older or unknown Codex versions so the original command does not fail open. After upgrading Codex, rerun `tokf hook install --tool codex` so tokf can refresh the generated shim mode. Commands without a matching tokf filter pass through unchanged.
 
 ## Permission engines
 

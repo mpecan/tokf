@@ -17,16 +17,27 @@ fn hook_handle_with_stdlib(json: &str) -> (String, bool) {
 }
 
 fn hook_handle_format_with_stdlib(json: &str, format: &str) -> (String, bool) {
+    hook_handle_format_with_env(json, format, None)
+}
+
+fn hook_handle_format_with_env(
+    json: &str,
+    format: &str,
+    env: Option<(&str, &str)>,
+) -> (String, bool) {
     let dir = tempfile::TempDir::new().unwrap();
 
-    let mut child = tokf()
+    let mut command = tokf();
+    command
         .args(["hook", "handle", "--format", format])
         .current_dir(dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+        .stderr(Stdio::piped());
+    if let Some((key, value)) = env {
+        command.env(key, value);
+    }
+    let mut child = command.spawn().unwrap();
 
     {
         use std::io::Write;
@@ -139,7 +150,38 @@ fn hook_handle_rewrites_bash_with_args() {
 }
 
 #[test]
-fn hook_handle_codex_blocks_with_rerun_hint() {
+fn hook_handle_codex_rewrites_with_updated_input() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let (stdout, success) = hook_handle_format_with_env(
+        json,
+        "codex",
+        Some(("TOKF_CODEX_REWRITE_MODE", "updated-input")),
+    );
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["hookEventName"],
+        "PreToolUse"
+    );
+    assert_eq!(
+        response["hookSpecificOutput"]["permissionDecision"],
+        "allow"
+    );
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run git status"
+    );
+    assert!(
+        response["hookSpecificOutput"]
+            .get("permissionDecisionReason")
+            .is_none(),
+        "Codex allow rewrite should not include a reason"
+    );
+}
+
+#[test]
+fn hook_handle_codex_legacy_mode_blocks_with_rerun_hint() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
     let (stdout, success) = hook_handle_format_with_stdlib(json, "codex");
     assert!(success);
@@ -156,7 +198,7 @@ fn hook_handle_codex_blocks_with_rerun_hint() {
     );
     assert!(
         response["hookSpecificOutput"].get("updatedInput").is_none(),
-        "Codex hook output must not use unsupported updatedInput"
+        "legacy Codex mode should not emit ignored updatedInput"
     );
 }
 
@@ -190,7 +232,7 @@ fn hook_handle_no_cache_skips_project_cache_for_matching_command() {
     );
     assert!(
         stdout.contains("Run with tokf: tokf run git status"),
-        "expected Codex rerun hint, got: {stdout}"
+        "expected conservative Codex rerun hint, got: {stdout}"
     );
 }
 
@@ -605,7 +647,7 @@ fn hook_log_records_passthrough_with_null_after() {
 }
 
 #[test]
-fn hook_log_records_codex_rewrite_as_deny() {
+fn hook_log_records_codex_default_rewrite_as_deny() {
     let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
     let (success, log) = hook_handle_format_with_log(json, "codex");
     assert!(success);
@@ -615,7 +657,7 @@ fn hook_log_records_codex_rewrite_as_deny() {
     );
     assert!(
         log.contains("outcome: Deny\n"),
-        "Codex block-and-rerun should log Deny outcome: {log:?}"
+        "Codex default deny-rerun rewrite should log Deny outcome: {log:?}"
     );
     assert!(
         log.contains("after: |-\n  tokf run git status\n"),

@@ -616,7 +616,7 @@ pub fn cmd_hook_handle(format: &HookFormat, no_cache: bool) -> i32 {
 const fn hook_outcome_exit_code(format: &HookFormat, outcome: hook::HookOutcome) -> i32 {
     match outcome {
         // Codex parses blocking JSON only from successful hook exits; exit 2
-        // requires stderr text and would discard the structured rerun hint.
+        // requires stderr text and would discard the structured deny reason.
         hook::HookOutcome::Deny if matches!(format, HookFormat::Codex) => 0,
         hook::HookOutcome::Deny => 2,
         hook::HookOutcome::Ask | hook::HookOutcome::Allow | hook::HookOutcome::PassThrough => 0,

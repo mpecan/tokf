@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::Context;
 
 use super::{
-    patch_json_hook_config_with_command, patch_md_with_reference, resolve_paths, write_context_doc,
-    write_hook_shim,
+    CodexRewriteMode, patch_json_hook_config_with_command, patch_md_with_reference, resolve_paths,
+    write_context_doc,
 };
 use crate::runner;
 
@@ -34,7 +35,8 @@ const CODEX_SKILLS: &[CodexSkill] = &[
 /// Returns an error if the hook, hook config, or skill files cannot be written.
 pub fn install(global: bool, tokf_bin: &str, install_context: bool) -> anyhow::Result<()> {
     let (hook_dir, codex_dir) = resolve_paths(global, ".codex")?;
-    install_hook_to(&hook_dir, &codex_dir, tokf_bin, install_context)?;
+    let mode = detect_codex_rewrite_mode();
+    install_hook_to(&hook_dir, &codex_dir, tokf_bin, install_context, mode)?;
 
     let parent = if global {
         let home = dirs::home_dir().context("could not determine home directory")?;
@@ -55,13 +57,15 @@ fn install_hook_to(
     codex_dir: &Path,
     tokf_bin: &str,
     install_context: bool,
+    mode: CodexRewriteMode,
 ) -> anyhow::Result<()> {
     let hooks_json = codex_dir.join("hooks.json");
-    let hook_script = write_codex_hook_shim(hook_dir, tokf_bin)?;
+    let hook_script = write_codex_hook_shim(hook_dir, tokf_bin, mode)?;
     let hook_command = codex_hook_command(&hook_script)?;
     patch_json_hook_config_with_command(&hooks_json, &hook_command, "PreToolUse", "Bash", None)?;
 
     eprintln!("[tokf] Codex hook installed");
+    eprintln!("[tokf]   rewrite mode: {}", mode.env_value());
     eprintln!("[tokf]   script: {}", hook_script.display());
     eprintln!("[tokf]   hooks: {}", hooks_json.display());
 
@@ -95,19 +99,40 @@ const fn current_hook_script_platform() -> HookScriptPlatform {
     }
 }
 
-fn write_codex_hook_shim(hook_dir: &Path, tokf_bin: &str) -> anyhow::Result<PathBuf> {
-    write_codex_hook_shim_for_platform(hook_dir, tokf_bin, current_hook_script_platform())
+fn write_codex_hook_shim(
+    hook_dir: &Path,
+    tokf_bin: &str,
+    mode: CodexRewriteMode,
+) -> anyhow::Result<PathBuf> {
+    write_codex_hook_shim_for_platform(hook_dir, tokf_bin, current_hook_script_platform(), mode)
 }
 
 fn write_codex_hook_shim_for_platform(
     hook_dir: &Path,
     tokf_bin: &str,
     platform: HookScriptPlatform,
+    mode: CodexRewriteMode,
 ) -> anyhow::Result<PathBuf> {
     let hook_script = hook_dir.join(codex_hook_script_name(platform));
     match platform {
         HookScriptPlatform::Unix => {
-            write_hook_shim(hook_dir, &hook_script, tokf_bin, "--format codex")?;
+            std::fs::create_dir_all(hook_dir)?;
+            let escaped_bin = if tokf_bin == "tokf" {
+                tokf_bin.to_string()
+            } else {
+                runner::shell_escape(tokf_bin)
+            };
+            let mode = mode.env_value();
+            let content = format!(
+                "#!/bin/sh\nTOKF_CODEX_REWRITE_MODE={mode} exec {escaped_bin} hook handle --format codex\n"
+            );
+            std::fs::write(&hook_script, content)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let perms = std::fs::Permissions::from_mode(0o755);
+                std::fs::set_permissions(&hook_script, perms)?;
+            }
         }
         HookScriptPlatform::Windows => {
             std::fs::create_dir_all(hook_dir)?;
@@ -116,13 +141,80 @@ fn write_codex_hook_shim_for_platform(
             } else {
                 cmd_quote(tokf_bin)
             };
+            let mode = mode.env_value();
             let content = format!(
-                "@echo off\r\n{escaped_bin} hook handle --format codex\r\nexit /b %ERRORLEVEL%\r\n"
+                "@echo off\r\nset \"TOKF_CODEX_REWRITE_MODE={mode}\"\r\n{escaped_bin} hook handle --format codex\r\nexit /b %ERRORLEVEL%\r\n"
             );
             std::fs::write(&hook_script, content)?;
         }
     }
     Ok(hook_script)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CodexVersion {
+    major: u64,
+    minor: u64,
+    patch: u64,
+}
+
+const CODEX_UPDATED_INPUT_MIN_VERSION: CodexVersion = CodexVersion {
+    major: 0,
+    minor: 131,
+    patch: 0,
+};
+
+fn detect_codex_rewrite_mode() -> CodexRewriteMode {
+    let Some(version) = installed_codex_version() else {
+        eprintln!(
+            "[tokf] warning: could not detect Codex version; installing conservative deny-rerun fallback"
+        );
+        eprintln!("[tokf] after upgrading Codex, rerun `tokf hook install --tool codex`.");
+        return CodexRewriteMode::DenyRerun;
+    };
+    if version >= CODEX_UPDATED_INPUT_MIN_VERSION {
+        eprintln!(
+            "[tokf] detected Codex {}.{}.{} with updatedInput support",
+            version.major, version.minor, version.patch
+        );
+        CodexRewriteMode::UpdatedInput
+    } else {
+        eprintln!(
+            "[tokf] warning: Codex {}.{}.{} does not support updatedInput; installing deny-rerun fallback",
+            version.major, version.minor, version.patch
+        );
+        eprintln!(
+            "[tokf] upgrade Codex to 0.131.0+ and rerun `tokf hook install --tool codex` for transparent rewrites."
+        );
+        CodexRewriteMode::DenyRerun
+    }
+}
+
+fn installed_codex_version() -> Option<CodexVersion> {
+    let output = Command::new("codex").arg("--version").output().ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    parse_codex_version(&stdout).or_else(|| parse_codex_version(&stderr))
+}
+
+fn parse_codex_version(output: &str) -> Option<CodexVersion> {
+    output.split_whitespace().find_map(parse_codex_version_word)
+}
+
+fn parse_codex_version_word(word: &str) -> Option<CodexVersion> {
+    let word = word
+        .trim_start_matches("codex-cli")
+        .trim_start_matches("rust-v")
+        .trim_start_matches('v');
+    let mut parts = word.split(['.', '-']);
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some(CodexVersion {
+        major,
+        minor,
+        patch,
+    })
 }
 
 const fn codex_hook_script_name(platform: HookScriptPlatform) -> &'static str {
@@ -281,17 +373,46 @@ mod tests {
     }
 
     #[test]
+    fn parse_codex_version_from_cli_output() {
+        assert_eq!(
+            parse_codex_version("codex-cli 0.131.0"),
+            Some(CodexVersion {
+                major: 0,
+                minor: 131,
+                patch: 0,
+            })
+        );
+        assert_eq!(
+            parse_codex_version("codex-cli rust-v0.132.1-alpha.1"),
+            Some(CodexVersion {
+                major: 0,
+                minor: 132,
+                patch: 1,
+            })
+        );
+        assert_eq!(parse_codex_version("not a version"), None);
+    }
+
+    #[test]
     fn install_hook_to_creates_codex_hook_config() {
         let dir = TempDir::new().unwrap();
         let hook_dir = dir.path().join(".tokf/hooks");
         let codex_dir = dir.path().join(".codex");
 
-        install_hook_to(&hook_dir, &codex_dir, "tokf", false).unwrap();
+        install_hook_to(
+            &hook_dir,
+            &codex_dir,
+            "tokf",
+            false,
+            CodexRewriteMode::UpdatedInput,
+        )
+        .unwrap();
 
         let hook_script = hook_dir.join(codex_hook_script_name(current_hook_script_platform()));
         assert!(hook_script.exists());
         let script = std::fs::read_to_string(&hook_script).unwrap();
         assert!(!script.contains("--no-cache"));
+        assert!(script.contains("TOKF_CODEX_REWRITE_MODE=updated-input"));
         assert!(script.contains("hook handle --format codex"));
 
         let hooks_json = codex_dir.join("hooks.json");
@@ -305,15 +426,21 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let hook_dir = dir.path().join(".tokf/hooks");
 
-        let hook_script =
-            write_codex_hook_shim_for_platform(&hook_dir, "tokf", HookScriptPlatform::Unix)
-                .unwrap();
+        let hook_script = write_codex_hook_shim_for_platform(
+            &hook_dir,
+            "tokf",
+            HookScriptPlatform::Unix,
+            CodexRewriteMode::UpdatedInput,
+        )
+        .unwrap();
 
         assert_eq!(hook_script.file_name().unwrap(), "codex-pre-tool-use.sh");
         let script = std::fs::read_to_string(&hook_script).unwrap();
         assert!(script.starts_with("#!/bin/sh\n"));
         assert!(!script.contains("--no-cache"));
-        assert!(script.contains("exec tokf hook handle --format codex"));
+        assert!(script.contains(
+            "TOKF_CODEX_REWRITE_MODE=updated-input exec tokf hook handle --format codex"
+        ));
 
         let command =
             codex_hook_command_for_platform(&hook_script, HookScriptPlatform::Unix).unwrap();
@@ -330,6 +457,7 @@ mod tests {
             &hook_dir,
             r"C:\Program Files\tokf\tokf.exe",
             HookScriptPlatform::Windows,
+            CodexRewriteMode::DenyRerun,
         )
         .unwrap();
 
@@ -337,6 +465,7 @@ mod tests {
         let script = std::fs::read_to_string(&hook_script).unwrap();
         assert!(script.starts_with("@echo off\r\n"));
         assert!(!script.contains("--no-cache"));
+        assert!(script.contains(r#"set "TOKF_CODEX_REWRITE_MODE=deny-rerun""#));
         assert!(script.contains(r#""C:\Program Files\tokf\tokf.exe" hook handle --format codex"#));
         assert!(script.ends_with("exit /b %ERRORLEVEL%\r\n"));
 
@@ -353,8 +482,22 @@ mod tests {
         let hook_dir = dir.path().join(".tokf/hooks");
         let codex_dir = dir.path().join(".codex");
 
-        install_hook_to(&hook_dir, &codex_dir, "tokf", false).unwrap();
-        install_hook_to(&hook_dir, &codex_dir, "tokf", false).unwrap();
+        install_hook_to(
+            &hook_dir,
+            &codex_dir,
+            "tokf",
+            false,
+            CodexRewriteMode::UpdatedInput,
+        )
+        .unwrap();
+        install_hook_to(
+            &hook_dir,
+            &codex_dir,
+            "tokf",
+            false,
+            CodexRewriteMode::UpdatedInput,
+        )
+        .unwrap();
 
         let hooks_json = codex_dir.join("hooks.json");
         let content = std::fs::read_to_string(hooks_json).unwrap();
