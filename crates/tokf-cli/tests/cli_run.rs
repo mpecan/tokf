@@ -501,3 +501,73 @@ output = "CHILD_FILTERED"
         "expected parent filter when no args variant matches, got: {stdout}"
     );
 }
+
+// Regression test for https://github.com/nicholasgasior/tokf/issues/381:
+// gh filters with a `run` override that injects --json must passthrough when
+// the user already supplies their own --json / -q / --jq, otherwise the
+// template renders an empty stub.
+#[test]
+fn gh_json_flag_triggers_passthrough() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let filters_dir = dir.path().join(".tokf/filters/gh/pr");
+    std::fs::create_dir_all(&filters_dir).unwrap();
+    // Mimic the bundled gh/pr/view filter (command + run + json extract + template)
+    std::fs::write(
+        filters_dir.join("view.toml"),
+        r#"command = "gh pr view *"
+run = "echo INJECTED_JSON_SCHEMA"
+passthrough_args = ["--web", "-w", "--json", "-q", "--jq"]
+
+[on_success]
+output = "FILTERED_TEMPLATE"
+"#,
+    )
+    .unwrap();
+
+    // Without --json: filter applies, we get the template
+    let output = tokf()
+        .args(["run", "gh", "pr", "view", "1"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("FILTERED_TEMPLATE"),
+        "expected filter template without --json, got: {stdout}"
+    );
+
+    // With --json: passthrough — original args forwarded, no template rendered
+    let output = tokf()
+        .args([
+            "run", "gh", "pr", "view", "1", "--json", "isDraft", "-q", ".isDraft",
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("FILTERED_TEMPLATE"),
+        "filter template must not appear when --json is passed, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("INJECTED_JSON_SCHEMA"),
+        "run override must not execute when --json is passed, got: {stdout}"
+    );
+
+    // With --jq: same passthrough behaviour
+    let output = tokf()
+        .args([
+            "run", "gh", "pr", "view", "1", "--json", "isDraft", "--jq", ".isDraft",
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("FILTERED_TEMPLATE"),
+        "filter template must not appear when --jq is passed, got: {stdout}"
+    );
+}
