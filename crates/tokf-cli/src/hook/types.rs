@@ -191,6 +191,82 @@ impl CursorHookResponse {
     }
 }
 
+/// Response to send back to Codex `PreToolUse`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexHookResponse {
+    #[serde(rename = "hookSpecificOutput")]
+    pub hook_specific_output: CodexHookSpecificOutput,
+}
+
+/// Codex-specific output for `PreToolUse`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexHookSpecificOutput {
+    #[serde(rename = "hookEventName")]
+    pub hook_event_name: &'static str,
+    #[serde(rename = "permissionDecision")]
+    pub permission_decision: &'static str,
+    #[serde(
+        rename = "permissionDecisionReason",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub permission_decision_reason: Option<String>,
+    #[serde(rename = "updatedInput", skip_serializing_if = "Option::is_none")]
+    pub updated_input: Option<UpdatedInput>,
+}
+
+#[allow(clippy::needless_pass_by_value)]
+impl CodexHookResponse {
+    /// Create a Codex response that rewrites and auto-allows the command.
+    pub const fn rewrite(command: String, reason: Option<String>) -> Self {
+        Self::with_decision("allow", command, reason)
+    }
+
+    /// Create a Codex response for versions that do not support `updatedInput`.
+    pub fn rewrite_deny_rerun(command: String, _reason: Option<String>) -> Self {
+        Self::deny_with_reason(format!("Run with tokf: {command}"))
+    }
+
+    /// Codex `PreToolUse` has no supported ask decision, so ask maps to deny.
+    pub fn rewrite_ask(command: String, reason: Option<String>) -> Self {
+        let reason = reason.map_or_else(
+            || format!("Requires confirmation before running: {command}"),
+            |reason| format!("{reason}. Rewritten command: {command}"),
+        );
+        Self::deny_with_reason(reason)
+    }
+
+    /// Create a Codex deny response with an optional reason.
+    pub fn deny(command: String, reason: Option<String>) -> Self {
+        Self::deny_with_reason(reason.unwrap_or_else(|| format!("Blocked by tokf: {command}")))
+    }
+
+    const fn deny_with_reason(reason: String) -> Self {
+        Self {
+            hook_specific_output: CodexHookSpecificOutput {
+                hook_event_name: "PreToolUse",
+                permission_decision: "deny",
+                permission_decision_reason: Some(reason),
+                updated_input: None,
+            },
+        }
+    }
+
+    const fn with_decision(
+        decision: &'static str,
+        command: String,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            hook_specific_output: CodexHookSpecificOutput {
+                hook_event_name: "PreToolUse",
+                permission_decision: decision,
+                permission_decision_reason: reason,
+                updated_input: Some(UpdatedInput { command }),
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -285,6 +361,43 @@ mod tests {
         assert_eq!(
             value["hookSpecificOutput"]["permissionDecisionReason"],
             "dangerous command"
+        );
+    }
+
+    #[test]
+    fn serialize_codex_response_allows_with_updated_input() {
+        let response = CodexHookResponse::rewrite("tokf run git status".to_string(), None);
+        let json = serde_json::to_string(&response).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "allow");
+        assert!(
+            value["hookSpecificOutput"]
+                .get("permissionDecisionReason")
+                .is_none(),
+            "allow rewrites do not need a reason"
+        );
+        assert_eq!(
+            value["hookSpecificOutput"]["updatedInput"]["command"],
+            "tokf run git status"
+        );
+    }
+
+    #[test]
+    fn serialize_codex_legacy_response_blocks_with_rerun_hint() {
+        let response =
+            CodexHookResponse::rewrite_deny_rerun("tokf run git status".to_string(), None);
+        let json = serde_json::to_string(&response).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            value["hookSpecificOutput"]["permissionDecisionReason"],
+            "Run with tokf: tokf run git status"
+        );
+        assert!(
+            value["hookSpecificOutput"].get("updatedInput").is_none(),
+            "legacy Codex mode must not receive ignored updatedInput"
         );
     }
 

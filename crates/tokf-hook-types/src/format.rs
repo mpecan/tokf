@@ -8,6 +8,8 @@ pub enum HookFormat {
     Gemini,
     /// Cursor: `permission`
     Cursor,
+    /// `OpenAI` Codex CLI: `hookSpecificOutput.permissionDecision = "deny"`.
+    Codex,
 }
 
 impl HookFormat {
@@ -19,6 +21,7 @@ impl HookFormat {
             Self::ClaudeCode => "claude-code",
             Self::Gemini => "gemini",
             Self::Cursor => "cursor",
+            Self::Codex => "codex",
         }
     }
 }

@@ -36,7 +36,8 @@ pub struct DetectedTool {
     pub display_name: &'static str,
     /// What evidence was found (e.g. "binary in PATH", "~/.claude/ exists").
     pub evidence: String,
-    /// Whether this tool supports the skill install step.
+    /// Whether setup should offer the separate `tokf skill install` step.
+    /// Tool-specific hook installers may still install their own skills.
     pub supports_skill: bool,
 }
 

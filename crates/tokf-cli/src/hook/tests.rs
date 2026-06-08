@@ -516,6 +516,19 @@ fn handle_gemini_invalid_json_passes_through() {
     assert_eq!(handle_gemini_json("not json"), HookOutcome::PassThrough);
 }
 
+// --- handle_codex_json ---
+
+#[test]
+fn handle_codex_non_bash_tool_passes_through() {
+    let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
+    assert_eq!(handle_codex_json(json), HookOutcome::PassThrough);
+}
+
+#[test]
+fn handle_codex_invalid_json_passes_through() {
+    assert_eq!(handle_codex_json("not json"), HookOutcome::PassThrough);
+}
+
 // --- handle_cursor_json_with_config ---
 
 #[test]
