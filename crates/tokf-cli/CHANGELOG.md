@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.47](https://github.com/mpecan/tokf/compare/tokf-v0.2.46...tokf-v0.2.47) (2026-06-14)
+
+
+### Bug Fixes
+
+* **filter:** passthrough gh pr/issue filters when user supplies --json/-q/--jq ([#382](https://github.com/mpecan/tokf/issues/382)) ([618955e](https://github.com/mpecan/tokf/commit/618955ef6ce52b8ba04e6f8538e618e3650c830c)), closes [#381](https://github.com/mpecan/tokf/issues/381)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.46 to 0.2.47
+    * tokf-filter bumped from 0.2.46 to 0.2.47
+    * tokf-hook-types bumped from 0.2.46 to 0.2.47
+
 ## [0.2.46](https://github.com/mpecan/tokf/compare/tokf-v0.2.45...tokf-v0.2.46) (2026-06-07)
 
 
