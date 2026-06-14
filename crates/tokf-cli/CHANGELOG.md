@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.46](https://github.com/mpecan/tokf/compare/tokf-v0.2.45...tokf-v0.2.46) (2026-06-07)
+
+
+### Features
+
+* **hook:** add Codex PreToolUse integration ([#368](https://github.com/mpecan/tokf/issues/368)) ([8c4e733](https://github.com/mpecan/tokf/commit/8c4e73390e42f55a463cf2094f41a76d58b1c817))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.45 to 0.2.46
+    * tokf-filter bumped from 0.2.45 to 0.2.46
+    * tokf-hook-types bumped from 0.2.45 to 0.2.46
+
 ## [0.2.45](https://github.com/mpecan/tokf/compare/tokf-v0.2.44...tokf-v0.2.45) (2026-05-12)
 
 
