@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.48](https://github.com/mpecan/tokf/compare/tokf-v0.2.47...tokf-v0.2.48) (2026-06-18)
+
+
+### Bug Fixes
+
+* **rewrite:** preserve newline after operator in nested-list segments ([#393](https://github.com/mpecan/tokf/issues/393)) ([e9c35c8](https://github.com/mpecan/tokf/commit/e9c35c88212d5320343d55ae634efa8f86031066))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.47 to 0.2.48
+    * tokf-filter bumped from 0.2.47 to 0.2.48
+    * tokf-hook-types bumped from 0.2.47 to 0.2.48
+
 ## [0.2.47](https://github.com/mpecan/tokf/compare/tokf-v0.2.46...tokf-v0.2.47) (2026-06-14)
 
 
