@@ -3,7 +3,7 @@
 //! Provides grammar-aware splitting, pipe detection, heredoc detection,
 //! env-prefix stripping, and command word extraction.
 
-use rable::ast::{ListOperator, Node, NodeKind};
+use rable::ast::{Node, NodeKind};
 
 /// Result of stripping a simple pipe from a command.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,16 +252,30 @@ impl ParsedCommand {
 
 /// Recursively flatten a node into `(segment_text, separator)` pairs.
 ///
-/// When descending into a nested `List`, the **last** item inherits the
-/// `parent_sep` because in source order that's what visually follows it.
-/// For example, `A && B || C` parses as `((A && B) || C)`:
+/// The separator after a non-last list item is sliced **byte-for-byte** from
+/// the source as the gap between this item's command end-span and the next
+/// item's command start-span — exactly like [`ParsedCommand::compound_segments`]
+/// does for top-level nodes. That gap captures the operator (`&&`/`||`/`;`/`&`)
+/// **plus** any surrounding whitespace, newlines, or comments, so a downstream
+/// rebuild via `seg + sep` reproduces the original source.
+///
+/// Reconstructing the separator from the operator *kind* instead (the previous
+/// approach) silently dropped a newline that immediately followed an operator:
+/// `git status &&\ngit log` collapsed to `git status &&git log`, gluing the
+/// segments onto one line and swallowing any intervening comment. That was an
+/// instance of the issue #355 token-fusion class on the nested-list path that
+/// the original #355 fix (top-level only) didn't cover.
+///
+/// The **last** item inherits the `parent_sep` because in source order that's
+/// what visually follows it. For example, `A && B || C` parses as
+/// `((A && B) || C)`:
 /// - outer items: `[(InnerList, "||"), (C, None)]`
-/// - inner items: `[(A, "&&"), (B, None)]` — descended with `parent_sep` `"||"`
-///   - i=0 (A) not last → emit `(A, "&&")`
-///   - i=1 (B) last → inherit `"||"` → emit `(B, "||")`
+/// - inner items: `[(A, "&&"), (B, None)]` — descended with `parent_sep` `" || "`
+///   - i=0 (A) not last → sep = gap `A`→`B` = `" && "`
+///   - i=1 (B) last → inherit `" || "`
 /// - back to outer, i=1 (C) last → emit `(C, "")`
 ///
-/// Result: `[(A, "&&"), (B, "||"), (C, "")]`.
+/// Result: `[(A, " && "), (B, " || "), (C, "")]`.
 fn flatten_segments(
     node: &Node,
     source: &str,
@@ -271,53 +285,18 @@ fn flatten_segments(
     if let NodeKind::List { items } = &node.kind {
         let last = items.len().saturating_sub(1);
         for (i, item) in items.iter().enumerate() {
-            let local_sep = item
-                .operator
-                .map(|op| format_operator(source, op, &item.command))
-                .unwrap_or_default();
             let sep = if i == last {
                 parent_sep.clone()
             } else {
-                local_sep
+                let gap_start = item.command.span.end;
+                let gap_end = items[i + 1].command.span.start;
+                source[gap_start..gap_end].to_string()
             };
             flatten_segments(&item.command, source, sep, out);
         }
     } else {
         out.push((node.source_text(source).to_string(), parent_sep));
     }
-}
-
-/// Format the operator after a list item, preserving surrounding whitespace.
-fn format_operator(source: &str, op: ListOperator, cmd: &Node) -> String {
-    let op_str = match op {
-        ListOperator::And => "&&",
-        ListOperator::Or => "||",
-        ListOperator::Semi => ";",
-        ListOperator::Background => "&",
-    };
-
-    // Find the operator in the source after the command's text.
-    let cmd_text = cmd.source_text(source);
-    let search_from = source.find(cmd_text).unwrap_or(0) + cmd_text.len();
-    source[search_from..].find(op_str).map_or_else(
-        || format!(" {op_str} "),
-        |pos| {
-            let abs = search_from + pos;
-            let abs_end = abs + op_str.len();
-            let bytes = source.as_bytes();
-            let before = if abs > 0 && bytes[abs - 1] == b' ' {
-                " "
-            } else {
-                ""
-            };
-            let after = if abs_end < bytes.len() && bytes[abs_end] == b' ' {
-                " "
-            } else {
-                ""
-            };
-            format!("{before}{op_str}{after}")
-        },
-    )
 }
 
 /// Collect pipe byte positions from Pipeline nodes.

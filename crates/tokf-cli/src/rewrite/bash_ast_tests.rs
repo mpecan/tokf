@@ -123,6 +123,16 @@ fn compound_segments_round_trip_byte_for_byte() {
         "cat <<EOF\nbody\nEOF\necho done",
         "cmd1 \\\necho continued",
         "cmd1   \n   cmd2",
+        // Operator immediately followed by a newline — the nested-list
+        // counterpart of the #355 fusion bug. The separator must carry the
+        // newline, not just the operator, or `cmd1 &&\ncmd2` collapses to
+        // `cmd1 &&cmd2`.
+        "cmd1 &&\ncmd2",
+        "cmd1 ||\ncmd2",
+        "cmd1 ;\ncmd2",
+        "cmd1 &&\ncmd2 ||\ncmd3",
+        "cmd1 &&\n  cmd2",
+        "cmd1 && # note\ncmd2",
     ] {
         let Some(p) = ParsedCommand::parse(input) else {
             continue;
@@ -154,6 +164,25 @@ fn compound_segments_mixed_newline_and_and() {
     );
     assert_eq!(segs[2].0, "cmd3");
     assert!(segs[2].1.is_empty());
+}
+
+#[test]
+fn compound_segments_operator_then_newline_keeps_newline() {
+    // `cmd1 &&\ncmd2` parses as a single List(cmd1, cmd2); the gap between
+    // the two items in source is " &&\n". The separator must preserve that
+    // newline byte-for-byte. Previously it was reconstructed from the
+    // operator kind alone (" &&"), dropping the newline and gluing the
+    // segments — the nested-list instance of the issue #355 fusion bug.
+    let p = ParsedCommand::parse("cmd1 &&\ncmd2").unwrap();
+    let segs = p.compound_segments();
+    assert_eq!(segs.len(), 2);
+    assert_eq!(segs[0].0, "cmd1");
+    assert_eq!(
+        segs[0].1, " &&\n",
+        "operator separator must keep the newline"
+    );
+    assert_eq!(segs[1].0, "cmd2");
+    assert!(segs[1].1.is_empty());
 }
 
 // --- pipe detection ---
