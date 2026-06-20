@@ -421,6 +421,18 @@ fn rewrite_compound_then_tail_stripped() {
 }
 
 #[test]
+fn rewrite_compound_multibyte_emoji_not_corrupted() {
+    // Regression (#383): end-to-end through the real binary an LLM hook
+    // invokes. A multibyte echo mixed with chain operators and a stripped
+    // pipe previously emitted invalid shell (`| ||`, dropped `; `).
+    let result = rewrite_with_stdlib("echo \"✓ valid\" || echo \"✗ bad\"; git diff | head -5");
+    assert_eq!(
+        result,
+        "echo \"✓ valid\" || echo \"✗ bad\"; tokf run --baseline-pipe 'head -5' git diff"
+    );
+}
+
+#[test]
 fn rewrite_logical_or_still_rewritten_integration() {
     let result = rewrite_with_stdlib("cargo test || echo failed");
     assert_eq!(result, "tokf run cargo test || echo failed");
