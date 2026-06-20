@@ -91,9 +91,10 @@ pub fn crdb_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             // ── Teardown ───────────────────────────────────────────
             let _ = ::sqlx::Executor::execute(
                 &mgmt_pool,
-                ::sqlx::query(&format!(
+                // SQL-safe: db_name is derived from the test function name, not user input.
+                ::sqlx::query(::sqlx::AssertSqlSafe(format!(
                     "DROP DATABASE IF EXISTS \"{}\" CASCADE", db_name
-                )),
+                ))),
             )
             .await;
         }
@@ -122,16 +123,17 @@ fn gen_setup(
             .expect("crdb_test: failed to connect to management database");
 
         // Drop leftover test DB (from a previous crashed run), then create fresh
+        // SQL-safe: db_name is derived from the test function name, not user input.
         let _ = ::sqlx::Executor::execute(
             &mgmt_pool,
-            ::sqlx::query(&format!(
+            ::sqlx::query(::sqlx::AssertSqlSafe(format!(
                 "DROP DATABASE IF EXISTS \"{}\" CASCADE", db_name
-            )),
+            ))),
         )
         .await;
         ::sqlx::Executor::execute(
             &mgmt_pool,
-            ::sqlx::query(&format!("CREATE DATABASE \"{}\"", db_name)),
+            ::sqlx::query(::sqlx::AssertSqlSafe(format!("CREATE DATABASE \"{}\"", db_name))),
         )
         .await
         .expect("crdb_test: failed to create test database");
