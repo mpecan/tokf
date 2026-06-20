@@ -80,7 +80,14 @@ pub struct DownloadPayload {
     /// across `FilterConfig` schema additions, the long-term identity for
     /// all filters going forward. Clients aware of v1 verify against
     /// this; older clients ignore the field.
-    pub v1_hash: String,
+    ///
+    /// `None` (omitted from the response) when the stored TOML cannot be
+    /// canonicalised under v1 — e.g. a legacy filter containing a
+    /// non-finite float, published before the v1 gate existed. Best-effort
+    /// so a single un-hashable legacy filter doesn't 500 the whole
+    /// download; the client falls back to `content_hash`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v1_hash: Option<String>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -353,11 +360,10 @@ pub async fn download_filter(
 
     // Compute the schema-independent v1 hash (ADR-0002). Stable across
     // future `FilterConfig` schema additions; the long-term identity for
-    // every filter going forward.
-    let v1_hash = tokf_common::canonical_v1::hash(&filter_toml).map_err(|e| {
-        tracing::warn!("v1 hash computation failed for {hash}: {e}");
-        AppError::Internal("filter content cannot be hashed under v1".to_string())
-    })?;
+    // every filter going forward. Best-effort: a legacy filter that can't be
+    // canonicalised under v1 must not fail the download — the client falls
+    // back to `content_hash`. See #350.
+    let v1_hash = compute_v1_best_effort(&filter_toml, &hash);
 
     let test_keys: Vec<String> =
         sqlx::query_scalar("SELECT r2_key FROM filter_tests WHERE filter_hash = $1")
@@ -418,13 +424,44 @@ fn recompute_content_hash(toml_str: &str) -> Result<String, String> {
     tokf_common::hash::canonical_hash(&config).map_err(|e| format!("hash error: {e}"))
 }
 
+/// Compute the canonical v1 hash (ADR-0002), returning `None` on failure
+/// instead of erroring. Unlike `content_hash` (the per-request identity the
+/// client relies on), `v1_hash` is advisory for v1-aware clients, so a single
+/// legacy filter that can't be canonicalised under v1 should degrade to "no
+/// v1 hash" rather than 500 the download. The warning is logged for triage —
+/// such a filter is also a backfill failure and warrants a manual look.
+fn compute_v1_best_effort(toml_str: &str, hash: &str) -> Option<String> {
+    match tokf_common::canonical_v1::hash(toml_str) {
+        Ok(h) => Some(h),
+        Err(e) => {
+            tracing::warn!("v1 hash computation failed for {hash} (omitting from response): {e}");
+            None
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 // DB integration tests live in `search_tests.rs` (same pattern as sync/sync_tests).
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::{escape_ilike, recompute_content_hash};
+    use super::{compute_v1_best_effort, escape_ilike, recompute_content_hash};
+
+    #[test]
+    fn compute_v1_best_effort_returns_hash_for_valid_filter() {
+        let v1 = compute_v1_best_effort(r#"command = "git push""#, "deadbeef");
+        let v1 = v1.expect("valid filter must produce a v1 hash");
+        assert!(v1.starts_with("v1:"), "got {v1}");
+    }
+
+    #[test]
+    fn compute_v1_best_effort_returns_none_when_uncanonicalisable() {
+        // A non-finite float is rejected by canonical_v1 — the helper must
+        // degrade to None (omit the field) rather than propagate an error.
+        let v1 = compute_v1_best_effort("command = \"x\"\nratio = nan\n", "deadbeef");
+        assert!(v1.is_none(), "non-finite float must yield None, got {v1:?}");
+    }
 
     #[test]
     fn recompute_content_hash_matches_canonical_hash() {
