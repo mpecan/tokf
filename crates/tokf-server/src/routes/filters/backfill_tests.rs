@@ -218,6 +218,70 @@ async fn backfill_v1_reports_per_row_failures(pool: PgPool) {
     }
 }
 
+/// R3 regression: a permanently-failing row must not starve newer rows.
+///
+/// `failing` (corrupt R2) is forced to be the oldest by `updated_at`, so a
+/// `limit = 1` backfill picks it first and fails. That failure bumps its
+/// `updated_at` to NOW(), rotating it behind `good`. The next `limit = 1`
+/// call therefore reaches `good` and backfills it — proving the cursor
+/// advances past the failure rather than re-picking it forever (which is
+/// what a `created_at ASC` cursor with no bump would do).
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn backfill_v1_failure_rotates_behind_healthy_rows(pool: PgPool) {
+    let storage = Arc::new(InMemoryStorageClient::new());
+    let (_, user) = insert_test_user(&pool, "alice_rotate").await;
+    let service_token = insert_service_token(&pool, "bf-rotate").await;
+
+    let good_toml: &[u8] = b"command = \"good-tool\"\n";
+    let failing_hash =
+        publish_then_null_v1(&pool, Arc::clone(&storage), &user, VALID_FILTER_TOML).await;
+    let good_hash = publish_then_null_v1(&pool, Arc::clone(&storage), &user, good_toml).await;
+
+    // Corrupt the failing row's R2 object so it can never be hashed.
+    let failing_key = r2_key_for(&pool, &failing_hash).await;
+    storage.delete(&failing_key).await.unwrap();
+
+    // Force a deterministic order: `failing` is strictly older than `good`,
+    // so the first `limit = 1` batch picks `failing`.
+    sqlx::query("UPDATE filters SET updated_at = '2020-01-01T00:00:00Z' WHERE content_hash = $1")
+        .bind(&failing_hash)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE filters SET updated_at = '2020-01-02T00:00:00Z' WHERE content_hash = $1")
+        .bind(&good_hash)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Call 1: picks the (oldest) failing row, fails, bumps its updated_at.
+    let app =
+        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
+    let resp = post_json(app, &service_token, URI, &serde_json::json!({ "limit": 1 })).await;
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["updated"], 0, "call 1 hits only the failing row");
+    assert_eq!(json["failed"].as_array().unwrap().len(), 1);
+
+    // Call 2: the failing row was rotated to the back, so `good` is now oldest
+    // and gets backfilled — the failure did not block progress.
+    let app =
+        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
+    let resp = post_json(app, &service_token, URI, &serde_json::json!({ "limit": 1 })).await;
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["updated"], 1, "call 2 must reach the healthy row");
+    assert_eq!(json["failed"].as_array().unwrap().len(), 0);
+
+    let good_v1: Option<String> =
+        sqlx::query_scalar("SELECT v1_hash FROM filters WHERE content_hash = $1")
+            .bind(&good_hash)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(good_v1.unwrap(), expected_v1(good_toml));
+}
+
 #[crdb_test_macro::crdb_test(migrations = "./migrations")]
 async fn backfill_v1_requires_service_token(pool: PgPool) {
     let storage = Arc::new(InMemoryStorageClient::new());
