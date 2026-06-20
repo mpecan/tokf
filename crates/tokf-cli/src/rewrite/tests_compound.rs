@@ -29,6 +29,49 @@ fn rewrite_compound_both_segments_match() {
 }
 
 #[test]
+fn rewrite_compound_multibyte_segment_not_corrupted() {
+    // Regression (#383): a compound command mixing a multibyte echo with a
+    // filterable piped segment must produce valid shell. Before the rable
+    // char-index span fix + char→byte slicing, the `||`/`;` separators were
+    // spliced at wrong byte offsets, emitting `| |` and a dropped `; ` that
+    // failed to parse.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("ls.toml"), "command = \"ls\"").unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "echo \"✓ valid\" || echo \"✗ bad\"; ls ~/.claude/skills/ | grep tokf",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(
+        r,
+        "echo \"✓ valid\" || echo \"✗ bad\"; tokf run --baseline-pipe 'grep tokf' ls ~/.claude/skills/"
+    );
+}
+
+#[test]
+fn rewrite_compound_multibyte_echo_then_piped_filter() {
+    // The issue's "Impact" example: emoji echo followed by a stdlib-matched
+    // piped command. The echo segment and `;` separator stay intact.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
+
+    let config = RewriteConfig::default();
+    let r = rewrite_with_config(
+        "echo \"✓ done\"; git diff | tail",
+        &config,
+        &[dir.path().to_path_buf()],
+        false,
+    );
+    assert_eq!(
+        r,
+        "echo \"✓ done\"; tokf run --baseline-pipe 'tail' git diff"
+    );
+}
+
+#[test]
 fn rewrite_compound_partial_match() {
     let dir = TempDir::new().unwrap();
     fs::write(

@@ -128,7 +128,9 @@ impl ParsedCommand {
         for (i, node) in self.nodes.iter().enumerate() {
             let parent_sep = if i + 1 < n {
                 let next = &self.nodes[i + 1];
-                self.source[node.span.end..next.span.start].to_string()
+                let start = char_to_byte(&self.source, node.span.end);
+                let end = char_to_byte(&self.source, next.span.start);
+                self.source[start..end].to_string()
             } else {
                 String::new()
             };
@@ -288,8 +290,8 @@ fn flatten_segments(
             let sep = if i == last {
                 parent_sep.clone()
             } else {
-                let gap_start = item.command.span.end;
-                let gap_end = items[i + 1].command.span.start;
+                let gap_start = char_to_byte(source, item.command.span.end);
+                let gap_end = char_to_byte(source, items[i + 1].command.span.start);
                 source[gap_start..gap_end].to_string()
             };
             flatten_segments(&item.command, source, sep, out);
@@ -568,6 +570,25 @@ fn is_strippable_grep(args: &[&str]) -> bool {
         }
     }
     has_pattern
+}
+
+/// Convert a rable span position (a **character** index) into a byte offset
+/// into `source`.
+///
+/// rable's [`rable::ast::Span`] fields are character indices — the lexer scans
+/// the source as a `Vec<char>` — so slicing the byte-indexed `source` string
+/// by a raw span field corrupts any input containing multibyte UTF-8: each
+/// multibyte char before the position makes the char index lag the byte index,
+/// so the slice lands early and splices stray bytes into the result (#383).
+/// This mirrors how rable's own `Node::source_text` resolves spans.
+///
+/// `char_indices().nth()` is O(n) over the position, but command strings are
+/// short, so the cost is negligible.
+fn char_to_byte(source: &str, char_idx: usize) -> usize {
+    source
+        .char_indices()
+        .nth(char_idx)
+        .map_or(source.len(), |(i, _)| i)
 }
 
 /// Strip a single layer of matching outer quotes (single or double).

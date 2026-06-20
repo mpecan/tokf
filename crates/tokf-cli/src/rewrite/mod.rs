@@ -352,6 +352,9 @@ pub(crate) fn rewrite_with_config_and_options(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
+mod bash_ast_multibyte_tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod bash_ast_tests;
 #[cfg(test)]
 mod tests;
