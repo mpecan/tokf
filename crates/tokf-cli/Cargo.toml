@@ -28,7 +28,7 @@ include_dir = { version = "0.7", features = ["glob"] }
 # Pinned to 0.32.x: uses libsqlite3-sys ^0.30.1, same as sqlx-sqlite in tokf-server.
 # Upgrading rusqlite past 0.32.x would require a newer libsqlite3-sys that conflicts
 # with sqlx-sqlite's links = "sqlite3" constraint in the workspace resolver.
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 rkyv = { version = "0.8", features = ["bytecheck", "unaligned"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "blocking", "multipart", "query"] }
 # linux-native uses kernel keyutils (no libdbus-sys dependency).
@@ -43,9 +43,9 @@ dialoguer = { version = "0.12", default-features = false }
 which = "8"
 rable = "0.2.1"
 tempfile = "3"
-opentelemetry     = { version = "0.31", optional = true, features = ["metrics"] }
-opentelemetry_sdk = { version = "0.31", optional = true, features = ["metrics"] }
-opentelemetry-otlp = { version = "0.31", optional = true }
+opentelemetry     = { version = "0.32", optional = true, features = ["metrics"] }
+opentelemetry_sdk = { version = "0.32", optional = true, features = ["metrics"] }
+opentelemetry-otlp = { version = "0.32", optional = true }
 tokio             = { version = "1", optional = true, features = ["rt-multi-thread"] }
 tonic             = { version = "0.14", optional = true, default-features = false }
 
