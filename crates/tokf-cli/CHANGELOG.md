@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.49](https://github.com/mpecan/tokf/compare/tokf-v0.2.48...tokf-v0.2.49) (2026-06-20)
+
+
+### Bug Fixes
+
+* **rewrite:** correct multibyte UTF-8 compound rewrites ([#383](https://github.com/mpecan/tokf/issues/383)) ([#395](https://github.com/mpecan/tokf/issues/395)) ([3a822d0](https://github.com/mpecan/tokf/commit/3a822d0c3d1334085901bffd644c3ff84e50ff92))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.48 to 0.2.49
+    * tokf-filter bumped from 0.2.48 to 0.2.49
+    * tokf-hook-types bumped from 0.2.48 to 0.2.49
+
 ## [0.2.48](https://github.com/mpecan/tokf/compare/tokf-v0.2.47...tokf-v0.2.48) (2026-06-18)
 
 
