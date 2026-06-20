@@ -84,6 +84,9 @@ jobs:
     needs: [publish]
     if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # mint the OIDC token for npm trusted publishing
     steps:
       - uses: actions/checkout@v6
         with:
@@ -92,11 +95,12 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
+      # Trusted publishing requires npm >= 11.5.1; Node 24 ships an older npm.
+      - name: Update npm
+        run: npm install -g npm@latest
       - name: Publish catalog types
         working-directory: crates/tokf-server/generated
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   build-binaries:
     name: Build ${{ matrix.target }}
