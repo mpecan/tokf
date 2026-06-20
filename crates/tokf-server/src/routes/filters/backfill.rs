@@ -27,8 +27,9 @@ pub struct BackfillVersionsResponse {
     pub skipped: usize,
 }
 
-/// Maximum number of entries in a single backfill request.
-const MAX_BACKFILL_ENTRIES: usize = 500;
+/// Maximum batch size for either backfill endpoint. Bounds operator load
+/// against the DB / R2.
+const MAX_BACKFILL_BATCH: usize = 500;
 
 /// `POST /api/filters/backfill-versions` — Backfill version data for filters.
 ///
@@ -39,9 +40,9 @@ pub async fn backfill_versions(
     State(state): State<AppState>,
     Json(req): Json<BackfillVersionsRequest>,
 ) -> Result<(StatusCode, Json<BackfillVersionsResponse>), AppError> {
-    if req.entries.len() > MAX_BACKFILL_ENTRIES {
+    if req.entries.len() > MAX_BACKFILL_BATCH {
         return Err(AppError::BadRequest(format!(
-            "batch size {} exceeds maximum of {MAX_BACKFILL_ENTRIES}",
+            "batch size {} exceeds maximum of {MAX_BACKFILL_BATCH}",
             req.entries.len()
         )));
     }
@@ -98,4 +99,142 @@ pub async fn backfill_versions(
         StatusCode::OK,
         Json(BackfillVersionsResponse { updated, skipped }),
     ))
+}
+
+// ── v1_hash backfill ──────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct BackfillV1Request {
+    /// Maximum rows to process in this call. Operator iterates until
+    /// `processed == 0`. Defaults to 100; capped at `MAX_BACKFILL_BATCH`.
+    #[serde(default = "default_v1_batch_size")]
+    pub limit: usize,
+}
+
+const fn default_v1_batch_size() -> usize {
+    100
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackfillV1Response {
+    pub processed: usize,
+    pub updated: usize,
+    pub failed: Vec<BackfillV1Failure>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackfillV1Failure {
+    pub content_hash: String,
+    pub error: String,
+}
+
+/// `POST /api/filters/backfill-v1-hashes` — populate `v1_hash` for legacy rows.
+///
+/// Service-token auth. Idempotent. Picks up to `limit` rows where
+/// `v1_hash IS NULL`, ordered by `updated_at` (oldest attempt first),
+/// fetches the TOML from R2, computes the v1 hash (ADR-0002), writes it
+/// back. Rows whose R2 object is missing or whose TOML fails to
+/// canonicalise are reported in `failed` and skipped — but their
+/// `updated_at` is still bumped so they rotate to the back of the queue
+/// and don't starve newer rows.
+///
+/// Operator runbook: invoke repeatedly until `updated == 0`. A response
+/// with `updated == 0` and a non-empty `failed` list means only
+/// permanently-failing rows remain — triage those manually; further calls
+/// will not make progress. Failures don't stop the batch.
+pub async fn backfill_v1_hashes(
+    _auth: ServiceAuth,
+    State(state): State<AppState>,
+    Json(req): Json<BackfillV1Request>,
+) -> Result<(StatusCode, Json<BackfillV1Response>), AppError> {
+    let limit = req.limit.clamp(1, MAX_BACKFILL_BATCH);
+    // Safe: `limit` is clamped to [1, MAX_BACKFILL_BATCH] (= 500) which fits in i64.
+    #[allow(clippy::cast_possible_wrap)]
+    let limit_i64 = limit as i64;
+
+    // Order by `updated_at` (not `created_at`): every attempt bumps it, so a
+    // permanently-failing row rotates to the back instead of blocking the head
+    // of the scan. `content_hash` is a deterministic tie-break for rows that
+    // share an `updated_at` (e.g. all legacy rows after the migration aligned
+    // them to `created_at`).
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT content_hash, r2_key FROM filters
+         WHERE v1_hash IS NULL
+         ORDER BY updated_at ASC, content_hash ASC
+         LIMIT $1",
+    )
+    .bind(limit_i64)
+    .fetch_all(&state.db)
+    .await?;
+
+    tracing::info!(
+        candidates = rows.len(),
+        limit,
+        "backfill-v1-hashes request received"
+    );
+
+    let mut updated = 0usize;
+    let mut failed = Vec::new();
+
+    for (content_hash, r2_key) in &rows {
+        match compute_and_store_v1(&state, content_hash, r2_key).await {
+            Ok(()) => updated += 1,
+            Err(e) => {
+                tracing::warn!(hash = %content_hash, "backfill-v1 failed: {e}");
+                // Bump `updated_at` so this row rotates to the back of the
+                // cursor and doesn't starve newer rows on the next call. The
+                // row's `v1_hash` stays NULL, so it remains a candidate.
+                touch_updated_at(&state, content_hash).await;
+                failed.push(BackfillV1Failure {
+                    content_hash: content_hash.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    tracing::info!(
+        processed = rows.len(),
+        updated,
+        failed = failed.len(),
+        "backfill-v1-hashes complete"
+    );
+
+    Ok((
+        StatusCode::OK,
+        Json(BackfillV1Response {
+            processed: rows.len(),
+            updated,
+            failed,
+        }),
+    ))
+}
+
+async fn compute_and_store_v1(
+    state: &AppState,
+    content_hash: &str,
+    r2_key: &str,
+) -> anyhow::Result<()> {
+    let toml_str = crate::storage::get_utf8(&*state.storage, r2_key).await?;
+    let v1 = tokf_common::canonical_v1::hash(&toml_str)?;
+    sqlx::query("UPDATE filters SET v1_hash = $1, updated_at = NOW() WHERE content_hash = $2")
+        .bind(&v1)
+        .bind(content_hash)
+        .execute(&state.db)
+        .await?;
+    Ok(())
+}
+
+/// Bump a row's `updated_at` to `NOW()` without touching `v1_hash`. Used on
+/// backfill failure so the row rotates to the back of the `updated_at` cursor.
+/// Best-effort: a failure here only means the row keeps its old `updated_at`
+/// and may be retried sooner, so we log rather than propagate.
+async fn touch_updated_at(state: &AppState, content_hash: &str) {
+    if let Err(e) = sqlx::query("UPDATE filters SET updated_at = NOW() WHERE content_hash = $1")
+        .bind(content_hash)
+        .execute(&state.db)
+        .await
+    {
+        tracing::warn!(hash = %content_hash, "failed to bump updated_at after backfill failure: {e}");
+    }
 }
