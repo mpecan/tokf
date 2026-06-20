@@ -203,9 +203,9 @@ impl Config {
                 }
             }
         });
-        let run_migrations = std::env::var("RUN_MIGRATIONS")
-            .map(|v| !matches!(v.to_lowercase().as_str(), "false" | "0" | "no"))
-            .unwrap_or(true);
+        let run_migrations = std::env::var("RUN_MIGRATIONS").map_or(true, |v| {
+            !matches!(v.to_lowercase().as_str(), "false" | "0" | "no")
+        });
         let public_url = Self::env_non_empty("PUBLIC_URL")
             .unwrap_or_else(|| "http://localhost:8080".to_string());
         Self {
@@ -221,8 +221,7 @@ impl Config {
             github_client_id: Self::env_non_empty("GITHUB_CLIENT_ID"),
             github_client_secret: Self::env_non_empty("GITHUB_CLIENT_SECRET"),
             trust_proxy: std::env::var("TRUST_PROXY")
-                .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes"))
-                .unwrap_or(false),
+                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes")),
             public_url: public_url.clone(),
             terms_url: Self::env_non_empty("TERMS_URL")
                 .unwrap_or_else(|| format!("{public_url}/terms")),

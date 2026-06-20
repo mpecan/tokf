@@ -688,7 +688,7 @@ contains = "Ignore"
     let suite = &arr[0];
     let safety_value = suite.get("safety");
     assert!(
-        safety_value.is_none() || safety_value.is_some_and(serde_json::Value::is_null),
+        safety_value.is_none_or(serde_json::Value::is_null),
         "expected 'safety' field to be absent or null without --safety flag, got:\n{suite}"
     );
 }

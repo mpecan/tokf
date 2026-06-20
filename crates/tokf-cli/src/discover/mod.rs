@@ -158,7 +158,7 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
 
     // Sort by estimated tokens (most output first), consistent with the
     // displayed TOKENS column.
-    results.sort_by(|a, b| b.estimated_tokens.cmp(&a.estimated_tokens));
+    results.sort_by_key(|r| std::cmp::Reverse(r.estimated_tokens));
     results
 }
 

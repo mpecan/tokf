@@ -219,116 +219,14 @@ pub fn load() -> Option<LoadedAuth> {
 ///
 /// Must be called before any keyring operations in tests to avoid touching
 /// real OS credentials. Safe to call multiple times.
+///
+/// Uses `keyring_core`'s mock store, which reuses one credential per
+/// `(service, user)` pair, so `save()` + `load()` round-trips work in tests
+/// (its persistence is `ProcessOnly`).
 #[cfg(any(test, feature = "test-keyring"))]
 pub fn use_mock_keyring() {
-    keyring::set_default_credential_builder(mem_keyring::credential_builder());
-}
-
-/// In-memory credential store that persists across `Entry::new()` calls.
-///
-/// Unlike `keyring::mock` (which has `EntryOnly` persistence), this backend
-/// stores passwords in a process-global `HashMap` keyed by `(service, user)`,
-/// so `save()` + `load()` round-trips work correctly in tests.
-#[cfg(any(test, feature = "test-keyring"))]
-mod mem_keyring {
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    use keyring::credential::{
-        Credential, CredentialApi, CredentialBuilder, CredentialBuilderApi, CredentialPersistence,
-    };
-    use keyring::error::{Error, Result};
-
-    type CredentialStore = HashMap<(String, String), Vec<u8>>;
-    static STORE: Mutex<Option<CredentialStore>> = Mutex::new(None);
-
-    fn with_store<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut CredentialStore) -> R,
-    {
-        let mut guard = match STORE.lock() {
-            Ok(guard) => guard,
-            // Recover the underlying data even if the mutex is poisoned so the
-            // in-memory store remains consistent across calls.
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        f(guard.get_or_insert_with(HashMap::new))
-    }
-
-    #[derive(Debug)]
-    struct MemCredential {
-        service: String,
-        user: String,
-    }
-
-    impl CredentialApi for MemCredential {
-        fn set_password(&self, password: &str) -> Result<()> {
-            self.set_secret(password.as_bytes())
-        }
-
-        fn set_secret(&self, secret: &[u8]) -> Result<()> {
-            with_store(|m| {
-                m.insert((self.service.clone(), self.user.clone()), secret.to_vec());
-            });
-            Ok(())
-        }
-
-        fn get_password(&self) -> Result<String> {
-            let bytes = self.get_secret()?;
-            String::from_utf8(bytes).map_err(|e| Error::BadEncoding(e.into_bytes()))
-        }
-
-        fn get_secret(&self) -> Result<Vec<u8>> {
-            with_store(|m| {
-                m.get(&(self.service.clone(), self.user.clone()))
-                    .cloned()
-                    .ok_or(Error::NoEntry)
-            })
-        }
-
-        fn delete_credential(&self) -> Result<()> {
-            with_store(|m| {
-                m.remove(&(self.service.clone(), self.user.clone()))
-                    .map(|_| ())
-                    .ok_or(Error::NoEntry)
-            })
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-
-        fn debug_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            std::fmt::Debug::fmt(self, f)
-        }
-    }
-
-    struct MemCredentialBuilder;
-
-    impl CredentialBuilderApi for MemCredentialBuilder {
-        fn build(
-            &self,
-            _target: Option<&str>,
-            service: &str,
-            user: &str,
-        ) -> Result<Box<Credential>> {
-            Ok(Box::new(MemCredential {
-                service: service.to_string(),
-                user: user.to_string(),
-            }))
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-
-        fn persistence(&self) -> CredentialPersistence {
-            CredentialPersistence::UntilDelete
-        }
-    }
-
-    pub(super) fn credential_builder() -> Box<CredentialBuilder> {
-        Box::new(MemCredentialBuilder)
+    if let Ok(store) = keyring_core::mock::Store::new() {
+        keyring_core::set_default_store(store);
     }
 }
 

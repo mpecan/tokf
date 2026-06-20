@@ -174,7 +174,9 @@ pub async fn search_filters(
                   f.created_at DESC
          LIMIT $2"
     );
-    let rows = sqlx::query(&sql)
+    // SQL-safe: the only interpolation is the `TEST_COUNT_SUBQUERY` constant;
+    // all user input is bound via `.bind()`.
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(&pattern)
         .bind(limit)
         .fetch_all(&state.db)
@@ -245,7 +247,9 @@ pub async fn get_filter(
          LEFT JOIN filter_stats fs ON fs.filter_hash = f.content_hash
          WHERE f.content_hash = $1"
     );
-    let row = sqlx::query(&sql)
+    // SQL-safe: the only interpolation is the `TEST_COUNT_SUBQUERY` constant;
+    // the user-supplied hash is bound via `.bind()`.
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(&hash)
         .fetch_optional(&state.db)
         .await?
