@@ -12,7 +12,7 @@ use bash_ast::{StrippedPipe, split_compound, strip_env_prefix};
 use rules::{apply_rules, should_skip};
 use types::{RewriteConfig, RewriteOptions, RewriteRule};
 
-pub use user_config::load_user_config;
+pub use user_config::{load_local_wrapper_config, load_user_config};
 
 /// Built-in wrapper rules for task runners that support shell overrides.
 ///

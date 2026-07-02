@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::types::RewriteConfig;
+use super::types::{LocalWrapperConfig, RewriteConfig};
 
 /// Search config dirs for `rewrites.toml` (first found wins).
 ///
@@ -9,6 +9,15 @@ use super::types::RewriteConfig;
 /// 2. `~/.config/tokf/rewrites.toml` (user-level)
 pub fn load_user_config() -> Option<RewriteConfig> {
     load_user_config_from(&config_search_paths())
+}
+
+/// Load the `[local_wrapper]` config, falling back to defaults when no
+/// `rewrites.toml` exists or it omits the section.
+pub fn load_local_wrapper_config() -> LocalWrapperConfig {
+    load_user_config()
+        .unwrap_or_default()
+        .local_wrapper
+        .unwrap_or_default()
 }
 
 fn config_search_paths() -> Vec<PathBuf> {

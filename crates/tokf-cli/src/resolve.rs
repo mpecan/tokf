@@ -35,10 +35,7 @@ pub fn find_filter(
     let resolved = discover_filters(no_cache)?;
     let words: Vec<&str> = command_args.iter().map(String::as_str).collect();
     let cwd = std::env::current_dir().unwrap_or_default();
-    let wrapper_cfg = tokf::rewrite::load_user_config()
-        .unwrap_or_default()
-        .local_wrapper
-        .unwrap_or_default();
+    let wrapper_cfg = tokf::rewrite::load_local_wrapper_config();
 
     // Match directly, or after stripping a local environment wrapper prefix
     // (e.g. `nix develop -c cargo test` matches the `cargo test` filter). The
@@ -61,14 +58,11 @@ pub fn find_filter(
 
         // Phase A: resolve file-based variants
         if filter.config.variant.is_empty() {
-            let config = filter.config.clone();
-            let hash = filter.hash.clone();
-            let matched_command = matched_command.to_string();
             return Ok(Some(FilterMatch {
-                config,
-                hash,
+                config: filter.config.clone(),
+                hash: filter.hash.clone(),
                 words_consumed: consumed,
-                matched_command,
+                matched_command: matched_command.to_string(),
                 output_variants: vec![],
                 resolved_filters: resolved,
             }));
@@ -78,12 +72,11 @@ pub fn find_filter(
             config::variant::resolve_variants(&filter.config, &resolved, &cwd, verbose);
         let hash = tokf_common::hash::canonical_hash(&resolution.config)
             .unwrap_or_else(|_| filter.hash.clone());
-        let matched_command = matched_command.to_string();
         return Ok(Some(FilterMatch {
             config: resolution.config,
             hash,
             words_consumed: consumed,
-            matched_command,
+            matched_command: matched_command.to_string(),
             output_variants: resolution.output_variants,
             resolved_filters: resolved,
         }));

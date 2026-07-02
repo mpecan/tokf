@@ -13,10 +13,7 @@ pub fn cmd_which(command: &str, verbose: bool) -> i32 {
 
     let words: Vec<&str> = command.split_whitespace().collect();
     let cwd = std::env::current_dir().unwrap_or_default();
-    let wrapper_cfg = rewrite::load_user_config()
-        .unwrap_or_default()
-        .local_wrapper
-        .unwrap_or_default();
+    let wrapper_cfg = rewrite::load_local_wrapper_config();
 
     // Match directly, or after stripping a local environment wrapper prefix
     // (e.g. `nix develop -c cargo test` reports the `cargo test` filter).
