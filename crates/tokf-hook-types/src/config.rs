@@ -31,6 +31,13 @@ pub struct RewriteConfig {
     /// only argv-preserving wraps (`tokf run <cmd>`) and pipe-flag injection
     /// remain.
     pub transparent: Option<TransparentConfig>,
+
+    /// Local environment wrappers (e.g. `nix develop -c <cmd>`) whose inner
+    /// command runs locally and should be unwrapped so tokf can match a filter
+    /// against it. Unlike [`transparent`](Self::transparent) commands, these
+    /// are local, so the whole command is wrapped with `tokf run` and its
+    /// output filtered. See issue #403.
+    pub local_wrapper: Option<LocalWrapperConfig>,
 }
 
 /// "Transparent-arg" commands: their last argument is opaque shell code.
@@ -45,6 +52,62 @@ pub struct TransparentConfig {
     /// `kubectl` and `/usr/local/bin/kubectl`.
     #[serde(default)]
     pub commands: Vec<String>,
+}
+
+/// Local environment wrappers, e.g. `nix develop -c <cmd>`.
+///
+/// The inner command runs locally, so tokf unwraps the prefix to match a filter
+/// against it, then wraps the *whole* command with `tokf run` and filters the
+/// output.
+///
+/// Built-in list (active by default): `nix develop -c` / `nix develop --command`.
+/// User `rules` extend the built-ins; `disabled` removes named built-ins;
+/// `builtins = false` disables all built-ins (user `rules` still apply).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LocalWrapperConfig {
+    /// When false, disable ALL built-in local wrappers. User `rules` still
+    /// apply. Default: true.
+    #[serde(default = "default_true")]
+    pub builtins: bool,
+
+    /// Built-in wrappers to disable, matched by `command` basename. Ignored
+    /// when `builtins = false` (everything is already off).
+    #[serde(default)]
+    pub disabled: Vec<String>,
+
+    /// Additional user-defined wrappers. These extend — do not replace — the
+    /// built-in list.
+    #[serde(default)]
+    pub rules: Vec<LocalWrapperRule>,
+}
+
+impl Default for LocalWrapperConfig {
+    fn default() -> Self {
+        Self {
+            builtins: true,
+            disabled: Vec::new(),
+            rules: Vec::new(),
+        }
+    }
+}
+
+/// A single local-wrapper rule: how to recognise a wrapper prefix and where the
+/// inner command begins.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LocalWrapperRule {
+    /// Wrapper command, matched against the basename of the first word
+    /// (e.g. `nix` matches both `nix` and `/nix/store/…/bin/nix`).
+    pub command: String,
+
+    /// Subcommands that must immediately follow `command` (e.g. `["develop"]`
+    /// for `nix develop`). Empty means no subcommand is required.
+    #[serde(default)]
+    pub subcommands: Vec<String>,
+
+    /// Marker tokens (flags) whose *next* word begins the inner command
+    /// (e.g. `["-c", "--command"]`). Everything after the first marker is the
+    /// filterable inner command.
+    pub markers: Vec<String>,
 }
 
 /// Debug and diagnostic settings for the rewrite system.

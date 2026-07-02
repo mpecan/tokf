@@ -1,6 +1,6 @@
 pub use tokf_hook_types::{
-    PermissionEngineType, PermissionsConfig, PipeConfig, RewriteConfig, RewriteRule, SkipConfig,
-    TransparentConfig,
+    LocalWrapperConfig, LocalWrapperRule, PermissionEngineType, PermissionsConfig, PipeConfig,
+    RewriteConfig, RewriteRule, SkipConfig, TransparentConfig,
 };
 
 /// Options that control how the rewrite system generates `tokf run` commands.
@@ -160,6 +160,78 @@ replace = "tokf run {0}"
     fn deserialize_no_permissions_section() {
         let config: RewriteConfig = toml::from_str("").unwrap();
         assert!(config.permissions.is_none());
+    }
+
+    #[test]
+    fn deserialize_no_local_wrapper_section() {
+        let config: RewriteConfig = toml::from_str("").unwrap();
+        assert!(config.local_wrapper.is_none());
+    }
+
+    #[test]
+    fn deserialize_local_wrapper_defaults_when_present() {
+        let toml_str = r"
+[local_wrapper]
+";
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let lw = config.local_wrapper.unwrap();
+        assert!(lw.builtins, "builtins should default to true");
+        assert!(lw.disabled.is_empty());
+        assert!(lw.rules.is_empty());
+    }
+
+    #[test]
+    fn deserialize_local_wrapper_disabled_and_rules() {
+        let toml_str = r#"
+[local_wrapper]
+disabled = ["nix"]
+
+[[local_wrapper.rules]]
+command = "distrobox"
+subcommands = ["enter"]
+markers = ["--"]
+"#;
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let lw = config.local_wrapper.unwrap();
+        assert!(lw.builtins, "builtins should still default to true");
+        assert_eq!(lw.disabled, vec!["nix".to_string()]);
+        assert_eq!(lw.rules.len(), 1);
+        assert_eq!(lw.rules[0].command, "distrobox");
+        assert_eq!(lw.rules[0].subcommands, vec!["enter".to_string()]);
+        assert_eq!(lw.rules[0].markers, vec!["--".to_string()]);
+    }
+
+    #[test]
+    fn deserialize_local_wrapper_builtins_off() {
+        let toml_str = r"
+[local_wrapper]
+builtins = false
+";
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let lw = config.local_wrapper.unwrap();
+        assert!(!lw.builtins);
+    }
+
+    #[test]
+    fn deserialize_local_wrapper_rule_without_subcommands() {
+        let toml_str = r#"
+[[local_wrapper.rules]]
+command = "toolbox"
+markers = ["run"]
+"#;
+        let config: RewriteConfig = toml::from_str(toml_str).unwrap();
+        let lw = config.local_wrapper.unwrap();
+        assert_eq!(lw.rules.len(), 1);
+        assert!(lw.rules[0].subcommands.is_empty());
+        assert_eq!(lw.rules[0].markers, vec!["run".to_string()]);
+    }
+
+    #[test]
+    fn local_wrapper_config_default_enables_builtins() {
+        let lw = LocalWrapperConfig::default();
+        assert!(lw.builtins, "Default impl must enable builtins");
+        assert!(lw.disabled.is_empty());
+        assert!(lw.rules.is_empty());
     }
 
     #[test]
