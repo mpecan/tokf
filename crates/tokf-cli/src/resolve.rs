@@ -35,46 +35,58 @@ pub fn find_filter(
     let resolved = discover_filters(no_cache)?;
     let words: Vec<&str> = command_args.iter().map(String::as_str).collect();
     let cwd = std::env::current_dir().unwrap_or_default();
+    let wrapper_cfg = tokf::rewrite::load_user_config()
+        .unwrap_or_default()
+        .local_wrapper
+        .unwrap_or_default();
 
-    for filter in &resolved {
-        if let Some((matched_command, consumed)) = filter.matching_pattern(&words) {
-            if verbose {
-                eprintln!(
-                    "[tokf] matched {} (command: \"{}\") in {}",
-                    filter.relative_path.display(),
-                    filter.config.command.first(),
-                    filter
-                        .source_path
-                        .parent()
-                        .map_or("?", |p| p.to_str().unwrap_or("?")),
-                );
-            }
+    // Match directly, or after stripping a local environment wrapper prefix
+    // (e.g. `nix develop -c cargo test` matches the `cargo test` filter). The
+    // returned `consumed` spans the full prefix — wrapper words plus the matched
+    // pattern — so the whole command is executed and its output filtered.
+    if let Some((filter, matched_command, consumed)) =
+        config::local_wrapper::match_filters_with_wrapper(&resolved, &words, &wrapper_cfg)
+    {
+        if verbose {
+            eprintln!(
+                "[tokf] matched {} (command: \"{}\") in {}",
+                filter.relative_path.display(),
+                filter.config.command.first(),
+                filter
+                    .source_path
+                    .parent()
+                    .map_or("?", |p| p.to_str().unwrap_or("?")),
+            );
+        }
 
-            // Phase A: resolve file-based variants
-            if filter.config.variant.is_empty() {
-                return Ok(Some(FilterMatch {
-                    config: filter.config.clone(),
-                    hash: filter.hash.clone(),
-                    words_consumed: consumed,
-                    matched_command: matched_command.to_string(),
-                    output_variants: vec![],
-                    resolved_filters: resolved,
-                }));
-            }
-
-            let resolution =
-                config::variant::resolve_variants(&filter.config, &resolved, &cwd, verbose);
-            let hash = tokf_common::hash::canonical_hash(&resolution.config)
-                .unwrap_or_else(|_| filter.hash.clone());
+        // Phase A: resolve file-based variants
+        if filter.config.variant.is_empty() {
+            let config = filter.config.clone();
+            let hash = filter.hash.clone();
+            let matched_command = matched_command.to_string();
             return Ok(Some(FilterMatch {
-                config: resolution.config,
+                config,
                 hash,
                 words_consumed: consumed,
-                matched_command: matched_command.to_string(),
-                output_variants: resolution.output_variants,
+                matched_command,
+                output_variants: vec![],
                 resolved_filters: resolved,
             }));
         }
+
+        let resolution =
+            config::variant::resolve_variants(&filter.config, &resolved, &cwd, verbose);
+        let hash = tokf_common::hash::canonical_hash(&resolution.config)
+            .unwrap_or_else(|_| filter.hash.clone());
+        let matched_command = matched_command.to_string();
+        return Ok(Some(FilterMatch {
+            config: resolution.config,
+            hash,
+            words_consumed: consumed,
+            matched_command,
+            output_variants: resolution.output_variants,
+            resolved_filters: resolved,
+        }));
     }
 
     if verbose {
