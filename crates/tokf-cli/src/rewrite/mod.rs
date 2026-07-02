@@ -73,9 +73,24 @@ fn collect_filter_patterns(search_dirs: &[PathBuf]) -> Vec<String> {
 /// Try to match a command against filter patterns using the authoritative
 /// [`config::pattern_matches_prefix`] logic.  Returns a `tokf run` invocation
 /// if matched.
-fn try_filter_match(cmd: &str, patterns: &[String], options: &RewriteOptions) -> Option<String> {
+///
+/// A command wrapped in a local environment wrapper (e.g.
+/// `nix develop -c cargo test`) matches when its inner command does. The wrap
+/// is applied to the **whole** command (`tokf run nix develop -c cargo test`),
+/// not the inner part — tokf is the parent process and filters the wrapper's
+/// combined output, so nothing needs `tokf` on `PATH` inside the wrapped
+/// environment. See issue #403.
+fn try_filter_match(
+    cmd: &str,
+    patterns: &[String],
+    options: &RewriteOptions,
+    local_wrapper: &types::LocalWrapperConfig,
+) -> Option<String> {
     let words: Vec<&str> = cmd.split_whitespace().collect();
     if words.is_empty() {
+        return None;
+    }
+    if !config::local_wrapper::patterns_match_with_wrapper(patterns, &words, local_wrapper) {
         return None;
     }
     let prefix = if options.no_mask_exit_code {
@@ -83,12 +98,18 @@ fn try_filter_match(cmd: &str, patterns: &[String], options: &RewriteOptions) ->
     } else {
         "tokf run"
     };
-    for pattern in patterns {
-        if config::pattern_matches_prefix(pattern, &words).is_some() {
-            return Some(format!("{prefix} {cmd}"));
-        }
-    }
-    None
+    Some(format!("{prefix} {cmd}"))
+}
+
+/// Match a segment against filter patterns using the fields collected in
+/// [`SegmentRules`]. Thin wrapper over [`try_filter_match`].
+fn segment_filter_match(cmd: &str, rules: &SegmentRules<'_>) -> Option<String> {
+    try_filter_match(
+        cmd,
+        rules.filter_patterns,
+        rules.options,
+        rules.local_wrapper,
+    )
 }
 
 /// Top-level rewrite function. Orchestrates skip check, user rules, and filter rules.
@@ -114,6 +135,9 @@ struct SegmentRules<'a> {
     wrapper: &'a [RewriteRule],
     /// Raw filter pattern strings matched via `pattern_matches_prefix`.
     filter_patterns: &'a [String],
+    /// Local environment wrappers (e.g. `nix develop -c`) to unwrap when
+    /// matching filter patterns.
+    local_wrapper: &'a types::LocalWrapperConfig,
     /// Options controlling `tokf run` generation (e.g. `--no-mask-exit-code`).
     options: &'a RewriteOptions,
     /// When true, log to stderr when the bash parser fails to parse a command.
@@ -186,7 +210,7 @@ fn rewrite_segment(
             && let Some(StrippedPipe { base, suffix }) = cmd_parsed
                 .as_ref()
                 .and_then(bash_ast::ParsedCommand::strip_simple_pipe)
-            && let Some(rewritten) = try_filter_match(&base, rules.filter_patterns, rules.options)
+            && let Some(rewritten) = segment_filter_match(&base, rules)
         {
             if verbose {
                 eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
@@ -201,7 +225,7 @@ fn rewrite_segment(
         return segment.to_string();
     }
 
-    try_filter_match(cmd, rules.filter_patterns, rules.options).map_or_else(
+    segment_filter_match(cmd, rules).map_or_else(
         || segment.to_string(),
         |result| format!("{env_prefix}{result}"),
     )
@@ -312,6 +336,7 @@ pub(crate) fn rewrite_with_config_and_options(
 
     let wrapper_rules = build_wrapper_rules();
     let filter_patterns = collect_filter_patterns(search_dirs);
+    let local_wrapper = user_config.local_wrapper.clone().unwrap_or_default();
     let log_parse_failures = user_config
         .debug
         .as_ref()
@@ -319,6 +344,7 @@ pub(crate) fn rewrite_with_config_and_options(
     let rules = SegmentRules {
         wrapper: &wrapper_rules,
         filter_patterns: &filter_patterns,
+        local_wrapper: &local_wrapper,
         options,
         log_parse_failures,
     };
@@ -362,6 +388,8 @@ mod tests;
 mod tests_compound;
 #[cfg(test)]
 mod tests_env;
+#[cfg(test)]
+mod tests_local_wrapper;
 #[cfg(test)]
 mod tests_pipe;
 #[cfg(test)]
