@@ -710,11 +710,17 @@ fn run_nix_develop_real_nix() {
     assert!(init.status.success());
     std::fs::write(repo.path().join("real-nix-file.txt"), "hi").unwrap();
 
+    // Arch-agnostic: define an empty devShell for every common system so
+    // `nix develop` resolves on x86_64/aarch64 Linux or macOS alike.
     let flake = r#"{
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   outputs = { self, nixpkgs }:
-    let pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    in { devShells.x86_64-linux.default = pkgs.mkShellNoCC { }; };
+    let
+      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
+    in {
+      devShells = forAll (pkgs: { default = pkgs.mkShellNoCC { }; });
+    };
 }
 "#;
     std::fs::write(repo.path().join("flake.nix"), flake).unwrap();
