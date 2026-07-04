@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.50](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.49...catalog-types-v0.2.50) (2026-07-04)
+
+
+### Miscellaneous
+
+* **catalog-types:** Synchronize workspace versions
+
 ## [0.2.49](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.48...catalog-types-v0.2.49) (2026-06-20)
 
 
