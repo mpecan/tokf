@@ -37,6 +37,8 @@ The skipped flags are preserved in the command that actually runs — they are o
 
 > **Note on `run` override and transparent flags:** If a filter sets a `run` field, transparent global flags are *not* included in `{args}`.  Only the arguments that appear after the matched pattern words are available as `{args}`.
 
+**Local environment wrappers** — you don't need to do anything special for your filter to match through a local wrapper like `nix develop -c cargo test`. tokf strips the wrapper prefix and matches the inner command (`cargo test`) against your existing patterns. See [Local environment wrappers](rewrites-config.md#local-environment-wrappers) for the configurable list.
+
 ## Common fields
 
 ```toml

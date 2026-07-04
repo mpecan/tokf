@@ -31,6 +31,7 @@ fn config_with_mangling_rule() -> RewriteConfig {
         permissions: None,
         debug: None,
         transparent: None,
+        local_wrapper: None,
     }
 }
 
@@ -130,6 +131,7 @@ fn user_can_extend_transparent_list() {
         transparent: Some(types::TransparentConfig {
             commands: vec!["kubectl".to_string()],
         }),
+        local_wrapper: None,
     };
     let result = rewrite_with_config(
         "kubectl exec POD -- cmd",
@@ -156,6 +158,7 @@ fn user_extra_does_not_disable_built_ins() {
         transparent: Some(types::TransparentConfig {
             commands: vec!["kubectl".to_string()],
         }),
+        local_wrapper: None,
     };
     let result = rewrite_with_config("ssh HOST cmd", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "ssh HOST cmd");
@@ -259,6 +262,7 @@ fn user_skip_pattern_takes_precedence_over_transparent_gate() {
         permissions: None,
         debug: None,
         transparent: None,
+        local_wrapper: None,
     };
     let result = rewrite_with_config(
         "ssh HOST 'cmd'",

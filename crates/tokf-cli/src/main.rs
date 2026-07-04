@@ -29,6 +29,7 @@ mod sync_cmd;
 mod telemetry_cmd;
 // pub(crate): accessed by install_cmd::run_verify
 pub(crate) mod verify_cmd;
+mod which_cmd;
 
 use std::path::Path;
 
@@ -426,8 +427,9 @@ enum RemoteAction {
 fn main() {
     use commands::{
         cmd_apply, cmd_check, cmd_hook_handle, cmd_hook_install, cmd_ls, cmd_rewrite, cmd_run,
-        cmd_skill_install, cmd_which, or_exit,
+        cmd_skill_install, or_exit,
     };
+    use which_cmd::cmd_which;
 
     tokf::paths::init_from_env();
 

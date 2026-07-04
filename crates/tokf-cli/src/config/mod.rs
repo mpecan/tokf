@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod local_wrapper;
 pub mod types;
 pub mod variant;
 
@@ -467,5 +468,7 @@ mod tests;
 mod tests_basename;
 #[cfg(test)]
 mod tests_discovery;
+#[cfg(test)]
+mod tests_local_wrapper;
 #[cfg(test)]
 mod tests_matching;

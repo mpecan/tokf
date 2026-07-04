@@ -4,8 +4,8 @@ pub mod format;
 pub mod verdict;
 
 pub use config::{
-    PermissionEngineType, PermissionsConfig, PipeConfig, RewriteConfig, RewriteRule, SkipConfig,
-    TransparentConfig,
+    LocalWrapperConfig, LocalWrapperRule, PermissionEngineType, PermissionsConfig, PipeConfig,
+    RewriteConfig, RewriteRule, SkipConfig, TransparentConfig,
 };
 pub use engine::{ErrorFallback, ExternalEngineConfig};
 pub use format::HookFormat;

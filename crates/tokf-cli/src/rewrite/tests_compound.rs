@@ -245,6 +245,7 @@ fn rewrite_user_rule_wraps_piped_command() {
         permissions: None,
         debug: None,
         transparent: None,
+        local_wrapper: None,
     };
     let r = rewrite_with_config(
         "cargo test | grep FAILED",
@@ -269,6 +270,7 @@ fn rewrite_skip_pattern_wins_over_pipe_guard() {
         permissions: None,
         debug: None,
         transparent: None,
+        local_wrapper: None,
     };
     let r = rewrite_with_config(
         "git status | grep M",
