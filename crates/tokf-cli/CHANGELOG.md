@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.50](https://github.com/mpecan/tokf/compare/tokf-v0.2.49...tokf-v0.2.50) (2026-07-04)
+
+
+### Features
+
+* unwrap local environment wrappers (nix develop -c) ([#406](https://github.com/mpecan/tokf/issues/406)) ([f9bf210](https://github.com/mpecan/tokf/commit/f9bf2109b6de030826335b17325c7bc55e1f6d5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.49 to 0.2.50
+    * tokf-filter bumped from 0.2.49 to 0.2.50
+    * tokf-hook-types bumped from 0.2.49 to 0.2.50
+
 ## [0.2.49](https://github.com/mpecan/tokf/compare/tokf-v0.2.48...tokf-v0.2.49) (2026-06-20)
 
 
