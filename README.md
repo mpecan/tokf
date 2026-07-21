@@ -956,7 +956,7 @@ Every assertion above is *positive*: it checks a string the author remembered to
 4. Weight each **distinct** atom by its self-information, `-log2(count / total)`, where `total` counts all atom occurrences including repeats. The 400th `Compiling` is worth almost nothing; a unique path, hash, or error code is worth a lot.
 5. Score = surviving weight / total weight. An atom counts as surviving if it appears anywhere in the filtered output, either as a standalone token or as a substring of a rewritten line.
 
-Empty or atom-free input scores `1.0` (nothing irreplaceable existed, so nothing could be lost).
+Empty or atom-free input scores `1.0` (nothing irreplaceable existed, so nothing could be lost). If the raw output contains only one distinct atom, its self-information is zero and the weighted ratio is undefined, so the score falls back to the plain `kept / atoms` ratio — dropping that atom still scores `0.0`.
 
 > **There is no default threshold, and richness never fails a build on its own.** tokf is *deliberately* lossy. `cargo check` succeeding and collapsing to `✓ cargo check: ok` scores near zero, and that is **correct**. A low score is information, not a defect.
 

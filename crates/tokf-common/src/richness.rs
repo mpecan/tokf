@@ -32,13 +32,13 @@ pub struct Richness {
 }
 
 impl Richness {
-    /// The score used for degenerate inputs (no atoms, or zero total weight).
+    /// The score used when `raw` contains no atoms at all.
     ///
     /// Nothing irreplaceable existed, so nothing could be lost.
-    const fn full(atoms: usize) -> Self {
+    const fn empty() -> Self {
         Self {
-            atoms,
-            kept: atoms,
+            atoms: 0,
+            kept: 0,
             retained: 1.0,
         }
     }
@@ -57,9 +57,12 @@ fn atoms(text: &str) -> impl Iterator<Item = &str> {
 
 /// Score how much rarity-weighted information from `raw` survived into `filtered`.
 ///
-/// Returns `retained: 1.0` for degenerate inputs (no atoms in `raw`, or every
-/// atom occurrence being the same atom, which carries zero self-information).
-/// Never divides by zero and never returns `NaN`.
+/// Returns `retained: 1.0` when `raw` contains no atoms at all — nothing
+/// irreplaceable existed, so nothing could be lost. When every occurrence is
+/// the same single atom (self-information zero, so the weighted ratio is
+/// undefined), the score falls back to the unweighted `kept / atoms` ratio, so
+/// dropping that atom entirely still scores `0.0`. Never divides by zero and
+/// never returns `NaN`.
 #[allow(clippy::cast_precision_loss)]
 pub fn score(raw: &str, filtered: &str) -> Richness {
     let mut counts: HashMap<&str, usize> = HashMap::new();
@@ -70,7 +73,7 @@ pub fn score(raw: &str, filtered: &str) -> Richness {
     }
 
     if total == 0 {
-        return Richness::full(0);
+        return Richness::empty();
     }
 
     let surviving: HashSet<&str> = atoms(filtered).collect();
@@ -89,14 +92,20 @@ pub fn score(raw: &str, filtered: &str) -> Richness {
         }
     }
 
-    if total_weight <= 0.0 {
-        return Richness::full(counts.len());
-    }
+    let atoms = counts.len();
+    // Zero total weight means a single distinct atom repeated throughout, whose
+    // self-information is zero. The weighted ratio is undefined, so fall back to
+    // the unweighted one — which still reports 0.0 if that atom was dropped.
+    let retained = if total_weight > 0.0 {
+        kept_weight / total_weight
+    } else {
+        (kept as f64) / (atoms as f64)
+    };
 
     Richness {
-        atoms: counts.len(),
+        atoms,
         kept,
-        retained: kept_weight / total_weight,
+        retained,
     }
 }
 
@@ -152,10 +161,22 @@ mod tests {
     }
 
     #[test]
-    fn single_repeated_atom_total_weight_zero() {
-        // Every occurrence is the same atom => p == 1.0 => -log2(1.0) == 0.
+    fn single_repeated_atom_dropped_scores_zero() {
+        // Every occurrence is the same atom => p == 1.0 => -log2(1.0) == 0, so
+        // the weighted ratio is undefined. Falling back to kept/atoms keeps the
+        // "everything was swallowed" case honest instead of reporting 1.0.
         let r = score("Compiling Compiling Compiling", "");
         assert_eq!(r.atoms, 1);
+        assert_eq!(r.kept, 0);
+        assert!(!r.retained.is_nan());
+        assert!(r.retained.abs() < f64::EPSILON, "retained={}", r.retained);
+    }
+
+    #[test]
+    fn single_repeated_atom_kept_scores_one() {
+        let r = score("Compiling Compiling Compiling", "Compiling");
+        assert_eq!(r.atoms, 1);
+        assert_eq!(r.kept, 1);
         assert!(!r.retained.is_nan());
         assert!((r.retained - 1.0).abs() < f64::EPSILON);
     }
