@@ -7,6 +7,7 @@ use tokf_common::safety;
 
 use tokf_common::examples::{self, ExamplesSafety, SafetyWarningDto};
 
+use super::determinism;
 use super::discovery::DiscoveredSuite;
 use super::{CaseResult, SuiteResult, TestCase};
 
@@ -106,7 +107,7 @@ pub(super) fn run_suite(suite: &DiscoveredSuite, check_safety: bool) -> SuiteRes
 
     let cases: Vec<CaseResult> = case_files
         .iter()
-        .map(|case_path| run_case(&cfg, case_path))
+        .map(|case_path| run_case(&cfg, &suite.filter_name, case_path))
         .collect();
 
     let total_input_tokens: usize = cases.iter().map(|c| c.input_tokens).sum();
@@ -180,7 +181,11 @@ fn error_case(name: String, failure: String) -> CaseResult {
     }
 }
 
-fn run_case(cfg: &tokf::config::types::FilterConfig, case_path: &Path) -> CaseResult {
+fn run_case(
+    cfg: &tokf::config::types::FilterConfig,
+    filter_name: &str,
+    case_path: &Path,
+) -> CaseResult {
     let case = match load_case(case_path) {
         Ok(c) => c,
         Err(e) => {
@@ -205,25 +210,18 @@ fn run_case(cfg: &tokf::config::types::FilterConfig, case_path: &Path) -> CaseRe
         combined: fixture,
     };
 
-    let filtered = filter::apply(
-        cfg,
-        &cmd_result,
-        &case.args,
-        &filter::FilterOptions::default(),
-    );
-
-    let input_lines = cmd_result.combined.lines().count();
-    let output_lines = filtered.output.lines().count();
-    let input_tokens = examples::estimate_tokens(&cmd_result.combined);
-    let output_tokens = examples::estimate_tokens(&filtered.output);
-    let reduction_pct = examples::reduction_pct(input_tokens, output_tokens);
-
-    let mut failures = Vec::new();
+    let (output, mut failures) = apply_and_check(cfg, filter_name, &cmd_result, &case);
     for expect in &case.expects {
-        if let Some(msg) = evaluate(expect, &filtered.output) {
+        if let Some(msg) = evaluate(expect, &output) {
             failures.push(msg);
         }
     }
+
+    let input_lines = cmd_result.combined.lines().count();
+    let output_lines = output.lines().count();
+    let input_tokens = examples::estimate_tokens(&cmd_result.combined);
+    let output_tokens = examples::estimate_tokens(&output);
+    let reduction_pct = examples::reduction_pct(input_tokens, output_tokens);
 
     let passed = failures.is_empty();
     CaseResult {
@@ -238,6 +236,36 @@ fn run_case(cfg: &tokf::config::types::FilterConfig, case_path: &Path) -> CaseRe
     }
 }
 
+/// Run the filter pipeline for a case, plus a second independent run over
+/// the same input to check determinism.
+///
+/// Returns the (first run's) output and any determinism failure — the
+/// `[[expect]]` assertions are evaluated separately by the caller so this
+/// function stays focused on one concern.
+fn apply_and_check(
+    cfg: &tokf::config::types::FilterConfig,
+    filter_name: &str,
+    cmd_result: &CommandResult,
+    case: &TestCase,
+) -> (String, Vec<String>) {
+    let options = filter::FilterOptions::default();
+    let filtered = filter::apply(cfg, cmd_result, &case.args, &options);
+
+    // Determinism check: a filter must be a pure function of its input. Run
+    // the pipeline a second, fully independent time against the exact same
+    // fixture and assert the output is byte-identical. This is not
+    // opt-in — see docs/writing-filters.md#determinism for why output that
+    // varies between runs is a correctness bug, not a preference (it
+    // silently defeats prompt caching on every later turn).
+    let filtered_again = filter::apply(cfg, cmd_result, &case.args, &options);
+
+    let mut failures = Vec::new();
+    if let Some(msg) = determinism::check(filter_name, &filtered.output, &filtered_again.output) {
+        failures.push(msg);
+    }
+    (filtered.output, failures)
+}
+
 fn load_case(case_path: &Path) -> anyhow::Result<TestCase> {
     let content = std::fs::read_to_string(case_path)
         .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", case_path.display()))?;
@@ -250,4 +278,99 @@ fn load_case(case_path: &Path) -> anyhow::Result<TestCase> {
         );
     }
     Ok(case)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    // --- run_case: end-to-end determinism failure via a genuinely
+    // nondeterministic filter (Lua's math.random, seeded fresh per VM) ---
+
+    fn nondeterministic_filter_config() -> tokf::config::types::FilterConfig {
+        toml::from_str(
+            r#"
+command = "mytest cmd"
+
+[lua_script]
+lang = "luau"
+source = "return tostring(math.random(1, 1000000000))"
+"#,
+        )
+        .unwrap()
+    }
+
+    fn deterministic_filter_config() -> tokf::config::types::FilterConfig {
+        toml::from_str(
+            r#"
+command = "mytest cmd"
+
+[on_success]
+output = "OK"
+"#,
+        )
+        .unwrap()
+    }
+
+    fn write_case(dir: &Path, body: &str) -> PathBuf {
+        let path = dir.join("case.toml");
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn run_case_fails_on_nondeterministic_filter_even_when_expects_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let case_path = write_case(
+            dir.path(),
+            r#"
+name = "random output"
+inline = "irrelevant input"
+exit_code = 0
+
+[[expect]]
+matches = "^\\d+$"
+"#,
+        );
+        let cfg = nondeterministic_filter_config();
+        let result = run_case(&cfg, "mytest/random", &case_path);
+
+        assert!(
+            !result.passed,
+            "expected a nondeterministic filter to fail verify"
+        );
+        assert!(
+            result
+                .failures
+                .iter()
+                .any(|f| f.contains("mytest/random") && f.contains("byte-stable")),
+            "expected a determinism failure naming the filter, got: {:?}",
+            result.failures
+        );
+    }
+
+    #[test]
+    fn run_case_passes_on_deterministic_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let case_path = write_case(
+            dir.path(),
+            r#"
+name = "stable output"
+inline = "irrelevant input"
+exit_code = 0
+
+[[expect]]
+equals = "OK"
+"#,
+        );
+        let cfg = deterministic_filter_config();
+        let result = run_case(&cfg, "mytest/stable", &case_path);
+
+        assert!(
+            result.passed,
+            "expected a deterministic filter to pass verify, failures: {:?}",
+            result.failures
+        );
+    }
 }
