@@ -101,6 +101,75 @@ cargo dupes stats        # statistics only
 cargo dupes check        # CI gate — fails if thresholds exceeded
 ```
 
+### Writing an isolated test
+
+tokf has **no ambient configuration**. User directories, the tracking database
+path, debug and telemetry flags all live in a `Runtime` value that `main()`
+builds once and passes down. There are no globals to override, so tests
+construct the environment they want instead of mutating a shared one.
+
+For unit tests and in-process integration tests, ask for an isolated runtime:
+
+```rust
+use tokf::runtime::Runtime;
+
+#[test]
+fn shims_land_in_the_configured_directory() {
+    let rt = Runtime::isolated();          // fresh temp dir, all flags off
+    generate_shims(&rt, &filters);
+    assert!(rt.shims_dir().unwrap().join("git").exists());
+}
+```
+
+`Runtime::isolated()` roots every path in its own temporary directory, removed
+when the value drops, and takes a keyring service name unique to that instance.
+Two of them never interact, so tests need no coordination — and no `#[serial]`.
+`Runtime::default()` is the same thing, so a test that asks for nothing still
+cannot touch your real `~/.config/tokf` or `tracking.db`.
+
+Override individual fields with the builder:
+
+```rust
+let rt = Runtime::builder()
+    .home(dir.path())
+    .db_path(dir.path().join("custom.db"))
+    .debug(true)
+    .build();
+```
+
+Tests that spawn the **binary** are a separate case: a `Runtime` is an
+in-process value and does not survive a process boundary, so isolation travels
+as environment variables. Use the shared helper in `crates/tokf-cli/tests/common`,
+which sets `TOKF_HOME` and `TOKF_DB_PATH` into a temp dir *and* clears every
+other `TOKF_*` / `OTEL_*` variable your shell may have exported:
+
+```rust
+mod common;
+use common::tokf;
+
+#[test]
+fn ls_lists_filters() {
+    let output = tokf().arg("ls").output().unwrap();
+    assert!(output.status.success());
+}
+```
+
+Hold a `common::TestHome` when the test needs to seed config files, inspect
+what the binary wrote, or run several commands against the same home.
+
+`scripts/check-runtime-seam.sh` enforces all of this in CI: environment reads
+are confined to `src/runtime/`, only `main()` calls `Runtime::from_env()`, and
+integration tests may not spawn the binary except through `tests/common`.
+
+Two rules follow from this:
+
+- **Never add a new global** to hold configuration. Add a field to `Runtime`.
+- **Never add `#[serial]`.** `serial_test` is deliberately not a dependency —
+  it orders annotated tests against each other, not against every other test
+  touching the same state, which is why it never actually fixed the flakiness
+  it was hiding (see issue #429). If a test truly needs exclusive access to a
+  shared *external* resource, raise it in review.
+
 ---
 
 ## Adding a built-in filter

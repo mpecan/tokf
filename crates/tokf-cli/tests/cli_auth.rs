@@ -1,13 +1,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod common;
+
 use std::process::Command;
 
 /// Returns a Command with `TOKF_HOME` set to a temp dir so the subprocess
 /// never probes the real OS keychain.
 fn tokf_isolated() -> (Command, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().unwrap();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
-    cmd.env("TOKF_HOME", dir.path());
+    let cmd = common::isolated_command(dir.path());
     (cmd, dir)
 }
 

@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+mod common;
+use common::tokf;
 
 /// Helper: produce deterministic 10-line output for baseline tests.
 const TEN_LINE_CMD: &str = "for i in 1 2 3 4 5 6 7 8 9 10; do echo line$i; done";

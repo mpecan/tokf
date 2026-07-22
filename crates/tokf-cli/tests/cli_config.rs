@@ -1,12 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
+mod common;
+use common::tokf;
 
 use tempfile::TempDir;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
 
 #[test]
 fn config_path_shows_locations() {

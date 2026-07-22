@@ -1,13 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod common;
+use common::tokf;
+
 use std::net::TcpListener;
-use std::process::Command;
 
 use tempfile::TempDir;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
 
 #[test]
 fn telemetry_status_shows_disabled_by_default() {

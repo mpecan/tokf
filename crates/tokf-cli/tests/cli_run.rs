@@ -1,10 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_const_for_fn)]
 
-use std::process::Command;
+mod common;
 
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+use common::tokf;
+
+use std::process::Command;
 
 // --- tokf run ---
 
@@ -94,9 +94,8 @@ fn run_nonexistent_command_exits_with_error() {
 fn run_builtin_git_status_filter_succeeds() {
     let dir = tempfile::TempDir::new().unwrap();
 
-    let init = Command::new("git")
+    let init = common::isolated_tool("git", dir.path())
         .args(["init", "--quiet"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
     assert!(
@@ -134,9 +133,8 @@ fn run_git_status_preserves_global_c_dir_with_run_override() {
     let target_repo = tempfile::TempDir::new().unwrap();
 
     for dir in [cwd_repo.path(), target_repo.path()] {
-        let init = Command::new("git")
+        let init = common::isolated_tool("git", dir)
             .args(["init", "--quiet"])
-            .current_dir(dir)
             .output()
             .unwrap();
         assert!(
@@ -609,9 +607,8 @@ fn run_nix_develop_unwraps_git_status() {
     write_fake_nix(bindir.path());
 
     let repo = tempfile::TempDir::new().unwrap();
-    let init = Command::new("git")
+    let init = common::isolated_tool("git", repo.path())
         .args(["init", "--quiet"])
-        .current_dir(repo.path())
         .output()
         .unwrap();
     assert!(init.status.success());
@@ -650,9 +647,8 @@ fn run_nix_develop_attr_and_flags_unwrap() {
     write_fake_nix(bindir.path());
 
     let repo = tempfile::TempDir::new().unwrap();
-    let init = Command::new("git")
+    let init = common::isolated_tool("git", repo.path())
         .args(["init", "--quiet"])
-        .current_dir(repo.path())
         .output()
         .unwrap();
     assert!(init.status.success());
@@ -702,9 +698,8 @@ fn run_nix_develop_real_nix() {
     }
 
     let repo = tempfile::TempDir::new().unwrap();
-    let init = Command::new("git")
+    let init = common::isolated_tool("git", repo.path())
         .args(["init", "--quiet"])
-        .current_dir(repo.path())
         .output()
         .unwrap();
     assert!(init.status.success());
@@ -725,9 +720,8 @@ fn run_nix_develop_real_nix() {
 "#;
     std::fs::write(repo.path().join("flake.nix"), flake).unwrap();
     // Stage the flake so `nix develop` (which requires a git tree) sees it.
-    Command::new("git")
+    common::isolated_tool("git", repo.path())
         .args(["add", "."])
-        .current_dir(repo.path())
         .output()
         .unwrap();
 

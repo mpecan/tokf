@@ -48,6 +48,9 @@ jobs:
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
 
+      - name: Check runtime configuration seam
+        run: bash scripts/check-runtime-seam.sh
+
       - name: Check for code duplication
         uses: baptiste0928/cargo-install@v3
         with:

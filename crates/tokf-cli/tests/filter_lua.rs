@@ -1,13 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod common;
+use common::tokf;
+
 use std::fs;
-use std::process::Command;
 
 use tempfile::TempDir;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
 
 /// Write a TOML filter to a temp file; return (`TempDir`, `filter_path`).
 fn write_filter(content: &str) -> (TempDir, std::path::PathBuf) {

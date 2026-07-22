@@ -1,11 +1,13 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 //! Integration tests for the rarity-weighted richness metric surfaced by
 //! `tokf verify`.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod common;
+
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
 
 const RICH_INPUT: &str = "Compiling tokf-common v0.1.0\\nthread 'main' panicked at src/lib/module.rs:42:9\\nassertion `leftvalue == rightvalue` failed\\ndeadbeefcafe0123";
 
@@ -20,7 +22,8 @@ fn scaffold(dir: &Path, filter_toml: &str, case_toml: &str) {
 }
 
 fn run_verify(dir: &Path, extra: &[&str]) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+    let home = common::TestHome::new();
+    let mut cmd = home.cmd();
     cmd.arg("verify").arg("mytest/cmd");
     cmd.args(extra);
     cmd.current_dir(dir);
