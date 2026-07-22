@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.51](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.50...catalog-types-v0.2.51) (2026-07-22)
+
+
+### Features
+
+* **tracking:** verify and recalibrate the bytes/4 token estimator ([#425](https://github.com/mpecan/tokf/issues/425)) ([5a7f43a](https://github.com/mpecan/tokf/commit/5a7f43a6b534eee5eb3b809168cb6ebc3d1b63d0))
+
 ## [0.2.50](https://github.com/mpecan/tokf/compare/catalog-types-v0.2.49...catalog-types-v0.2.50) (2026-07-04)
 
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.51](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.50...tokf-common-v0.2.51) (2026-07-22)
+
+
+### Features
+
+* **filter:** add rarity-weighted richness metric to tokf verify ([#421](https://github.com/mpecan/tokf/issues/421)) ([4fdc71b](https://github.com/mpecan/tokf/commit/4fdc71ba760632dea5a27168ad71b11b0df40607))
+* **tracking:** verify and recalibrate the bytes/4 token estimator ([#425](https://github.com/mpecan/tokf/issues/425)) ([5a7f43a](https://github.com/mpecan/tokf/commit/5a7f43a6b534eee5eb3b809168cb6ebc3d1b63d0))
+
+
+### Bug Fixes
+
+* **server,cli:** server recomputes content_hash on download to absorb FilterConfig schema drift ([#351](https://github.com/mpecan/tokf/issues/351)) ([83ee764](https://github.com/mpecan/tokf/commit/83ee76474b7feea785f0793bfe3ac0fe6f899945))
+
 ## [0.2.50](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.49...tokf-common-v0.2.50) (2026-07-04)
 
 
