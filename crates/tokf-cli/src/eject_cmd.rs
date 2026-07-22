@@ -1,3 +1,5 @@
+use anyhow::Context as _;
+
 use std::path::Path;
 
 use tokf::config;
@@ -17,11 +19,11 @@ pub fn cmd_eject(rt: &Runtime, filter: &str, global: bool, no_cache: bool) -> i3
 
 fn eject(rt: &Runtime, filter: &str, global: bool, no_cache: bool) -> anyhow::Result<()> {
     let target_base = if global {
-        rt.user_dir()
-            .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?
-            .join("filters")
+        rt.require_user_dir()?.join("filters")
     } else {
-        std::env::current_dir()?.join(".tokf/filters")
+        rt.cwd()
+            .context("could not determine working directory")?
+            .join(".tokf/filters")
     };
     eject_to(rt, filter, &target_base, no_cache)
 }

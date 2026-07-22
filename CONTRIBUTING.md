@@ -103,10 +103,17 @@ cargo dupes check        # CI gate — fails if thresholds exceeded
 
 ### Writing an isolated test
 
-tokf has **no ambient configuration**. User directories, the tracking database
-path, debug and telemetry flags all live in a `Runtime` value that `main()`
-builds once and passes down. There are no globals to override, so tests
-construct the environment they want instead of mutating a shared one.
+tokf keeps its runtime configuration **explicit**. User directories, the
+tracking database path, debug and telemetry flags all live in a `Runtime`
+value that `main()` builds once and passes down. There are no globals to
+override, so tests construct the environment they want instead of mutating a
+shared one.
+
+(Two things remain ambient and are deliberately out of `Runtime`: other tools'
+config locations resolved from `dirs::home_dir()` — `~/.claude`, `~/.codex` —
+which `TOKF_HOME` has never governed, and clap's `#[arg(env = ...)]` flag
+defaults. The latter must still be listed in `RUNTIME_ENV` in
+`tests/common/mod.rs`; CI checks that.)
 
 For unit tests and in-process integration tests, ask for an isolated runtime:
 

@@ -28,10 +28,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-pub use dirs::Dirs;
-pub use env::{
-    DEFAULT_KEYRING_SERVICE, DEFAULT_SERVER_URL, DEFAULT_TIMEOUT_SECS, Flags, Net, OtelEnv,
-};
+use dirs::Dirs;
+pub use env::{DEFAULT_SERVER_URL, DEFAULT_TIMEOUT_SECS, OtelEnv};
+use env::{Flags, Net};
 
 #[cfg(any(test, feature = "test-support"))]
 pub use builder::RuntimeBuilder;
@@ -52,6 +51,8 @@ pub struct Runtime {
     original_path: Option<String>,
     /// `TOKF_CODEX_REWRITE_MODE`
     codex_rewrite_mode: Option<String>,
+    /// `TOKF_HOOK_LOG` — path for the hook diagnostic log, when enabled.
+    hook_log: Option<PathBuf>,
     /// Keyring service name. Constant in production; unique per instance in
     /// tests, so concurrent tests never collide in the shared mock store.
     keyring_service: String,
@@ -104,9 +105,38 @@ impl Runtime {
         self.dirs.user_dir().map(|d| d.join("config.toml"))
     }
 
-    /// The resolved directories, for callers that need several at once.
-    pub const fn dirs(&self) -> &Dirs {
-        &self.dirs
+    /// The user directory, or an error naming what could not be determined.
+    ///
+    /// The fallible form exists because a dozen call sites were each writing
+    /// their own `ok_or_else(|| anyhow!("cannot determine config directory"))`,
+    /// in three different spellings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the platform supplies no config directory and
+    /// `TOKF_HOME` is unset.
+    pub fn require_user_dir(&self) -> anyhow::Result<PathBuf> {
+        self.user_dir()
+            .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))
+    }
+
+    /// The global `config.toml` path, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the config directory cannot be determined.
+    pub fn require_global_config_path(&self) -> anyhow::Result<PathBuf> {
+        Ok(self.require_user_dir()?.join("config.toml"))
+    }
+
+    /// The raw `TOKF_HOME` override, for `tokf info` reporting only.
+    pub fn home_override(&self) -> Option<&Path> {
+        self.dirs.home_override()
+    }
+
+    /// The raw `TOKF_DB_PATH` override, for `tokf info` reporting only.
+    pub fn db_path_override(&self) -> Option<&Path> {
+        self.dirs.db_path_override()
     }
 
     /// Candidate locations for `relative`, in tokf's standard priority order:
@@ -175,6 +205,14 @@ impl Runtime {
         self.cwd.as_deref()
     }
 
+    /// The working directory, or an empty path when it could not be resolved.
+    ///
+    /// Mirrors the old `std::env::current_dir().unwrap_or_default()` that call
+    /// sites used before the working directory moved onto the runtime.
+    pub fn cwd_or_empty(&self) -> &Path {
+        self.cwd.as_deref().unwrap_or_else(|| Path::new(""))
+    }
+
     /// The pre-shim `PATH` recorded by an outer tokf invocation, if any.
     pub fn original_path(&self) -> Option<&str> {
         self.original_path.as_deref()
@@ -183,6 +221,12 @@ impl Runtime {
     /// The `TOKF_CODEX_REWRITE_MODE` setting, if any.
     pub fn codex_rewrite_mode(&self) -> Option<&str> {
         self.codex_rewrite_mode.as_deref()
+    }
+
+    /// Where hook invocations should append their diagnostic record, if
+    /// `TOKF_HOOK_LOG` is set to a non-empty path.
+    pub fn hook_log(&self) -> Option<&Path> {
+        self.hook_log.as_deref()
     }
 
     /// The keyring service name credentials are stored under.

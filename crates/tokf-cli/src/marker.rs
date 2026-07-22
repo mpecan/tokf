@@ -40,8 +40,8 @@ pub fn render_indicator(show_indicator: bool, history_id: Option<i64>) -> String
 
 /// Load the print-time config for the current working directory's project.
 pub fn load_render_config(rt: &Runtime) -> OutputConfig {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = tokf::history::project_root_for(&cwd);
+    let cwd = rt.cwd_or_empty();
+    let project_root = tokf::history::project_root_for(cwd);
     OutputConfig::load(rt, Some(&project_root))
 }
 

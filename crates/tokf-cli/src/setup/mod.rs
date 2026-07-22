@@ -30,9 +30,7 @@ pub fn is_setup_completed(rt: &Runtime) -> bool {
 /// # Errors
 /// Returns an error if the config directory cannot be determined or the file cannot be written.
 pub fn mark_setup_completed(rt: &Runtime) -> anyhow::Result<()> {
-    let path = rt
-        .global_config_path()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = rt.require_global_config_path()?;
     let mut config = load_project_config(&path);
     config.setup = Some(TokfSetupSection {
         completed: Some(true),
@@ -55,7 +53,6 @@ pub fn hint_setup_if_needed(rt: &Runtime) {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-
     use super::*;
 
     #[test]

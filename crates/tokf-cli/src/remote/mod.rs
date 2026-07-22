@@ -80,7 +80,9 @@ impl RemoteError {
             Self::ClientError {
                 url, status, body, ..
             } => format!("remote: HTTP {status} from {url}: {body}"),
-            _ => self.short_message(),
+            // Exhaustive on purpose: a new variant with a verbose form must
+            // fail to compile here rather than silently fall back to short.
+            Self::Unauthorized | Self::RateLimited(_) => self.short_message(),
         }
     }
 

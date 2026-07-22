@@ -56,6 +56,15 @@ fn main() {
     // receives `&rt` rather than reaching for a global or an env var.
     let rt = Runtime::from_env();
 
+    // `test-support` swaps in an in-memory credential store. A release build
+    // with it enabled would appear to accept `tokf auth login` and persist
+    // nothing, so refuse to produce one.
+    #[cfg(all(feature = "test-support", not(debug_assertions)))]
+    compile_error!(
+        "the `test-support` feature must never be enabled in a release build: \
+         it replaces the OS keyring with an in-memory mock"
+    );
+
     #[cfg(feature = "test-support")]
     tokf::auth::credentials::use_mock_keyring();
 

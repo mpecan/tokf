@@ -216,14 +216,10 @@ pub fn collect_info_with_filters(
     let dirs = collect_search_dirs(search_dirs);
 
     let home_override = rt
-        .dirs()
         .home_override()
         .map(|p| p.to_string_lossy().trim().to_string())
         .filter(|s| !s.is_empty());
-    let env_override = rt
-        .dirs()
-        .db_path_override()
-        .map(|p| p.display().to_string());
+    let env_override = rt.db_path_override().map(|p| p.display().to_string());
     let db_path = rt.tracking_db_path();
     let db_exists = db_path.as_ref().is_some_and(|p| p.exists());
     let db_access = db_path.as_ref().map(|p| check_write_access(p));
@@ -258,8 +254,8 @@ pub fn collect_info_with_filters(
 
 fn collect_config_files(rt: &Runtime) -> Vec<ConfigFileEntry> {
     let user_dir = rt.user_dir();
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = tokf::history::project_root_for(&cwd);
+    let cwd = rt.cwd_or_empty();
+    let project_root = tokf::history::project_root_for(cwd);
     let local_dir = project_root.join(".tokf");
 
     let mut entries = Vec::new();

@@ -228,9 +228,7 @@ pub fn save_project_config(
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
 pub fn save_upload_stats(rt: &Runtime, enabled: bool) -> anyhow::Result<()> {
-    let path = rt
-        .global_config_path()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = rt.require_global_config_path()?;
     save_upload_stats_to_path(&path, enabled)
 }
 

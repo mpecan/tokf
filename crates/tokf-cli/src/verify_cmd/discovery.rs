@@ -20,7 +20,7 @@ pub(super) fn verify_search_dirs(rt: &Runtime, scope: Option<&super::VerifyScope
     match scope {
         Some(super::VerifyScope::Project) => {
             let mut dirs = Vec::new();
-            if let Ok(cwd) = std::env::current_dir() {
+            if let Some(cwd) = rt.cwd() {
                 dirs.push(cwd.join(".tokf/filters"));
             }
             dirs
@@ -34,7 +34,7 @@ pub(super) fn verify_search_dirs(rt: &Runtime, scope: Option<&super::VerifyScope
         }
         Some(super::VerifyScope::Stdlib) => {
             let mut dirs = Vec::new();
-            if let Ok(cwd) = std::env::current_dir() {
+            if let Some(cwd) = rt.cwd() {
                 dirs.push(cwd.join("filters"));
             }
             dirs
@@ -46,7 +46,7 @@ pub(super) fn verify_search_dirs(rt: &Runtime, scope: Option<&super::VerifyScope
             //   3. {config_dir}/tokf/filters/ — user-level custom filters
             // When the same filter name appears in multiple dirs, the first wins.
             let mut dirs = Vec::new();
-            if let Ok(cwd) = std::env::current_dir() {
+            if let Some(cwd) = rt.cwd() {
                 dirs.push(cwd.join("filters"));
                 dirs.push(cwd.join(".tokf/filters"));
             }

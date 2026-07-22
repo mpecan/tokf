@@ -55,6 +55,7 @@ impl Runtime {
             cwd: Some(temp.path().to_path_buf()),
             original_path: None,
             codex_rewrite_mode: None,
+            hook_log: None,
             keyring_service: format!("tokf-test-{seq}"),
             temp_root: Some(Arc::new(temp)),
         }
@@ -180,6 +181,13 @@ impl RuntimeBuilder {
     #[must_use]
     pub fn codex_rewrite_mode(mut self, mode: impl Into<String>) -> Self {
         self.inner.codex_rewrite_mode = Some(mode.into());
+        self
+    }
+
+    /// Set `TOKF_HOOK_LOG`, the hook diagnostic log path.
+    #[must_use]
+    pub fn hook_log(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.inner.hook_log = Some(path.into());
         self
     }
 

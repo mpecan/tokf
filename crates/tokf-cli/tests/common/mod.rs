@@ -48,6 +48,16 @@ const RUNTIME_ENV: &[&str] = &[
     "TOKF_CODEX_REWRITE_MODE",
     "TOKF_TELEMETRY_ENABLED",
     "TOKF_OTEL_PIPELINE",
+    // Read via clap `#[arg(env = ...)]` in cli_args.rs rather than through
+    // Runtime — TOKF_PRESERVE_COLOR in particular changes stdout formatting
+    // and fails colour-sensitive assertions when exported.
+    "TOKF_PRESERVE_COLOR",
+    "TOKF_REGISTRY_URL",
+    "TOKF_SERVICE_TOKEN",
+    // Runtime-owned, but still cleared here: a spawned binary would otherwise
+    // append a diagnostic record for every hook invocation to a path of the
+    // developer's choosing, i.e. outside the test's temp home.
+    "TOKF_HOOK_LOG",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_EXPORTER_OTLP_PROTOCOL",
     "OTEL_EXPORTER_OTLP_HEADERS",
@@ -131,6 +141,11 @@ impl Default for TestHome {
 /// helpers this replaces: `tokf().args(["ls"]).output()` still works. The
 /// temporary directory lives until the end of the statement, which covers the
 /// whole builder chain up to and including `output()` / `status()`.
+///
+/// **Do not use with `spawn()`.** That returns while the child is still
+/// running, and the temporary home is deleted at the end of the statement —
+/// out from under it. Bind a [`TestHome`] and use [`TestHome::cmd`] instead,
+/// so the directory outlives the child.
 pub struct TokfCommand {
     cmd: Command,
     home: TestHome,

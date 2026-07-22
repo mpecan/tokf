@@ -84,8 +84,8 @@ struct ConfigEntry {
 }
 
 fn cmd_config_show(rt: &Runtime, json: bool) -> i32 {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
+    let cwd = rt.cwd_or_empty();
+    let project_root = project_root_for(cwd);
     let global_path = global_config_path(rt);
     let local_path = local_config_path(&project_root);
 
@@ -247,8 +247,8 @@ fn find_source(
 // ── config get ──────────────────────────────────────────────────
 
 fn cmd_config_get(rt: &Runtime, key: &str) -> i32 {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
+    let cwd = rt.cwd_or_empty();
+    let project_root = project_root_for(cwd);
 
     match key {
         "history.retention" => {
@@ -289,8 +289,8 @@ fn cmd_config_get(rt: &Runtime, key: &str) -> i32 {
 #[allow(clippy::too_many_lines)]
 fn cmd_config_set(rt: &Runtime, key: &str, value: &str, local: bool) -> i32 {
     let target_path = if local {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = project_root_for(&cwd);
+        let cwd = rt.cwd_or_empty();
+        let project_root = project_root_for(cwd);
         local_config_path(&project_root)
     } else {
         let Some(p) = global_config_path(rt) else {
@@ -403,8 +403,8 @@ fn set_upload_stats(path: &std::path::Path, value: &str) -> i32 {
 
 fn cmd_config_print(rt: &Runtime, global: bool, local: bool) -> i32 {
     let path = if local {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = project_root_for(&cwd);
+        let cwd = rt.cwd_or_empty();
+        let project_root = project_root_for(cwd);
         local_config_path(&project_root)
     } else if global {
         let Some(p) = global_config_path(rt) else {
@@ -414,8 +414,8 @@ fn cmd_config_print(rt: &Runtime, global: bool, local: bool) -> i32 {
         p
     } else {
         // Default: try local first, fall back to global
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = project_root_for(&cwd);
+        let cwd = rt.cwd_or_empty();
+        let project_root = project_root_for(cwd);
         let local_path = local_config_path(&project_root);
         if local_path.is_file() {
             local_path
@@ -447,8 +447,8 @@ fn cmd_config_print(rt: &Runtime, global: bool, local: bool) -> i32 {
 // ── config path ─────────────────────────────────────────────────
 
 fn cmd_config_path(rt: &Runtime) -> i32 {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
+    let cwd = rt.cwd_or_empty();
+    let project_root = project_root_for(cwd);
 
     let global = global_config_path(rt);
     let local = local_config_path(&project_root);

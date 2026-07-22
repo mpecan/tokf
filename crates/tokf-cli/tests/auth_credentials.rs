@@ -9,8 +9,10 @@ fn remove_is_idempotent() {
     credentials::use_mock_keyring();
     let rt = Runtime::isolated();
 
-    let _ = credentials::remove(&rt);
-    let _ = credentials::remove(&rt);
+    // Nothing was ever saved into this isolated home, so both calls report
+    // "there was nothing to remove" and neither errors.
+    assert!(!credentials::remove(&rt));
+    assert!(!credentials::remove(&rt));
 }
 
 /// Verify the config path is well-formed on all platforms.

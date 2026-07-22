@@ -246,52 +246,6 @@ fn rewrite_segment(
 ///
 /// Single quotes in the suffix are escaped with the `'\''` idiom so the
 /// generated shell command remains valid (e.g. `grep -E 'fail|error'`).
-/// Test helpers: run a rewrite with explicit config against a freshly isolated
-/// runtime, so every test gets its own directories with no setup and no shared
-/// state to collide over.
-#[cfg(test)]
-pub(crate) fn rewrite_isolated(
-    command: &str,
-    user_config: &RewriteConfig,
-    search_dirs: &[PathBuf],
-    verbose: bool,
-) -> String {
-    rewrite_isolated_with_options(
-        command,
-        user_config,
-        search_dirs,
-        verbose,
-        &RewriteOptions::default(),
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn rewrite_isolated_with_options(
-    command: &str,
-    user_config: &RewriteConfig,
-    search_dirs: &[PathBuf],
-    verbose: bool,
-    options: &RewriteOptions,
-) -> String {
-    let rt = Runtime::isolated();
-    rewrite_with_config_and_options(
-        RewriteCtx {
-            rt: &rt,
-            user_config,
-            search_dirs,
-        },
-        command,
-        verbose,
-        options,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<String> {
-    let rt = Runtime::isolated();
-    collect_filter_patterns(&rt, search_dirs)
-}
-
 #[cfg(test)]
 fn inject_pipe_flags(rewritten: &str, suffix: &str, prefer_less: bool) -> String {
     inject_pipe_flags_with_options(rewritten, suffix, prefer_less, &RewriteOptions::default())
@@ -440,6 +394,52 @@ mod bash_ast_multibyte_tests;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod bash_ast_tests;
+/// Test helpers: run a rewrite with explicit config against a freshly isolated
+/// runtime, so every test gets its own directories with no setup and no shared
+/// state to collide over.
+#[cfg(test)]
+pub(crate) fn rewrite_isolated(
+    command: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    verbose: bool,
+) -> String {
+    rewrite_isolated_with_options(
+        command,
+        user_config,
+        search_dirs,
+        verbose,
+        &RewriteOptions::default(),
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn rewrite_isolated_with_options(
+    command: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    verbose: bool,
+    options: &RewriteOptions,
+) -> String {
+    let rt = Runtime::isolated();
+    rewrite_with_config_and_options(
+        RewriteCtx {
+            rt: &rt,
+            user_config,
+            search_dirs,
+        },
+        command,
+        verbose,
+        options,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<String> {
+    let rt = Runtime::isolated();
+    collect_filter_patterns(&rt, search_dirs)
+}
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

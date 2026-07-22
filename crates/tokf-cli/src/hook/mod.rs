@@ -374,6 +374,7 @@ fn handle_cursor_json_inner(
 /// Only called when an external engine is configured. On engine failure,
 /// applies the `on_error` fallback (ask/allow/builtin).
 fn query_external_engine(
+    rt: &Runtime,
     cmd: &str,
     hook_json: &str,
     format: HookFormat,
@@ -394,7 +395,7 @@ fn query_external_engine(
                 ErrorFallback::Ask => PermissionVerdict::ask(None),
                 ErrorFallback::Allow => PermissionVerdict::allow(),
                 ErrorFallback::Builtin => {
-                    let (deny, ask) = permissions::load_deny_ask_rules();
+                    let (deny, ask) = permissions::load_deny_ask_rules(rt);
                     permissions::check_command_with_rules(cmd, &deny, &ask)
                 }
             }
@@ -488,7 +489,16 @@ fn process_command<R: serde::Serialize>(
         allow_outcome,
         ask_outcome,
     );
-    debug_log::log_event(tool_name, format, command, after.as_deref(), outcome);
+    debug_log::log_event(
+        rt,
+        &debug_log::HookEvent {
+            tool: tool_name,
+            format,
+            before: command,
+            after: after.as_deref(),
+            outcome,
+        },
+    );
     outcome
 }
 
@@ -512,7 +522,7 @@ fn decide<R: serde::Serialize>(
 ) -> (HookOutcome, Option<String>) {
     // When an external permission engine is configured, consult it on every
     // command — even ones tokf has no filter for.
-    if let Some(verdict) = query_external_engine(command, json, format, user_config) {
+    if let Some(verdict) = query_external_engine(rt, command, json, format, user_config) {
         // Deny doesn't need a rewrite — the command won't execute.
         if verdict.decision == PermissionDecision::Deny {
             if emit_response(&build_deny(command.to_string(), verdict.reason)) {

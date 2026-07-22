@@ -39,9 +39,7 @@ pub(crate) fn install_to(conventions_path: &Path) -> anyhow::Result<()> {
 }
 
 fn global_conventions_path(rt: &Runtime) -> anyhow::Result<PathBuf> {
-    let user = rt
-        .user_dir()
-        .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
+    let user = rt.require_user_dir()?;
     Ok(user.join("aider-conventions.md"))
 }
 

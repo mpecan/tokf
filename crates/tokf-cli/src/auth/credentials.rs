@@ -52,8 +52,16 @@ impl LoadedAuth {
     }
 }
 
+/// Filename of the auth metadata stored beside the keyring entry.
+const AUTH_FILE: &str = "auth.toml";
+
 pub fn auth_config_path(rt: &Runtime) -> Option<PathBuf> {
-    rt.user_dir().map(|d| d.join("auth.toml"))
+    rt.user_dir().map(|d| d.join(AUTH_FILE))
+}
+
+/// [`auth_config_path`] with the "no config directory" error already applied.
+fn require_auth_config_path(rt: &Runtime) -> anyhow::Result<PathBuf> {
+    Ok(rt.require_user_dir()?.join(AUTH_FILE))
 }
 
 /// Store authentication credentials (token in keyring, metadata in TOML).
@@ -89,8 +97,7 @@ pub fn save(
     };
 
     // Store metadata in TOML file
-    let path =
-        auth_config_path(rt).ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = require_auth_config_path(rt)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -123,8 +130,7 @@ pub fn save(
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
 pub fn save_license_accepted(rt: &Runtime, accepted: bool) -> anyhow::Result<()> {
-    let path =
-        auth_config_path(rt).ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = require_auth_config_path(rt)?;
     save_license_accepted_to_path(&path, accepted)
 }
 
@@ -149,8 +155,7 @@ pub(crate) fn save_license_accepted_to_path(
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
 pub fn save_tos_accepted_version(rt: &Runtime, version: i64) -> anyhow::Result<()> {
-    let path =
-        auth_config_path(rt).ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = require_auth_config_path(rt)?;
     save_tos_accepted_version_to_path(&path, version)
 }
 
@@ -309,7 +314,6 @@ pub fn remove(rt: &Runtime) -> bool {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-
     use super::*;
 
     #[test]

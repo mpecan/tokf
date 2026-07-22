@@ -40,7 +40,7 @@ pub fn find_filter(
 ) -> anyhow::Result<Option<FilterMatch>> {
     let resolved = discover_filters(rt, no_cache)?;
     let words: Vec<&str> = command_args.iter().map(String::as_str).collect();
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = rt.cwd_or_empty();
     let wrapper_cfg = tokf::rewrite::load_local_wrapper_config(rt);
 
     // Match directly, or after stripping a local environment wrapper prefix
@@ -74,8 +74,7 @@ pub fn find_filter(
             }));
         }
 
-        let resolution =
-            config::variant::resolve_variants(&filter.config, &resolved, &cwd, verbose);
+        let resolution = config::variant::resolve_variants(&filter.config, &resolved, cwd, verbose);
         let hash = tokf_common::hash::canonical_hash(&resolution.config)
             .unwrap_or_else(|_| filter.hash.clone());
         return Ok(Some(FilterMatch {

@@ -14,7 +14,7 @@ pub fn cmd_which(rt: &Runtime, command: &str, verbose: bool) -> i32 {
     };
 
     let words: Vec<&str> = command.split_whitespace().collect();
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = rt.cwd_or_empty();
     let wrapper_cfg = rewrite::load_local_wrapper_config(rt);
 
     // Match directly, or after stripping a local environment wrapper prefix
@@ -35,7 +35,7 @@ pub fn cmd_which(rt: &Runtime, command: &str, verbose: bool) -> i32 {
     let variant_info = if filter.config.variant.is_empty() {
         String::new()
     } else {
-        let res = config::variant::resolve_variants(&filter.config, &filters, &cwd, verbose);
+        let res = config::variant::resolve_variants(&filter.config, &filters, cwd, verbose);
         let resolved = res.config.command.first().to_string();
         if resolved != filter.config.command.first() {
             format!(" -> variant: \"{resolved}\"")

@@ -1,3 +1,5 @@
+use anyhow::Context as _;
+
 use std::path::{Component, Path, PathBuf};
 
 use tokf::remote::filter_client;
@@ -6,8 +8,6 @@ use tokf_common::config::types::FilterConfig;
 
 use tokf::runtime::Runtime;
 
-/// Entry point for the `tokf install` subcommand.
-#[allow(clippy::fn_params_excessive_bools)]
 /// Options for `tokf install`.
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
@@ -19,6 +19,7 @@ pub struct InstallOpts<'a> {
     pub yes: bool,
 }
 
+/// Entry point for the `tokf install` subcommand.
 pub fn cmd_install(rt: &Runtime, opts: InstallOpts<'_>) -> i32 {
     match install(rt, opts) {
         Ok(code) => code,
@@ -43,7 +44,6 @@ fn resolve_hash(client: &Client, filter: &str) -> anyhow::Result<(String, String
     }
 }
 
-#[allow(clippy::fn_params_excessive_bools)]
 fn install(rt: &Runtime, opts: InstallOpts<'_>) -> anyhow::Result<i32> {
     let InstallOpts {
         filter,
@@ -296,7 +296,6 @@ fn read_line() -> anyhow::Result<String> {
     Ok(line)
 }
 
-// pub(crate): accessed by install_cmd::run_verify
 fn run_verify(
     rt: &Runtime,
     rel_path: &Path,
@@ -339,11 +338,10 @@ fn command_pattern_to_path(pattern: &str) -> PathBuf {
 
 fn resolve_install_base(rt: &Runtime, local: bool) -> anyhow::Result<PathBuf> {
     if local {
-        let cwd = std::env::current_dir()?;
+        let cwd = rt.cwd().context("could not determine working directory")?;
         Ok(cwd.join(".tokf"))
     } else {
-        rt.user_dir()
-            .ok_or_else(|| anyhow::anyhow!("cannot determine user config directory"))
+        rt.require_user_dir()
     }
 }
 

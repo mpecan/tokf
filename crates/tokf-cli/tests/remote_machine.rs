@@ -33,11 +33,11 @@ fn machine_config_path_sits_under_the_user_dir() {
 
 #[test]
 fn load_returns_none_when_no_file() {
-    // This validates graceful handling when no registration exists.
-    // May return Some on a developer machine that has registered — we just
-    // verify it doesn't panic.
+    // Isolation makes this assertable: the runtime's home is a fresh temp dir,
+    // so no machine.toml can exist. Before, this could only check "doesn't
+    // panic", because a developer machine that had registered returned Some.
     let rt = Runtime::isolated();
-    let _ = machine::load(&rt);
+    assert!(machine::load(&rt).is_none());
 }
 
 #[test]

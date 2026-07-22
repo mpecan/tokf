@@ -9,14 +9,16 @@
 use serde_json::Value;
 use std::path::PathBuf;
 
+use crate::runtime::Runtime;
+
 pub use tokf_hook_types::{PermissionDecision, PermissionVerdict};
 
 /// Check `cmd` against Claude Code's deny/ask permission rules.
 ///
 /// Returns `Allow` when no rules match, `Deny` when a deny rule matches,
 /// or `Ask` when an ask rule matches. Deny takes priority over Ask.
-pub fn check_command(cmd: &str) -> PermissionVerdict {
-    let (deny_rules, ask_rules) = load_deny_ask_rules();
+pub fn check_command(rt: &Runtime, cmd: &str) -> PermissionVerdict {
+    let (deny_rules, ask_rules) = load_deny_ask_rules(rt);
     check_command_with_rules(cmd, &deny_rules, &ask_rules)
 }
 
@@ -65,8 +67,8 @@ pub(crate) fn check_command_with_rules(
 /// 2. `$PROJECT_ROOT/.claude/settings.local.json`
 /// 3. `~/.claude/settings.json`
 /// 4. `~/.claude/settings.local.json`
-pub(crate) fn load_deny_ask_rules() -> (Vec<String>, Vec<String>) {
-    load_rules_from_paths(&get_settings_paths())
+pub(crate) fn load_deny_ask_rules(rt: &Runtime) -> (Vec<String>, Vec<String>) {
+    load_rules_from_paths(&get_settings_paths(rt))
 }
 
 /// Load deny and ask Bash rules from the given settings file paths.
@@ -129,10 +131,10 @@ fn append_bash_rules(rules_value: Option<&Value>, target: &mut Vec<String>) {
 }
 
 /// Return the ordered list of Claude Code settings file paths to check.
-fn get_settings_paths() -> Vec<PathBuf> {
+fn get_settings_paths(rt: &Runtime) -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
-    if let Some(root) = find_project_root() {
+    if let Some(root) = find_project_root(rt) {
         paths.push(root.join(".claude").join("settings.json"));
         paths.push(root.join(".claude").join("settings.local.json"));
     }
@@ -150,8 +152,8 @@ fn get_settings_paths() -> Vec<PathBuf> {
 /// external processes (e.g. `git`), since the hook runs on every tool call
 /// and the fallback would add latency without changing behavior (the derived
 /// settings files still won't exist in projects without `.claude/`).
-fn find_project_root() -> Option<PathBuf> {
-    let mut dir = std::env::current_dir().ok()?;
+fn find_project_root(rt: &Runtime) -> Option<PathBuf> {
+    let mut dir = rt.cwd()?.to_path_buf();
     loop {
         if dir.join(".claude").is_dir() {
             return Some(dir);

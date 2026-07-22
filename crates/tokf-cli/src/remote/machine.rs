@@ -44,8 +44,7 @@ pub fn load(rt: &Runtime) -> Option<StoredMachine> {
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
 pub fn save(rt: &Runtime, machine_id: &str, hostname: &str) -> anyhow::Result<()> {
-    let path = machine_config_path(rt)
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = rt.require_user_dir()?.join("machine.toml");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
