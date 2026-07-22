@@ -1,20 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context as _;
 use rusqlite::{Connection, OptionalExtension as _};
 
 use tokf_common::tokens::estimate_tokens_from_bytes;
 pub use tokf_common::tracking::types::{DailyGain, FilterGain, GainSummary, TrackingEvent};
-
-/// Returns the DB path: `TOKF_DB_PATH` env var overrides; else
-/// `TOKF_HOME/tracking.db` if `TOKF_HOME` is set; else
-/// `dirs::data_local_dir()/tokf/tracking.db`.
-pub fn db_path() -> Option<PathBuf> {
-    if let Some(p) = crate::paths::db_path_override() {
-        return Some(p);
-    }
-    crate::paths::user_data_dir().map(|d| d.join("tracking.db"))
-}
 
 /// Open or create the DB at `path`, running `CREATE TABLE IF NOT EXISTS` for the
 /// events table.

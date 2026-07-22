@@ -1,6 +1,8 @@
 use anyhow::Context as _;
 use rusqlite::Connection;
 
+use crate::runtime::Runtime;
+
 mod config;
 mod queries;
 mod types;
@@ -23,12 +25,10 @@ pub use types::{HistoryEntry, HistoryRecord};
 /// This is used to detect when a caller re-runs the same command without
 /// acting on previous filtered output — a signal that they may need the
 /// full, unfiltered content.
-pub fn try_was_recently_run(command: &str) -> bool {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
-    let project = project_root.to_string_lossy().into_owned();
+pub fn try_was_recently_run(rt: &Runtime, command: &str) -> bool {
+    let project = current_project(rt);
 
-    let Some(path) = crate::tracking::db_path() else {
+    let Some(path) = rt.tracking_db_path() else {
         return false;
     };
     let Ok(conn) = open_db(&path) else {
@@ -94,29 +94,38 @@ pub fn init_history_table(conn: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A completed filter run, ready to be recorded to history.
+pub struct RecordedRun<'a> {
+    pub command: &'a str,
+    pub filter_name: &'a str,
+    pub raw_output: &'a str,
+    pub filtered_output: &'a str,
+    pub exit_code: i32,
+}
+
 /// Record a filtered command run to history, swallowing errors unless `TOKF_DEBUG` is set.
 ///
 /// Only records commands where a filter was applied. Passthrough runs (no filter)
 /// are excluded because raw and filtered output would be identical.
 ///
 /// Returns `Some(id)` with the new history entry ID on success, `None` on error.
-pub fn try_record(
-    command: &str,
-    filter_name: &str,
-    raw_output: &str,
-    filtered_output: &str,
-    exit_code: i32,
-) -> Option<i64> {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
+pub fn try_record(rt: &Runtime, run: &RecordedRun<'_>) -> Option<i64> {
+    let RecordedRun {
+        command,
+        filter_name,
+        raw_output,
+        filtered_output,
+        exit_code,
+    } = *run;
+    let project_root = project_root_for(rt.cwd().unwrap_or_else(|| std::path::Path::new("")));
     let project = project_root.to_string_lossy().into_owned();
-    let config = HistoryConfig::load(Some(&project_root));
+    let config = HistoryConfig::load(rt, Some(&project_root));
 
-    let path = crate::tracking::db_path()?;
+    let path = rt.tracking_db_path()?;
     let conn = match open_db(&path) {
         Ok(c) => c,
         Err(e) => {
-            if crate::paths::debug_enabled() {
+            if rt.debug() {
                 eprintln!("[tokf] history error (db open): {e:#}");
             }
             return None;
@@ -133,7 +142,7 @@ pub fn try_record(
     match record_history(&conn, &record, &config) {
         Ok(id) => Some(id),
         Err(e) => {
-            if crate::paths::debug_enabled() {
+            if rt.debug() {
                 eprintln!("[tokf] history error (record): {e:#}");
             }
             None

@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use tokf::discover;
 
+use tokf::runtime::Runtime;
+
 #[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
 pub struct DiscoverOpts<'a> {
     pub project: Option<&'a str>,
@@ -14,7 +16,7 @@ pub struct DiscoverOpts<'a> {
     pub include_filtered: bool,
 }
 
-pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
+pub fn cmd_discover(rt: &Runtime, opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
     let session_files = collect_session_files(opts.project, opts.all, opts.session)?;
 
     if session_files.is_empty() {
@@ -29,7 +31,7 @@ pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
         return Ok(1);
     }
 
-    let mut summary = discover::discover_sessions(&filtered_files, opts.no_cache)?;
+    let mut summary = discover::discover_sessions(rt, &filtered_files, opts.no_cache)?;
 
     if !opts.include_filtered {
         summary.results.retain(|r| !r.has_filter);

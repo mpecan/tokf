@@ -9,6 +9,7 @@ use rkyv::{Archive, Deserialize, Serialize, rancor};
 use super::types::FilterConfig;
 use super::{ResolvedFilter, discover_all_filters};
 use crate::runner::shell_escape;
+use crate::runtime::Runtime;
 
 const CACHE_VERSION: u32 = 11;
 
@@ -65,14 +66,14 @@ fn cached_to_filter(cf: CachedFilter) -> anyhow::Result<ResolvedFilter> {
 /// - If `search_dirs[0]`'s parent (`.tokf/`) exists on disk → use `.tokf/cache/manifest.bin`
 /// - Otherwise → use `<user_cache_dir>/tokf/manifest.bin`
 /// - Returns `None` if no cache location can be determined.
-pub fn cache_path(search_dirs: &[PathBuf]) -> Option<PathBuf> {
+pub fn cache_path(rt: &Runtime, search_dirs: &[PathBuf]) -> Option<PathBuf> {
     if let Some(first_dir) = search_dirs.first()
         && let Some(tokf_dir) = first_dir.parent()
         && tokf_dir.exists()
     {
         return Some(tokf_dir.join("cache/manifest.bin"));
     }
-    crate::paths::user_cache_dir().map(|d| d.join("manifest.bin"))
+    rt.user_cache_dir().map(|d| d.join("manifest.bin"))
 }
 
 /// Return the mtime of `path` as nanoseconds since the Unix epoch, or 0 on error.
@@ -157,31 +158,6 @@ fn write_manifest_bytes(path: &Path, data: &[u8]) -> anyhow::Result<()> {
         .map_err(|err| anyhow::Error::new(err.error).context("rename cache tmp to final"))
 }
 
-/// Generate shims from a cache-discovery path, unless this is a unit-test build.
-///
-/// [`generate_shims`] writes into [`crate::paths::shims_dir`], which is
-/// *process-global* and redirected by `HomeGuard` in tests. `discover_with_cache`
-/// is production code exercised by many non-serial unit tests, so letting it
-/// generate shims meant those tests wrote into whichever temp directory a
-/// concurrently-running serial shim test had `HomeGuard` pointing at — deleting
-/// or adding shims underneath it. That is the source of the intermittent
-/// `generate_shims_*` failures ("only basename shim should exist", and a
-/// vanishing shims directory).
-///
-/// Skipping it under `cfg(test)` costs no coverage: the `generate_shims_*` tests
-/// call [`generate_shims`] directly, and the integration tests exercise this path
-/// through the real binary, which is not a `cfg(test)` build.
-// Under `cfg(test)` the body collapses to a discard, which clippy would rather
-// see as a `const fn`; that is an artefact of the test build, not the real one.
-#[cfg_attr(test, allow(clippy::missing_const_for_fn))]
-fn generate_shims_from_discovery(filters: &[ResolvedFilter]) {
-    #[cfg(not(test))]
-    generate_shims(filters);
-
-    #[cfg(test)]
-    let _ = filters;
-}
-
 /// Generate shim scripts for all filter command basenames.
 ///
 /// Each shim is a small shell script that redirects through `tokf -c`,
@@ -193,16 +169,16 @@ fn generate_shims_from_discovery(filters: &[ResolvedFilter]) {
 /// at filter discovery time (any `tokf run`). Scanning the filesystem for
 /// `.tokf/config.toml` would add latency. Users who need to disable shims can
 /// set `shims.enabled = false` in their global config.
-pub fn generate_shims(filters: &[ResolvedFilter]) {
-    let shims_config = crate::history::ShimsConfig::load(None);
+pub fn generate_shims(rt: &Runtime, filters: &[ResolvedFilter]) {
+    let shims_config = crate::history::ShimsConfig::load(rt, None);
     if !shims_config.enabled {
         // Clean up existing shims if disabled
-        if let Some(dir) = crate::paths::shims_dir() {
+        if let Some(dir) = rt.shims_dir() {
             let _ = std::fs::remove_dir_all(dir);
         }
         return;
     }
-    let Some(shims_dir) = crate::paths::shims_dir() else {
+    let Some(shims_dir) = rt.shims_dir() else {
         return;
     };
     // Prefer the bare name "tokf" so shims aren't tied to a version-specific
@@ -271,8 +247,11 @@ pub fn generate_shims(filters: &[ResolvedFilter]) {
 /// # Errors
 ///
 /// Returns `Err` only if `discover_all_filters` itself fails (unexpected I/O error).
-pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<ResolvedFilter>> {
-    let Some(path) = cache_path(search_dirs) else {
+pub fn discover_with_cache(
+    rt: &Runtime,
+    search_dirs: &[PathBuf],
+) -> anyhow::Result<Vec<ResolvedFilter>> {
+    let Some(path) = cache_path(rt, search_dirs) else {
         return discover_all_filters(search_dirs);
     };
 
@@ -283,8 +262,8 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
             manifest.filters.into_iter().map(cached_to_filter).collect();
         if let Ok(filters) = result {
             // Regenerate shims if the directory was manually deleted
-            if crate::paths::shims_dir().is_some_and(|d| !d.exists()) {
-                generate_shims_from_discovery(&filters);
+            if rt.shims_dir().is_some_and(|d| !d.exists()) {
+                generate_shims(rt, &filters);
             }
             return Ok(filters);
         }
@@ -292,7 +271,7 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
     }
 
     let filters = discover_all_filters(search_dirs)?;
-    generate_shims_from_discovery(&filters);
+    generate_shims(rt, &filters);
     if let Err(e) = write_manifest(&path, &filters, search_dirs) {
         eprintln!("[tokf] cache write failed ({}): {e:#}", path.display());
         eprintln!(
@@ -383,33 +362,30 @@ mod tests {
         fs::create_dir_all(&tokf_dir).unwrap();
         let search_dirs = vec![tokf_dir.join("filters")];
 
-        let path = cache_path(&search_dirs).unwrap();
+        let rt = Runtime::isolated();
+        let path = cache_path(&rt, &search_dirs).unwrap();
         assert!(path.starts_with(&tokf_dir));
         assert!(path.ends_with("cache/manifest.bin"));
     }
 
     #[test]
-    #[serial_test::serial]
     fn cache_path_user_fallback() {
         // A parent path that definitely doesn't exist on disk.
-        // #[serial] required: reads TOKF_HOME via user_cache_dir() and must not
-        // race with tests that mutate that env var (e.g. cache_path_respects_tokf_home).
+        let rt = Runtime::isolated();
         let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
-        let path = cache_path(&search_dirs);
+        let path = cache_path(&rt, &search_dirs);
 
-        if let Some(user_cache) = crate::paths::user_cache_dir() {
-            assert_eq!(path, Some(user_cache.join("manifest.bin")));
-        } else {
-            assert!(path.is_none());
-        }
+        assert_eq!(
+            path,
+            Some(rt.user_cache_dir().unwrap().join("manifest.bin"))
+        );
     }
 
     #[test]
-    #[serial_test::serial]
     fn cache_path_respects_tokf_home() {
-        let _guard = crate::paths::HomeGuard::set("/custom/tokf_home");
+        let rt = Runtime::builder().home("/custom/tokf_home").build();
         let search_dirs = vec![PathBuf::from("/tokf_test_nonexistent_dir/.tokf/filters")];
-        let path = cache_path(&search_dirs);
+        let path = cache_path(&rt, &search_dirs);
 
         assert_eq!(
             path,
@@ -427,7 +403,8 @@ mod tests {
         fs::write(tokf_dir.join("cache"), b"not a directory").unwrap();
 
         let search_dirs = vec![tokf_dir.join("filters")];
-        let result = discover_with_cache(&search_dirs);
+        let rt = Runtime::isolated();
+        let result = discover_with_cache(&rt, &search_dirs);
         assert!(result.is_ok());
     }
 
@@ -529,19 +506,18 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]
     fn generate_shims_creates_scripts() {
         let tmp = TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(tmp.path());
+        let rt = Runtime::builder().home(tmp.path()).build();
 
         let filters = vec![
             make_resolved_filter("git push", 0),
             make_resolved_filter("cargo test", 0),
             make_resolved_filter("git commit", 0), // git should be deduped
         ];
-        generate_shims(&filters);
+        generate_shims(&rt, &filters);
 
-        let shims = crate::paths::shims_dir().unwrap();
+        let shims = rt.shims_dir().unwrap();
         assert!(shims.exists());
 
         // git and cargo should have shims
@@ -572,18 +548,17 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]
     fn generate_shims_clean_slate() {
         let tmp = TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(tmp.path());
+        let rt = Runtime::builder().home(tmp.path()).build();
 
         // Create a stale shim
-        let shims = crate::paths::shims_dir().unwrap();
+        let shims = rt.shims_dir().unwrap();
         fs::create_dir_all(&shims).unwrap();
         fs::write(shims.join("stale_cmd"), "old").unwrap();
 
         let filters = vec![make_resolved_filter("git push", 0)];
-        generate_shims(&filters);
+        generate_shims(&rt, &filters);
 
         // Stale shim should be gone
         assert!(!shims.join("stale_cmd").exists());
@@ -591,32 +566,30 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]
     fn generate_shims_includes_make_and_just() {
         let tmp = TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(tmp.path());
+        let rt = Runtime::builder().home(tmp.path()).build();
 
         let filters = vec![
             make_resolved_filter("make build", 0),
             make_resolved_filter("just test", 0),
         ];
-        generate_shims(&filters);
+        generate_shims(&rt, &filters);
 
-        let shims = crate::paths::shims_dir().unwrap();
+        let shims = rt.shims_dir().unwrap();
         assert!(shims.join("make").exists(), "make shim should exist");
         assert!(shims.join("just").exists(), "just shim should exist");
     }
 
     #[test]
-    #[serial_test::serial]
     fn generate_shims_extracts_basename() {
         let tmp = TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(tmp.path());
+        let rt = Runtime::builder().home(tmp.path()).build();
 
         let filters = vec![make_resolved_filter("/usr/bin/git push", 0)];
-        generate_shims(&filters);
+        generate_shims(&rt, &filters);
 
-        let shims = crate::paths::shims_dir().unwrap();
+        let shims = rt.shims_dir().unwrap();
         assert!(shims.join("git").exists(), "basename should be extracted");
         // Only the basename "git" should exist, not "usr" or any other directory
         let entries: Vec<_> = fs::read_dir(&shims)
@@ -628,25 +601,24 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]
     fn generate_shims_cleans_up_when_disabled() {
         let tmp = TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(tmp.path());
+        let rt = Runtime::builder().home(tmp.path()).build();
 
         // Create shims directory with existing shim scripts
-        let shims = crate::paths::shims_dir().unwrap();
+        let shims = rt.shims_dir().unwrap();
         fs::create_dir_all(&shims).unwrap();
         fs::write(shims.join("git"), "#!/bin/sh\nold shim").unwrap();
         fs::write(shims.join("cargo"), "#!/bin/sh\nold shim").unwrap();
         assert!(shims.exists());
 
         // Write global config disabling shims
-        let config_path = crate::paths::user_dir().unwrap().join("config.toml");
+        let config_path = rt.user_dir().unwrap().join("config.toml");
         fs::create_dir_all(config_path.parent().unwrap()).unwrap();
         fs::write(&config_path, "[shims]\nenabled = false\n").unwrap();
 
         let filters = vec![make_resolved_filter("git push", 0)];
-        generate_shims(&filters);
+        generate_shims(&rt, &filters);
 
         // Shims directory should be removed
         assert!(
@@ -664,9 +636,10 @@ mod tests {
 
         fs::write(filters_dir.join("first.toml"), "command = \"first cmd\"").unwrap();
         let search_dirs = vec![filters_dir.clone()];
+        let rt = Runtime::isolated();
 
         // First run: populates cache
-        let filters1 = discover_with_cache(&search_dirs).unwrap();
+        let filters1 = discover_with_cache(&rt, &search_dirs).unwrap();
         let count1 = filters1
             .iter()
             .filter(|f| f.priority < crate::config::STDLIB_PRIORITY)
@@ -678,7 +651,7 @@ mod tests {
         fs::write(filters_dir.join("second.toml"), "command = \"second cmd\"").unwrap();
 
         // Second run: cache is stale, rebuilds with both filters
-        let filters2 = discover_with_cache(&search_dirs).unwrap();
+        let filters2 = discover_with_cache(&rt, &search_dirs).unwrap();
         let count2 = filters2
             .iter()
             .filter(|f| f.priority < crate::config::STDLIB_PRIORITY)

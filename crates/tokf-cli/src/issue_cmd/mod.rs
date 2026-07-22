@@ -13,6 +13,8 @@ use anyhow::{Context, Result};
 
 use crate::info_cmd::{self, InfoOutput, WriteAccess};
 
+use tokf::runtime::Runtime;
+
 const DEFAULT_REPO: &str = "mpecan/tokf";
 
 /// GitHub's `issues/new?...` URL has practical length limits; stay well under
@@ -64,13 +66,13 @@ struct FilterNames {
     builtin: Vec<String>,
 }
 
-pub fn cmd_issue(opts: &IssueArgs) -> i32 {
+pub fn cmd_issue(rt: &Runtime, opts: &IssueArgs) -> i32 {
     if opts.body.is_some() && opts.body_from.is_some() {
         eprintln!("[tokf] --body and --body-from are mutually exclusive");
         return 2;
     }
 
-    let prepared = match prepare_issue(opts) {
+    let prepared = match prepare_issue(rt, opts) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("[tokf] {e:#}");
@@ -87,11 +89,11 @@ struct PreparedIssue {
     markdown: String,
 }
 
-fn prepare_issue(opts: &IssueArgs) -> Result<PreparedIssue> {
+fn prepare_issue(rt: &Runtime, opts: &IssueArgs) -> Result<PreparedIssue> {
     let title = resolve_title(opts)?;
     let user_body = resolve_body(opts)?;
 
-    let search_dirs = tokf::config::default_search_dirs();
+    let search_dirs = tokf::config::default_search_dirs(rt);
     let discovered_filters = match tokf::config::discover_all_filters(&search_dirs) {
         Ok(f) => Some(f),
         Err(e) => {
@@ -99,7 +101,7 @@ fn prepare_issue(opts: &IssueArgs) -> Result<PreparedIssue> {
             None
         }
     };
-    let info = info_cmd::collect_info_with_filters(&search_dirs, discovered_filters.as_deref());
+    let info = info_cmd::collect_info_with_filters(rt, &search_dirs, discovered_filters.as_deref());
     let env = collect_env();
 
     let include_filters = opts.include_filters || should_prompt_for_filters(opts, &info);

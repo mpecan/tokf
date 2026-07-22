@@ -88,8 +88,9 @@ async fn stdlib_publish_single_filter(pool: PgPool) {
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         move || {
-            let client = Client::new(&base_url, Some(&service_token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&service_token)).unwrap();
             client
                 .post::<_, StdlibPublishResponse>("/api/filters/publish-stdlib", &req)
                 .unwrap()
@@ -129,13 +130,14 @@ async fn stdlib_publish_idempotent(pool: PgPool) {
     // First publish
     let resp1: StdlibPublishResponse = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         let token = service_token.clone();
         let req = StdlibPublishRequest {
             filters: vec![make_passthrough_entry("idempotent-tool")],
             version: None,
         };
         move || {
-            let client = Client::new(&base_url, Some(&token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&token)).unwrap();
             client.post("/api/filters/publish-stdlib", &req).unwrap()
         }
     })
@@ -146,9 +148,10 @@ async fn stdlib_publish_idempotent(pool: PgPool) {
     // Second publish (same content)
     let resp2: StdlibPublishResponse = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         let token = service_token;
         move || {
-            let client = Client::new(&base_url, Some(&token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&token)).unwrap();
             client.post("/api/filters/publish-stdlib", &req).unwrap()
         }
     })
@@ -195,8 +198,9 @@ not_contains = "noise"
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         move || {
-            let client = Client::new(&base_url, Some(&service_token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&service_token)).unwrap();
             client.post("/api/filters/publish-stdlib", &req).unwrap()
         }
     })
@@ -236,8 +240,9 @@ async fn stdlib_publish_with_backslash_content(pool: PgPool) {
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         move || {
-            let client = Client::new(&base_url, Some(&service_token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&service_token)).unwrap();
             client.post("/api/filters/publish-stdlib", &req).unwrap()
         }
     })
@@ -272,9 +277,10 @@ async fn stdlib_publish_one_by_one(pool: PgPool) {
         };
         let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
             let base_url = h.base_url.clone();
+            let rt = h.rt.clone();
             let token = service_token.clone();
             move || {
-                let client = Client::new(&base_url, Some(&token)).unwrap();
+                let client = Client::new(&rt, &base_url, Some(&token)).unwrap();
                 client.post("/api/filters/publish-stdlib", &req).unwrap()
             }
         })
@@ -308,8 +314,9 @@ async fn stdlib_publish_rejects_invalid_token(pool: PgPool) {
 
     let result = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         move || {
-            let client = Client::new(&base_url, Some("bad-token")).unwrap();
+            let client = Client::new(&rt, &base_url, Some("bad-token")).unwrap();
             client.post::<_, StdlibPublishResponse>("/api/filters/publish-stdlib", &req)
         }
     })
@@ -338,9 +345,10 @@ async fn stdlib_filter_appears_in_search(pool: PgPool) {
 
     let resp: StdlibPublishResponse = tokio::task::spawn_blocking({
         let base_url = h.base_url.clone();
+        let rt = h.rt.clone();
         let token = service_token;
         move || {
-            let client = Client::new(&base_url, Some(&token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&token)).unwrap();
             client.post("/api/filters/publish-stdlib", &req).unwrap()
         }
     })

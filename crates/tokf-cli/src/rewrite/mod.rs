@@ -14,6 +14,8 @@ use types::{RewriteConfig, RewriteOptions, RewriteRule};
 
 pub use user_config::{load_local_wrapper_config, load_user_config};
 
+use crate::runtime::Runtime;
+
 /// Built-in wrapper rules for task runners that support shell overrides.
 ///
 /// These rewrite the command to inject tokf as the task runner's shell, so each
@@ -53,10 +55,10 @@ fn build_wrapper_rules() -> Vec<RewriteRule> {
 /// These patterns are matched using [`config::pattern_matches_prefix`] — the
 /// same authoritative matching logic used by `tokf run` and `tokf which` — so
 /// that `tokf -c` (shell mode) and `tokf rewrite` produce identical results.
-fn collect_filter_patterns(search_dirs: &[PathBuf]) -> Vec<String> {
+fn collect_filter_patterns(rt: &Runtime, search_dirs: &[PathBuf]) -> Vec<String> {
     let mut patterns = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let Ok(filters) = config::cache::discover_with_cache(search_dirs) else {
+    let Ok(filters) = config::cache::discover_with_cache(rt, search_dirs) else {
         return patterns;
     };
     for filter in filters {
@@ -113,17 +115,25 @@ fn segment_filter_match(cmd: &str, rules: &SegmentRules<'_>) -> Option<String> {
 }
 
 /// Top-level rewrite function. Orchestrates skip check, user rules, and filter rules.
-pub fn rewrite(command: &str, verbose: bool) -> String {
-    rewrite_with_options(command, verbose, &RewriteOptions::default())
+pub fn rewrite(rt: &Runtime, command: &str, verbose: bool) -> String {
+    rewrite_with_options(rt, command, verbose, &RewriteOptions::default())
 }
 
 /// Top-level rewrite with explicit options (e.g. `no_mask_exit_code` for shim mode).
-pub fn rewrite_with_options(command: &str, verbose: bool, options: &RewriteOptions) -> String {
-    let user_config = load_user_config().unwrap_or_default();
+pub fn rewrite_with_options(
+    rt: &Runtime,
+    command: &str,
+    verbose: bool,
+    options: &RewriteOptions,
+) -> String {
+    let user_config = load_user_config(rt).unwrap_or_default();
     rewrite_with_config_and_options(
+        RewriteCtx {
+            rt,
+            user_config: &user_config,
+            search_dirs: &config::default_search_dirs(rt),
+        },
         command,
-        &user_config,
-        &config::default_search_dirs(),
         verbose,
         options,
     )
@@ -236,6 +246,52 @@ fn rewrite_segment(
 ///
 /// Single quotes in the suffix are escaped with the `'\''` idiom so the
 /// generated shell command remains valid (e.g. `grep -E 'fail|error'`).
+/// Test helpers: run a rewrite with explicit config against a freshly isolated
+/// runtime, so every test gets its own directories with no setup and no shared
+/// state to collide over.
+#[cfg(test)]
+pub(crate) fn rewrite_isolated(
+    command: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    verbose: bool,
+) -> String {
+    rewrite_isolated_with_options(
+        command,
+        user_config,
+        search_dirs,
+        verbose,
+        &RewriteOptions::default(),
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn rewrite_isolated_with_options(
+    command: &str,
+    user_config: &RewriteConfig,
+    search_dirs: &[PathBuf],
+    verbose: bool,
+    options: &RewriteOptions,
+) -> String {
+    let rt = Runtime::isolated();
+    rewrite_with_config_and_options(
+        RewriteCtx {
+            rt: &rt,
+            user_config,
+            search_dirs,
+        },
+        command,
+        verbose,
+        options,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<String> {
+    let rt = Runtime::isolated();
+    collect_filter_patterns(&rt, search_dirs)
+}
+
 #[cfg(test)]
 fn inject_pipe_flags(rewritten: &str, suffix: &str, prefer_less: bool) -> String {
     inject_pipe_flags_with_options(rewritten, suffix, prefer_less, &RewriteOptions::default())
@@ -281,30 +337,32 @@ fn should_skip_effective(command: &str, user_patterns: &[String]) -> bool {
     strip_env_prefix(command).is_some_and(|(_, cmd)| should_skip(&cmd, &[]))
 }
 
+/// Everything a rewrite needs from its surroundings, bundled so the rewrite
+/// entry points stay within the argument limit.
+#[derive(Clone, Copy)]
+pub(crate) struct RewriteCtx<'a> {
+    pub rt: &'a Runtime,
+    pub user_config: &'a RewriteConfig,
+    pub search_dirs: &'a [PathBuf],
+}
+
 /// Testable version with explicit config and search dirs (default options).
-pub(crate) fn rewrite_with_config(
-    command: &str,
-    user_config: &RewriteConfig,
-    search_dirs: &[PathBuf],
-    verbose: bool,
-) -> String {
-    rewrite_with_config_and_options(
-        command,
-        user_config,
-        search_dirs,
-        verbose,
-        &RewriteOptions::default(),
-    )
+pub(crate) fn rewrite_with_config(ctx: RewriteCtx<'_>, command: &str, verbose: bool) -> String {
+    rewrite_with_config_and_options(ctx, command, verbose, &RewriteOptions::default())
 }
 
 /// Testable version with explicit config, search dirs, and rewrite options.
 pub(crate) fn rewrite_with_config_and_options(
+    ctx: RewriteCtx<'_>,
     command: &str,
-    user_config: &RewriteConfig,
-    search_dirs: &[PathBuf],
     verbose: bool,
     options: &RewriteOptions,
 ) -> String {
+    let RewriteCtx {
+        rt,
+        user_config,
+        search_dirs,
+    } = ctx;
     let user_skip_patterns = user_config
         .skip
         .as_ref()
@@ -335,7 +393,7 @@ pub(crate) fn rewrite_with_config_and_options(
     }
 
     let wrapper_rules = build_wrapper_rules();
-    let filter_patterns = collect_filter_patterns(search_dirs);
+    let filter_patterns = collect_filter_patterns(rt, search_dirs);
     let local_wrapper = user_config.local_wrapper.clone().unwrap_or_default();
     let log_parse_failures = user_config
         .debug

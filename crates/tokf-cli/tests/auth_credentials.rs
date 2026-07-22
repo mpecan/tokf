@@ -1,29 +1,24 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use serial_test::serial;
 use tokf::auth::credentials;
+use tokf::runtime::Runtime;
 
 /// Verify that `remove()` is idempotent — calling it twice doesn't error.
 #[test]
-#[serial]
 fn remove_is_idempotent() {
     credentials::use_mock_keyring();
-    let dir = tempfile::TempDir::new().unwrap();
-    let _guard = tokf::paths::HomeGuard::set(dir.path());
+    let rt = Runtime::isolated();
 
-    let _ = credentials::remove();
-    let _ = credentials::remove();
+    let _ = credentials::remove(&rt);
+    let _ = credentials::remove(&rt);
 }
 
 /// Verify the config path is well-formed on all platforms.
 #[test]
-#[serial]
 fn config_path_is_well_formed() {
-    let path = credentials::auth_config_path();
-    assert!(path.is_some());
-    let path = path.unwrap();
-    assert!(path.to_string_lossy().contains("tokf"));
-    assert!(path.to_string_lossy().ends_with("auth.toml"));
+    let rt = Runtime::isolated();
+    let path = credentials::auth_config_path(&rt).expect("isolated runtime resolves a config dir");
+    assert_eq!(path, rt.user_dir().unwrap().join("auth.toml"));
 }
 
 /// Verify `StoredAuth` serialization produces valid TOML.
@@ -74,14 +69,12 @@ fn loaded_auth_expired_detection() {
 
 /// Save credentials, load them back, verify all fields match.
 #[test]
-#[serial]
 fn save_load_roundtrip_integration() {
     credentials::use_mock_keyring();
-    let dir = tempfile::TempDir::new().unwrap();
-    let _guard = tokf::paths::HomeGuard::set(dir.path());
+    let rt = Runtime::isolated();
 
-    credentials::save("int-token", "carol", "https://registry.tokf.net", 7200).unwrap();
-    let loaded = credentials::load().expect("should load saved credentials");
+    credentials::save(&rt, "int-token", "carol", "https://registry.tokf.net", 7200).unwrap();
+    let loaded = credentials::load(&rt).expect("should load saved credentials");
 
     assert_eq!(loaded.token, "int-token");
     assert_eq!(loaded.username, "carol");
@@ -91,16 +84,14 @@ fn save_load_roundtrip_integration() {
 
 /// Save credentials, remove them, verify they are gone.
 #[test]
-#[serial]
 fn remove_after_save_returns_true() {
     credentials::use_mock_keyring();
-    let dir = tempfile::TempDir::new().unwrap();
-    let _guard = tokf::paths::HomeGuard::set(dir.path());
+    let rt = Runtime::isolated();
 
-    credentials::save("tok_rm", "dave", "https://example.com", 0).unwrap();
-    let removed = credentials::remove();
+    credentials::save(&rt, "tok_rm", "dave", "https://example.com", 0).unwrap();
+    let removed = credentials::remove(&rt);
     assert!(removed, "remove should return true after save");
 
-    let loaded = credentials::load();
+    let loaded = credentials::load(&rt);
     assert!(loaded.is_none(), "load should return None after remove");
 }

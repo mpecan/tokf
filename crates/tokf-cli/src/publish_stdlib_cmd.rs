@@ -6,7 +6,7 @@ use tokf::publish_shared::collect_test_files_resolved;
 use tokf::remote::http::Client;
 
 /// Entry point for the `tokf publish-stdlib` subcommand.
-pub fn cmd_publish_stdlib(registry_url: &str, token: &str, dry_run: bool) -> i32 {
+pub fn cmd_publish_stdlib(rt: &Runtime, registry_url: &str, token: &str, dry_run: bool) -> i32 {
     match publish_stdlib(registry_url, token, dry_run) {
         Ok(code) => code,
         Err(e) => {

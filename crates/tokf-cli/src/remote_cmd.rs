@@ -4,6 +4,8 @@ use tokf::remote::http::{Client, load_auth};
 use tokf::remote::{client, machine};
 use uuid::Uuid;
 
+use tokf::runtime::Runtime;
+
 /// Result of machine registration.
 pub enum RegisterResult {
     /// Machine was already registered; re-synced with server.
@@ -27,10 +29,10 @@ pub enum RegisterResult {
 /// # Errors
 ///
 /// Returns an error if the server is unreachable or registration fails.
-pub fn register_machine(auth: &LoadedAuth) -> anyhow::Result<RegisterResult> {
-    let http_client = Client::new(&auth.server_url, Some(&auth.token))?;
+pub fn register_machine(rt: &Runtime, auth: &LoadedAuth) -> anyhow::Result<RegisterResult> {
+    let http_client = Client::new(rt, &auth.server_url, Some(&auth.token))?;
 
-    if let Some(m) = machine::load() {
+    if let Some(m) = machine::load(rt) {
         client::register_machine(&http_client, &m.machine_id, &m.hostname)?;
         Ok(RegisterResult::AlreadyRegistered {
             machine_id: m.machine_id,
@@ -40,7 +42,7 @@ pub fn register_machine(auth: &LoadedAuth) -> anyhow::Result<RegisterResult> {
         let machine_id = Uuid::new_v4().to_string();
         let hostname = gethostname::gethostname().to_string_lossy().into_owned();
         client::register_machine(&http_client, &machine_id, &hostname)?;
-        machine::save(&machine_id, &hostname)?;
+        machine::save(rt, &machine_id, &hostname)?;
         Ok(RegisterResult::NewlyRegistered {
             machine_id,
             hostname,
@@ -58,8 +60,8 @@ pub fn register_machine(auth: &LoadedAuth) -> anyhow::Result<RegisterResult> {
 ///
 /// Returns an error if the user is not logged in, the token is expired, or
 /// the server is unreachable.
-pub fn cmd_remote_setup() -> anyhow::Result<i32> {
-    let auth = load_auth()?;
+pub fn cmd_remote_setup(rt: &Runtime) -> anyhow::Result<i32> {
+    let auth = load_auth(rt)?;
 
     if !is_secure_url(&auth.server_url) {
         eprintln!(
@@ -67,7 +69,7 @@ pub fn cmd_remote_setup() -> anyhow::Result<i32> {
         );
     }
 
-    match register_machine(&auth)? {
+    match register_machine(rt, &auth)? {
         RegisterResult::AlreadyRegistered {
             machine_id,
             hostname,
@@ -87,8 +89,8 @@ pub fn cmd_remote_setup() -> anyhow::Result<i32> {
 
 /// Show remote sync registration state.
 #[allow(clippy::unnecessary_wraps)] // Returns Result for or_exit() consistency
-pub fn cmd_remote_status() -> anyhow::Result<i32> {
-    match machine::load() {
+pub fn cmd_remote_status(rt: &Runtime) -> anyhow::Result<i32> {
+    match machine::load(rt) {
         Some(m) => {
             println!("Machine ID: {}", m.machine_id);
             println!("Hostname:   {}", m.hostname);
@@ -106,16 +108,17 @@ pub fn cmd_remote_status() -> anyhow::Result<i32> {
 ///
 /// Returns an error if the user is not logged in, no machine is registered,
 /// or the server is unreachable.
-pub fn cmd_remote_sync() -> anyhow::Result<i32> {
+pub fn cmd_remote_sync(rt: &Runtime) -> anyhow::Result<i32> {
     use tokf::tracking;
 
-    let auth = load_auth()?;
+    let auth = load_auth(rt)?;
 
-    let machine = machine::load()
+    let machine = machine::load(rt)
         .ok_or_else(|| anyhow::anyhow!("machine not registered. Run `tokf remote setup` first"))?;
 
-    let db_path =
-        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
+    let db_path = rt
+        .tracking_db_path()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
     let conn = tracking::open_db(&db_path)?;
 
     let pending = tracking::get_pending_count(&conn)?;
@@ -124,7 +127,7 @@ pub fn cmd_remote_sync() -> anyhow::Result<i32> {
         return Ok(0);
     }
 
-    let result = tokf::sync_core::perform_sync(&auth, &machine, &conn)?;
+    let result = tokf::sync_core::perform_sync(rt, &auth, &machine, &conn)?;
     eprintln!(
         "[tokf] Synced {} event(s). Cursor: {}.",
         result.synced_count, result.cursor
@@ -141,13 +144,14 @@ pub fn cmd_remote_sync() -> anyhow::Result<i32> {
 ///
 /// # Errors
 /// Returns an error if filter discovery or DB access fails.
-pub fn cmd_remote_backfill(no_cache: bool) -> anyhow::Result<i32> {
+pub fn cmd_remote_backfill(rt: &Runtime, no_cache: bool) -> anyhow::Result<i32> {
     use tokf::tracking;
 
-    let filters = crate::resolve::discover_filters(no_cache)?;
+    let filters = crate::resolve::discover_filters(rt, no_cache)?;
 
-    let db_path =
-        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
+    let db_path = rt
+        .tracking_db_path()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
     let conn = tracking::open_db(&db_path)?;
 
     let (updated, not_found) = tracking::backfill_filter_hashes(&conn, &filters)?;

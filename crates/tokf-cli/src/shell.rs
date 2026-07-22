@@ -9,6 +9,8 @@
 //! commands become `tokf run --no-mask-exit-code ...` which goes through
 //! the normal `cmd_run` path — no duplicated filter pipeline here.
 
+use tokf::runtime::Runtime;
+
 /// Returns `true` if `flag` looks like a POSIX shell flag containing `-c`.
 ///
 /// Matches: `-c`, `-cu`, `-ec`, `-ecu`, etc.
@@ -20,22 +22,6 @@ pub fn is_shell_flag(flag: &str) -> bool {
         && flag.as_bytes()[1..].contains(&b'c')
 }
 
-/// Returns `true` if the `TOKF_NO_FILTER` environment variable is set to a
-/// truthy value (`1`, `true`, `yes`).
-fn env_no_filter() -> bool {
-    std::env::var("TOKF_NO_FILTER")
-        .ok()
-        .is_some_and(|v| matches!(v.as_str(), "1" | "true" | "yes"))
-}
-
-/// Returns `true` if the `TOKF_VERBOSE` environment variable is set to a
-/// truthy value.
-fn env_verbose() -> bool {
-    std::env::var("TOKF_VERBOSE")
-        .ok()
-        .is_some_and(|v| matches!(v.as_str(), "1" | "true" | "yes"))
-}
-
 /// Restore the original PATH (without shims) so that delegated commands
 /// resolve real binaries. `build_inject_env` will re-add the shims directory
 /// for sub-processes spawned by `tokf run`.
@@ -43,10 +29,10 @@ fn env_verbose() -> bool {
 /// SAFETY: must only be called very early in `main()`, before any threads are
 /// spawned. The Rust test runner is multi-threaded, but tests that don't set
 /// `TOKF_ORIGINAL_PATH` will skip the unsafe block.
-fn restore_original_path() {
-    if let Ok(original) = std::env::var("TOKF_ORIGINAL_PATH") {
+fn restore_original_path(rt: &Runtime) {
+    if let Some(original) = rt.original_path() {
         // SAFETY: called from main() before any threads are spawned.
-        unsafe { std::env::set_var("PATH", &original) };
+        unsafe { std::env::set_var("PATH", original) };
     }
 }
 
@@ -57,10 +43,10 @@ fn restore_original_path() {
 ///
 /// Restores `TOKF_ORIGINAL_PATH` into `PATH` before delegating so that
 /// both modes are protected from shim recursion.
-fn rewrite_and_delegate(flags: &str, command: &str, verbose: bool) -> i32 {
-    restore_original_path();
+fn rewrite_and_delegate(rt: &Runtime, flags: &str, command: &str, verbose: bool) -> i32 {
+    restore_original_path(rt);
 
-    if env_no_filter() {
+    if rt.no_filter() {
         if verbose {
             eprintln!("[tokf] shell: TOKF_NO_FILTER set, delegating to sh");
         }
@@ -70,7 +56,7 @@ fn rewrite_and_delegate(flags: &str, command: &str, verbose: bool) -> i32 {
     let options = tokf::rewrite::types::RewriteOptions {
         no_mask_exit_code: true,
     };
-    let rewritten = tokf::rewrite::rewrite_with_options(command, verbose, &options);
+    let rewritten = tokf::rewrite::rewrite_with_options(rt, command, verbose, &options);
 
     if verbose {
         if rewritten == command {
@@ -91,8 +77,8 @@ fn rewrite_and_delegate(flags: &str, command: &str, verbose: bool) -> i32 {
 /// Respects environment variables since shell mode has no access to clap flags:
 /// - `TOKF_NO_FILTER=1` — skip filtering, delegate directly to `sh`
 /// - `TOKF_VERBOSE=1` — print filter resolution details to stderr
-pub fn cmd_shell(flags: &str, command: &str) -> i32 {
-    rewrite_and_delegate(flags, command, env_verbose())
+pub fn cmd_shell(rt: &Runtime, flags: &str, command: &str) -> i32 {
+    rewrite_and_delegate(rt, flags, command, rt.verbose())
 }
 
 /// Build a shell-safe command string by single-quoting each argument.
@@ -117,15 +103,15 @@ pub fn quote_argv(args: &[String]) -> String {
 /// The `flags` parameter is the original shell flag string (e.g. `-c`, `-cu`,
 /// `-ecu`) so that combined flags are forwarded to `sh` consistently with
 /// string mode.
-pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
+pub fn cmd_shell_argv(rt: &Runtime, flags: &str, args: &[String]) -> i32 {
     if args.is_empty() {
         return 0;
     }
 
-    let verbose = env_verbose();
-    restore_original_path();
+    let verbose = rt.verbose();
+    restore_original_path(rt);
 
-    if env_no_filter() {
+    if rt.no_filter() {
         if verbose {
             eprintln!("[tokf] shell: TOKF_NO_FILTER set, delegating to sh");
         }
@@ -137,7 +123,7 @@ pub fn cmd_shell_argv(flags: &str, args: &[String]) -> i32 {
     let options = tokf::rewrite::types::RewriteOptions {
         no_mask_exit_code: true,
     };
-    let rewritten = tokf::rewrite::rewrite_with_options(&unquoted, verbose, &options);
+    let rewritten = tokf::rewrite::rewrite_with_options(rt, &unquoted, verbose, &options);
 
     if rewritten == unquoted {
         if verbose {
@@ -251,45 +237,52 @@ mod tests {
         // A command that doesn't match any filter should delegate to sh.
         // We verify this by running a command that real sh can execute.
         // Note: this test spawns a real process.
-        let code = cmd_shell("-c", "true");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "true");
         assert_eq!(code, 0);
     }
 
     #[test]
     fn shell_unmatched_failure_preserves_exit_code() {
-        let code = cmd_shell("-c", "false");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "false");
         assert_ne!(code, 0);
     }
 
     #[test]
     fn shell_compound_delegates() {
-        let code = cmd_shell("-c", "true && true");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "true && true");
         assert_eq!(code, 0);
     }
 
     #[test]
     fn shell_compound_failure() {
-        let code = cmd_shell("-c", "false && true");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "false && true");
         assert_ne!(code, 0);
     }
 
     #[test]
     fn shell_empty_command_delegates() {
         // Empty command should delegate to sh (which handles it).
-        let code = cmd_shell("-c", "");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "");
         assert_eq!(code, 0);
     }
 
     #[test]
     fn shell_whitespace_only_delegates() {
-        let code = cmd_shell("-c", "   ");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "   ");
         assert_eq!(code, 0);
     }
 
     #[test]
     fn shell_pipe_delegates() {
         // Pipes should delegate to the real shell.
-        let code = cmd_shell("-c", "echo hello | cat");
+        let rt = Runtime::isolated();
+        let code = cmd_shell(&rt, "-c", "echo hello | cat");
         assert_eq!(code, 0);
     }
 
@@ -322,7 +315,8 @@ mod tests {
     fn shell_argv_simple_command() {
         // A simple command that should execute successfully.
         let args: Vec<String> = vec!["true".into()];
-        let code = cmd_shell_argv("-c", &args);
+        let rt = Runtime::isolated();
+        let code = cmd_shell_argv(&rt, "-c", &args);
         assert_eq!(code, 0);
     }
 
@@ -330,7 +324,8 @@ mod tests {
     fn shell_argv_unknown_command_fallback() {
         // An unmatched command should execute directly and return its exit code.
         let args: Vec<String> = vec!["false".into()];
-        let code = cmd_shell_argv("-c", &args);
+        let rt = Runtime::isolated();
+        let code = cmd_shell_argv(&rt, "-c", &args);
         assert_ne!(code, 0);
     }
 
@@ -338,13 +333,15 @@ mod tests {
     fn shell_argv_preserves_arguments() {
         // Arguments with spaces should be preserved as separate argv entries.
         let args: Vec<String> = vec!["echo".into(), "hello world".into()];
-        let code = cmd_shell_argv("-c", &args);
+        let rt = Runtime::isolated();
+        let code = cmd_shell_argv(&rt, "-c", &args);
         assert_eq!(code, 0);
     }
 
     #[test]
     fn shell_argv_empty_args() {
-        let code = cmd_shell_argv("-c", &[]);
+        let rt = Runtime::isolated();
+        let code = cmd_shell_argv(&rt, "-c", &[]);
         assert_eq!(code, 0);
     }
 
@@ -352,7 +349,8 @@ mod tests {
     fn shell_argv_single_quotes_in_args() {
         // Single quotes in arguments must be escaped correctly.
         let args: Vec<String> = vec!["echo".into(), "it's".into()];
-        let code = cmd_shell_argv("-c", &args);
+        let rt = Runtime::isolated();
+        let code = cmd_shell_argv(&rt, "-c", &args);
         assert_eq!(code, 0);
     }
 
@@ -360,7 +358,8 @@ mod tests {
     fn shell_argv_special_chars_in_args() {
         // Dollar signs and backticks should be literal (inside single quotes).
         let args: Vec<String> = vec!["echo".into(), "$HOME `whoami`".into()];
-        let code = cmd_shell_argv("-c", &args);
+        let rt = Runtime::isolated();
+        let code = cmd_shell_argv(&rt, "-c", &args);
         assert_eq!(code, 0);
     }
 

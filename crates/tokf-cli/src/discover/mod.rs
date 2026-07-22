@@ -14,6 +14,8 @@ use crate::config::{self, ResolvedFilter};
 use crate::rewrite::bash_ast;
 use crate::tracking;
 
+use crate::runtime::Runtime;
+
 const DEFAULT_SAVINGS_PCT: f64 = 60.0;
 
 /// Discover missed token savings across Claude Code session files.
@@ -22,14 +24,15 @@ const DEFAULT_SAVINGS_PCT: f64 = 60.0;
 ///
 /// Returns an error if filter discovery fails.
 pub fn discover_sessions(
+    rt: &Runtime,
     session_files: &[PathBuf],
     no_cache: bool,
 ) -> anyhow::Result<DiscoverSummary> {
-    let search_dirs = config::default_search_dirs();
+    let search_dirs = config::default_search_dirs(rt);
     let filters = if no_cache {
         config::discover_all_filters(&search_dirs)?
     } else {
-        config::cache::discover_with_cache(&search_dirs)?
+        config::cache::discover_with_cache(rt, &search_dirs)?
     };
 
     // Pre-compute display names so we don't repeat PathBuf→String per command.
@@ -43,7 +46,7 @@ pub fn discover_sessions(
         })
         .collect();
 
-    let historical_ratios = load_historical_ratios();
+    let historical_ratios = load_historical_ratios(rt);
     let mut counters = Counters::default();
     let mut aggregated: HashMap<(String, String), AggBucket> = HashMap::new();
 
@@ -368,9 +371,9 @@ fn strip_heredoc(line: &str) -> String {
 }
 
 /// Load historical savings ratios from the tracking database (`filter_name` → `savings_pct`).
-fn load_historical_ratios() -> HashMap<String, f64> {
+fn load_historical_ratios(rt: &Runtime) -> HashMap<String, f64> {
     let mut ratios = HashMap::new();
-    let Some(db_path) = tracking::db_path() else {
+    let Some(db_path) = rt.tracking_db_path() else {
         return ratios;
     };
     let Ok(conn) = tracking::open_db(&db_path) else {

@@ -2,6 +2,8 @@
 
 use tokf::remote::machine;
 
+use tokf::runtime::Runtime;
+
 #[test]
 fn stored_machine_roundtrip() {
     let stored = machine::StoredMachine {
@@ -17,21 +19,16 @@ fn stored_machine_roundtrip() {
     assert_eq!(deserialized.hostname, "test-laptop");
 }
 
+/// The machine config lives directly under the runtime's user directory.
+///
+/// This used to assert the path *contained* `tokf`, which only held for the
+/// platform-default layout — isolating the test broke it. Assert the actual
+/// relationship instead.
 #[test]
-fn machine_config_path_returns_some() {
-    let path = machine::machine_config_path();
-    assert!(path.is_some(), "expected machine config path to be Some");
-    let path = path.unwrap();
-    assert!(
-        path.to_string_lossy().contains("tokf"),
-        "path should contain 'tokf': {}",
-        path.display()
-    );
-    assert!(
-        path.to_string_lossy().ends_with("machine.toml"),
-        "path should end with 'machine.toml': {}",
-        path.display()
-    );
+fn machine_config_path_sits_under_the_user_dir() {
+    let rt = Runtime::isolated();
+    let path = machine::machine_config_path(&rt).expect("isolated runtime resolves a config dir");
+    assert_eq!(path, rt.user_dir().unwrap().join("machine.toml"));
 }
 
 #[test]
@@ -39,7 +36,8 @@ fn load_returns_none_when_no_file() {
     // This validates graceful handling when no registration exists.
     // May return Some on a developer machine that has registered — we just
     // verify it doesn't panic.
-    let _ = machine::load();
+    let rt = Runtime::isolated();
+    let _ = machine::load(&rt);
 }
 
 #[test]

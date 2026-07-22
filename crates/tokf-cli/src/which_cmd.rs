@@ -3,17 +3,19 @@ use tokf::rewrite;
 
 use crate::resolve;
 
+use tokf::runtime::Runtime;
+
 /// `tokf which <command>` — report which filter (if any) matches a command,
 /// including through a local environment wrapper such as `nix develop -c`.
-pub fn cmd_which(command: &str, verbose: bool) -> i32 {
-    let Ok(filters) = resolve::discover_filters(false) else {
+pub fn cmd_which(rt: &Runtime, command: &str, verbose: bool) -> i32 {
+    let Ok(filters) = resolve::discover_filters(rt, false) else {
         eprintln!("[tokf] error: failed to discover filters");
         return 1;
     };
 
     let words: Vec<&str> = command.split_whitespace().collect();
     let cwd = std::env::current_dir().unwrap_or_default();
-    let wrapper_cfg = rewrite::load_local_wrapper_config();
+    let wrapper_cfg = rewrite::load_local_wrapper_config(rt);
 
     // Match directly, or after stripping a local environment wrapper prefix
     // (e.g. `nix develop -c cargo test` reports the `cargo test` filter).

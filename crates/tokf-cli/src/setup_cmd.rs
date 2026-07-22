@@ -5,6 +5,8 @@ use tokf::setup::{is_setup_completed, mark_setup_completed};
 
 use crate::commands::{HookTool, cmd_hook_install, cmd_skill_install};
 
+use tokf::runtime::Runtime;
+
 const fn tool_to_hook(tool: Tool) -> HookTool {
     match tool {
         Tool::ClaudeCode => HookTool::ClaudeCode,
@@ -19,12 +21,12 @@ const fn tool_to_hook(tool: Tool) -> HookTool {
     }
 }
 
-pub fn cmd_setup(refresh: bool) -> i32 {
+pub fn cmd_setup(rt: &Runtime, refresh: bool) -> i32 {
     if !std::io::stdin().is_terminal() {
         return cmd_setup_non_interactive();
     }
 
-    if !refresh && is_setup_completed() {
+    if !refresh && is_setup_completed(rt) {
         eprintln!("[tokf] Setup already completed. Use `tokf setup --refresh` to re-run.");
         return 0;
     }
@@ -55,13 +57,14 @@ pub fn cmd_setup(refresh: bool) -> i32 {
     let install_skill = selections.iter().any(|&i| detected[i].supports_skill)
         && prompt_skill_install(&detected, &selections);
 
-    let failed = run_installs(&detected, &selections, global, install_skill);
+    let failed = run_installs(rt, &detected, &selections, global, install_skill);
     print_summary(selections.len(), failed);
 
     i32::from(failed > 0)
 }
 
 fn run_installs(
+    rt: &Runtime,
     detected: &[DetectedTool],
     selections: &[usize],
     global: bool,
@@ -73,19 +76,19 @@ fn run_installs(
         let dt = &detected[idx];
         let hook_tool = tool_to_hook(dt.tool);
         eprintln!("[tokf] Installing hook for {}...", dt.display_name);
-        if cmd_hook_install(global, &hook_tool, None, true) != 0 {
+        if cmd_hook_install(rt, global, &hook_tool, None, true) != 0 {
             failed += 1;
         }
     }
 
     if install_skill {
         eprintln!("[tokf] Installing Claude Code filter-authoring skill...");
-        if cmd_skill_install(global) != 0 {
+        if cmd_skill_install(rt, global) != 0 {
             eprintln!("[tokf] Warning: skill install failed.");
         }
     }
 
-    if let Err(e) = mark_setup_completed() {
+    if let Err(e) = mark_setup_completed(rt) {
         eprintln!("[tokf] Warning: could not save setup state: {e:#}");
     }
     failed

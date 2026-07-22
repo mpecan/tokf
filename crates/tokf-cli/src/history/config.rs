@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::runtime::Runtime;
+
 /// Configuration for history retention
 #[derive(Debug, Clone)]
 pub struct HistoryConfig {
@@ -64,8 +66,8 @@ impl HistoryConfig {
     /// 1. `{project_root}/.tokf/config.toml` `[history] retention`
     /// 2. `{config_dir}/tokf/config.toml` `[history] retention`  (e.g. `~/.config/tokf/config.toml`)
     /// 3. Default: 10
-    pub fn load(project_root: Option<&std::path::Path>) -> Self {
-        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+    pub fn load(rt: &Runtime, project_root: Option<&std::path::Path>) -> Self {
+        let global = rt.global_config_path();
         Self::load_from(project_root, global.as_deref())
     }
 
@@ -104,8 +106,8 @@ impl SyncConfig {
     /// 1. `{project_root}/.tokf/config.toml` `[sync]`
     /// 2. `{config_dir}/tokf/config.toml` `[sync]`
     /// 3. Defaults: `auto_sync_threshold = 100`, `upload_usage_stats = None`
-    pub fn load(project_root: Option<&std::path::Path>) -> Self {
-        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+    pub fn load(rt: &Runtime, project_root: Option<&std::path::Path>) -> Self {
+        let global = rt.global_config_path();
         Self::load_from(project_root, global.as_deref())
     }
 
@@ -174,8 +176,8 @@ impl ShimsConfig {
     ///
     /// The `project_root` parameter is accepted for API consistency with other
     /// config types but is ignored.
-    pub fn load(_project_root: Option<&std::path::Path>) -> Self {
-        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+    pub fn load(rt: &Runtime, _project_root: Option<&std::path::Path>) -> Self {
+        let global = rt.global_config_path();
         Self::load_from(global.as_deref())
     }
 
@@ -225,9 +227,9 @@ pub fn save_project_config(
 ///
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
-pub fn save_upload_stats(enabled: bool) -> anyhow::Result<()> {
-    let path = crate::paths::user_dir()
-        .map(|d| d.join("config.toml"))
+pub fn save_upload_stats(rt: &Runtime, enabled: bool) -> anyhow::Result<()> {
+    let path = rt
+        .global_config_path()
         .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
     save_upload_stats_to_path(&path, enabled)
 }
@@ -251,8 +253,8 @@ pub fn save_upload_stats_to_path(path: &std::path::Path, enabled: bool) -> anyho
 }
 
 /// Returns the global config.toml path.
-pub fn global_config_path() -> Option<std::path::PathBuf> {
-    crate::paths::user_dir().map(|d| d.join("config.toml"))
+pub fn global_config_path(rt: &Runtime) -> Option<std::path::PathBuf> {
+    rt.global_config_path()
 }
 
 /// Returns the local (project) config.toml path for a given project root.
@@ -280,14 +282,12 @@ impl OutputConfig {
     /// 2. `{project_root}/.tokf/config.toml` `[output] show_indicator`
     /// 3. `{config_dir}/tokf/config.toml` `[output] show_indicator`
     /// 4. Default: true
-    pub fn load(project_root: Option<&std::path::Path>) -> Self {
+    pub fn load(rt: &Runtime, project_root: Option<&std::path::Path>) -> Self {
         // Env var override
-        if let Ok(val) = std::env::var("TOKF_SHOW_INDICATOR")
-            && let Ok(b) = val.parse::<bool>()
-        {
-            return Self { show_indicator: b };
+        if let Some(show_indicator) = rt.show_indicator() {
+            return Self { show_indicator };
         }
-        let global = crate::paths::user_dir().map(|d| d.join("config.toml"));
+        let global = rt.global_config_path();
         Self::load_from(project_root, global.as_deref())
     }
 
@@ -320,7 +320,7 @@ pub fn project_root_for(dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// Returns the current project root as a string (stored in the `project` column).
-pub fn current_project() -> String {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    project_root_for(&cwd).to_string_lossy().into_owned()
+pub fn current_project(rt: &Runtime) -> String {
+    let cwd = rt.cwd().unwrap_or_else(|| std::path::Path::new(""));
+    project_root_for(cwd).to_string_lossy().into_owned()
 }

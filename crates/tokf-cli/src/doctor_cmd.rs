@@ -9,6 +9,8 @@ use tokf::tracking;
 
 use crate::resolve;
 
+use tokf::runtime::Runtime;
+
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
 pub struct DoctorCliOpts<'a> {
@@ -29,8 +31,8 @@ pub struct DoctorCliOpts<'a> {
 /// Exit codes:
 ///   - `0`: report rendered successfully (even if it surfaced problems)
 ///   - `1`: failed to open the tracking DB or fetch events
-pub fn cmd_doctor(opts: &DoctorCliOpts<'_>) -> i32 {
-    let Some(path) = tracking::db_path() else {
+pub fn cmd_doctor(rt: &Runtime, opts: &DoctorCliOpts<'_>) -> i32 {
+    let Some(path) = rt.tracking_db_path() else {
         eprintln!("[tokf] error: cannot determine tracking DB path");
         return 1;
     };
@@ -52,13 +54,13 @@ pub fn cmd_doctor(opts: &DoctorCliOpts<'_>) -> i32 {
     } else if let Some(p) = opts.project {
         Some(p.to_string())
     } else {
-        Some(tokf::history::current_project())
+        Some(tokf::history::current_project(rt))
     };
 
     // Cross-reference workaround flags against each filter's
     // passthrough_args. Failures here are non-fatal — we just lose the
     // suggestion enrichment, the rest of the report still works.
-    let filters = resolve::discover_filters(opts.no_cache).unwrap_or_default();
+    let filters = resolve::discover_filters(rt, opts.no_cache).unwrap_or_default();
 
     // `--filter` accepts either the slash-form filter name (`git/diff`) or
     // the command pattern (`git diff`). The DB stores the latter — if the

@@ -41,7 +41,7 @@ fn ssh_with_quoted_arg_passthrough_when_no_filter() {
     // and the user's wildcard rewrite rule must not apply either.
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "ssh HOST 'ls -la /var/log'",
         &config,
         &[dir.path().to_path_buf()],
@@ -56,7 +56,7 @@ fn non_transparent_command_still_subject_to_user_rule() {
     // commands. This pins the gating behaviour to the transparent class.
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
+    let result = rewrite_isolated("git status", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "mangled git status");
 }
 
@@ -65,7 +65,7 @@ fn ssh_basename_match_with_full_path() {
     // /usr/bin/ssh must be treated identically to bare `ssh`.
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "/usr/bin/ssh HOST cmd",
         &config,
         &[dir.path().to_path_buf()],
@@ -80,7 +80,7 @@ fn ssh_add_is_not_transparent() {
     // wildcard rule should still apply.
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "ssh-add ~/.ssh/id_rsa",
         &config,
         &[dir.path().to_path_buf()],
@@ -93,7 +93,7 @@ fn ssh_add_is_not_transparent() {
 fn mosh_is_built_in_transparent() {
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "mosh HOST 'remote-cmd'",
         &config,
         &[dir.path().to_path_buf()],
@@ -106,7 +106,7 @@ fn mosh_is_built_in_transparent() {
 fn slogin_is_built_in_transparent() {
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "slogin HOST cmd",
         &config,
         &[dir.path().to_path_buf()],
@@ -133,7 +133,7 @@ fn user_can_extend_transparent_list() {
         }),
         local_wrapper: None,
     };
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "kubectl exec POD -- cmd",
         &config,
         &[dir.path().to_path_buf()],
@@ -160,7 +160,7 @@ fn user_extra_does_not_disable_built_ins() {
         }),
         local_wrapper: None,
     };
-    let result = rewrite_with_config("ssh HOST cmd", &config, &[dir.path().to_path_buf()], false);
+    let result = rewrite_isolated("ssh HOST cmd", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "ssh HOST cmd");
 }
 
@@ -174,7 +174,7 @@ fn ssh_filter_match_still_wraps_with_tokf_run() {
     fs::write(dir.path().join("ssh.toml"), "command = \"ssh\"").unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "ssh HOST 'docker ps'",
         &config,
         &[dir.path().to_path_buf()],
@@ -192,7 +192,7 @@ fn ssh_pipe_strip_preserves_inner_argv() {
     fs::write(dir.path().join("ssh.toml"), "command = \"ssh\"").unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "ssh HOST 'docker ps' | head -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -214,7 +214,7 @@ fn ssh_with_pipe_inside_quotes_unchanged() {
     fs::write(dir.path().join("ssh.toml"), "command = \"ssh\"").unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "ssh HOST 'cmd | head -5'",
         &config,
         &[dir.path().to_path_buf()],
@@ -233,7 +233,7 @@ fn compound_with_ssh_segment_blocks_user_rule() {
     // the ssh argv. Gate must trip via any_segment_is_transparent.
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "cd /tmp && ssh HOST 'cmd'",
         &config,
         &[dir.path().to_path_buf()],
@@ -264,7 +264,7 @@ fn user_skip_pattern_takes_precedence_over_transparent_gate() {
         transparent: None,
         local_wrapper: None,
     };
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "ssh HOST 'cmd'",
         &config,
         &[dir.path().to_path_buf()],
@@ -281,7 +281,7 @@ fn ssh_basename_match_case_sensitive() {
     // transparent — the user rule should mangle it.
     let dir = TempDir::new().unwrap();
     let config = config_with_mangling_rule();
-    let result = rewrite_with_config("SSH HOST cmd", &config, &[dir.path().to_path_buf()], false);
+    let result = rewrite_isolated("SSH HOST cmd", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "mangled SSH HOST cmd");
 }
 

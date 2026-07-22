@@ -2,36 +2,28 @@ use std::path::PathBuf;
 
 use super::types::{LocalWrapperConfig, RewriteConfig};
 
+use crate::runtime::Runtime;
+
 /// Search config dirs for `rewrites.toml` (first found wins).
 ///
 /// Search order:
 /// 1. `.tokf/rewrites.toml` (project-local)
 /// 2. `~/.config/tokf/rewrites.toml` (user-level)
-pub fn load_user_config() -> Option<RewriteConfig> {
-    load_user_config_from(&config_search_paths())
+pub fn load_user_config(rt: &Runtime) -> Option<RewriteConfig> {
+    load_user_config_from(&config_search_paths(rt))
 }
 
 /// Load the `[local_wrapper]` config, falling back to defaults when no
 /// `rewrites.toml` exists or it omits the section.
-pub fn load_local_wrapper_config() -> LocalWrapperConfig {
-    load_user_config()
+pub fn load_local_wrapper_config(rt: &Runtime) -> LocalWrapperConfig {
+    load_user_config(rt)
         .unwrap_or_default()
         .local_wrapper
         .unwrap_or_default()
 }
 
-fn config_search_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-
-    if let Ok(cwd) = std::env::current_dir() {
-        paths.push(cwd.join(".tokf/rewrites.toml"));
-    }
-
-    if let Some(user) = crate::paths::user_dir() {
-        paths.push(user.join("rewrites.toml"));
-    }
-
-    paths
+fn config_search_paths(rt: &Runtime) -> Vec<PathBuf> {
+    rt.layered_paths("rewrites.toml")
 }
 
 /// Testable version that accepts explicit paths.

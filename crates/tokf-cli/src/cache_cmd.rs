@@ -5,6 +5,8 @@ use clap::Subcommand;
 use tokf::config;
 use tokf::config::cache;
 
+use tokf::runtime::Runtime;
+
 #[derive(Subcommand)]
 pub enum CacheAction {
     /// Delete the cache file and force a rebuild on next run
@@ -13,18 +15,18 @@ pub enum CacheAction {
     Info,
 }
 
-pub fn run_cache_action(action: &CacheAction) -> i32 {
-    let search_dirs = config::default_search_dirs();
+pub fn run_cache_action(rt: &Runtime, action: &CacheAction) -> i32 {
+    let search_dirs = config::default_search_dirs(rt);
     match action {
-        CacheAction::Clear => cmd_cache_clear(&search_dirs),
-        CacheAction::Info => cmd_cache_info(&search_dirs),
+        CacheAction::Clear => cmd_cache_clear(rt, &search_dirs),
+        CacheAction::Info => cmd_cache_info(rt, &search_dirs),
     }
 }
 
-fn cmd_cache_clear(search_dirs: &[PathBuf]) -> i32 {
+fn cmd_cache_clear(rt: &Runtime, search_dirs: &[PathBuf]) -> i32 {
     let mut rc = 0;
 
-    if let Some(path) = cache::cache_path(search_dirs) {
+    if let Some(path) = cache::cache_path(rt, search_dirs) {
         match std::fs::remove_file(&path) {
             Ok(()) => {
                 eprintln!("[tokf] cache cleared: {}", path.display());
@@ -42,7 +44,7 @@ fn cmd_cache_clear(search_dirs: &[PathBuf]) -> i32 {
     }
 
     // Always attempt shim cleanup, even if cache removal failed
-    if let Some(shims) = tokf::paths::shims_dir() {
+    if let Some(shims) = rt.shims_dir() {
         match std::fs::remove_dir_all(&shims) {
             Ok(()) => {
                 eprintln!("[tokf] shims cleared: {}", shims.display());
@@ -58,8 +60,8 @@ fn cmd_cache_clear(search_dirs: &[PathBuf]) -> i32 {
     rc
 }
 
-fn cmd_cache_info(search_dirs: &[PathBuf]) -> i32 {
-    let Some(path) = cache::cache_path(search_dirs) else {
+fn cmd_cache_info(rt: &Runtime, search_dirs: &[PathBuf]) -> i32 {
+    let Some(path) = cache::cache_path(rt, search_dirs) else {
         eprintln!("[tokf] cache: no cache location");
         return 0;
     };

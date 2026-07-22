@@ -6,12 +6,14 @@ use tokf::publish_shared::{collect_test_files_resolved, hash_filter, inline_lua_
 use tokf::remote::http::Client;
 use tokf::remote::publish_client;
 
+use tokf::runtime::Runtime;
+
 /// Entry point for the `tokf publish` subcommand.
-pub fn cmd_publish(filter_name: &str, dry_run: bool, update_tests: bool) -> i32 {
+pub fn cmd_publish(rt: &Runtime, filter_name: &str, dry_run: bool, update_tests: bool) -> i32 {
     let result = if update_tests {
-        publish_update_tests(filter_name, dry_run)
+        publish_update_tests(rt, filter_name, dry_run)
     } else {
-        publish(filter_name, dry_run)
+        publish(rt, filter_name, dry_run)
     };
     match result {
         Ok(code) => code,
@@ -25,8 +27,8 @@ pub fn cmd_publish(filter_name: &str, dry_run: bool, update_tests: bool) -> i32 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
 /// Resolve a local filter by name, rejecting stdlib filters.
-fn resolve_local_filter(filter_name: &str) -> anyhow::Result<config::ResolvedFilter> {
-    let search_dirs = config::default_search_dirs();
+fn resolve_local_filter(rt: &Runtime, filter_name: &str) -> anyhow::Result<config::ResolvedFilter> {
+    let search_dirs = config::default_search_dirs(rt);
     let resolved = config::discover_all_filters(&search_dirs)?;
     let resolved_filter = resolved
         .into_iter()
@@ -45,9 +47,9 @@ fn resolve_local_filter(filter_name: &str) -> anyhow::Result<config::ResolvedFil
 
 // ── Publish flow ────────────────────────────────────────────────────────────
 
-fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
+fn publish(rt: &Runtime, filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
     let filter_name = filter_name.strip_suffix(".toml").unwrap_or(filter_name);
-    let resolved_filter = resolve_local_filter(filter_name)?;
+    let resolved_filter = resolve_local_filter(rt, filter_name)?;
 
     let filter_bytes = std::fs::read(&resolved_filter.source_path)?;
     let filter_bytes = inline_lua_script(filter_bytes, &resolved_filter.source_path)?;
@@ -64,8 +66,8 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
         return Ok(0);
     }
 
-    ensure_license_accepted()?;
-    let client = Client::authed()?;
+    ensure_license_accepted(rt)?;
+    let client = Client::authed(rt)?;
 
     let (is_new, resp) = tokf::remote::retry::with_retry("publish", || {
         publish_client::publish_filter(&client, &filter_bytes, &test_files)
@@ -84,9 +86,9 @@ fn publish(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
 
 // ── Update-tests flow ───────────────────────────────────────────────────────
 
-fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
+fn publish_update_tests(rt: &Runtime, filter_name: &str, dry_run: bool) -> anyhow::Result<i32> {
     let filter_name = filter_name.strip_suffix(".toml").unwrap_or(filter_name);
-    let resolved_filter = resolve_local_filter(filter_name)?;
+    let resolved_filter = resolve_local_filter(rt, filter_name)?;
 
     let filter_bytes = std::fs::read(&resolved_filter.source_path)?;
     let (content_hash, _) = hash_filter(&filter_bytes)?;
@@ -113,7 +115,7 @@ fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32>
         return Ok(0);
     }
 
-    let client = Client::authed()?;
+    let client = Client::authed(rt)?;
 
     let resp = tokf::remote::retry::with_retry("update-tests", || {
         publish_client::update_tests(&client, &content_hash, &test_files)
@@ -127,8 +129,8 @@ fn publish_update_tests(filter_name: &str, dry_run: bool) -> anyhow::Result<i32>
     Ok(0)
 }
 
-fn ensure_license_accepted() -> anyhow::Result<()> {
-    let accepted = credentials::load()
+fn ensure_license_accepted(rt: &Runtime) -> anyhow::Result<()> {
+    let accepted = credentials::load(rt)
         .and_then(|a| a.mit_license_accepted)
         .unwrap_or(false);
 
@@ -147,7 +149,7 @@ fn ensure_license_accepted() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("could not read input: {e}"))?;
 
     if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
-        credentials::save_license_accepted(true)?;
+        credentials::save_license_accepted(rt, true)?;
         eprintln!("[tokf] MIT license accepted.");
         Ok(())
     } else {
@@ -162,7 +164,8 @@ mod tests {
 
     #[test]
     fn resolve_fails_for_unknown_filter() {
-        let search_dirs = config::default_search_dirs();
+        let rt = Runtime::isolated();
+        let search_dirs = config::default_search_dirs(&rt);
         let resolved = config::discover_all_filters(&search_dirs).unwrap();
         let found = resolved
             .iter()

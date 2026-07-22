@@ -19,7 +19,7 @@ fn rewrite_compound_both_segments_match() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git add foo && git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -39,7 +39,7 @@ fn rewrite_compound_multibyte_segment_not_corrupted() {
     fs::write(dir.path().join("ls.toml"), "command = \"ls\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "echo \"✓ valid\" || echo \"✗ bad\"; ls ~/.claude/skills/ | grep tokf",
         &config,
         &[dir.path().to_path_buf()],
@@ -59,7 +59,7 @@ fn rewrite_compound_multibyte_echo_then_piped_filter() {
     fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "echo \"✓ done\"; git diff | tail",
         &config,
         &[dir.path().to_path_buf()],
@@ -81,7 +81,7 @@ fn rewrite_compound_partial_match() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "unknown-cmd && git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -96,7 +96,7 @@ fn rewrite_pipe_head_stripped_when_filter_matches() {
     fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git diff HEAD | head -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -116,7 +116,7 @@ fn rewrite_pipe_grep_stripped_when_filter_matches() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | grep FAILED",
         &config,
         &[dir.path().to_path_buf()],
@@ -130,7 +130,7 @@ fn rewrite_pipe_no_filter_preserves_pipe() {
     let dir = TempDir::new().unwrap();
     // No filter for "unknown-cmd"
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "unknown-cmd | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -149,7 +149,7 @@ fn rewrite_pipe_wc_passes_through() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git status | wc -l",
         &config,
         &[dir.path().to_path_buf()],
@@ -169,7 +169,7 @@ fn rewrite_pipe_tail_follow_passes_through() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | tail -f",
         &config,
         &[dir.path().to_path_buf()],
@@ -189,7 +189,7 @@ fn rewrite_logical_or_still_rewritten() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test || echo failed",
         &config,
         &[dir.path().to_path_buf()],
@@ -208,7 +208,7 @@ fn rewrite_multi_pipe_chain_not_rewritten() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git status | grep M | wc -l",
         &config,
         &[dir.path().to_path_buf()],
@@ -221,7 +221,7 @@ fn rewrite_multi_pipe_chain_not_rewritten() {
 fn rewrite_compound_no_match_passthrough() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "unknown-a && unknown-b",
         &config,
         &[dir.path().to_path_buf()],
@@ -247,7 +247,7 @@ fn rewrite_user_rule_wraps_piped_command() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | grep FAILED",
         &config,
         &[dir.path().to_path_buf()],
@@ -272,7 +272,7 @@ fn rewrite_skip_pattern_wins_over_pipe_guard() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git status | grep M",
         &config,
         &[dir.path().to_path_buf()],
@@ -290,7 +290,7 @@ fn rewrite_compound_then_pipe_stripped() {
     fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git add . && git diff | head -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -309,7 +309,7 @@ fn rewrite_quoted_pipe_is_not_a_bare_pipe() {
     fs::write(dir.path().join("grep.toml"), "command = \"grep\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "grep -E 'foo|bar' file.txt",
         &config,
         &[dir.path().to_path_buf()],
@@ -331,7 +331,7 @@ fn rewrite_pipe_grep_quoted_pattern_escaped() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | grep -E 'fail|error'",
         &config,
         &[dir.path().to_path_buf()],
@@ -358,7 +358,7 @@ fn rewrite_skips_command_with_output_redirect() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git status > /tmp/out.txt",
         &config,
         &[dir.path().to_path_buf()],
@@ -381,7 +381,7 @@ fn rewrite_skips_only_redirected_segment_in_compound() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git diff > foo.txt; git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -403,7 +403,7 @@ fn rewrite_skips_redirected_segment_after_and() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git status && git diff > foo.txt",
         &config,
         &[dir.path().to_path_buf()],
@@ -424,7 +424,7 @@ fn rewrite_does_not_skip_fd_merge_only() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git status 2>&1",
         &config,
         &[dir.path().to_path_buf()],
@@ -444,7 +444,7 @@ fn rewrite_skips_command_with_pipeline_redirect() {
     fs::write(dir.path().join("git-diff.toml"), "command = \"git diff\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git diff > foo.txt | head",
         &config,
         &[dir.path().to_path_buf()],

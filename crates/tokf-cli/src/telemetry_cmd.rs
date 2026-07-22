@@ -3,15 +3,15 @@ use std::time::Instant;
 
 use tokf::telemetry::config;
 
+use tokf::runtime::Runtime;
+
 /// `tokf telemetry status` — display telemetry configuration and optionally
 /// test connectivity to the OTLP endpoint.
-pub fn cmd_telemetry_status(check: bool, verbose: bool) -> anyhow::Result<i32> {
-    let cfg = config::load();
+pub fn cmd_telemetry_status(rt: &Runtime, check: bool, verbose: bool) -> anyhow::Result<i32> {
+    let cfg = config::load(rt);
 
     let status = if cfg.enabled { "enabled" } else { "disabled" };
-    let pipeline = std::env::var("TOKF_OTEL_PIPELINE")
-        .ok()
-        .filter(|s| !s.is_empty());
+    let pipeline = rt.otel().pipeline.clone().filter(|s| !s.is_empty());
 
     println!("telemetry: {status}");
     println!("endpoint:  {}", cfg.endpoint);
@@ -20,7 +20,7 @@ pub fn cmd_telemetry_status(check: bool, verbose: bool) -> anyhow::Result<i32> {
     println!("pipeline:  {}", pipeline.as_deref().unwrap_or("(not set)"));
 
     if verbose {
-        print_verbose(&cfg);
+        print_verbose(rt, &cfg);
     }
 
     if check {
@@ -30,11 +30,11 @@ pub fn cmd_telemetry_status(check: bool, verbose: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-fn print_verbose(cfg: &config::TelemetryConfig) {
+fn print_verbose(rt: &Runtime, cfg: &config::TelemetryConfig) {
     println!();
 
     // Config file path
-    let cfg_path = tokf::paths::user_dir().map(|d| d.join("config.toml"));
+    let cfg_path = rt.user_dir().map(|d| d.join("config.toml"));
     match cfg_path {
         Some(ref p) if p.exists() => println!("config:    {}", p.display()),
         Some(ref p) => println!("config:    {} (not found)", p.display()),

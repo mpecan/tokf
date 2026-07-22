@@ -58,6 +58,16 @@ pub struct Runtime {
     /// Backing temporary directory for an isolated runtime, kept alive for as
     /// long as any clone of this value exists and removed when the last one is
     /// dropped. Always `None` in production.
+    ///
+    /// Held purely for that `Drop` side effect, so a non-test build never reads
+    /// it — the accessor that does is `#[cfg]`-gated to test builds.
+    #[cfg_attr(
+        not(any(test, feature = "test-support")),
+        expect(
+            dead_code,
+            reason = "kept alive for its Drop; only read in test builds"
+        )
+    )]
     temp_root: Option<Arc<tempfile::TempDir>>,
 }
 
@@ -97,6 +107,24 @@ impl Runtime {
     /// The resolved directories, for callers that need several at once.
     pub const fn dirs(&self) -> &Dirs {
         &self.dirs
+    }
+
+    /// Candidate locations for `relative`, in tokf's standard priority order:
+    ///
+    /// 1. `<cwd>/.tokf/<relative>` — project-local
+    /// 2. `<user_dir>/<relative>` — user-level
+    ///
+    /// Entries whose base directory is unresolvable are omitted, so the result
+    /// may be empty. Used for `filters/` and `rewrites.toml`.
+    pub fn layered_paths(&self, relative: &str) -> Vec<PathBuf> {
+        let mut paths = Vec::with_capacity(2);
+        if let Some(cwd) = self.cwd() {
+            paths.push(cwd.join(".tokf").join(relative));
+        }
+        if let Some(user) = self.user_dir() {
+            paths.push(user.join(relative));
+        }
+        paths
     }
 
     // -- flags ------------------------------------------------------------

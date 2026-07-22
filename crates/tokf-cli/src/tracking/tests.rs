@@ -1,9 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::*;
-use serial_test::serial;
 use tempfile::TempDir;
 use tokf_common::tokens::estimate_tokens_from_bytes;
+
+use crate::runtime::Runtime;
 
 /// Shared estimator as `i64`, so assertions never hardcode the divisor.
 #[allow(clippy::cast_possible_wrap)]
@@ -20,37 +21,32 @@ fn temp_db() -> (TempDir, Connection) {
 
 // --- db_path / open_db ---
 
-/// Must run serially: mutates process-global path overrides.
 #[test]
-#[serial]
-fn db_path_env_override() {
+fn db_path_uses_the_explicit_override() {
     let dir = TempDir::new().expect("tempdir");
     let custom = dir.path().join("custom.db");
-    let _guard = crate::paths::DbPathGuard::set(custom.clone());
-    let result = db_path();
-    assert_eq!(result, Some(custom));
+    let rt = Runtime::builder().db_path(custom.clone()).build();
+    assert_eq!(rt.tracking_db_path(), Some(custom));
 }
 
 #[test]
-#[serial]
-fn db_path_tokf_home_override() {
+fn db_path_falls_back_to_the_home_directory() {
     let dir = TempDir::new().expect("tempdir");
-    let _guard = crate::paths::HomeGuard::set(dir.path());
-    let result = db_path();
-    assert_eq!(result, Some(dir.path().join("tracking.db")));
+    let rt = Runtime::builder().home(dir.path()).build();
+    assert_eq!(rt.tracking_db_path(), Some(dir.path().join("tracking.db")));
 }
 
 /// `TOKF_DB_PATH` must take priority over `TOKF_HOME`.
 #[test]
-#[serial]
-fn db_path_tokf_db_path_wins_over_tokf_home() {
+fn db_path_override_wins_over_the_home_directory() {
     let dir = TempDir::new().expect("tempdir");
     let custom = dir.path().join("custom.db");
     let home_dir = TempDir::new().expect("tempdir");
-    let _db_guard = crate::paths::DbPathGuard::set(custom.clone());
-    let _home_guard = crate::paths::HomeGuard::set(home_dir.path());
-    let result = db_path();
-    assert_eq!(result, Some(custom));
+    let rt = Runtime::builder()
+        .home(home_dir.path())
+        .db_path(custom.clone())
+        .build();
+    assert_eq!(rt.tracking_db_path(), Some(custom));
 }
 
 #[test]

@@ -9,6 +9,8 @@ use super::{
 };
 use crate::runner;
 
+use crate::runtime::Runtime;
+
 const SKILL_MD: &str = include_str!("../../skills/codex-run/SKILL.md");
 const DISCOVER_SKILL_MD: &str = include_str!("../../skills/codex-discover/SKILL.md");
 
@@ -33,8 +35,13 @@ const CODEX_SKILLS: &[CodexSkill] = &[
 /// # Errors
 ///
 /// Returns an error if the hook, hook config, or skill files cannot be written.
-pub fn install(global: bool, tokf_bin: &str, install_context: bool) -> anyhow::Result<()> {
-    let (hook_dir, codex_dir) = resolve_paths(global, ".codex")?;
+pub fn install(
+    rt: &Runtime,
+    global: bool,
+    tokf_bin: &str,
+    install_context: bool,
+) -> anyhow::Result<()> {
+    let (hook_dir, codex_dir) = resolve_paths(rt, global, ".codex")?;
     let mode = detect_codex_rewrite_mode();
     install_hook_to(&hook_dir, &codex_dir, tokf_bin, install_context, mode)?;
 

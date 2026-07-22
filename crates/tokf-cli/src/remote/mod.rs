@@ -11,26 +11,35 @@ pub mod tos_client;
 
 use std::fmt;
 
-/// Check whether verbose debug output is enabled via `TOKF_DEBUG=1`.
-pub fn is_debug() -> bool {
-    crate::paths::debug_enabled()
-}
-
 /// Unified error type for all remote HTTP operations.
 ///
 /// `Display` produces a single-line summary suitable for end-user stderr.
 /// `Debug` includes the full underlying error chain for `TOKF_DEBUG=1`.
+///
+/// Each variant whose message has a verbose form carries the `TOKF_DEBUG` flag
+/// that was in effect when the error was built. `Display` cannot take a
+/// `&Runtime`, so the decision is captured at construction instead of being
+/// read back out of the environment at formatting time.
 #[derive(Debug)]
 pub enum RemoteError {
     /// DNS / connect / network failure.
-    ConnectionFailed { url: String, source: reqwest::Error },
+    ConnectionFailed {
+        url: String,
+        source: reqwest::Error,
+        debug: bool,
+    },
     /// Request or connect timeout.
-    Timeout { url: String, source: reqwest::Error },
+    Timeout {
+        url: String,
+        source: reqwest::Error,
+        debug: bool,
+    },
     /// Server returned 5xx.
     ServerError {
         url: String,
         status: reqwest::StatusCode,
         body: String,
+        debug: bool,
     },
     /// Server returned 401 Unauthorized.
     Unauthorized,
@@ -38,69 +47,88 @@ pub enum RemoteError {
     RateLimited(RateLimitedError),
     /// Local request-building error (invalid URL, encoding, redirect policy).
     /// Not transient — should not be retried.
-    RequestError { url: String, source: reqwest::Error },
+    RequestError {
+        url: String,
+        source: reqwest::Error,
+        debug: bool,
+    },
     /// Non-2xx response that isn't 401/429/5xx.
     ClientError {
         url: String,
         status: reqwest::StatusCode,
         body: String,
+        debug: bool,
     },
+}
+
+impl RemoteError {
+    /// The detailed message, shown when `TOKF_DEBUG` was set.
+    fn verbose_message(&self) -> String {
+        match self {
+            Self::ConnectionFailed { url, source, .. } => {
+                format!("remote: could not connect to {url}: {source}")
+            }
+            Self::Timeout { url, source, .. } => {
+                format!("remote: request to {url} timed out: {source}")
+            }
+            Self::ServerError {
+                url, status, body, ..
+            } => format!("remote: server error {status} from {url}: {body}"),
+            Self::RequestError { url, source, .. } => {
+                format!("remote: request error for {url}: {source}")
+            }
+            Self::ClientError {
+                url, status, body, ..
+            } => format!("remote: HTTP {status} from {url}: {body}"),
+            _ => self.short_message(),
+        }
+    }
+
+    /// The end-user message, which never leaks a URL or response body.
+    fn short_message(&self) -> String {
+        match self {
+            Self::ConnectionFailed { .. } => {
+                "remote: could not connect to server (use TOKF_DEBUG=1 for details)".to_string()
+            }
+            Self::Timeout { .. } => {
+                "remote: request timed out (use TOKF_DEBUG=1 for details)".to_string()
+            }
+            Self::ServerError { status, .. } => {
+                format!("remote: server error {status} (use TOKF_DEBUG=1 for details)")
+            }
+            Self::RequestError { .. } => {
+                "remote: request error (use TOKF_DEBUG=1 for details)".to_string()
+            }
+            Self::ClientError { status, .. } => {
+                format!("remote: HTTP {status} (use TOKF_DEBUG=1 for details)")
+            }
+            Self::Unauthorized => {
+                "remote: HTTP 401 Unauthorized — run `tokf auth login` to re-authenticate"
+                    .to_string()
+            }
+            Self::RateLimited(inner) => format!("remote: {inner}"),
+        }
+    }
+
+    /// Whether this error was built while `TOKF_DEBUG` was enabled.
+    const fn is_debug(&self) -> bool {
+        match self {
+            Self::ConnectionFailed { debug, .. }
+            | Self::Timeout { debug, .. }
+            | Self::ServerError { debug, .. }
+            | Self::RequestError { debug, .. }
+            | Self::ClientError { debug, .. } => *debug,
+            Self::Unauthorized | Self::RateLimited(_) => false,
+        }
+    }
 }
 
 impl fmt::Display for RemoteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ConnectionFailed { url, source } => {
-                if is_debug() {
-                    write!(f, "remote: could not connect to {url}: {source}")
-                } else {
-                    write!(
-                        f,
-                        "remote: could not connect to server (use TOKF_DEBUG=1 for details)"
-                    )
-                }
-            }
-            Self::Timeout { url, source } => {
-                if is_debug() {
-                    write!(f, "remote: request to {url} timed out: {source}")
-                } else {
-                    write!(
-                        f,
-                        "remote: request timed out (use TOKF_DEBUG=1 for details)"
-                    )
-                }
-            }
-            Self::ServerError { url, status, body } => {
-                if is_debug() {
-                    write!(f, "remote: server error {status} from {url}: {body}")
-                } else {
-                    write!(
-                        f,
-                        "remote: server error {status} (use TOKF_DEBUG=1 for details)"
-                    )
-                }
-            }
-            Self::Unauthorized => {
-                write!(
-                    f,
-                    "remote: HTTP 401 Unauthorized — run `tokf auth login` to re-authenticate"
-                )
-            }
-            Self::RequestError { url, source } => {
-                if is_debug() {
-                    write!(f, "remote: request error for {url}: {source}")
-                } else {
-                    write!(f, "remote: request error (use TOKF_DEBUG=1 for details)")
-                }
-            }
-            Self::RateLimited(inner) => write!(f, "remote: {inner}"),
-            Self::ClientError { url, status, body } => {
-                if is_debug() {
-                    write!(f, "remote: HTTP {status} from {url}: {body}")
-                } else {
-                    write!(f, "remote: HTTP {status} (use TOKF_DEBUG=1 for details)")
-                }
-            }
+        if self.is_debug() {
+            f.write_str(&self.verbose_message())
+        } else {
+            f.write_str(&self.short_message())
         }
     }
 }
@@ -153,28 +181,32 @@ impl std::error::Error for RateLimitedError {}
 /// - Connect failures → `ConnectionFailed` (transient)
 /// - Request-building errors (invalid URL, encoding) → `RequestError` (non-transient)
 /// - All other send errors (DNS, redirect loops) → `ConnectionFailed` (transient)
-pub(crate) fn classify_reqwest_error(url: &str, err: reqwest::Error) -> RemoteError {
+pub(crate) fn classify_reqwest_error(url: &str, err: reqwest::Error, debug: bool) -> RemoteError {
     if err.is_timeout() {
         RemoteError::Timeout {
             url: url.to_string(),
             source: err,
+            debug,
         }
     } else if err.is_connect() {
         RemoteError::ConnectionFailed {
             url: url.to_string(),
             source: err,
+            debug,
         }
     } else if err.is_request() || err.is_builder() || err.is_redirect() {
         // Local configuration errors — not transient, should not be retried.
         RemoteError::RequestError {
             url: url.to_string(),
             source: err,
+            debug,
         }
     } else {
         // Other send errors (DNS, etc.) — treat as connection failures (transient).
         RemoteError::ConnectionFailed {
             url: url.to_string(),
             source: err,
+            debug,
         }
     }
 }
@@ -217,6 +249,7 @@ pub(crate) fn check_auth_and_rate_limit(
 pub(crate) fn require_success(
     resp: reqwest::blocking::Response,
     url: &str,
+    debug: bool,
 ) -> Result<reqwest::blocking::Response, RemoteError> {
     let status = resp.status();
     if status.is_success() {
@@ -242,12 +275,14 @@ pub(crate) fn require_success(
             url: url.to_string(),
             status,
             body,
+            debug,
         });
     }
     Err(RemoteError::ClientError {
         url: url.to_string(),
         status,
         body,
+        debug,
     })
 }
 
@@ -258,10 +293,30 @@ mod tests {
 
     use super::*;
 
+    /// The verbose form is chosen by the flag captured when the error was
+    /// built, so both branches are testable without touching the environment.
     #[test]
-    fn is_debug_returns_false_by_default() {
-        // Can't reliably unset env in parallel tests, just verify it doesn't panic.
-        let _ = is_debug();
+    fn display_respects_the_captured_debug_flag() {
+        let quiet = RemoteError::ServerError {
+            url: "https://api.tokf.net/x".to_string(),
+            status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            body: "stack trace".to_string(),
+            debug: false,
+        };
+        let msg = quiet.to_string();
+        assert!(!msg.contains("stack trace"), "body must not leak: {msg}");
+        assert!(!msg.contains("api.tokf.net"), "url must not leak: {msg}");
+        assert!(msg.contains("TOKF_DEBUG=1"));
+
+        let loud = RemoteError::ServerError {
+            url: "https://api.tokf.net/x".to_string(),
+            status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            body: "stack trace".to_string(),
+            debug: true,
+        };
+        let msg = loud.to_string();
+        assert!(msg.contains("stack trace"), "body should be shown: {msg}");
+        assert!(msg.contains("api.tokf.net"), "url should be shown: {msg}");
     }
 
     #[test]
@@ -288,6 +343,7 @@ mod tests {
             url: "https://api.tokf.net/api/test".to_string(),
             status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
             body: "internal error".to_string(),
+            debug: false,
         };
         let msg = err.to_string();
         assert!(msg.contains("500"));
@@ -300,6 +356,7 @@ mod tests {
             url: "https://api.tokf.net/api/test".to_string(),
             status: reqwest::StatusCode::NOT_FOUND,
             body: "not found".to_string(),
+            debug: false,
         };
         let msg = err.to_string();
         assert!(msg.contains("404"));
@@ -313,6 +370,7 @@ mod tests {
                 url: String::new(),
                 status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
                 body: String::new(),
+                debug: false,
             }
             .is_transient()
         );
@@ -344,6 +402,7 @@ mod tests {
             url: "https://api.tokf.net/bad".to_string(),
             status: reqwest::StatusCode::BAD_REQUEST,
             body: "bad request".to_string(),
+            debug: false,
         };
         let msg = err.to_string();
         assert!(msg.contains("400"));
@@ -360,6 +419,7 @@ mod tests {
                 url: String::new(),
                 status: reqwest::StatusCode::BAD_REQUEST,
                 body: String::new(),
+                debug: false,
             }
             .is_transient()
         );
@@ -381,6 +441,7 @@ mod tests {
                 url: String::new(),
                 status: reqwest::StatusCode::NOT_FOUND,
                 body: String::new(),
+                debug: false,
             }
             .source()
             .is_none()

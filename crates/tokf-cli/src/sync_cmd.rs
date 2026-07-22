@@ -1,6 +1,8 @@
 use tokf::remote::{http, machine};
 use tokf::tracking;
 
+use tokf::runtime::Runtime;
+
 /// Handle the `tokf sync` command.
 ///
 /// In `--status` mode, prints the last sync time and pending event count.
@@ -10,19 +12,20 @@ use tokf::tracking;
 ///
 /// Returns an error if the DB cannot be opened, or (in sync mode) if
 /// the user is not logged in or no machine is registered.
-pub fn cmd_sync(status: bool) -> anyhow::Result<i32> {
+pub fn cmd_sync(rt: &Runtime, status: bool) -> anyhow::Result<i32> {
     if status {
-        return cmd_sync_status();
+        return cmd_sync_status(rt);
     }
 
-    let auth = http::load_auth()
+    let auth = http::load_auth(rt)
         .map_err(|_| anyhow::anyhow!("not logged in — run `tokf auth login` to sync usage data"))?;
 
-    let machine = machine::load()
+    let machine = machine::load(rt)
         .ok_or_else(|| anyhow::anyhow!("machine not registered — run `tokf remote setup` first"))?;
 
-    let db_path =
-        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
+    let db_path = rt
+        .tracking_db_path()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
     let conn = tracking::open_db(&db_path)?;
 
     let pending = tracking::get_pending_count(&conn)?;
@@ -31,7 +34,7 @@ pub fn cmd_sync(status: bool) -> anyhow::Result<i32> {
         return Ok(0);
     }
 
-    let result = tokf::sync_core::perform_sync(&auth, &machine, &conn)?;
+    let result = tokf::sync_core::perform_sync(rt, &auth, &machine, &conn)?;
     eprintln!(
         "[tokf] Synced {} event(s). Cursor: {}.",
         result.synced_count, result.cursor
@@ -40,9 +43,10 @@ pub fn cmd_sync(status: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-fn cmd_sync_status() -> anyhow::Result<i32> {
-    let db_path =
-        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
+fn cmd_sync_status(rt: &Runtime) -> anyhow::Result<i32> {
+    let db_path = rt
+        .tracking_db_path()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine tracking DB path"))?;
     let conn = tracking::open_db(&db_path)?;
 
     let last_synced_at = tracking::get_last_synced_at(&conn)?;

@@ -4,6 +4,8 @@ use tokf::history::current_project;
 use tokf::runner;
 use tokf::tracking;
 
+use tokf::runtime::Runtime;
+
 /// Result of filter resolution, including any deferred output-pattern variants.
 pub struct FilterMatch {
     pub config: FilterConfig,
@@ -17,25 +19,29 @@ pub struct FilterMatch {
 }
 
 /// Discover all filters using the standard search dirs + cache.
-pub fn discover_filters(no_cache: bool) -> anyhow::Result<Vec<config::ResolvedFilter>> {
-    let search_dirs = config::default_search_dirs();
+pub fn discover_filters(
+    rt: &Runtime,
+    no_cache: bool,
+) -> anyhow::Result<Vec<config::ResolvedFilter>> {
+    let search_dirs = config::default_search_dirs(rt);
     if no_cache {
         config::discover_all_filters(&search_dirs)
     } else {
-        config::cache::discover_with_cache(&search_dirs)
+        config::cache::discover_with_cache(rt, &search_dirs)
     }
 }
 
 /// Find the first filter that matches `command_args` using the discovery model.
 pub fn find_filter(
+    rt: &Runtime,
     command_args: &[String],
     verbose: bool,
     no_cache: bool,
 ) -> anyhow::Result<Option<FilterMatch>> {
-    let resolved = discover_filters(no_cache)?;
+    let resolved = discover_filters(rt, no_cache)?;
     let words: Vec<&str> = command_args.iter().map(String::as_str).collect();
     let cwd = std::env::current_dir().unwrap_or_default();
-    let wrapper_cfg = tokf::rewrite::load_local_wrapper_config();
+    let wrapper_cfg = tokf::rewrite::load_local_wrapper_config(rt);
 
     // Match directly, or after stripping a local environment wrapper prefix
     // (e.g. `nix develop -c cargo test` matches the `cargo test` filter). The
@@ -161,18 +167,18 @@ pub fn resolve_phase_b(
 /// filtered command, so we skip the filesystem walk to locate `.tokf/config.toml`
 /// for performance. Users who need to disable shims can set `shims.enabled = false`
 /// in their global config.
-fn build_inject_env(filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> {
+fn build_inject_env(rt: &Runtime, filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> {
     let Some(cfg) = filter_cfg else {
         return vec![];
     };
     if !cfg.inject_path {
         return vec![];
     }
-    let shims_config = tokf::history::ShimsConfig::load(None);
+    let shims_config = tokf::history::ShimsConfig::load(rt, None);
     if !shims_config.enabled {
         return vec![];
     }
-    let Some(shims) = tokf::paths::shims_dir() else {
+    let Some(shims) = rt.shims_dir() else {
         return vec![];
     };
     if !shims.exists() {
@@ -180,8 +186,10 @@ fn build_inject_env(filter_cfg: Option<&FilterConfig>) -> Vec<(String, String)> 
     }
     // Use TOKF_ORIGINAL_PATH if already set (nested tokf invocation)
     // to avoid stacking shims in PATH repeatedly.
-    let original_path = std::env::var("TOKF_ORIGINAL_PATH")
-        .or_else(|_| std::env::var("PATH"))
+    let original_path = rt
+        .original_path()
+        .map(std::borrow::ToOwned::to_owned)
+        .or_else(|| std::env::var("PATH").ok())
         .unwrap_or_default();
     let new_path = format!("{}:{}", shims.display(), original_path);
     let tokf_exe = std::env::current_exe()
@@ -226,14 +234,28 @@ fn run_command_with_consumed_prefix(
     format!("{leading}{prefix}{suffix}")
 }
 
+/// A resolved command, ready to execute.
+#[derive(Clone, Copy)]
+pub struct ResolvedCommand<'a> {
+    pub filter_cfg: Option<&'a FilterConfig>,
+    pub words_consumed: usize,
+    pub matched_command: Option<&'a str>,
+    pub command_args: &'a [String],
+    pub remaining_args: &'a [String],
+}
+
 pub fn run_command(
-    filter_cfg: Option<&FilterConfig>,
-    words_consumed: usize,
-    matched_command: Option<&str>,
-    command_args: &[String],
-    remaining_args: &[String],
+    rt: &Runtime,
+    cmd: ResolvedCommand<'_>,
 ) -> anyhow::Result<runner::CommandResult> {
-    let env_overrides = build_inject_env(filter_cfg);
+    let ResolvedCommand {
+        filter_cfg,
+        words_consumed,
+        matched_command,
+        command_args,
+        remaining_args,
+    } = cmd;
+    let env_overrides = build_inject_env(rt, filter_cfg);
     let env_refs: Vec<(&str, &str)> = env_overrides
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -271,7 +293,7 @@ pub fn run_command(
 /// This is intentional — `try_auto_sync` runs in the hot path after every filtered command,
 /// so we skip the filesystem walk to locate `.tokf/config.toml` for performance. Users who
 /// need per-project overrides can set `upload_usage_stats` in their global config instead.
-pub fn try_auto_sync() {
+pub fn try_auto_sync(rt: &Runtime) {
     use std::process::{Command, Stdio};
     use tokf::auth::credentials;
     use tokf::history::SyncConfig;
@@ -279,7 +301,7 @@ pub fn try_auto_sync() {
 
     // Pass None for project dir: auto-sync runs in the hot path after every command,
     // so we only check the global config to avoid a filesystem scan for .tokf/config.toml.
-    let config = SyncConfig::load(None);
+    let config = SyncConfig::load(rt, None);
     if config.auto_sync_threshold == 0 {
         return;
     }
@@ -288,14 +310,14 @@ pub fn try_auto_sync() {
         return; // None → never asked, Some(false) → opted out
     }
 
-    if credentials::load().is_none() {
+    if credentials::load(rt).is_none() {
         return;
     }
-    if machine::load().is_none() {
+    if machine::load(rt).is_none() {
         return;
     }
 
-    let Some(db_path) = tracking::db_path() else {
+    let Some(db_path) = rt.tracking_db_path() else {
         return;
     };
     let Ok(conn) = tracking::open_db(&db_path) else {
@@ -319,7 +341,7 @@ pub fn try_auto_sync() {
     {
         Ok(_) => {}
         Err(e) => {
-            if tokf::paths::debug_enabled() {
+            if rt.debug() {
                 eprintln!("[tokf] auto-sync spawn failed: {e}");
             }
         }
@@ -328,6 +350,7 @@ pub fn try_auto_sync() {
 
 #[allow(clippy::too_many_arguments)]
 pub fn record_run(
+    rt: &Runtime,
     command_args: &[String],
     filter_name: Option<&str>,
     filter_hash: Option<&str>,
@@ -338,7 +361,7 @@ pub fn record_run(
     exit_code: i32,
     pipe_override: bool,
 ) {
-    let Some(path) = tracking::db_path() else {
+    let Some(path) = rt.tracking_db_path() else {
         eprintln!("[tokf] tracking: cannot determine DB path");
         return;
     };
@@ -365,7 +388,7 @@ pub fn record_run(
         exit_code,
         pipe_override,
     );
-    event.project = current_project();
+    event.project = current_project(rt);
     if let Err(e) = tracking::record_event(&conn, &event) {
         eprintln!(
             "[tokf] tracking error (record) at {}: {e:#}",
@@ -480,34 +503,35 @@ run = "pnpm test --reporter=dot {args}"
 
     #[test]
     fn build_inject_env_empty_when_no_config() {
-        assert!(build_inject_env(None).is_empty());
+        let rt = Runtime::isolated();
+        assert!(build_inject_env(&rt, None).is_empty());
     }
 
     #[test]
     fn build_inject_env_empty_when_disabled() {
+        let rt = Runtime::isolated();
         let cfg = config_with_inject(false);
-        assert!(build_inject_env(Some(&cfg)).is_empty());
+        assert!(build_inject_env(&rt, Some(&cfg)).is_empty());
     }
 
     #[test]
-    #[serial_test::serial]
     fn build_inject_env_empty_when_shims_dir_missing() {
-        let _guard = tokf::paths::HomeGuard::set("/nonexistent/path/tokf_test");
+        let rt = Runtime::builder()
+            .home("/nonexistent/path/tokf_test")
+            .build();
         let cfg = config_with_inject(true);
         // shims_dir exists in theory but the directory doesn't exist on disk
-        assert!(build_inject_env(Some(&cfg)).is_empty());
+        assert!(build_inject_env(&rt, Some(&cfg)).is_empty());
     }
 
     #[test]
-    #[serial_test::serial]
     fn build_inject_env_returns_three_vars_when_enabled() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let _guard = tokf::paths::HomeGuard::set(tmp.path());
-        let shims = tokf::paths::shims_dir().unwrap();
+        let rt = Runtime::isolated();
+        let shims = rt.shims_dir().unwrap();
         std::fs::create_dir_all(&shims).unwrap();
 
         let cfg = config_with_inject(true);
-        let env = build_inject_env(Some(&cfg));
+        let env = build_inject_env(&rt, Some(&cfg));
 
         assert_eq!(env.len(), 3);
         assert_eq!(env[0].0, "PATH");
@@ -517,19 +541,14 @@ run = "pnpm test --reporter=dot {args}"
     }
 
     #[test]
-    #[serial_test::serial]
     fn build_inject_env_uses_original_path_when_nested() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let _guard = tokf::paths::HomeGuard::set(tmp.path());
-        let shims = tokf::paths::shims_dir().unwrap();
+        // Simulate a nested invocation: TOKF_ORIGINAL_PATH is already set.
+        let rt = Runtime::builder().original_path("/usr/bin:/bin").build();
+        let shims = rt.shims_dir().unwrap();
         std::fs::create_dir_all(&shims).unwrap();
 
-        // Simulate nested invocation: TOKF_ORIGINAL_PATH is already set
-        // SAFETY: test runs serially (#[serial]) so no concurrent access.
-        unsafe { std::env::set_var("TOKF_ORIGINAL_PATH", "/usr/bin:/bin") };
         let cfg = config_with_inject(true);
-        let env = build_inject_env(Some(&cfg));
-        unsafe { std::env::remove_var("TOKF_ORIGINAL_PATH") };
+        let env = build_inject_env(&rt, Some(&cfg));
 
         // PATH should be shims:/usr/bin:/bin (not shims:shims:/usr/bin:/bin)
         assert_eq!(env[1].0, "TOKF_ORIGINAL_PATH");

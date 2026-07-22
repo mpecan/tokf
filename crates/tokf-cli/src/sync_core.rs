@@ -5,18 +5,19 @@ use std::path::PathBuf;
 use rusqlite::Connection;
 
 use crate::auth::credentials::LoadedAuth;
-use crate::paths;
 use crate::remote::http::Client;
 use crate::remote::machine::StoredMachine;
 use crate::remote::sync_client::{SyncEvent, SyncRequest};
 use crate::tracking;
 
+use crate::runtime::Runtime;
+
 /// Maximum age of a lock file before it's considered stale (5 minutes).
 const LOCK_STALE_SECS: u64 = 300;
 
 /// Return the path to the sync lock file (`{user_data_dir}/sync.lock`).
-fn lock_path() -> Option<PathBuf> {
-    paths::user_data_dir().map(|d| d.join("sync.lock"))
+fn lock_path(rt: &Runtime) -> Option<PathBuf> {
+    rt.user_data_dir().map(|d| d.join("sync.lock"))
 }
 
 /// RAII guard that removes the lock file on drop.
@@ -26,8 +27,8 @@ pub(crate) struct SyncLock {
 
 impl SyncLock {
     /// Try to acquire the sync lock. Returns `None` if another sync is already running.
-    pub(crate) fn acquire() -> Option<Self> {
-        let path = lock_path()?;
+    pub(crate) fn acquire(rt: &Runtime) -> Option<Self> {
+        let path = lock_path(rt)?;
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -125,14 +126,15 @@ fn to_sync_event(e: &tracking::SyncableEvent) -> SyncEvent {
 /// Returns an error if the lock cannot be acquired, the DB query fails, the
 /// HTTP request fails, or the server returns a non-success status.
 pub fn perform_sync(
+    rt: &Runtime,
     auth: &LoadedAuth,
     machine: &StoredMachine,
     conn: &Connection,
 ) -> anyhow::Result<SyncResult> {
     let _lock =
-        SyncLock::acquire().ok_or_else(|| anyhow::anyhow!("another sync is already running"))?;
+        SyncLock::acquire(rt).ok_or_else(|| anyhow::anyhow!("another sync is already running"))?;
 
-    let http_client = Client::new(&auth.server_url, Some(&auth.token))?;
+    let http_client = Client::new(rt, &auth.server_url, Some(&auth.token))?;
 
     let mut total_synced = 0usize;
     let mut cursor = tracking::get_last_synced_id(conn)?;
@@ -188,21 +190,19 @@ pub fn perform_sync(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use serial_test::serial;
 
     use super::*;
     use crate::tracking::SyncableEvent;
 
     #[test]
-    #[serial]
     fn sync_lock_acquire_and_release() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let _guard = paths::HomeGuard::set(dir.path());
+        let rt = Runtime::isolated();
+        let dir = rt.user_data_dir().unwrap();
 
-        let lock = SyncLock::acquire();
+        let lock = SyncLock::acquire(&rt);
         assert!(lock.is_some(), "should acquire lock on fresh dir");
 
-        let lock_file = dir.path().join("sync.lock");
+        let lock_file = dir.join("sync.lock");
         assert!(lock_file.exists(), "lock file should exist while held");
 
         drop(lock);
@@ -210,15 +210,13 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn sync_lock_prevents_double_acquire() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let _guard = paths::HomeGuard::set(dir.path());
+        let rt = Runtime::isolated();
 
-        let lock1 = SyncLock::acquire();
+        let lock1 = SyncLock::acquire(&rt);
         assert!(lock1.is_some());
 
-        let lock2 = SyncLock::acquire();
+        let lock2 = SyncLock::acquire(&rt);
         assert!(
             lock2.is_none(),
             "second acquire should fail while first is held"
@@ -226,7 +224,7 @@ mod tests {
 
         drop(lock1);
 
-        let lock3 = SyncLock::acquire();
+        let lock3 = SyncLock::acquire(&rt);
         assert!(
             lock3.is_some(),
             "should succeed after first lock is released"
@@ -234,14 +232,13 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn sync_lock_reclaims_stale_lock() {
         use std::time::{Duration, SystemTime};
 
-        let dir = tempfile::TempDir::new().unwrap();
-        let _guard = paths::HomeGuard::set(dir.path());
+        let rt = Runtime::isolated();
+        let dir = rt.user_data_dir().unwrap();
 
-        let lock_file = dir.path().join("sync.lock");
+        let lock_file = dir.join("sync.lock");
         fs::write(&lock_file, "99999999").unwrap(); // fake PID
 
         // Backdate the file to make it stale
@@ -249,7 +246,7 @@ mod tests {
         filetime::set_file_mtime(&lock_file, filetime::FileTime::from_system_time(old_time))
             .unwrap();
 
-        let lock = SyncLock::acquire();
+        let lock = SyncLock::acquire(&rt);
         assert!(lock.is_some(), "should reclaim stale lock");
     }
 

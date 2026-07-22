@@ -2,14 +2,22 @@ use std::path::{Path, PathBuf};
 
 use crate::runner;
 
+use crate::runtime::Runtime;
+
 /// Install the hook shim and register it in Claude Code settings.
 ///
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub(super) fn install(global: bool, tokf_bin: &str, install_context: bool) -> anyhow::Result<()> {
+pub(super) fn install(
+    rt: &Runtime,
+    global: bool,
+    tokf_bin: &str,
+    install_context: bool,
+) -> anyhow::Result<()> {
     let (hook_dir, settings_path) = if global {
-        let user = crate::paths::user_dir()
+        let user = rt
+            .user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
         let hook_dir = user.join("hooks");
         let home = dirs::home_dir()
@@ -63,11 +71,13 @@ pub(super) fn install_to(
 /// - `hook_dir`: where the shim script goes (e.g. `~/.tokf/hooks` or `.tokf/hooks`)
 /// - `tool_config_dir`: tool-specific directory (e.g. `~/.gemini` or `.gemini`)
 pub(super) fn resolve_paths(
+    rt: &Runtime,
     global: bool,
     tool_dir_name: &str,
 ) -> anyhow::Result<(PathBuf, PathBuf)> {
     if global {
-        let user = crate::paths::user_dir()
+        let user = rt
+            .user_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
         let hook_dir = user.join("hooks");
         let home = dirs::home_dir()

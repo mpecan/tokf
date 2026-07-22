@@ -2,13 +2,20 @@ use std::path::Path;
 
 use crate::runner;
 
+use crate::runtime::Runtime;
+
 /// Install the Cursor `preToolUse` hook.
 ///
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool, tokf_bin: &str, install_context: bool) -> anyhow::Result<()> {
-    let (hook_dir, cursor_dir) = super::resolve_paths(global, ".cursor")?;
+pub fn install(
+    rt: &Runtime,
+    global: bool,
+    tokf_bin: &str,
+    install_context: bool,
+) -> anyhow::Result<()> {
+    let (hook_dir, cursor_dir) = super::resolve_paths(rt, global, ".cursor")?;
     let hooks_json_path = cursor_dir.join("hooks.json");
     let rules_dir = cursor_dir.join("rules");
     install_to(

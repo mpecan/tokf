@@ -1,7 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::*;
-use serial_test::serial;
 use tempfile::TempDir;
 
 // --- HistoryConfig ---
@@ -361,7 +360,8 @@ fn shims_config_ignores_project_root() {
         .expect("write project config");
 
     // load() ignores project_root, so this should still be true (default)
-    let config = ShimsConfig::load(Some(project_dir.path()));
+    let rt = Runtime::isolated();
+    let config = ShimsConfig::load(&rt, Some(project_dir.path()));
     assert!(
         config.enabled,
         "project-local shims config should be ignored"
@@ -426,7 +426,8 @@ fn save_upload_stats_to_path_roundtrip() {
 
 #[test]
 fn current_project_returns_non_empty_string() {
-    let project = current_project();
+    let rt = Runtime::isolated();
+    let project = current_project(&rt);
     assert!(
         !project.is_empty(),
         "current_project() should return a non-empty path string"
@@ -435,20 +436,21 @@ fn current_project_returns_non_empty_string() {
 
 // --- try_record ---
 
-/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
-#[serial]
 fn try_record_records_entry_to_db() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    let _guard = crate::paths::DbPathGuard::set(db_path.clone());
+    let rt = Runtime::builder().db_path(db_path.clone()).build();
 
     let _ = try_record(
-        "git status",
-        "git-status",
-        "raw output",
-        "filtered output",
-        0,
+        &rt,
+        &RecordedRun {
+            command: "git status",
+            filter_name: "git-status",
+            raw_output: "raw output",
+            filtered_output: "filtered output",
+            exit_code: 0,
+        },
     );
 
     let conn = open_db(&db_path).expect("open db");
@@ -458,72 +460,111 @@ fn try_record_records_entry_to_db() {
     assert_eq!(count, 1, "try_record should insert one history entry");
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
-#[serial]
 fn try_record_returns_id_on_success() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    let _guard = crate::paths::DbPathGuard::set(db_path);
+    let rt = Runtime::builder().db_path(db_path).build();
 
-    let id = try_record("cargo test", "cargo/test", "raw", "filtered", 0);
+    let id = try_record(
+        &rt,
+        &RecordedRun {
+            command: "cargo test",
+            filter_name: "cargo/test",
+            raw_output: "raw",
+            filtered_output: "filtered",
+            exit_code: 0,
+        },
+    );
 
     assert!(id.is_some(), "try_record should return Some(id) on success");
     assert_eq!(id.unwrap(), 1, "first inserted entry should have id=1");
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
-#[serial]
 fn try_record_does_not_panic_on_unwritable_db_path() {
     // Point to a path whose parent cannot be created.
-    let _db_guard = crate::paths::DbPathGuard::set("/dev/null/no-such-dir/tracking.db");
-    let _debug_guard = crate::paths::DebugGuard::new(false);
+    let rt = Runtime::builder()
+        .db_path("/dev/null/no-such-dir/tracking.db")
+        .debug(false)
+        .build();
     // Must not panic — errors are silently swallowed when TOKF_DEBUG is unset.
-    let result = try_record("cmd", "filter", "raw", "filtered", 0);
+    let result = try_record(
+        &rt,
+        &RecordedRun {
+            command: "cmd",
+            filter_name: "filter",
+            raw_output: "raw",
+            filtered_output: "filtered",
+            exit_code: 0,
+        },
+    );
     assert!(
         result.is_none(),
         "try_record should return None on db error"
     );
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` and `TOKF_DEBUG` overrides.
 #[test]
-#[serial]
 fn try_record_does_not_panic_on_unwritable_db_path_with_debug() {
-    let _db_guard = crate::paths::DbPathGuard::set("/dev/null/no-such-dir/tracking.db");
-    let _debug_guard = crate::paths::DebugGuard::new(true);
+    let rt = Runtime::builder()
+        .db_path("/dev/null/no-such-dir/tracking.db")
+        .debug(true)
+        .build();
     // Must not panic even when TOKF_DEBUG is set (it logs to stderr but does not panic).
-    let _ = try_record("cmd", "filter", "raw", "filtered", 0);
+    let _ = try_record(
+        &rt,
+        &RecordedRun {
+            command: "cmd",
+            filter_name: "filter",
+            raw_output: "raw",
+            filtered_output: "filtered",
+            exit_code: 0,
+        },
+    );
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
-#[serial]
 fn try_was_recently_run_returns_true_for_repeated_command() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    let _guard = crate::paths::DbPathGuard::set(db_path);
+    let rt = Runtime::builder().db_path(db_path).build();
 
     // Record first run.
-    let _ = try_record("git status", "git/status", "raw", "filtered", 0);
+    let _ = try_record(
+        &rt,
+        &RecordedRun {
+            command: "git status",
+            filter_name: "git/status",
+            raw_output: "raw",
+            filtered_output: "filtered",
+            exit_code: 0,
+        },
+    );
 
     // Now the same command was "recently run".
-    let repeated = try_was_recently_run("git status");
+    let repeated = try_was_recently_run(&rt, "git status");
 
     assert!(repeated, "same command should be detected as recently run");
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
-#[serial]
 fn try_was_recently_run_returns_false_for_different_command() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    let _guard = crate::paths::DbPathGuard::set(db_path);
+    let rt = Runtime::builder().db_path(db_path).build();
 
-    let _ = try_record("git status", "git/status", "raw", "filtered", 0);
-    let repeated = try_was_recently_run("cargo test");
+    let _ = try_record(
+        &rt,
+        &RecordedRun {
+            command: "git status",
+            filter_name: "git/status",
+            raw_output: "raw",
+            filtered_output: "filtered",
+            exit_code: 0,
+        },
+    );
+    let repeated = try_was_recently_run(&rt, "cargo test");
 
     assert!(
         !repeated,
@@ -531,16 +572,14 @@ fn try_was_recently_run_returns_false_for_different_command() {
     );
 }
 
-/// Must run serially: sets `TOKF_DB_PATH` override.
 #[test]
-#[serial]
 fn try_was_recently_run_returns_false_on_empty_history() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("tracking.db");
-    let _guard = crate::paths::DbPathGuard::set(db_path);
+    let rt = Runtime::builder().db_path(db_path).build();
 
     // No entries recorded yet.
-    let repeated = try_was_recently_run("git status");
+    let repeated = try_was_recently_run(&rt, "git status");
 
     assert!(!repeated, "empty history should return false");
 }

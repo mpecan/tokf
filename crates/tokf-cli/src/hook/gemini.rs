@@ -1,12 +1,19 @@
 use std::path::Path;
 
+use crate::runtime::Runtime;
+
 /// Install the Gemini CLI `BeforeTool` hook.
 ///
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool, tokf_bin: &str, install_context: bool) -> anyhow::Result<()> {
-    let (hook_dir, gemini_dir) = super::resolve_paths(global, ".gemini")?;
+pub fn install(
+    rt: &Runtime,
+    global: bool,
+    tokf_bin: &str,
+    install_context: bool,
+) -> anyhow::Result<()> {
+    let (hook_dir, gemini_dir) = super::resolve_paths(rt, global, ".gemini")?;
     let settings_path = gemini_dir.join("settings.json");
     install_to(
         &hook_dir,

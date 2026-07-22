@@ -12,6 +12,8 @@ pub mod config;
 
 use tokf_common::tokens::estimate_tokens_from_bytes;
 
+use crate::runtime::Runtime;
+
 #[cfg(any(feature = "otel", feature = "otel-grpc", feature = "otel-http"))]
 mod otel;
 
@@ -42,14 +44,15 @@ pub struct TelemetryEvent {
 impl TelemetryEvent {
     /// Build a `TelemetryEvent` from raw execution data.
     ///
-    /// Centralizes the token estimation (`tokf_common::tokens`), `.lines().count()`, and
-    /// `TOKF_OTEL_PIPELINE` env-var read so callers don't duplicate these.
+    /// Centralizes the token estimation (`tokf_common::tokens`), `.lines().count()`,
+    /// and the `TOKF_OTEL_PIPELINE` label so callers don't duplicate these.
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_possible_wrap,
         clippy::too_many_arguments
     )]
     pub fn new(
+        rt: &Runtime,
         filter_name: Option<String>,
         command: String,
         input_bytes: usize,
@@ -70,7 +73,7 @@ impl TelemetryEvent {
             raw_tokens: estimate_tokens_from_bytes(raw_bytes) as u64,
             filter_duration_secs: filter_duration.as_secs_f64(),
             exit_code,
-            pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
+            pipeline: rt.otel().pipeline.clone(),
         }
     }
 }
@@ -106,8 +109,8 @@ impl TelemetryReporter for NoopReporter {
 /// - telemetry is disabled in both flags and config, or
 /// - the binary was not compiled with an `OTel` transport feature, or
 /// - OTLP initialisation fails (with a warning printed to stderr).
-pub fn init(otel_export_requested: bool) -> Box<dyn TelemetryReporter> {
-    let mut cfg = config::load();
+pub fn init(rt: &Runtime, otel_export_requested: bool) -> Box<dyn TelemetryReporter> {
+    let mut cfg = config::load(rt);
     if otel_export_requested {
         cfg.enabled = true;
     }
@@ -164,7 +167,9 @@ mod tests {
     #[test]
     fn test_noop_init_does_not_panic() {
         let reporter = NoopReporter;
+        let rt = Runtime::isolated();
         reporter.report(&TelemetryEvent::new(
+            &rt,
             None,
             "ls".to_string(),
             120,
@@ -192,7 +197,9 @@ mod tests {
     fn test_telemetry_event_new_computes_fields() {
         let raw = "line1\nline2\nline3\n";
         let filtered = "summary\n";
+        let rt = Runtime::isolated();
         let event = TelemetryEvent::new(
+            &rt,
             Some("cargo/build".to_string()),
             "cargo build".to_string(),
             400, // input_bytes
@@ -216,7 +223,9 @@ mod tests {
     #[test]
     fn test_telemetry_event_new_passthrough() {
         let output = "hello\nworld\n";
+        let rt = Runtime::isolated();
         let event = TelemetryEvent::new(
+            &rt,
             None,
             "ls".to_string(),
             48,
@@ -238,7 +247,7 @@ mod tests {
     #[cfg(not(any(feature = "otel", feature = "otel-grpc", feature = "otel-http")))]
     #[test]
     fn test_init_without_otel_feature_returns_noop() {
-        let reporter = init(true); // otel_export_requested=true, but feature not compiled in
+        let reporter = init(&Runtime::isolated(), true); // otel_export_requested=true, but feature not compiled in
         // endpoint_description() returns None for NoopReporter
         assert!(reporter.endpoint_description().is_none());
     }
@@ -255,7 +264,9 @@ mod tests {
             (400, 100, 400),
             (98_765, 4_321, 98_765),
         ] {
+            let rt = Runtime::isolated();
             let ev = TelemetryEvent::new(
+                &rt,
                 None,
                 "cmd".to_string(),
                 i,

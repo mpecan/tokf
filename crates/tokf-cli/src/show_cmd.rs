@@ -1,11 +1,13 @@
 use crate::resolve;
 use tokf::config;
 
-pub fn cmd_show(filter: &str, hash: bool) -> i32 {
+use tokf::runtime::Runtime;
+
+pub fn cmd_show(rt: &Runtime, filter: &str, hash: bool) -> i32 {
     // Normalize: strip ".toml" suffix if present
     let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
 
-    let Ok(filters) = resolve::discover_filters(false) else {
+    let Ok(filters) = resolve::discover_filters(rt, false) else {
         eprintln!("[tokf] error: failed to discover filters");
         return 1;
     };
