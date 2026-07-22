@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use tokf::runner::CommandResult;
 use tokf::suite_discovery::discover_suites;
+use tokf_common::examples::reduction_pct;
 use tokf_common::test_case::TestCase;
 use tokf_common::tokens::{
     ArithmeticTokenCounter, Cl100kTokenCounter, DIVISOR, TokenCounter, estimate_tokens,
@@ -237,13 +238,6 @@ fn spread(samples: &[&Sample]) -> (f64, f64, f64) {
         percentile(&d, 0.50),
         percentile(&d, 0.90),
     )
-}
-
-fn reduction_pct(before: usize, after: usize) -> f64 {
-    if before == 0 {
-        return 0.0;
-    }
-    (1.0 - after as f64 / before as f64) * 100.0
 }
 
 fn truncate(s: &str, n: usize) -> String {
