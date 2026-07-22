@@ -9,6 +9,8 @@ use self::discovery::DiscoveredSuite;
 
 pub use tokf_common::test_case::TestCase;
 
+use tokf::runtime::Runtime;
+
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum VerifyScope {
     /// Repo-local custom filters only (`.tokf/filters/`)
@@ -167,6 +169,7 @@ fn print_safety_warnings(show_safety: bool, suite: &SuiteResult, count: &mut usi
     clippy::too_many_arguments
 )]
 pub fn cmd_verify(
+    rt: &Runtime,
     filter: Option<&str>,
     list: bool,
     json: bool,
@@ -175,7 +178,7 @@ pub fn cmd_verify(
     safety: bool,
 ) -> i32 {
     // Exit codes: 0 = all pass, 1 = assertion failure, 2 = config/IO error.
-    let search_dirs = discovery::verify_search_dirs(scope);
+    let search_dirs = discovery::verify_search_dirs(rt, scope);
 
     if list && require_all {
         let all = discovery::discover_all_filters_with_coverage(&search_dirs, filter);
@@ -251,11 +254,14 @@ pub fn cmd_verify(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     #[test]
     fn verify_search_dirs_none_returns_all() {
-        let dirs = discovery::verify_search_dirs(None);
+        let rt = Runtime::isolated();
+        let dirs = discovery::verify_search_dirs(&rt, None);
         // Should have at least stdlib (filters/) and project (.tokf/filters/)
         assert!(
             dirs.len() >= 2,
@@ -275,7 +281,8 @@ mod tests {
 
     #[test]
     fn verify_search_dirs_project_only_has_tokf() {
-        let dirs = discovery::verify_search_dirs(Some(&VerifyScope::Project));
+        let rt = Runtime::isolated();
+        let dirs = discovery::verify_search_dirs(&rt, Some(&VerifyScope::Project));
         assert_eq!(dirs.len(), 1, "project scope should return exactly 1 dir");
         let path = dirs[0].display().to_string();
         assert!(
@@ -286,7 +293,8 @@ mod tests {
 
     #[test]
     fn verify_search_dirs_stdlib_only_has_filters() {
-        let dirs = discovery::verify_search_dirs(Some(&VerifyScope::Stdlib));
+        let rt = Runtime::isolated();
+        let dirs = discovery::verify_search_dirs(&rt, Some(&VerifyScope::Stdlib));
         assert_eq!(dirs.len(), 1, "stdlib scope should return exactly 1 dir");
         let path = dirs[0].display().to_string();
         assert!(
@@ -299,17 +307,23 @@ mod tests {
         );
     }
 
+    /// Global scope resolves to the runtime's own user directory.
+    ///
+    /// This used to assert the path *contained* `tokf/filters`, which was only
+    /// true for the platform default layout — isolating the test broke it. The
+    /// behaviour being verified is that the directory comes from the runtime,
+    /// so assert exactly that.
     #[test]
     fn verify_search_dirs_global_only_has_config() {
-        let dirs = discovery::verify_search_dirs(Some(&VerifyScope::Global));
-        // May be 0 on systems without config_dir, but typically 1
-        assert!(dirs.len() <= 1, "global scope should return at most 1 dir");
-        if let Some(dir) = dirs.first() {
-            let path = dir.display().to_string();
-            assert!(
-                path.contains("tokf/filters"),
-                "expected tokf/filters in path: {path}"
-            );
-        }
+        let rt = Runtime::isolated();
+        let dirs = discovery::verify_search_dirs(&rt, Some(&VerifyScope::Global));
+        assert_eq!(dirs, vec![rt.user_dir().unwrap().join("filters")]);
+    }
+
+    #[test]
+    fn verify_search_dirs_global_is_empty_without_a_user_dir() {
+        let rt = Runtime::builder().without_dirs().build();
+        let dirs = discovery::verify_search_dirs(&rt, Some(&VerifyScope::Global));
+        assert!(dirs.is_empty(), "no user dir means no global search dir");
     }
 }

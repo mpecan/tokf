@@ -31,7 +31,7 @@ fn rewrite_pipe_strip_disabled_preserves_pipe() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -62,7 +62,7 @@ fn rewrite_pipe_strip_disabled_non_piped_still_rewritten() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test --lib",
         &config,
         &[dir.path().to_path_buf()],
@@ -95,7 +95,7 @@ fn rewrite_prefer_less_injects_flag() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -128,7 +128,7 @@ fn rewrite_prefer_less_without_pipe_no_effect() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test --lib",
         &config,
         &[dir.path().to_path_buf()],
@@ -159,7 +159,7 @@ fn rewrite_strip_false_overrides_prefer_less() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cargo test | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -187,7 +187,7 @@ fn rewrite_compound_prefer_less_per_segment() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "git add . && git diff | head -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -289,7 +289,7 @@ fn rewrite_no_mask_exit_code_simple_match() {
     let opts = types::RewriteOptions {
         no_mask_exit_code: true,
     };
-    let r = rewrite_with_config_and_options(
+    let r = rewrite_isolated_with_options(
         "cargo test --lib",
         &config,
         &[dir.path().to_path_buf()],
@@ -312,7 +312,7 @@ fn rewrite_no_mask_exit_code_piped_no_duplication() {
     let opts = types::RewriteOptions {
         no_mask_exit_code: true,
     };
-    let r = rewrite_with_config_and_options(
+    let r = rewrite_isolated_with_options(
         "cargo test | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -340,7 +340,7 @@ fn rewrite_no_mask_exit_code_compound() {
     let opts = types::RewriteOptions {
         no_mask_exit_code: true,
     };
-    let r = rewrite_with_config_and_options(
+    let r = rewrite_isolated_with_options(
         "git add . && cargo test",
         &config,
         &[dir.path().to_path_buf()],

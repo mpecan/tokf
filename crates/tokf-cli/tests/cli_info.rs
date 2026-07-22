@@ -1,13 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
+mod common;
+use common::tokf;
 
 use serde_json::Value;
 use tempfile::TempDir;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
 
 #[test]
 fn info_shows_version() {

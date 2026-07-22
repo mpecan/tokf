@@ -58,7 +58,7 @@ default = []
 stdlib-publish = []
 # Calibration only — off by default, never enabled by another crate.
 tokenizer = ["tokf-common/tokenizer"]
-test-keyring = []
+test-support = []
 otel = ["otel-http"]
 otel-http = [
   "dep:opentelemetry",
@@ -83,8 +83,7 @@ otel-grpc = [
 ]
 
 [dev-dependencies]
-tokf-dev = { path = ".", package = "tokf", features = ["test-keyring"] }
-serial_test = "3"
+tokf-dev = { path = ".", package = "tokf", features = ["test-support"] }
 mockito = "1.7.2"
 filetime = "0.2"
 

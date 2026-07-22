@@ -15,6 +15,8 @@ use crate::Cli;
 use crate::marker;
 use crate::resolve;
 
+use tokf::runtime::Runtime;
+
 // R6: Rename Opencode → OpenCode; use #[value(name = "opencode")] to keep CLI arg as "opencode".
 #[derive(clap::ValueEnum, Clone, Default, Debug)]
 pub enum HookTool {
@@ -191,21 +193,33 @@ pub fn or_exit(r: anyhow::Result<i32>) -> i32 {
     })
 }
 
+/// What `tokf run` was asked to execute.
+#[derive(Clone, Copy)]
+pub struct RunRequest<'a> {
+    pub command_args: &'a [String],
+    pub baseline_pipe: Option<&'a str>,
+    pub prefer_less: bool,
+}
+
 // NOTE: cmd_run integrates command resolution, execution, output rendering, tracking,
 // history recording, and telemetry. Splitting would require threading 6+ values through helpers.
 // Approved to exceed the 60-line limit.
 #[allow(clippy::too_many_lines)]
 pub fn cmd_run(
-    command_args: &[String],
-    baseline_pipe: Option<&str>,
-    prefer_less: bool,
+    rt: &Runtime,
+    request: RunRequest<'_>,
     cli: &Cli,
     reporter: &dyn telemetry::TelemetryReporter,
 ) -> anyhow::Result<i32> {
+    let RunRequest {
+        command_args,
+        baseline_pipe,
+        prefer_less,
+    } = request;
     let filter_match = if cli.no_filter {
         None
     } else {
-        resolve::find_filter(command_args, cli.verbose, cli.no_cache)?
+        resolve::find_filter(rt, command_args, cli.verbose, cli.no_cache)?
     };
 
     let words_consumed = filter_match.as_ref().map_or(0, |m| m.words_consumed);
@@ -236,11 +250,14 @@ pub fn cmd_run(
     };
     let matched_command = filter_match.as_ref().map(|m| m.matched_command.as_str());
     let cmd_result = resolve::run_command(
-        filter_cfg,
-        words_consumed,
-        matched_command,
-        command_args,
-        &remaining_args,
+        rt,
+        resolve::ResolvedCommand {
+            filter_cfg,
+            words_consumed,
+            matched_command,
+            command_args,
+            remaining_args: &remaining_args,
+        },
     )?;
 
     let filter_match = if passthrough { None } else { filter_match };
@@ -265,6 +282,7 @@ pub fn cmd_run(
         // waste storage and add noise with nothing useful to compare.
         // output_bytes = raw_len: what tokf actually printed (full raw output).
         resolve::record_run(
+            rt,
             command_args,
             None,
             None,
@@ -275,8 +293,9 @@ pub fn cmd_run(
             cmd_result.exit_code,
             false,
         );
-        resolve::try_auto_sync();
+        resolve::try_auto_sync(rt);
         reporter.report(&telemetry::TelemetryEvent::new(
+            rt,
             None,
             command_args.join(" "),
             input_bytes,
@@ -349,6 +368,7 @@ pub fn cmd_run(
     }
 
     resolve::record_run(
+        rt,
         command_args,
         Some(filter_name),
         Some(&filter_hash),
@@ -359,24 +379,27 @@ pub fn cmd_run(
         cmd_result.exit_code,
         pipe_override,
     );
-    resolve::try_auto_sync();
+    resolve::try_auto_sync(rt);
 
     // Detect whether to show the history hint:
     //   - filter author opted in via `show_history_hint = true`, or
     //   - the same command was re-run (LLM confusion signal: it didn't act on
     //     the previous filtered output and is asking again).
     // Check the DB before recording so we compare against the *previous* run.
-    let show_hint = cfg.show_history_hint || history::try_was_recently_run(&command_str);
+    let show_hint = cfg.show_history_hint || history::try_was_recently_run(rt, &command_str);
 
     let history_id = history::try_record(
-        &command_str,
-        filter_name,
-        &cmd_result.combined,
-        &final_output,
-        cmd_result.exit_code,
+        rt,
+        &history::RecordedRun {
+            command: &command_str,
+            filter_name,
+            raw_output: &cmd_result.combined,
+            filtered_output: &final_output,
+            exit_code: cmd_result.exit_code,
+        },
     );
 
-    let render_cfg = marker::load_render_config();
+    let render_cfg = marker::load_render_config(rt);
 
     let mask = !cli.no_mask_exit_code && cmd_result.exit_code != 0;
     if mask {
@@ -391,6 +414,7 @@ pub fn cmd_run(
     }
 
     reporter.report(&telemetry::TelemetryEvent::new(
+        rt,
         Some(filter_name.to_string()),
         command_str,
         input_bytes,
@@ -472,8 +496,8 @@ pub fn cmd_apply(
 
 // Note: cmd_ls and cmd_which always use the cache. The --no-cache flag
 // only affects `tokf run`. Pass --no-cache to `tokf run` if you need uncached resolution.
-pub fn cmd_ls(verbose: bool) -> i32 {
-    let Ok(filters) = resolve::discover_filters(false) else {
+pub fn cmd_ls(rt: &Runtime, verbose: bool) -> i32 {
+    let Ok(filters) = resolve::discover_filters(rt, false) else {
         eprintln!("[tokf] error: failed to discover filters");
         return 1;
     };
@@ -513,14 +537,14 @@ pub fn cmd_ls(verbose: bool) -> i32 {
     0
 }
 
-pub fn cmd_rewrite(command: &str, verbose: bool) -> i32 {
-    let result = rewrite::rewrite(command, verbose);
+pub fn cmd_rewrite(rt: &Runtime, command: &str, verbose: bool) -> i32 {
+    let result = rewrite::rewrite(rt, command, verbose);
     println!("{result}");
     0
 }
 
-pub fn cmd_skill_install(global: bool) -> i32 {
-    match skill::install(global) {
+pub fn cmd_skill_install(rt: &Runtime, global: bool) -> i32 {
+    match skill::install(rt, global) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -529,12 +553,12 @@ pub fn cmd_skill_install(global: bool) -> i32 {
     }
 }
 
-pub fn cmd_hook_handle(format: &HookFormat, no_cache: bool) -> i32 {
+pub fn cmd_hook_handle(rt: &Runtime, format: &HookFormat, no_cache: bool) -> i32 {
     let outcome = match format {
-        HookFormat::ClaudeCode => hook::handle(no_cache),
-        HookFormat::Gemini => hook::handle_gemini(no_cache),
-        HookFormat::Cursor => hook::handle_cursor(no_cache),
-        HookFormat::Codex => hook::handle_codex(no_cache),
+        HookFormat::ClaudeCode => hook::handle(rt, no_cache),
+        HookFormat::Gemini => hook::handle_gemini(rt, no_cache),
+        HookFormat::Cursor => hook::handle_cursor(rt, no_cache),
+        HookFormat::Codex => hook::handle_codex(rt, no_cache),
     };
     hook_outcome_exit_code(format, outcome)
 }
@@ -556,6 +580,7 @@ const fn hook_outcome_exit_code(format: &HookFormat, outcome: hook::HookOutcome)
 }
 
 pub fn cmd_hook_install(
+    rt: &Runtime,
     global: bool,
     tool: &HookTool,
     path: Option<&Path>,
@@ -563,15 +588,15 @@ pub fn cmd_hook_install(
 ) -> i32 {
     let tokf_bin = path.map_or_else(|| "tokf".to_string(), |p| p.display().to_string());
     let result = match tool {
-        HookTool::ClaudeCode => hook::install(global, &tokf_bin, install_context),
+        HookTool::ClaudeCode => hook::install(rt, global, &tokf_bin, install_context),
         HookTool::OpenCode => hook::opencode::install(global, &tokf_bin),
-        HookTool::Codex => hook::codex::install(global, &tokf_bin, install_context),
-        HookTool::GeminiCli => hook::gemini::install(global, &tokf_bin, install_context),
-        HookTool::Cursor => hook::cursor::install(global, &tokf_bin, install_context),
+        HookTool::Codex => hook::codex::install(rt, global, &tokf_bin, install_context),
+        HookTool::GeminiCli => hook::gemini::install(rt, global, &tokf_bin, install_context),
+        HookTool::Cursor => hook::cursor::install(rt, global, &tokf_bin, install_context),
         HookTool::Cline => hook::cline::install(global),
         HookTool::Windsurf => hook::windsurf::install(global),
         HookTool::Copilot => hook::copilot::install(global),
-        HookTool::Aider => hook::aider::install(global),
+        HookTool::Aider => hook::aider::install(rt, global),
     };
     match result {
         Ok(()) => 0,

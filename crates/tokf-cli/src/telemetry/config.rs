@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::runtime::Runtime;
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Protocol {
     #[default]
@@ -104,15 +106,15 @@ const fn default_endpoint(protocol: &Protocol) -> &'static str {
     }
 }
 
-/// Load `TelemetryConfig` by merging the optional config file with environment variables.
-/// Environment variables take precedence over the file.
-pub fn load() -> TelemetryConfig {
+/// Load `TelemetryConfig` by merging the optional config file with the
+/// environment captured in `rt`. The environment takes precedence over the file.
+pub fn load(rt: &Runtime) -> TelemetryConfig {
     let mut config = TelemetryConfig::default();
     let mut endpoint_explicitly_set = false;
 
-    // Load from file (optional) — uses the centralized paths module so
-    // TOKF_HOME is respected consistently across all of tokf.
-    if let Some(cfg_dir) = crate::paths::user_dir() {
+    // Load from file (optional) — the runtime resolves TOKF_HOME, so this is
+    // consistent with every other config path in tokf.
+    if let Some(cfg_dir) = rt.user_dir() {
         let cfg_path = cfg_dir.join("config.toml");
         if cfg_path.exists()
             && let Ok(content) = std::fs::read_to_string(&cfg_path)
@@ -125,21 +127,22 @@ pub fn load() -> TelemetryConfig {
         }
     }
 
-    // Override with env vars
-    if let Ok(val) = std::env::var("TOKF_TELEMETRY_ENABLED") {
+    // Override with the captured environment
+    let otel = rt.otel();
+    if let Some(val) = otel.telemetry_enabled.as_ref() {
         config.enabled = matches!(val.to_ascii_lowercase().as_str(), "true" | "1" | "yes");
     }
-    if let Ok(val) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
+    if let Some(val) = otel.endpoint.clone() {
         config.endpoint = val;
         endpoint_explicitly_set = true;
     }
-    if let Ok(val) = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL") {
-        config.protocol = Protocol::parse(&val);
+    if let Some(val) = otel.protocol.as_ref() {
+        config.protocol = Protocol::parse(val);
     }
-    if let Ok(val) = std::env::var("OTEL_EXPORTER_OTLP_HEADERS") {
-        config.headers = parse_headers(&val);
+    if let Some(val) = otel.headers.as_ref() {
+        config.headers = parse_headers(val);
     }
-    if let Ok(attrs) = std::env::var("OTEL_RESOURCE_ATTRIBUTES")
+    if let Some(attrs) = otel.resource_attributes.as_ref()
         && let Some(name) = attrs.split(',').find_map(|kv| {
             let mut parts = kv.splitn(2, '=');
             let key = parts.next()?.trim();
@@ -167,6 +170,7 @@ pub fn load() -> TelemetryConfig {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::runtime::OtelEnv;
 
     #[test]
     fn test_default_config() {
@@ -252,133 +256,131 @@ x-team = "platform"
     }
 
     // -----------------------------------------------------------------------
-    // env var override tests — serialised to avoid cross-test contamination
+    // Environment-override tests.
+    //
+    // These build the captured environment directly rather than mutating the
+    // process, so they need no `#[serial]` and cannot contaminate each other.
     // -----------------------------------------------------------------------
 
+    fn rt_with(otel: OtelEnv) -> crate::runtime::Runtime {
+        crate::runtime::Runtime::builder().otel(otel).build()
+    }
+
     #[test]
-    #[serial_test::serial]
-    fn test_load_enabled_via_env() {
+    fn load_enabled_via_env() {
         for val in ["true", "1", "yes", "TRUE", "YES"] {
-            // SAFETY: single-threaded via serial_test; no other thread reads this var.
-            unsafe { std::env::set_var("TOKF_TELEMETRY_ENABLED", val) };
-            let cfg = load();
-            assert!(
-                cfg.enabled,
-                "expected enabled for TOKF_TELEMETRY_ENABLED={val}"
-            );
+            let rt = rt_with(OtelEnv {
+                telemetry_enabled: Some(val.to_string()),
+                ..OtelEnv::default()
+            });
+            assert!(load(&rt).enabled, "expected enabled for {val}");
         }
         for val in ["false", "0", "no", "off", ""] {
-            unsafe { std::env::set_var("TOKF_TELEMETRY_ENABLED", val) };
-            let cfg = load();
-            assert!(
-                !cfg.enabled,
-                "expected disabled for TOKF_TELEMETRY_ENABLED={val}"
-            );
+            let rt = rt_with(OtelEnv {
+                telemetry_enabled: Some(val.to_string()),
+                ..OtelEnv::default()
+            });
+            assert!(!load(&rt).enabled, "expected disabled for {val}");
         }
-        unsafe { std::env::remove_var("TOKF_TELEMETRY_ENABLED") };
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_endpoint_via_env() {
-        // SAFETY: single-threaded via serial_test.
-        unsafe {
-            std::env::set_var(
-                "OTEL_EXPORTER_OTLP_ENDPOINT",
-                "http://otel.example.com:4317",
-            );
-        };
-        let cfg = load();
-        assert_eq!(cfg.endpoint, "http://otel.example.com:4317");
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
+    fn load_endpoint_via_env() {
+        let rt = rt_with(OtelEnv {
+            endpoint: Some("http://collector:4318".to_string()),
+            ..OtelEnv::default()
+        });
+        assert_eq!(load(&rt).endpoint, "http://collector:4318");
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_protocol_via_env() {
-        // SAFETY: single-threaded via serial_test.
-        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc") };
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
-        let cfg = load();
+    fn load_protocol_via_env() {
+        let rt = rt_with(OtelEnv {
+            protocol: Some("grpc".to_string()),
+            ..OtelEnv::default()
+        });
+        let cfg = load(&rt);
         assert_eq!(cfg.protocol, Protocol::Grpc);
-        // When protocol is set to gRPC but no explicit endpoint, default to :4317
+        // No explicit endpoint, so it follows the protocol's default port.
         assert_eq!(cfg.endpoint, "http://localhost:4317");
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL") };
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_grpc_protocol_with_explicit_endpoint() {
-        // SAFETY: single-threaded via serial_test.
-        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc") };
-        unsafe {
-            std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://custom:9999");
-        };
-        let cfg = load();
+    fn load_grpc_protocol_keeps_an_explicit_endpoint() {
+        let rt = rt_with(OtelEnv {
+            protocol: Some("grpc".to_string()),
+            endpoint: Some("http://custom:1234".to_string()),
+            ..OtelEnv::default()
+        });
+        let cfg = load(&rt);
         assert_eq!(cfg.protocol, Protocol::Grpc);
-        // Explicit endpoint should not be overridden
-        assert_eq!(cfg.endpoint, "http://custom:9999");
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL") };
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT") };
+        assert_eq!(cfg.endpoint, "http://custom:1234");
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_headers_via_env() {
-        // SAFETY: single-threaded via serial_test.
-        unsafe { std::env::set_var("OTEL_EXPORTER_OTLP_HEADERS", "x-api-key=secret,x-team=eng") };
-        let cfg = load();
-        assert_eq!(cfg.headers.get("x-api-key"), Some(&"secret".to_string()));
-        assert_eq!(cfg.headers.get("x-team"), Some(&"eng".to_string()));
-        unsafe { std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS") };
+    fn load_headers_via_env() {
+        let rt = rt_with(OtelEnv {
+            headers: Some("api-key=secret,x-scope=team".to_string()),
+            ..OtelEnv::default()
+        });
+        let cfg = load(&rt);
+        assert_eq!(cfg.headers.get("api-key"), Some(&"secret".to_string()));
+        assert_eq!(cfg.headers.get("x-scope"), Some(&"team".to_string()));
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_service_name_from_resource_attributes() {
-        // SAFETY: single-threaded via serial_test.
-        unsafe {
-            std::env::set_var(
-                "OTEL_RESOURCE_ATTRIBUTES",
-                "deployment.env=prod,service.name=my-tokf,team=platform",
-            );
-        }
-        let cfg = load();
-        assert_eq!(cfg.service_name, "my-tokf");
-        unsafe { std::env::remove_var("OTEL_RESOURCE_ATTRIBUTES") };
+    fn load_service_name_from_resource_attributes() {
+        let rt = rt_with(OtelEnv {
+            resource_attributes: Some("deployment=prod,service.name=tokf-ci".to_string()),
+            ..OtelEnv::default()
+        });
+        assert_eq!(load(&rt).service_name, "tokf-ci");
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_resource_attributes_without_service_name() {
-        // SAFETY: single-threaded via serial_test.
-        unsafe { std::env::set_var("OTEL_RESOURCE_ATTRIBUTES", "deployment.env=prod") };
-        let cfg = load();
-        // service_name unchanged — falls back to default
-        assert_eq!(cfg.service_name, "tokf");
-        unsafe { std::env::remove_var("OTEL_RESOURCE_ATTRIBUTES") };
+    fn load_resource_attributes_without_service_name_keeps_the_default() {
+        let rt = rt_with(OtelEnv {
+            resource_attributes: Some("deployment=prod,region=eu".to_string()),
+            ..OtelEnv::default()
+        });
+        assert_eq!(load(&rt).service_name, "tokf");
     }
 
     #[test]
-    #[serial_test::serial]
-    fn test_load_reads_config_from_tokf_home() {
-        let tmp = tempfile::tempdir().expect("create tempdir");
-        let cfg_path = tmp.path().join("config.toml");
+    fn load_reads_config_from_the_runtime_user_dir() {
+        let rt = crate::runtime::Runtime::isolated();
+        let dir = rt.user_dir().expect("isolated runtime has a user dir");
+        std::fs::create_dir_all(&dir).expect("create config dir");
         std::fs::write(
-            &cfg_path,
-            "[telemetry]\nenabled = true\nendpoint = \"http://custom:4318\"\n",
+            dir.join("config.toml"),
+            "[telemetry]\nenabled = true\nendpoint = \"http://from-file:4318\"\n",
         )
         .expect("write config");
 
-        let _guard = crate::paths::HomeGuard::set(tmp.path());
-        // Clear env vars that would override the file values.
-        unsafe {
-            std::env::remove_var("TOKF_TELEMETRY_ENABLED");
-            std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-        }
+        let cfg = load(&rt);
+        assert!(cfg.enabled, "config file should enable telemetry");
+        assert_eq!(cfg.endpoint, "http://from-file:4318");
+    }
 
-        let cfg = load();
-        assert!(cfg.enabled);
-        assert_eq!(cfg.endpoint, "http://custom:4318");
+    #[test]
+    fn the_environment_overrides_the_config_file() {
+        let rt = crate::runtime::Runtime::isolated();
+        let dir = rt.user_dir().expect("isolated runtime has a user dir");
+        std::fs::create_dir_all(&dir).expect("create config dir");
+        std::fs::write(
+            dir.join("config.toml"),
+            "[telemetry]\nenabled = true\nendpoint = \"http://from-file:4318\"\n",
+        )
+        .expect("write config");
+
+        let rt = crate::runtime::Runtime::builder()
+            .home(dir)
+            .otel(OtelEnv {
+                endpoint: Some("http://from-env:4318".to_string()),
+                ..OtelEnv::default()
+            })
+            .build();
+
+        assert_eq!(load(&rt).endpoint, "http://from-env:4318");
     }
 }

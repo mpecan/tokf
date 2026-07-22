@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+mod common;
+use common::tokf;
 
 /// `remote status` must exit 0 regardless of registration state.
 /// We isolate the test by pointing HOME at a temp directory so the result

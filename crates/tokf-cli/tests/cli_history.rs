@@ -4,16 +4,17 @@
     clippy::items_after_statements
 )]
 
+mod common;
+
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
 fn tokf_with_db(db_path: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+    // TOKF_HOME points at a directory that does not exist, so the binary never
+    // finds a real auth.toml and never touches the OS keyring during tests.
+    let mut cmd = common::isolated_command(&db_path.parent().unwrap().join("tokf-home"));
     cmd.env("TOKF_DB_PATH", db_path);
-    // Point TOKF_HOME at a nonexistent dir so the binary never finds a real
-    // auth.toml and never touches the OS keyring during tests.
-    cmd.env("TOKF_HOME", db_path.parent().unwrap().join("tokf-home"));
     cmd
 }
 

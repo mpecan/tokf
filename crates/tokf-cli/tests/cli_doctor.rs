@@ -11,14 +11,15 @@
 //! `tracking.db` (via `TOKF_DB_PATH` + `TOKF_HOME`), spawns the binary,
 //! and asserts on stdout / exit codes.
 
+mod common;
+
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
 fn tokf_with_db(db_path: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+    let mut cmd = common::isolated_command(&db_path.parent().unwrap().join("tokf-home"));
     cmd.env("TOKF_DB_PATH", db_path);
-    cmd.env("TOKF_HOME", db_path.parent().unwrap().join("tokf-home"));
     // Force colour off — we test against plain text.
     cmd.env("NO_COLOR", "1");
     cmd

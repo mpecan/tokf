@@ -12,6 +12,8 @@ use tempfile::TempDir;
 
 use super::*;
 
+use crate::runtime::Runtime;
+
 // --- try_load_filter ---
 
 #[test]
@@ -50,7 +52,8 @@ fn test_load_real_stdlib_filter() {
 
 #[test]
 fn test_default_search_dirs_non_empty_and_starts_with_local() {
-    let dirs = default_search_dirs();
+    let rt = Runtime::isolated();
+    let dirs = default_search_dirs(&rt);
     assert!(!dirs.is_empty());
     assert!(
         dirs[0].is_absolute(),
@@ -66,7 +69,8 @@ fn test_default_search_dirs_non_empty_and_starts_with_local() {
 
 #[test]
 fn test_default_search_dirs_only_local_and_user() {
-    let dirs = default_search_dirs();
+    let rt = Runtime::isolated();
+    let dirs = default_search_dirs(&rt);
     // Should have at most 2 dirs: local (.tokf/filters) and user config
     // The binary-adjacent path has been removed; embedded stdlib replaces it.
     assert!(

@@ -1,10 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_const_for_fn)]
 
-use std::process::{Command, Stdio};
+mod common;
+use common::tokf;
 
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+use std::process::Stdio;
 
 fn manifest_dir() -> &'static str {
     env!("CARGO_MANIFEST_DIR")

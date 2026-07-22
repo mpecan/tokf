@@ -9,7 +9,7 @@ publish = false
 path = "src/lib.rs"
 
 [dev-dependencies]
-tokf = { path = "../tokf-cli" }
+tokf = { path = "../tokf-cli", features = ["test-support"] }
 tokf-server = { path = "../tokf-server", features = ["test-helpers"] }
 tokf-common = { path = "../tokf-common" }
 crdb-test-macro = { path = "../crdb-test-macro" }

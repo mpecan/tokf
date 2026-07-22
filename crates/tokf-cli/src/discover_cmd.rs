@@ -1,6 +1,10 @@
+use anyhow::Context as _;
+
 use std::path::PathBuf;
 
 use tokf::discover;
+
+use tokf::runtime::Runtime;
 
 #[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
 pub struct DiscoverOpts<'a> {
@@ -14,8 +18,8 @@ pub struct DiscoverOpts<'a> {
     pub include_filtered: bool,
 }
 
-pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
-    let session_files = collect_session_files(opts.project, opts.all, opts.session)?;
+pub fn cmd_discover(rt: &Runtime, opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
+    let session_files = collect_session_files(rt, opts.project, opts.all, opts.session)?;
 
     if session_files.is_empty() {
         eprintln!("[tokf] no session files found");
@@ -29,7 +33,7 @@ pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
         return Ok(1);
     }
 
-    let mut summary = discover::discover_sessions(&filtered_files, opts.no_cache)?;
+    let mut summary = discover::discover_sessions(rt, &filtered_files, opts.no_cache)?;
 
     if !opts.include_filtered {
         summary.results.retain(|r| !r.has_filter);
@@ -57,6 +61,7 @@ pub fn cmd_discover(opts: &DiscoverOpts<'_>) -> anyhow::Result<i32> {
 }
 
 fn collect_session_files(
+    rt: &Runtime,
     project: Option<&str>,
     all: bool,
     session: Option<&str>,
@@ -77,7 +82,9 @@ fn collect_session_files(
         std::fs::canonicalize(p)
             .map_err(|e| anyhow::anyhow!("cannot resolve project path '{p}': {e}"))?
     } else {
-        std::env::current_dir()?
+        rt.cwd()
+            .context("could not determine working directory")?
+            .to_path_buf()
     };
 
     Ok(discover::session_files_for_project(&project_path))

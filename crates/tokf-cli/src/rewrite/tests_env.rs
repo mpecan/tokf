@@ -18,7 +18,7 @@ fn rewrite_single_env_var_prefix() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "DEBUG=1 git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -37,7 +37,7 @@ fn rewrite_multiple_env_vars_prefix() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "RUST_LOG=debug CARGO_TERM_COLOR=always cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -59,7 +59,7 @@ fn rewrite_env_var_with_strippable_pipe() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "RUST_LOG=debug cargo test | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -81,7 +81,7 @@ fn rewrite_env_var_with_non_strippable_pipe_passthrough() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "DEBUG=1 git status | wc -l",
         &config,
         &[dir.path().to_path_buf()],
@@ -95,7 +95,7 @@ fn rewrite_env_var_with_non_strippable_pipe_passthrough() {
 fn rewrite_env_var_no_filter_match_passthrough() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "FOO=bar unknown-cmd",
         &config,
         &[dir.path().to_path_buf()],
@@ -119,7 +119,7 @@ fn rewrite_env_var_in_compound_command() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "DEBUG=1 git status && cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -139,7 +139,7 @@ fn rewrite_env_var_with_full_path_command() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "FOO=bar /usr/bin/git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -155,7 +155,7 @@ fn rewrite_env_var_with_transparent_global_flags() {
     fs::write(dir.path().join("git-log.toml"), "command = \"git log\"").unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "FOO=bar git -C /repo log --oneline",
         &config,
         &[dir.path().to_path_buf()],
@@ -180,7 +180,7 @@ fn rewrite_compound_both_segments_have_env_vars() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "A=1 git status && B=2 cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -201,7 +201,7 @@ fn rewrite_env_prefixed_tokf_command_not_double_wrapped() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "DEBUG=1 tokf run git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -235,7 +235,7 @@ fn rewrite_user_skip_pattern_matches_env_stripped_command() {
     };
     // "FOO=bar git status" does NOT start with "git", so skip does not fire
     // and the command IS rewritten.
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "FOO=bar git status",
         &config,
         &[dir.path().to_path_buf()],

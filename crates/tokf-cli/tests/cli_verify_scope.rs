@@ -1,13 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod common;
+use common::tokf;
+
 use std::fs;
-use std::process::Command;
 
 use tempfile::TempDir;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
 
 /// Create a temp dir with a project-scoped filter and test suite.
 fn setup_project_filter(tmp: &TempDir) {

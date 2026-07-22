@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use tokf::config::{self, ResolvedFilter};
-use tokf::tracking;
+
+use tokf::runtime::Runtime;
 
 /// Write-access status for a path that tokf needs to write to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -140,9 +141,9 @@ pub struct InfoOutput {
     pub filters: Option<FilterCounts>,
 }
 
-pub fn cmd_info(json: bool) -> i32 {
-    let search_dirs = config::default_search_dirs();
-    let info = collect_info(&search_dirs);
+pub fn cmd_info(rt: &Runtime, json: bool) -> i32 {
+    let search_dirs = config::default_search_dirs(rt);
+    let info = collect_info(rt, &search_dirs);
 
     if json {
         crate::output::print_json(&info);
@@ -194,7 +195,7 @@ pub fn count_filters_by_priority(filters: &[ResolvedFilter]) -> FilterCounts {
     }
 }
 
-pub fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
+pub fn collect_info(rt: &Runtime, search_dirs: &[PathBuf]) -> InfoOutput {
     let filters = match config::discover_all_filters(search_dirs) {
         Ok(f) => Some(f),
         Err(e) => {
@@ -202,24 +203,24 @@ pub fn collect_info(search_dirs: &[PathBuf]) -> InfoOutput {
             None
         }
     };
-    collect_info_with_filters(search_dirs, filters.as_deref())
+    collect_info_with_filters(rt, search_dirs, filters.as_deref())
 }
 
 /// Build an `InfoOutput` from a pre-discovered filter list. Pass `None` when
 /// discovery failed; the caller is expected to have already logged the error.
 pub fn collect_info_with_filters(
+    rt: &Runtime,
     search_dirs: &[PathBuf],
     filters: Option<&[ResolvedFilter]>,
 ) -> InfoOutput {
     let dirs = collect_search_dirs(search_dirs);
 
-    // Normalise to None when empty/whitespace-only, matching paths::resolve_user_path() behaviour.
-    let home_override = std::env::var("TOKF_HOME")
-        .ok()
-        .map(|s| s.trim().to_string())
+    let home_override = rt
+        .home_override()
+        .map(|p| p.to_string_lossy().trim().to_string())
         .filter(|s| !s.is_empty());
-    let env_override = tokf::paths::db_path_override().map(|p| p.display().to_string());
-    let db_path = tracking::db_path();
+    let env_override = rt.db_path_override().map(|p| p.display().to_string());
+    let db_path = rt.tracking_db_path();
     let db_exists = db_path.as_ref().is_some_and(|p| p.exists());
     let db_access = db_path.as_ref().map(|p| check_write_access(p));
     let tracking_db = TrackingDb {
@@ -229,7 +230,7 @@ pub fn collect_info_with_filters(
         access: db_access,
     };
 
-    let cache_path = config::cache::cache_path(search_dirs);
+    let cache_path = config::cache::cache_path(rt, search_dirs);
     let cache_exists = cache_path.as_ref().is_some_and(|p| p.exists());
     let cache_access = cache_path.as_ref().map(|p| check_write_access(p));
     let cache = CacheInfo {
@@ -238,7 +239,7 @@ pub fn collect_info_with_filters(
         access: cache_access,
     };
 
-    let config_files = collect_config_files();
+    let config_files = collect_config_files(rt);
 
     InfoOutput {
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -251,10 +252,10 @@ pub fn collect_info_with_filters(
     }
 }
 
-fn collect_config_files() -> Vec<ConfigFileEntry> {
-    let user_dir = tokf::paths::user_dir();
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = tokf::history::project_root_for(&cwd);
+fn collect_config_files(rt: &Runtime) -> Vec<ConfigFileEntry> {
+    let user_dir = rt.user_dir();
+    let cwd = rt.cwd_or_empty();
+    let project_root = tokf::history::project_root_for(cwd);
     let local_dir = project_root.join(".tokf");
 
     let mut entries = Vec::new();

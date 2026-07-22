@@ -106,8 +106,9 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
     let register_base = base_url.clone();
     let register_token = token.clone();
     let mid = machine_id.clone();
+    let rt = h.rt.clone();
     let registered = tokio::task::spawn_blocking(move || {
-        let client = Client::new(&register_base, Some(&register_token)).unwrap();
+        let client = Client::new(&rt, &register_base, Some(&register_token)).unwrap();
         machine_client::register_machine(&client, &mid, "e2e-host")
     })
     .await
@@ -140,8 +141,9 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
 
     let sync_base = base_url.clone();
     let sync_token = token.clone();
+    let rt = h.rt.clone();
     let resp = tokio::task::spawn_blocking(move || {
-        let client = Client::new(&sync_base, Some(&sync_token)).unwrap();
+        let client = Client::new(&rt, &sync_base, Some(&sync_token)).unwrap();
         tokf::remote::sync_client::sync_events(&client, &req)
     })
     .await

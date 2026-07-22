@@ -2,6 +2,8 @@ use super::parser::parse_session;
 use super::types::CommandAnalysis;
 use super::*;
 
+use crate::runtime::Runtime;
+
 fn make_jsonl_line(json: &str) -> String {
     format!("{json}\n")
 }
@@ -345,7 +347,9 @@ fn discover_groups_unfiltered_commands() {
     let session_path = dir.path().join("session_group.jsonl");
     std::fs::write(&session_path, &session).unwrap();
 
-    let summary = discover_sessions(&[session_path], true).unwrap();
+    let rt = Runtime::isolated();
+
+    let summary = discover_sessions(&rt, &[session_path], true).unwrap();
     // Both `find` commands should be grouped under the "find" key
     let find_results: Vec<_> = summary
         .results
@@ -374,7 +378,9 @@ fn discover_sessions_with_temp_files() {
     let session_path = dir.path().join("session1.jsonl");
     std::fs::write(&session_path, &session).unwrap();
 
-    let summary = discover_sessions(&[session_path], true).unwrap();
+    let rt = Runtime::isolated();
+
+    let summary = discover_sessions(&rt, &[session_path], true).unwrap();
     assert_eq!(summary.sessions_scanned, 1);
     assert_eq!(summary.total_commands, 2);
     // Both should be filterable (git/status is in stdlib)
@@ -393,7 +399,9 @@ fn discover_sessions_counts_already_filtered() {
     let session_path = dir.path().join("session2.jsonl");
     std::fs::write(&session_path, &session).unwrap();
 
-    let summary = discover_sessions(&[session_path], true).unwrap();
+    let rt = Runtime::isolated();
+
+    let summary = discover_sessions(&rt, &[session_path], true).unwrap();
     assert_eq!(summary.already_filtered, 1);
     assert_eq!(summary.filterable_commands, 0);
 }

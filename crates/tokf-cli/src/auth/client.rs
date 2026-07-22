@@ -2,6 +2,8 @@ use std::fmt;
 
 use serde::Deserialize;
 
+use crate::runtime::Runtime;
+
 #[derive(Deserialize)]
 pub struct DeviceFlowResponse {
     pub device_code: String,
@@ -76,11 +78,9 @@ pub enum PollResult {
     Failed(String),
 }
 
-const DEFAULT_SERVER_URL: &str = "https://api.tokf.net";
-
-/// Returns the tokf server URL from `TOKF_SERVER_URL` or the default.
-pub fn server_url() -> String {
-    std::env::var("TOKF_SERVER_URL").unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string())
+/// Returns the tokf server URL.
+pub fn server_url(rt: &Runtime) -> String {
+    rt.server_url().to_string()
 }
 
 /// Returns `true` if the URL uses HTTPS or targets localhost.
@@ -326,12 +326,16 @@ mod tests {
     }
 
     #[test]
-    fn server_url_default() {
-        // When TOKF_SERVER_URL is not set, should return default.
-        // Can't unset env vars reliably in parallel tests, so just verify
-        // the function doesn't panic and returns a non-empty string.
-        let url = server_url();
-        assert!(!url.is_empty());
+    fn server_url_comes_from_the_runtime() {
+        // The isolated runtime carries the documented default...
+        let rt = crate::runtime::Runtime::isolated();
+        assert_eq!(server_url(&rt), crate::runtime::DEFAULT_SERVER_URL);
+
+        // ...and an override is honoured without touching the environment.
+        let rt = crate::runtime::Runtime::builder()
+            .server_url("https://staging.example.com")
+            .build();
+        assert_eq!(server_url(&rt), "https://staging.example.com");
     }
 
     #[test]

@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod common;
+
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -7,10 +9,9 @@ use std::process::Command;
 use tempfile::TempDir;
 
 fn tokf_in(dir: &TempDir) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
-    cmd.current_dir(dir.path());
     // Isolate shims/cache under the temp dir so parallel tests don't interfere.
-    cmd.env("TOKF_HOME", dir.path().join(".tokf"));
+    let mut cmd = common::isolated_command(&dir.path().join(".tokf"));
+    cmd.current_dir(dir.path());
     cmd
 }
 

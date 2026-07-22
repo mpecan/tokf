@@ -1,12 +1,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod common;
+
+use common::tokf;
+
 use std::process::Command;
 
 use tempfile::TempDir;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
 
 const fn tokf_path() -> &'static str {
     env!("CARGO_BIN_EXE_tokf")
@@ -354,9 +354,8 @@ fn shell_c_filters_git_status_with_interleaved_flags() {
     // because the old regex-based matching didn't handle interleaved flags.
     let dir = TempDir::new().unwrap();
 
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -380,15 +379,13 @@ fn shell_c_filters_git_no_pager_log() {
     // Another interleaved-flag case: `git --no-pager log`
     let dir = TempDir::new().unwrap();
 
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
     // Create an initial commit so `git log` has output.
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["commit", "--allow-empty", "-m", "init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -420,9 +417,8 @@ fn shell_c_filters_full_path_git() {
     }
 
     let dir = TempDir::new().unwrap();
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -452,9 +448,8 @@ fn make_shell_override_filters_git_status() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -473,15 +468,13 @@ fn make_shell_override_filters_git_status() {
     std::fs::write(dir.path().join("Makefile"), makefile).unwrap();
 
     // Create a commit so `git log` has output.
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["commit", "--allow-empty", "-m", "init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
 
-    let output = Command::new("make")
+    let output = common::isolated_tool("make", dir.path())
         .arg("check")
-        .current_dir(dir.path())
         .env("TOKF_VERBOSE", "1")
         .output()
         .unwrap();
@@ -504,14 +497,12 @@ fn just_shell_override_filters_git_status() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
-    Command::new("git")
+    common::isolated_tool("git", dir.path())
         .args(["commit", "--allow-empty", "-m", "init"])
-        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -529,9 +520,8 @@ fn just_shell_override_filters_git_status() {
     );
     std::fs::write(dir.path().join("justfile"), justfile).unwrap();
 
-    let output = Command::new("just")
+    let output = common::isolated_tool("just", dir.path())
         .arg("check")
-        .current_dir(dir.path())
         .env("TOKF_VERBOSE", "1")
         .output()
         .unwrap();

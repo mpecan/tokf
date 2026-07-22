@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::runtime::Runtime;
+
 const SKILL_MD: &str = include_str!("../skills/tokf-filter/SKILL.md");
 const STEP_REFERENCE_MD: &str = include_str!("../skills/tokf-filter/references/step-reference.md");
 const EXAMPLES_TOML: &str = include_str!("../skills/tokf-filter/references/examples.toml");
@@ -45,13 +47,17 @@ const DISCOVER_SKILL: SkillBundle = SkillBundle {
 const ALL_SKILLS: &[&SkillBundle] = &[&FILTER_SKILL, &DISCOVER_SKILL];
 
 /// Determine the skills parent directory.
-fn skills_parent(global: bool) -> anyhow::Result<PathBuf> {
+fn skills_parent(rt: &Runtime, global: bool) -> anyhow::Result<PathBuf> {
     if global {
+        // Claude Code's own skills directory, not a tokf-managed path — it is
+        // deliberately not affected by TOKF_HOME.
         let home = dirs::home_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine home directory"))?;
         Ok(home.join(".claude/skills"))
     } else {
-        let cwd = std::env::current_dir()?;
+        let cwd = rt
+            .cwd()
+            .ok_or_else(|| anyhow::anyhow!("could not determine working directory"))?;
         Ok(cwd.join(".claude/skills"))
     }
 }
@@ -61,8 +67,8 @@ fn skills_parent(global: bool) -> anyhow::Result<PathBuf> {
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool) -> anyhow::Result<()> {
-    let parent = skills_parent(global)?;
+pub fn install(rt: &Runtime, global: bool) -> anyhow::Result<()> {
+    let parent = skills_parent(rt, global)?;
     for bundle in ALL_SKILLS {
         install_bundle_to(&parent.join(bundle.dir_name), bundle)?;
     }

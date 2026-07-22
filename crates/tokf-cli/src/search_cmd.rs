@@ -4,9 +4,11 @@ use std::io::IsTerminal as _;
 use tokf::remote::filter_client::{self, FilterSummary};
 use tokf::remote::http::Client;
 
+use tokf::runtime::Runtime;
+
 /// Entry point for the `tokf search` subcommand.
-pub fn cmd_search(query: &str, limit: usize, json: bool) -> i32 {
-    match search(query, limit, json) {
+pub fn cmd_search(rt: &Runtime, query: &str, limit: usize, json: bool) -> i32 {
+    match search(rt, query, limit, json) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -15,8 +17,8 @@ pub fn cmd_search(query: &str, limit: usize, json: bool) -> i32 {
     }
 }
 
-fn search(query: &str, limit: usize, json: bool) -> anyhow::Result<i32> {
-    let client = Client::authed()?;
+fn search(rt: &Runtime, query: &str, limit: usize, json: bool) -> anyhow::Result<i32> {
+    let client = Client::authed(rt)?;
 
     let results = filter_client::search_filters(&client, query, limit)?;
 
@@ -31,14 +33,14 @@ fn search(query: &str, limit: usize, json: bool) -> anyhow::Result<i32> {
     }
 
     if std::io::stderr().is_terminal() {
-        interactive_select(&results)
+        interactive_select(rt, &results)
     } else {
         print_table(&results);
         Ok(0)
     }
 }
 
-fn interactive_select(results: &[FilterSummary]) -> anyhow::Result<i32> {
+fn interactive_select(rt: &Runtime, results: &[FilterSummary]) -> anyhow::Result<i32> {
     let items: Vec<SelectableFilter<'_>> = results.iter().map(SelectableFilter).collect();
 
     eprintln!();
@@ -57,11 +59,15 @@ fn interactive_select(results: &[FilterSummary]) -> anyhow::Result<i32> {
             let selected = &results[idx];
             eprintln!();
             Ok(crate::install_cmd::cmd_install(
-                &selected.content_hash,
-                false, // local
-                false, // force
-                false, // dry_run
-                true,  // yes — interactive selection is itself confirmation
+                rt,
+                crate::install_cmd::InstallOpts {
+                    filter: &selected.content_hash,
+                    local: false,
+                    force: false,
+                    dry_run: false,
+                    // Interactive selection is itself the confirmation.
+                    yes: true,
+                },
             ))
         },
     )

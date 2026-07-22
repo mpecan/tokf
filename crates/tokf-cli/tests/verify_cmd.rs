@@ -1,10 +1,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::fs;
-use std::process::Command;
+mod common;
 
-fn tokf() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+use std::fs;
+
+/// Runs from the crate root so the stdlib filters under `filters/` are found.
+fn tokf() -> common::TokfCommand {
+    let mut cmd = common::tokf();
     cmd.current_dir(env!("CARGO_MANIFEST_DIR"));
     cmd
 }
@@ -86,7 +88,9 @@ contains = "OK"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd"])
         .current_dir(dir.path())
         .output()
@@ -151,7 +155,10 @@ contains = "OK"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd", "--json"])
         .current_dir(dir.path())
         .output()
@@ -343,7 +350,9 @@ equals = "this will never match"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd"])
         .current_dir(dir.path())
         .output()
@@ -403,7 +412,9 @@ equals = ""
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd"])
         .current_dir(dir.path())
         .output()
@@ -459,7 +470,10 @@ contains = "Build OK"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd", "--safety"])
         .current_dir(dir.path())
         .output()
@@ -513,7 +527,10 @@ contains = "Ignore"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd", "--safety"])
         .current_dir(dir.path())
         .output()
@@ -568,7 +585,10 @@ contains = "You"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd", "--safety", "--json"])
         .current_dir(dir.path())
         .output()
@@ -650,7 +670,9 @@ contains = "Ignore"
     .unwrap();
 
     // Without --safety: assertions pass, exit 0
-    let output_no_safety = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let output_no_safety = home
+        .cmd()
         .args(["verify", "mytest/cmd"])
         .current_dir(dir.path())
         .output()
@@ -665,7 +687,9 @@ contains = "Ignore"
     );
 
     // With --json but without --safety: safety field should be absent
-    let output_json = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let output_json = home
+        .cmd()
         .args(["verify", "mytest/cmd", "--json"])
         .current_dir(dir.path())
         .output()
@@ -735,7 +759,10 @@ matches = "^\\d+$"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+
+    let output = home
+        .cmd()
         .args(["verify", "mytest/random"])
         .current_dir(dir.path())
         .output()
@@ -794,7 +821,10 @@ matches = "^\\d+$"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+
+    let output = home
+        .cmd()
         .args(["verify", "mytest/random", "--json"])
         .current_dir(dir.path())
         .output()
@@ -851,7 +881,9 @@ equals = "OK"
     )
     .unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let output = home
+        .cmd()
         .args(["verify", "mytest/cmd"])
         .current_dir(dir.path())
         .output()

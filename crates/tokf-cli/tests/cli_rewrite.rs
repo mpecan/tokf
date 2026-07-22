@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+mod common;
+use common::tokf;
 
 /// Helper: run `tokf rewrite` from a fresh tempdir.
 /// Embedded stdlib is always available, so no filters need to be copied.

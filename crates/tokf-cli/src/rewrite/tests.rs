@@ -11,7 +11,7 @@ use super::*;
 #[test]
 fn collect_patterns_from_empty_dir() {
     let dir = TempDir::new().unwrap();
-    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns_isolated(&[dir.path().to_path_buf()]);
     // Empty disk dir — embedded stdlib is always present
     assert!(
         !patterns.is_empty(),
@@ -33,7 +33,7 @@ fn collect_patterns_from_filter_files() {
     )
     .unwrap();
 
-    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns_isolated(&[dir.path().to_path_buf()]);
 
     let has_cargo = patterns
         .iter()
@@ -61,7 +61,8 @@ fn collect_patterns_dedup_across_dirs() {
     )
     .unwrap();
 
-    let patterns = collect_filter_patterns(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
+    let patterns =
+        collect_filter_patterns_isolated(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
     let git_status_count = patterns.iter().filter(|p| *p == "git status").count();
     assert_eq!(
         git_status_count, 1,
@@ -75,7 +76,7 @@ fn collect_patterns_skips_invalid_filters() {
     fs::write(dir.path().join("bad.toml"), "not valid [[[").unwrap();
     fs::write(dir.path().join("good.toml"), "command = \"my-tool\"").unwrap();
 
-    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns_isolated(&[dir.path().to_path_buf()]);
     assert!(
         patterns.iter().any(|p| p == "my-tool"),
         "expected my-tool pattern in {patterns:?}",
@@ -90,7 +91,7 @@ fn collect_patterns_from_nested_dirs() {
     fs::write(git_dir.join("push.toml"), "command = \"git push\"").unwrap();
     fs::write(git_dir.join("status.toml"), "command = \"git status\"").unwrap();
 
-    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns_isolated(&[dir.path().to_path_buf()]);
     assert!(patterns.iter().any(|p| p.contains("push")));
     assert!(patterns.iter().any(|p| p.contains("status")));
 }
@@ -104,7 +105,7 @@ fn collect_patterns_multiple_command_patterns() {
     )
     .unwrap();
 
-    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns_isolated(&[dir.path().to_path_buf()]);
     assert!(patterns.iter().any(|p| p.contains("pnpm")));
     assert!(
         patterns
@@ -118,7 +119,7 @@ fn collect_patterns_wildcard_pattern() {
     let dir = TempDir::new().unwrap();
     fs::write(dir.path().join("npm-run.toml"), r#"command = "npm run *""#).unwrap();
 
-    let patterns = collect_filter_patterns(&[dir.path().to_path_buf()]);
+    let patterns = collect_filter_patterns_isolated(&[dir.path().to_path_buf()]);
     assert!(
         patterns.iter().any(|p| p == "npm run *"),
         "expected raw wildcard pattern in {patterns:?}",
@@ -137,7 +138,7 @@ fn rewrite_with_filter_match() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
+    let result = rewrite_isolated("git status", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "tokf run git status");
 }
 
@@ -151,7 +152,7 @@ fn rewrite_with_filter_match_with_args() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "git status --short",
         &config,
         &[dir.path().to_path_buf()],
@@ -164,7 +165,7 @@ fn rewrite_with_filter_match_with_args() {
 fn rewrite_builtin_skip_tokf() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "tokf run git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -177,7 +178,7 @@ fn rewrite_builtin_skip_tokf() {
 fn rewrite_no_match_passthrough() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "unknown-cmd foo",
         &config,
         &[dir.path().to_path_buf()],
@@ -207,7 +208,7 @@ fn rewrite_user_rule_takes_priority() {
         transparent: None,
         local_wrapper: None,
     };
-    let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
+    let result = rewrite_isolated("git status", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "custom-wrapper git status");
 }
 
@@ -231,7 +232,7 @@ fn rewrite_user_skip_prevents_rewrite() {
         transparent: None,
         local_wrapper: None,
     };
-    let result = rewrite_with_config("git status", &config, &[dir.path().to_path_buf()], false);
+    let result = rewrite_isolated("git status", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "git status");
 }
 
@@ -241,7 +242,7 @@ fn rewrite_transparent_global_flag() {
     fs::write(dir.path().join("git-log.toml"), "command = \"git log\"").unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "git -C /path log --oneline",
         &config,
         &[dir.path().to_path_buf()],
@@ -260,7 +261,7 @@ fn rewrite_basename_full_path() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "/usr/bin/git status --short",
         &config,
         &[dir.path().to_path_buf()],
@@ -275,7 +276,7 @@ fn rewrite_basename_and_transparent_flags_combined() {
     fs::write(dir.path().join("git-log.toml"), "command = \"git log\"").unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "/usr/bin/git --no-pager -C /repo log --oneline",
         &config,
         &[dir.path().to_path_buf()],
@@ -300,7 +301,7 @@ fn rewrite_interleaved_flags_pnpm_build() {
 
     let config = RewriteConfig::default();
     // pnpm --dir apps/web build should match pattern "pnpm build"
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "pnpm --dir apps/web build",
         &config,
         &[dir.path().to_path_buf()],
@@ -320,7 +321,7 @@ fn rewrite_interleaved_flags_git_c_status() {
 
     let config = RewriteConfig::default();
     // git -C /some/path status should match pattern "git status"
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "git -C /some/path status",
         &config,
         &[dir.path().to_path_buf()],
@@ -335,7 +336,7 @@ fn rewrite_interleaved_flags_git_c_status() {
 fn wrapper_make_with_args() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("make check", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "make SHELL=tokf check");
 }
 
@@ -343,7 +344,7 @@ fn wrapper_make_with_args() {
 fn wrapper_make_no_args() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("make", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("make", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "make SHELL=tokf");
 }
 
@@ -351,7 +352,7 @@ fn wrapper_make_no_args() {
 fn wrapper_make_full_path() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "/usr/bin/make check",
         &config,
         &[dir.path().to_path_buf()],
@@ -364,7 +365,7 @@ fn wrapper_make_full_path() {
 fn wrapper_just_with_args() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("just test", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("just test", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "just --shell tokf --shell-arg -cu test");
 }
 
@@ -372,7 +373,7 @@ fn wrapper_just_with_args() {
 fn wrapper_just_no_args() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("just", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("just", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "just --shell tokf --shell-arg -cu");
 }
 
@@ -380,7 +381,7 @@ fn wrapper_just_no_args() {
 fn wrapper_just_full_path() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "/usr/local/bin/just test",
         &config,
         &[dir.path().to_path_buf()],
@@ -404,7 +405,7 @@ fn wrapper_user_rule_overrides_builtin_wrapper() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("make check", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "custom-make check");
 }
 
@@ -422,7 +423,7 @@ fn wrapper_skip_pattern_prevents_wrapper() {
         transparent: None,
         local_wrapper: None,
     };
-    let r = rewrite_with_config("make check", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("make check", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "make check");
 }
 
@@ -436,7 +437,7 @@ fn wrapper_make_in_compound() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "make check && git status",
         &config,
         &[dir.path().to_path_buf()],
@@ -449,7 +450,7 @@ fn wrapper_make_in_compound() {
 fn wrapper_env_prefix_preserved() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "MAKEFLAGS=-j4 make check",
         &config,
         &[dir.path().to_path_buf()],
@@ -464,7 +465,7 @@ fn wrapper_env_prefix_preserved() {
 fn wrapper_cmake_not_rewritten() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "cmake --build .",
         &config,
         &[dir.path().to_path_buf()],
@@ -477,7 +478,7 @@ fn wrapper_cmake_not_rewritten() {
 fn wrapper_remake_not_rewritten() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("remake check", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("remake check", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "remake check");
 }
 
@@ -485,7 +486,7 @@ fn wrapper_remake_not_rewritten() {
 fn wrapper_justfile_not_rewritten() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("justfile test", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("justfile test", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "justfile test");
 }
 
@@ -493,7 +494,7 @@ fn wrapper_justfile_not_rewritten() {
 fn wrapper_adjust_not_rewritten() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config("adjust params", &config, &[dir.path().to_path_buf()], false);
+    let r = rewrite_isolated("adjust params", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(r, "adjust params");
 }
 
@@ -503,7 +504,7 @@ fn wrapper_adjust_not_rewritten() {
 fn wrapper_make_with_pipe_preserves_pipe() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "make check | tee log.txt",
         &config,
         &[dir.path().to_path_buf()],
@@ -516,7 +517,7 @@ fn wrapper_make_with_pipe_preserves_pipe() {
 fn wrapper_two_wrappers_in_compound() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "just test && make check",
         &config,
         &[dir.path().to_path_buf()],
@@ -532,7 +533,7 @@ fn wrapper_two_wrappers_in_compound() {
 fn wrapper_env_prefix_with_just() {
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig::default();
-    let r = rewrite_with_config(
+    let r = rewrite_isolated(
         "CI=true just test",
         &config,
         &[dir.path().to_path_buf()],
@@ -567,7 +568,7 @@ fn rewrite_multiline_preserves_newline_separators() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "cargo test\nls | head -1\necho hi",
         &config,
         &[dir.path().to_path_buf()],

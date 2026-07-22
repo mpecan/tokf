@@ -10,6 +10,8 @@ use include_dir::{Dir, DirEntry, include_dir};
 
 use types::{CommandPattern, FilterConfig};
 
+use crate::runtime::Runtime;
+
 static STDLIB: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/filters");
 
 /// Priority assigned to embedded stdlib filters — always lower than any user-installed filter.
@@ -33,25 +35,13 @@ pub fn get_embedded_dir_files(dir_path: &Path) -> Vec<(PathBuf, &'static str)> {
 }
 
 /// Build default search dirs in priority order:
-/// 1. `.tokf/filters/` (repo-local, resolved from CWD)
+/// 1. `.tokf/filters/` (repo-local, resolved from the runtime's working directory)
 /// 2. `{config_dir}/tokf/filters/` (user-level, platform-native)
 ///
 /// The embedded stdlib is always appended at the end by `discover_all_filters`,
 /// so no binary-adjacent path is needed.
-pub fn default_search_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-
-    // 1. Repo-local override (resolved to absolute so it survives any later CWD change)
-    if let Ok(cwd) = std::env::current_dir() {
-        dirs.push(cwd.join(".tokf/filters"));
-    }
-
-    // 2. User-level config dir (TOKF_HOME if set, else platform-native)
-    if let Some(user) = crate::paths::user_dir() {
-        dirs.push(user.join("filters"));
-    }
-
-    dirs
+pub fn default_search_dirs(rt: &Runtime) -> Vec<PathBuf> {
+    rt.layered_paths("filters")
 }
 
 /// Try to load a filter from `path`. Returns `Ok(Some(config))` on success,

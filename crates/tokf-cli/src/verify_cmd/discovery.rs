@@ -5,6 +5,8 @@
 
 use std::path::PathBuf;
 
+use tokf::runtime::Runtime;
+
 pub(super) use tokf::suite_discovery::{
     DiscoveredSuite, discover_all_filters_with_coverage, discover_suites,
 };
@@ -14,25 +16,25 @@ pub(super) use tokf::suite_discovery::{
 // Intentionally different from `config::default_search_dirs()`: verify puts
 // `filters/` (stdlib) first so repo developers test the stdlib by default,
 // while the runtime puts `.tokf/filters/` (project overrides) first.
-pub(super) fn verify_search_dirs(scope: Option<&super::VerifyScope>) -> Vec<PathBuf> {
+pub(super) fn verify_search_dirs(rt: &Runtime, scope: Option<&super::VerifyScope>) -> Vec<PathBuf> {
     match scope {
         Some(super::VerifyScope::Project) => {
             let mut dirs = Vec::new();
-            if let Ok(cwd) = std::env::current_dir() {
+            if let Some(cwd) = rt.cwd() {
                 dirs.push(cwd.join(".tokf/filters"));
             }
             dirs
         }
         Some(super::VerifyScope::Global) => {
             let mut dirs = Vec::new();
-            if let Some(user) = tokf::paths::user_dir() {
+            if let Some(user) = rt.user_dir() {
                 dirs.push(user.join("filters"));
             }
             dirs
         }
         Some(super::VerifyScope::Stdlib) => {
             let mut dirs = Vec::new();
-            if let Ok(cwd) = std::env::current_dir() {
+            if let Some(cwd) = rt.cwd() {
                 dirs.push(cwd.join("filters"));
             }
             dirs
@@ -44,11 +46,11 @@ pub(super) fn verify_search_dirs(scope: Option<&super::VerifyScope>) -> Vec<Path
             //   3. {config_dir}/tokf/filters/ — user-level custom filters
             // When the same filter name appears in multiple dirs, the first wins.
             let mut dirs = Vec::new();
-            if let Ok(cwd) = std::env::current_dir() {
+            if let Some(cwd) = rt.cwd() {
                 dirs.push(cwd.join("filters"));
                 dirs.push(cwd.join(".tokf/filters"));
             }
-            if let Some(user) = tokf::paths::user_dir() {
+            if let Some(user) = rt.user_dir() {
                 dirs.push(user.join("filters"));
             }
             dirs

@@ -4,16 +4,15 @@
     clippy::items_after_statements
 )]
 
+mod common;
+
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
 fn tokf_with_db(db_path: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
+    let mut cmd = common::isolated_command(&db_path.parent().unwrap().join("tokf-home"));
     cmd.env("TOKF_DB_PATH", db_path);
-    // Point TOKF_HOME at a nonexistent dir so the binary never finds a real
-    // auth.toml and never touches the OS keyring during tests.
-    cmd.env("TOKF_HOME", db_path.parent().unwrap().join("tokf-home"));
     cmd
 }
 
@@ -181,7 +180,9 @@ fn gain_tokens_saved_positive_after_filtered_run() {
 #[test]
 fn run_db_write_failure_does_not_block_output() {
     // TOKF_DB_PATH points to an impossible location; run must still print output and exit 0.
-    let out = Command::new(env!("CARGO_BIN_EXE_tokf"))
+    let home = common::TestHome::new();
+    let out = home
+        .cmd()
         .env("TOKF_DB_PATH", "/dev/null/x/tracking.db")
         .args(["run", "echo", "hello"])
         .output()

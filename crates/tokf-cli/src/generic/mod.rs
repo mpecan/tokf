@@ -11,6 +11,16 @@ use crate::Cli;
 use crate::marker;
 use crate::resolve;
 
+use tokf::runtime::Runtime;
+
+/// The command a built-in filter subcommand should run, and how to label it.
+#[derive(Clone, Copy)]
+pub struct GenericRun<'a> {
+    pub command_args: &'a [String],
+    pub baseline_pipe: Option<&'a str>,
+    pub filter_name: &'a str,
+}
+
 /// Shared execution + tracking for generic fallback commands.
 ///
 /// 1. Execute command
@@ -20,12 +30,16 @@ use crate::resolve;
 /// 5. Record tracking + history
 /// 6. Print output with compression indicator
 pub fn cmd_generic_run(
-    command_args: &[String],
-    baseline_pipe: Option<&str>,
-    filter_name: &str,
+    rt: &Runtime,
+    run: GenericRun<'_>,
     cli: &Cli,
     filter_fn: impl FnOnce(&str, i32) -> String,
 ) -> anyhow::Result<i32> {
+    let GenericRun {
+        command_args,
+        baseline_pipe,
+        filter_name,
+    } = run;
     let cmd_result = runner::execute(&command_args[0], &command_args[1..])?;
 
     let raw_bytes = cmd_result.combined.len();
@@ -56,20 +70,24 @@ pub fn cmd_generic_run(
 
     // Record history first: the entry ID feeds the recovery marker printed below.
     let history_id = history::try_record(
-        &command_str,
-        filter_name,
-        &cmd_result.combined,
-        &filtered,
-        cmd_result.exit_code,
+        rt,
+        &history::RecordedRun {
+            command: &command_str,
+            filter_name,
+            raw_output: &cmd_result.combined,
+            filtered_output: &filtered,
+            exit_code: cmd_result.exit_code,
+        },
     );
 
-    let render_cfg = marker::load_render_config();
+    let render_cfg = marker::load_render_config(rt);
     if !filtered.is_empty() {
         marker::print_with_indicator(&filtered, &render_cfg, history_id);
     }
 
     // Record tracking
     resolve::record_run(
+        rt,
         command_args,
         Some(filter_name),
         None,
@@ -80,7 +98,7 @@ pub fn cmd_generic_run(
         cmd_result.exit_code,
         false,
     );
-    resolve::try_auto_sync();
+    resolve::try_auto_sync(rt);
 
     if cli.no_mask_exit_code {
         Ok(cmd_result.exit_code)

@@ -7,12 +7,31 @@ use tokf::tracking;
 
 use crate::gain_render;
 
-#[allow(clippy::fn_params_excessive_bools)]
-pub fn cmd_gain(daily: bool, by_filter: bool, json: bool, top: usize, no_color: bool) -> i32 {
-    prompt_upload_stats_if_needed();
-    tokf::setup::hint_setup_if_needed();
+use tokf::runtime::Runtime;
 
-    let Some(path) = tracking::db_path() else {
+/// Presentation options shared by the local and remote gain commands.
+#[derive(Debug, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
+pub struct GainOpts {
+    pub daily: bool,
+    pub by_filter: bool,
+    pub json: bool,
+    pub top: usize,
+    pub no_color: bool,
+}
+
+pub fn cmd_gain(rt: &Runtime, opts: GainOpts) -> i32 {
+    let GainOpts {
+        daily,
+        by_filter,
+        json,
+        top,
+        no_color,
+    } = opts;
+    prompt_upload_stats_if_needed(rt);
+    tokf::setup::hint_setup_if_needed(rt);
+
+    let Some(path) = rt.tracking_db_path() else {
         eprintln!("[tokf] error: cannot determine DB path");
         return 1;
     };
@@ -153,20 +172,23 @@ fn cmd_gain_daily(conn: &rusqlite::Connection, json: bool) -> i32 {
     })
 }
 
-#[allow(clippy::fn_params_excessive_bools)]
-pub fn cmd_gain_remote(
-    daily: bool,
-    by_filter: bool,
-    json: bool,
-    top: usize,
-    no_color: bool,
-) -> i32 {
+// Remote gain fetches, converts and renders three report shapes inline.
+// Approved to exceed the 60-line limit.
+#[allow(clippy::too_many_lines)]
+pub fn cmd_gain_remote(rt: &Runtime, opts: GainOpts) -> i32 {
+    let GainOpts {
+        daily,
+        by_filter,
+        json,
+        top,
+        no_color,
+    } = opts;
     if daily {
         eprintln!("[tokf] --daily is not available for remote stats");
         return 1;
     }
 
-    let client = match Client::authed() {
+    let client = match Client::authed(rt) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[tokf] {e:#}");
@@ -230,16 +252,16 @@ pub fn cmd_gain_remote(
 /// One-time prompt for existing users who are logged in but haven't set their
 /// usage statistics preference yet. Only shows when stdin is a TTY so it won't
 /// pollute LLM/piped contexts.
-fn prompt_upload_stats_if_needed() {
+fn prompt_upload_stats_if_needed(rt: &Runtime) {
     if !std::io::stdin().is_terminal() {
         return;
     }
 
-    if credentials::load().is_none() {
+    if credentials::load(rt).is_none() {
         return;
     }
 
-    let config = tokf::history::SyncConfig::load(None);
+    let config = tokf::history::SyncConfig::load(rt, None);
     if config.upload_usage_stats.is_some() {
         return; // already set
     }
@@ -257,7 +279,7 @@ fn prompt_upload_stats_if_needed() {
     let enabled =
         input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes");
 
-    if let Err(e) = tokf::history::save_upload_stats(enabled) {
+    if let Err(e) = tokf::history::save_upload_stats(rt, enabled) {
         eprintln!("[tokf] Failed to save preference: {e:#}");
         return;
     }
@@ -286,7 +308,17 @@ mod tests {
     #[test]
     fn cmd_gain_remote_daily_returns_error() {
         // --daily is not supported for remote stats; should return 1 without network.
-        let code = cmd_gain_remote(true, false, false, 10, false);
+        let rt = Runtime::isolated();
+        let code = cmd_gain_remote(
+            &rt,
+            GainOpts {
+                daily: true,
+                by_filter: false,
+                json: false,
+                top: 10,
+                no_color: false,
+            },
+        );
         assert_eq!(code, 1);
     }
 

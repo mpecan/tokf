@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::fs::write_config_file;
 
+use crate::runtime::Runtime;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StoredMachine {
     /// UUID v4 identifying this machine
@@ -14,8 +16,8 @@ pub struct StoredMachine {
 
 /// Returns the path to the tokf machine config file.
 /// Uses `TOKF_HOME` if set, else the platform config directory.
-pub fn machine_config_path() -> Option<PathBuf> {
-    crate::paths::user_dir().map(|d| d.join("machine.toml"))
+pub fn machine_config_path(rt: &Runtime) -> Option<PathBuf> {
+    rt.user_dir().map(|d| d.join("machine.toml"))
 }
 
 /// Load the stored machine registration.
@@ -23,8 +25,8 @@ pub fn machine_config_path() -> Option<PathBuf> {
 /// Returns `None` if the machine has not been registered yet or the file is
 /// missing. Prints a warning to stderr if `machine.toml` exists but is
 /// malformed (e.g., corrupted).
-pub fn load() -> Option<StoredMachine> {
-    let path = machine_config_path()?;
+pub fn load(rt: &Runtime) -> Option<StoredMachine> {
+    let path = machine_config_path(rt)?;
     let content = fs::read_to_string(&path).ok()?;
     match toml::from_str(&content) {
         Ok(m) => Some(m),
@@ -41,9 +43,8 @@ pub fn load() -> Option<StoredMachine> {
 ///
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
-pub fn save(machine_id: &str, hostname: &str) -> anyhow::Result<()> {
-    let path = machine_config_path()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+pub fn save(rt: &Runtime, machine_id: &str, hostname: &str) -> anyhow::Result<()> {
+    let path = rt.require_user_dir()?.join("machine.toml");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

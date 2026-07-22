@@ -40,6 +40,9 @@ pub struct TestHarness {
     pub machine_id: uuid::Uuid,
     pub sqlite_path: PathBuf,
     pub pool: PgPool,
+    /// Isolated runtime for the `tokf` library calls these tests make. Points
+    /// at the harness's own temp dir, so nothing touches the real config dir.
+    pub rt: tokf::runtime::Runtime,
     _temp_dir: tempfile::TempDir,
     server_handle: JoinHandle<()>,
 }
@@ -131,6 +134,10 @@ impl TestHarness {
 
         let temp_dir = tempfile::TempDir::new().unwrap();
         let sqlite_path = temp_dir.path().join("tracking.db");
+        let rt = tokf::runtime::Runtime::builder()
+            .home(temp_dir.path())
+            .db_path(sqlite_path.clone())
+            .build();
 
         Self {
             server_addr,
@@ -140,6 +147,7 @@ impl TestHarness {
             machine_id,
             sqlite_path,
             pool,
+            rt,
             _temp_dir: temp_dir,
             server_handle,
         }
@@ -315,8 +323,9 @@ impl TestHarness {
     {
         let base_url = self.base_url.clone();
         let token = self.token.clone();
+        let rt = self.rt.clone();
         tokio::task::spawn_blocking(move || {
-            let client = Client::new(&base_url, Some(&token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&token)).unwrap();
             f(&client)
         })
         .await
@@ -330,8 +339,9 @@ impl TestHarness {
         F: FnOnce(&Client) -> T + Send + 'static,
     {
         let base_url = self.base_url.clone();
+        let rt = self.rt.clone();
         tokio::task::spawn_blocking(move || {
-            let client = Client::unauthenticated(&base_url).unwrap();
+            let client = Client::unauthenticated(&rt, &base_url).unwrap();
             f(&client)
         })
         .await
@@ -346,8 +356,9 @@ impl TestHarness {
     {
         let base_url = self.base_url.clone();
         let token = token.to_string();
+        let rt = self.rt.clone();
         tokio::task::spawn_blocking(move || {
-            let client = Client::new(&base_url, Some(&token)).unwrap();
+            let client = Client::new(&rt, &base_url, Some(&token)).unwrap();
             f(&client)
         })
         .await

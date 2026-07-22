@@ -8,8 +8,10 @@
 use tokf::remote::client;
 use tokf::remote::http::Client;
 
+use tokf::runtime::Runtime;
+
 fn make_client(server: &mockito::Server, token: &str) -> Client {
-    Client::new(&server.url(), Some(token)).unwrap()
+    Client::new(&Runtime::isolated(), &server.url(), Some(token)).unwrap()
 }
 
 // ── register_machine ──────────────────────────────────────────────────────────
@@ -278,7 +280,7 @@ fn no_auth_header_when_no_token() {
         )
         .create();
 
-    let c = Client::unauthenticated(&server.url()).unwrap();
+    let c = Client::unauthenticated(&Runtime::isolated(), &server.url()).unwrap();
     let result = tokf::remote::gain_client::get_global_gain(&c);
     assert!(result.is_ok(), "expected Ok, got: {result:?}");
     mock.assert();

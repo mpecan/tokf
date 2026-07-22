@@ -1,13 +1,11 @@
 #![allow(clippy::unwrap_used)]
 
-use std::process::Command;
+mod common;
 
-fn tokf() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokf"));
-    // Use a unique temp DB per invocation to avoid cross-test interference.
-    let tmp = std::env::temp_dir().join(format!("tokf_generic_test_{}.db", std::process::id()));
-    cmd.env("TOKF_DB_PATH", &tmp);
-    // Disable the config cache so tests don't interfere.
+/// Each invocation gets its own home, so there is no cross-test interference
+/// to design around; `--no-cache` keeps discovery off the shared cache too.
+fn tokf() -> common::TokfCommand {
+    let mut cmd = common::tokf();
     cmd.arg("--no-cache");
     cmd
 }

@@ -30,7 +30,7 @@ fn cargo_test_filters() -> TempDir {
 fn wraps_whole_command_outer() {
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -43,7 +43,7 @@ fn wraps_whole_command_outer() {
 fn wraps_with_attr_and_flags() {
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop .#agent --impure -c cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -59,7 +59,7 @@ fn wraps_with_attr_and_flags() {
 fn wraps_long_form_command_marker() {
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop --command cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -72,7 +72,7 @@ fn wraps_long_form_command_marker() {
 fn pipe_composition_wraps_and_strips() {
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c cargo test | tail -5",
         &config,
         &[dir.path().to_path_buf()],
@@ -88,7 +88,7 @@ fn pipe_composition_wraps_and_strips() {
 fn env_prefix_composition() {
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "FOO=bar nix develop -c cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -112,7 +112,7 @@ fn compound_composition_wraps_each_segment() {
     .unwrap();
 
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c cargo test && nix develop -c cargo build",
         &config,
         &[dir.path().to_path_buf()],
@@ -128,7 +128,7 @@ fn compound_composition_wraps_each_segment() {
 fn unmatched_inner_passes_through() {
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c echo hi",
         &config,
         &[dir.path().to_path_buf()],
@@ -145,7 +145,7 @@ fn make_nesting_passes_through_documented_limitation() {
     // filtered, and make has no filter of its own).
     let dir = cargo_test_filters();
     let config = RewriteConfig::default();
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c make check",
         &config,
         &[dir.path().to_path_buf()],
@@ -165,7 +165,7 @@ fn disabled_builtin_leaves_command_unrewritten() {
         }),
         ..RewriteConfig::default()
     };
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -185,7 +185,7 @@ fn builtins_off_leaves_command_unrewritten() {
         }),
         ..RewriteConfig::default()
     };
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "nix develop -c cargo test",
         &config,
         &[dir.path().to_path_buf()],
@@ -209,7 +209,7 @@ fn user_rule_wraps_custom_wrapper() {
         }),
         ..RewriteConfig::default()
     };
-    let result = rewrite_with_config(
+    let result = rewrite_isolated(
         "distrobox enter my-box -- cargo test",
         &config,
         &[dir.path().to_path_buf()],

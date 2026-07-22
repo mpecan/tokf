@@ -6,7 +6,7 @@ use tokf::remote::http::Client;
 use tokf_common::hash::canonical_hash;
 
 /// Entry point for the `tokf backfill-versions` subcommand.
-pub fn cmd_backfill_versions(registry_url: &str, token: &str, dry_run: bool) -> i32 {
+pub fn cmd_backfill_versions(rt: &Runtime, registry_url: &str, token: &str, dry_run: bool) -> i32 {
     match backfill_versions(registry_url, token, dry_run) {
         Ok(code) => code,
         Err(e) => {
@@ -248,7 +248,7 @@ fn compute_version_timeline(snapshots: &[(String, Vec<(String, String)>)]) -> Ve
 const MAX_V1_ROUNDS: usize = 10_000;
 
 /// Entry point for the `tokf backfill-v1-hashes` subcommand.
-pub fn cmd_backfill_v1_hashes(registry_url: &str, token: &str, limit: usize) -> i32 {
+pub fn cmd_backfill_v1_hashes(rt: &Runtime, registry_url: &str, token: &str, limit: usize) -> i32 {
     match backfill_v1_hashes(registry_url, token, limit) {
         Ok(code) => code,
         Err(e) => {

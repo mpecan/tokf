@@ -6,6 +6,7 @@ use tokf::history::{
     TokfProjectConfig, TokfShimsSection, TokfSyncSection, global_config_path, load_project_config,
     local_config_path, project_root_for, save_project_config,
 };
+use tokf::runtime::Runtime;
 
 #[derive(Subcommand)]
 pub enum ConfigAction {
@@ -43,13 +44,13 @@ pub enum ConfigAction {
     Path,
 }
 
-pub fn run_config_action(action: &ConfigAction) -> i32 {
+pub fn run_config_action(rt: &Runtime, action: &ConfigAction) -> i32 {
     match action {
-        ConfigAction::Show { json } => cmd_config_show(*json),
-        ConfigAction::Get { key } => cmd_config_get(key),
-        ConfigAction::Set { key, value, local } => cmd_config_set(key, value, *local),
-        ConfigAction::Print { global, local } => cmd_config_print(*global, *local),
-        ConfigAction::Path => cmd_config_path(),
+        ConfigAction::Show { json } => cmd_config_show(rt, *json),
+        ConfigAction::Get { key } => cmd_config_get(rt, key),
+        ConfigAction::Set { key, value, local } => cmd_config_set(rt, key, value, *local),
+        ConfigAction::Print { global, local } => cmd_config_print(rt, *global, *local),
+        ConfigAction::Path => cmd_config_path(rt),
     }
 }
 
@@ -82,13 +83,13 @@ struct ConfigEntry {
     file: Option<String>,
 }
 
-fn cmd_config_show(json: bool) -> i32 {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
-    let global_path = global_config_path();
+fn cmd_config_show(rt: &Runtime, json: bool) -> i32 {
+    let cwd = rt.cwd_or_empty();
+    let project_root = project_root_for(cwd);
+    let global_path = global_config_path(rt);
     let local_path = local_config_path(&project_root);
 
-    let entries = collect_config_entries(global_path.as_deref(), &local_path, &project_root);
+    let entries = collect_config_entries(rt, global_path.as_deref(), &local_path, &project_root);
 
     if json {
         crate::output::print_json(&entries);
@@ -116,6 +117,7 @@ fn cmd_config_show(json: bool) -> i32 {
 
 #[allow(clippy::too_many_lines)]
 fn collect_config_entries(
+    rt: &Runtime,
     global_path: Option<&std::path::Path>,
     local_path: &std::path::Path,
     project_root: &std::path::Path,
@@ -170,9 +172,7 @@ fn collect_config_entries(
     });
 
     // output.show_indicator (env var takes priority)
-    let env_indicator = std::env::var("TOKF_SHOW_INDICATOR")
-        .ok()
-        .and_then(|v| v.parse::<bool>().ok());
+    let env_indicator = rt.show_indicator();
     let (output_val, output_source, output_file) = env_indicator.map_or_else(
         || {
             let output = OutputConfig::load_from(Some(project_root), global_path);
@@ -246,29 +246,29 @@ fn find_source(
 
 // ── config get ──────────────────────────────────────────────────
 
-fn cmd_config_get(key: &str) -> i32 {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
+fn cmd_config_get(rt: &Runtime, key: &str) -> i32 {
+    let cwd = rt.cwd_or_empty();
+    let project_root = project_root_for(cwd);
 
     match key {
         "history.retention" => {
-            let config = HistoryConfig::load(Some(&project_root));
+            let config = HistoryConfig::load(rt, Some(&project_root));
             println!("{}", config.retention_count);
         }
         "output.show_indicator" => {
-            let config = OutputConfig::load(Some(&project_root));
+            let config = OutputConfig::load(rt, Some(&project_root));
             println!("{}", config.show_indicator);
         }
         "shims.enabled" => {
-            let config = ShimsConfig::load(Some(&project_root));
+            let config = ShimsConfig::load(rt, Some(&project_root));
             println!("{}", config.enabled);
         }
         "sync.auto_sync_threshold" => {
-            let config = SyncConfig::load(Some(&project_root));
+            let config = SyncConfig::load(rt, Some(&project_root));
             println!("{}", config.auto_sync_threshold);
         }
         "sync.upload_stats" => {
-            let config = SyncConfig::load(Some(&project_root));
+            let config = SyncConfig::load(rt, Some(&project_root));
             if let Some(v) = config.upload_usage_stats {
                 println!("{v}");
             } else {
@@ -287,13 +287,13 @@ fn cmd_config_get(key: &str) -> i32 {
 // ── config set ──────────────────────────────────────────────────
 
 #[allow(clippy::too_many_lines)]
-fn cmd_config_set(key: &str, value: &str, local: bool) -> i32 {
+fn cmd_config_set(rt: &Runtime, key: &str, value: &str, local: bool) -> i32 {
     let target_path = if local {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = project_root_for(&cwd);
+        let cwd = rt.cwd_or_empty();
+        let project_root = project_root_for(cwd);
         local_config_path(&project_root)
     } else {
-        let Some(p) = global_config_path() else {
+        let Some(p) = global_config_path(rt) else {
             eprintln!("[tokf] cannot determine config directory");
             return 1;
         };
@@ -337,7 +337,7 @@ fn cmd_config_set(key: &str, value: &str, local: bool) -> i32 {
             // Immediately remove stale shims when disabling
             if rc == 0
                 && value == "false"
-                && let Some(dir) = tokf::paths::shims_dir()
+                && let Some(dir) = rt.shims_dir()
             {
                 let _ = std::fs::remove_dir_all(dir);
             }
@@ -401,26 +401,26 @@ fn set_upload_stats(path: &std::path::Path, value: &str) -> i32 {
 
 // ── config print ────────────────────────────────────────────────
 
-fn cmd_config_print(global: bool, local: bool) -> i32 {
+fn cmd_config_print(rt: &Runtime, global: bool, local: bool) -> i32 {
     let path = if local {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = project_root_for(&cwd);
+        let cwd = rt.cwd_or_empty();
+        let project_root = project_root_for(cwd);
         local_config_path(&project_root)
     } else if global {
-        let Some(p) = global_config_path() else {
+        let Some(p) = global_config_path(rt) else {
             eprintln!("[tokf] cannot determine global config directory");
             return 1;
         };
         p
     } else {
         // Default: try local first, fall back to global
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = project_root_for(&cwd);
+        let cwd = rt.cwd_or_empty();
+        let project_root = project_root_for(cwd);
         let local_path = local_config_path(&project_root);
         if local_path.is_file() {
             local_path
         } else {
-            let Some(p) = global_config_path() else {
+            let Some(p) = global_config_path(rt) else {
                 eprintln!("[tokf] no config file found");
                 return 1;
             };
@@ -446,11 +446,11 @@ fn cmd_config_print(global: bool, local: bool) -> i32 {
 
 // ── config path ─────────────────────────────────────────────────
 
-fn cmd_config_path() -> i32 {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let project_root = project_root_for(&cwd);
+fn cmd_config_path(rt: &Runtime) -> i32 {
+    let cwd = rt.cwd_or_empty();
+    let project_root = project_root_for(cwd);
 
-    let global = global_config_path();
+    let global = global_config_path(rt);
     let local = local_config_path(&project_root);
 
     print_path_line("global", global.as_deref());
@@ -479,7 +479,8 @@ mod tests {
     fn collect_config_entries_defaults() {
         let dir = TempDir::new().unwrap();
         let local = dir.path().join(".tokf/config.toml");
-        let entries = collect_config_entries(None, &local, dir.path());
+        let rt = Runtime::isolated();
+        let entries = collect_config_entries(&rt, None, &local, dir.path());
         assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].key, "history.retention");
         assert_eq!(entries[0].value.as_deref(), Some("10"));
@@ -494,7 +495,8 @@ mod tests {
         let local = tokf_dir.join("config.toml");
         std::fs::write(&local, "[history]\nretention = 42\n").unwrap();
 
-        let entries = collect_config_entries(None, &local, dir.path());
+        let rt = Runtime::isolated();
+        let entries = collect_config_entries(&rt, None, &local, dir.path());
         assert_eq!(entries[0].value.as_deref(), Some("42"));
         assert_eq!(entries[0].source, "local");
     }
@@ -506,7 +508,8 @@ mod tests {
         std::fs::write(&global, "[sync]\nauto_sync_threshold = 200\n").unwrap();
         let local = dir.path().join("nonexistent/.tokf/config.toml");
 
-        let entries = collect_config_entries(Some(&global), &local, dir.path());
+        let rt = Runtime::isolated();
+        let entries = collect_config_entries(&rt, Some(&global), &local, dir.path());
         assert_eq!(entries[3].value.as_deref(), Some("200"));
         assert_eq!(entries[3].source, "global");
     }
@@ -633,7 +636,8 @@ mod tests {
     fn collect_config_entries_shims_default() {
         let dir = TempDir::new().unwrap();
         let local = dir.path().join(".tokf/config.toml");
-        let entries = collect_config_entries(None, &local, dir.path());
+        let rt = Runtime::isolated();
+        let entries = collect_config_entries(&rt, None, &local, dir.path());
         let shims_entry = entries.iter().find(|e| e.key == "shims.enabled").unwrap();
         assert_eq!(shims_entry.value.as_deref(), Some("true"));
         assert_eq!(shims_entry.source, "default");

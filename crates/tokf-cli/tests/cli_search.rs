@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+mod common;
+use common::tokf;
 
 /// `tokf search` with no query arguments must fail (required positional).
 #[test]

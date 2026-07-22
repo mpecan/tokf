@@ -1,13 +1,27 @@
+use anyhow::Context as _;
+
 use std::path::{Component, Path, PathBuf};
 
 use tokf::remote::filter_client;
 use tokf::remote::http::Client;
 use tokf_common::config::types::FilterConfig;
 
+use tokf::runtime::Runtime;
+
+/// Options for `tokf install`.
+#[derive(Debug, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags are naturally booleans
+pub struct InstallOpts<'a> {
+    pub filter: &'a str,
+    pub local: bool,
+    pub force: bool,
+    pub dry_run: bool,
+    pub yes: bool,
+}
+
 /// Entry point for the `tokf install` subcommand.
-#[allow(clippy::fn_params_excessive_bools)]
-pub fn cmd_install(filter: &str, local: bool, force: bool, dry_run: bool, yes: bool) -> i32 {
-    match install(filter, local, force, dry_run, yes) {
+pub fn cmd_install(rt: &Runtime, opts: InstallOpts<'_>) -> i32 {
+    match install(rt, opts) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -30,15 +44,15 @@ fn resolve_hash(client: &Client, filter: &str) -> anyhow::Result<(String, String
     }
 }
 
-#[allow(clippy::fn_params_excessive_bools)]
-fn install(
-    filter: &str,
-    local: bool,
-    force: bool,
-    dry_run: bool,
-    yes: bool,
-) -> anyhow::Result<i32> {
-    let client = Client::authed()?;
+fn install(rt: &Runtime, opts: InstallOpts<'_>) -> anyhow::Result<i32> {
+    let InstallOpts {
+        filter,
+        local,
+        force,
+        dry_run,
+        yes,
+    } = opts;
+    let client = Client::authed(rt)?;
 
     let (url_hash, author) = resolve_hash(&client, filter)?;
     let downloaded = filter_client::download_filter(&client, &url_hash)?;
@@ -58,7 +72,7 @@ fn install(
         &downloaded.filter_toml,
     )?;
 
-    let install_base = resolve_install_base(local)?;
+    let install_base = resolve_install_base(rt, local)?;
     let rel_path = command_pattern_to_path(&command_pattern);
 
     // Ensure command_pattern doesn't produce a path that escapes install_base.
@@ -95,7 +109,7 @@ fn install(
     write_filter(&downloaded, &install_path, &hash, &author, &test_dir)?;
 
     if !downloaded.test_files.is_empty() {
-        run_verify(&rel_path, &install_path, &test_dir)?;
+        run_verify(rt, &rel_path, &install_path, &test_dir)?;
     }
 
     eprintln!(
@@ -282,11 +296,15 @@ fn read_line() -> anyhow::Result<String> {
     Ok(line)
 }
 
-// pub(crate): accessed by install_cmd::run_verify
-fn run_verify(rel_path: &Path, install_path: &Path, test_dir: &Path) -> anyhow::Result<()> {
+fn run_verify(
+    rt: &Runtime,
+    rel_path: &Path,
+    install_path: &Path,
+    test_dir: &Path,
+) -> anyhow::Result<()> {
     let filter_name = rel_path.with_extension("").to_string_lossy().to_string();
     let result =
-        crate::verify_cmd::cmd_verify(Some(&filter_name), false, false, false, None, false);
+        crate::verify_cmd::cmd_verify(rt, Some(&filter_name), false, false, false, None, false);
     if result != 0 {
         // Log rollback failures rather than silently discarding them.
         if let Err(e) = std::fs::remove_file(install_path) {
@@ -318,13 +336,12 @@ fn command_pattern_to_path(pattern: &str) -> PathBuf {
     }
 }
 
-fn resolve_install_base(local: bool) -> anyhow::Result<PathBuf> {
+fn resolve_install_base(rt: &Runtime, local: bool) -> anyhow::Result<PathBuf> {
     if local {
-        let cwd = std::env::current_dir()?;
+        let cwd = rt.cwd().context("could not determine working directory")?;
         Ok(cwd.join(".tokf"))
     } else {
-        tokf::paths::user_dir()
-            .ok_or_else(|| anyhow::anyhow!("cannot determine user config directory"))
+        rt.require_user_dir()
     }
 }
 

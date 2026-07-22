@@ -1,10 +1,14 @@
+use anyhow::Context as _;
+
 use std::path::Path;
 
 use tokf::config;
 
+use tokf::runtime::Runtime;
+
 /// Entry point for the `tokf eject` subcommand.
-pub fn cmd_eject(filter: &str, global: bool, no_cache: bool) -> i32 {
-    match eject(filter, global, no_cache) {
+pub fn cmd_eject(rt: &Runtime, filter: &str, global: bool, no_cache: bool) -> i32 {
+    match eject(rt, filter, global, no_cache) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -13,26 +17,26 @@ pub fn cmd_eject(filter: &str, global: bool, no_cache: bool) -> i32 {
     }
 }
 
-fn eject(filter: &str, global: bool, no_cache: bool) -> anyhow::Result<()> {
+fn eject(rt: &Runtime, filter: &str, global: bool, no_cache: bool) -> anyhow::Result<()> {
     let target_base = if global {
-        tokf::paths::user_dir()
-            .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?
-            .join("filters")
+        rt.require_user_dir()?.join("filters")
     } else {
-        std::env::current_dir()?.join(".tokf/filters")
+        rt.cwd()
+            .context("could not determine working directory")?
+            .join(".tokf/filters")
     };
-    eject_to(filter, &target_base, no_cache)
+    eject_to(rt, filter, &target_base, no_cache)
 }
 
 /// Core eject logic with an explicit target base path (testable).
-fn eject_to(filter: &str, target_base: &Path, no_cache: bool) -> anyhow::Result<()> {
+fn eject_to(rt: &Runtime, filter: &str, target_base: &Path, no_cache: bool) -> anyhow::Result<()> {
     let filter_name = filter.strip_suffix(".toml").unwrap_or(filter);
 
-    let search_dirs = config::default_search_dirs();
+    let search_dirs = config::default_search_dirs(rt);
     let resolved = if no_cache {
         config::discover_all_filters(&search_dirs)?
     } else {
-        config::cache::discover_with_cache(&search_dirs)?
+        config::cache::discover_with_cache(rt, &search_dirs)?
     };
 
     let found = resolved.iter().find(|f| f.matches_name(filter_name));
@@ -155,7 +159,8 @@ mod tests {
         let target = dir.path().join("filters");
 
         // "cargo/build" is a known built-in filter
-        eject_to("cargo/build", &target, true).unwrap();
+        let rt = Runtime::isolated();
+        eject_to(&rt, "cargo/build", &target, true).unwrap();
 
         let toml_path = target.join("cargo/build.toml");
         assert!(toml_path.exists(), "toml file should be created");
@@ -171,7 +176,9 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let target = dir.path().join("filters");
 
-        eject_to("cargo/build", &target, true).unwrap();
+        let rt = Runtime::isolated();
+
+        eject_to(&rt, "cargo/build", &target, true).unwrap();
 
         let test_dir = target.join("cargo/build_test");
         assert!(test_dir.is_dir(), "test directory should be created");
@@ -190,10 +197,12 @@ mod tests {
         let target = dir.path().join("filters");
 
         // First eject should succeed
-        eject_to("cargo/build", &target, true).unwrap();
+        let rt = Runtime::isolated();
+        eject_to(&rt, "cargo/build", &target, true).unwrap();
 
         // Second eject should fail
-        let result = eject_to("cargo/build", &target, true);
+        let rt = Runtime::isolated();
+        let result = eject_to(&rt, "cargo/build", &target, true);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
@@ -207,7 +216,9 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let target = dir.path().join("filters");
 
-        let result = eject_to("nonexistent/filter", &target, true);
+        let rt = Runtime::isolated();
+
+        let result = eject_to(&rt, "nonexistent/filter", &target, true);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
@@ -222,7 +233,8 @@ mod tests {
         let target = dir.path().join("filters");
 
         // Should work even with .toml extension
-        eject_to("cargo/build.toml", &target, true).unwrap();
+        let rt = Runtime::isolated();
+        eject_to(&rt, "cargo/build.toml", &target, true).unwrap();
 
         let toml_path = target.join("cargo/build.toml");
         assert!(toml_path.exists());

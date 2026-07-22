@@ -1,30 +1,17 @@
-use std::time::Duration;
-
 use reqwest::blocking::multipart::Form;
 
 use crate::auth::credentials;
+use crate::runtime::Runtime;
 
 use super::{RemoteError, classify_reqwest_error, require_success};
-
-/// Default request timeout in seconds (overridden by `TOKF_HTTP_TIMEOUT`).
-const DEFAULT_TIMEOUT_SECS: u64 = 5;
-
-/// Resolve the HTTP timeout from `TOKF_HTTP_TIMEOUT` env var, falling back to 5s.
-fn resolve_timeout() -> Duration {
-    let secs = std::env::var("TOKF_HTTP_TIMEOUT")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(DEFAULT_TIMEOUT_SECS);
-    Duration::from_secs(secs)
-}
 
 /// Load stored auth credentials and validate they are not expired.
 ///
 /// # Errors
 ///
 /// Returns an error if credentials are absent or the token has expired.
-pub fn load_auth() -> anyhow::Result<credentials::LoadedAuth> {
-    let auth = credentials::load()
+pub fn load_auth(rt: &Runtime) -> anyhow::Result<credentials::LoadedAuth> {
+    let auth = credentials::load(rt)
         .ok_or_else(|| anyhow::anyhow!("not logged in — run `tokf auth login` first"))?;
     if auth.is_expired() {
         anyhow::bail!("token has expired — run `tokf auth login` to re-authenticate");
@@ -41,6 +28,9 @@ pub struct Client {
     inner: reqwest::blocking::Client,
     base_url: String,
     token: Option<String>,
+    /// `TOKF_DEBUG`, captured so errors built here can render their verbose
+    /// form without reaching back into the environment.
+    debug: bool,
 }
 
 impl Client {
@@ -51,8 +41,8 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the underlying HTTP client cannot be constructed.
-    pub fn new(base_url: &str, token: Option<&str>) -> anyhow::Result<Self> {
-        let timeout = resolve_timeout();
+    pub fn new(rt: &Runtime, base_url: &str, token: Option<&str>) -> anyhow::Result<Self> {
+        let timeout = rt.http_timeout();
         let inner = reqwest::blocking::Client::builder()
             .timeout(timeout)
             .connect_timeout(timeout)
@@ -63,6 +53,7 @@ impl Client {
             inner,
             base_url: base_url.trim_end_matches('/').to_string(),
             token: token.map(String::from),
+            debug: rt.debug(),
         })
     }
 
@@ -72,9 +63,9 @@ impl Client {
     ///
     /// Returns an error if credentials are missing/expired or the client
     /// cannot be constructed.
-    pub fn authed() -> anyhow::Result<Self> {
-        let auth = load_auth()?;
-        Self::new(&auth.server_url, Some(&auth.token))
+    pub fn authed(rt: &Runtime) -> anyhow::Result<Self> {
+        let auth = load_auth(rt)?;
+        Self::new(rt, &auth.server_url, Some(&auth.token))
     }
 
     /// Build an unauthenticated client for the given base URL.
@@ -84,8 +75,8 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the client cannot be constructed.
-    pub fn unauthenticated(base_url: &str) -> anyhow::Result<Self> {
-        Self::new(base_url, None)
+    pub fn unauthenticated(rt: &Runtime, base_url: &str) -> anyhow::Result<Self> {
+        Self::new(rt, base_url, None)
     }
 
     /// The base URL this client is configured for.
@@ -161,7 +152,11 @@ impl Client {
         body: &B,
     ) -> anyhow::Result<T> {
         let url = self.url(path);
-        let resp = Self::send_once(self.build_request(self.inner.post(&url)).json(body), &url)?;
+        let resp = Self::send_once(
+            self.build_request(self.inner.post(&url)).json(body),
+            &url,
+            self.debug,
+        )?;
         resp.json::<T>()
             .map_err(|e| anyhow::anyhow!("invalid response from server: {e}"))
     }
@@ -176,7 +171,11 @@ impl Client {
     /// Returns an error on network failure or non-2xx status.
     pub fn delete(&self, path: &str) -> anyhow::Result<reqwest::blocking::Response> {
         let url = self.url(path);
-        Self::send_once(self.build_request(self.inner.delete(&url)), &url)
+        Self::send_once(
+            self.build_request(self.inner.delete(&url)),
+            &url,
+            self.debug,
+        )
     }
 
     /// POST `{base_url}{path}` with a multipart form.
@@ -200,7 +199,7 @@ impl Client {
         self.build_request(self.inner.post(&url))
             .multipart(form)
             .send()
-            .map_err(|e| anyhow::Error::from(classify_reqwest_error(&url, e)))
+            .map_err(|e| anyhow::Error::from(classify_reqwest_error(&url, e, self.debug)))
     }
 
     /// PUT `{base_url}{path}` with a multipart form.
@@ -229,13 +228,15 @@ impl Client {
         match result {
             Ok(resp) => Ok(resp),
             Err(first_err) => {
-                let classified = classify_reqwest_error(&url, first_err);
+                let classified = classify_reqwest_error(&url, first_err, self.debug);
                 if classified.is_transient() {
                     // Retry once on transport errors.
                     self.build_request(self.inner.put(&url))
                         .multipart(form_builder())
                         .send()
-                        .map_err(|e| anyhow::Error::from(classify_reqwest_error(&url, e)))
+                        .map_err(|e| {
+                            anyhow::Error::from(classify_reqwest_error(&url, e, self.debug))
+                        })
                 } else {
                     Err(classified.into())
                 }
@@ -266,11 +267,11 @@ impl Client {
         F: Fn(&Self) -> reqwest::blocking::RequestBuilder,
     {
         let req = self.build_request(make_request(self));
-        match send_and_classify(req, url) {
+        match send_and_classify(req, url, self.debug) {
             Ok(resp) => Ok(resp),
             Err(err) if err.is_transient() => {
                 let req = self.build_request(make_request(self));
-                Self::send_once(req, url)
+                Self::send_once(req, url, self.debug)
             }
             Err(err) => Err(err.into()),
         }
@@ -280,8 +281,9 @@ impl Client {
     fn send_once(
         request: reqwest::blocking::RequestBuilder,
         url: &str,
+        debug: bool,
     ) -> anyhow::Result<reqwest::blocking::Response> {
-        send_and_classify(request, url).map_err(anyhow::Error::from)
+        send_and_classify(request, url, debug).map_err(anyhow::Error::from)
     }
 }
 
@@ -289,9 +291,12 @@ impl Client {
 fn send_and_classify(
     request: reqwest::blocking::RequestBuilder,
     url: &str,
+    debug: bool,
 ) -> Result<reqwest::blocking::Response, RemoteError> {
-    let resp = request.send().map_err(|e| classify_reqwest_error(url, e))?;
-    require_success(resp, url)
+    let resp = request
+        .send()
+        .map_err(|e| classify_reqwest_error(url, e, debug))?;
+    require_success(resp, url, debug)
 }
 
 #[cfg(test)]
@@ -300,40 +305,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_timeout_default() {
-        // When TOKF_HTTP_TIMEOUT is not set, should return 5s.
-        // (Parallel tests may have it set, so we just verify it doesn't panic.)
-        let d = resolve_timeout();
-        assert!(d.as_secs() <= 3600, "timeout should be reasonable");
+    fn timeout_comes_from_the_runtime() {
+        // The isolated runtime carries the documented default...
+        let rt = Runtime::isolated();
+        assert_eq!(
+            rt.http_timeout(),
+            std::time::Duration::from_secs(crate::runtime::DEFAULT_TIMEOUT_SECS)
+        );
+
+        // ...and an override is honoured without touching the environment.
+        let rt = Runtime::builder()
+            .http_timeout(std::time::Duration::from_secs(42))
+            .build();
+        assert_eq!(rt.http_timeout(), std::time::Duration::from_secs(42));
     }
 
     #[test]
     fn client_base_url_trims_trailing_slash() {
-        let c = Client::new("https://api.tokf.net/", None).unwrap();
+        let rt = Runtime::isolated();
+        let c = Client::new(&rt, "https://api.tokf.net/", None).unwrap();
         assert_eq!(c.base_url(), "https://api.tokf.net");
     }
 
     #[test]
     fn client_base_url_no_trailing_slash() {
-        let c = Client::new("https://api.tokf.net", None).unwrap();
+        let rt = Runtime::isolated();
+        let c = Client::new(&rt, "https://api.tokf.net", None).unwrap();
         assert_eq!(c.base_url(), "https://api.tokf.net");
     }
 
     #[test]
     fn client_unauthenticated_has_no_token() {
-        let c = Client::unauthenticated("https://api.tokf.net").unwrap();
+        let rt = Runtime::isolated();
+        let c = Client::unauthenticated(&rt, "https://api.tokf.net").unwrap();
         assert!(c.token.is_none());
     }
 
     #[test]
     fn client_new_with_token() {
-        let c = Client::new("https://api.tokf.net", Some("tok123")).unwrap();
+        let rt = Runtime::isolated();
+        let c = Client::new(&rt, "https://api.tokf.net", Some("tok123")).unwrap();
         assert_eq!(c.token.as_deref(), Some("tok123"));
     }
 
     #[test]
     fn url_helper_formats_correctly() {
-        let c = Client::new("https://api.tokf.net/", None).unwrap();
+        let rt = Runtime::isolated();
+        let c = Client::new(&rt, "https://api.tokf.net/", None).unwrap();
         assert_eq!(c.url("/api/test"), "https://api.tokf.net/api/test");
     }
 
@@ -341,7 +359,8 @@ mod tests {
     #[cfg(debug_assertions)]
     #[should_panic(expected = "must start with '/'")]
     fn url_helper_panics_on_missing_slash_in_debug() {
-        let c = Client::new("https://api.tokf.net", None).unwrap();
+        let rt = Runtime::isolated();
+        let c = Client::new(&rt, "https://api.tokf.net", None).unwrap();
         let _ = c.url("api/test");
     }
 }

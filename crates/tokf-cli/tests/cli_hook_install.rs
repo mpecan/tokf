@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_const_for_fn)]
 
-use std::process::Command;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+mod common;
+use common::tokf;
 
 // --- tokf hook install ---
 

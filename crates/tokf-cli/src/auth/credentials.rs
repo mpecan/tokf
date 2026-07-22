@@ -6,7 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-const KEYRING_SERVICE: &str = "tokf";
+use crate::runtime::Runtime;
+
 const KEYRING_USER: &str = "default";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,8 +52,16 @@ impl LoadedAuth {
     }
 }
 
-pub fn auth_config_path() -> Option<PathBuf> {
-    crate::paths::user_dir().map(|d| d.join("auth.toml"))
+/// Filename of the auth metadata stored beside the keyring entry.
+const AUTH_FILE: &str = "auth.toml";
+
+pub fn auth_config_path(rt: &Runtime) -> Option<PathBuf> {
+    rt.user_dir().map(|d| d.join(AUTH_FILE))
+}
+
+/// [`auth_config_path`] with the "no config directory" error already applied.
+fn require_auth_config_path(rt: &Runtime) -> anyhow::Result<PathBuf> {
+    Ok(rt.require_user_dir()?.join(AUTH_FILE))
 }
 
 /// Store authentication credentials (token in keyring, metadata in TOML).
@@ -65,13 +74,14 @@ pub fn auth_config_path() -> Option<PathBuf> {
 /// Returns an error if the keyring is inaccessible, the config directory
 /// cannot be determined, or the TOML file cannot be written.
 pub fn save(
+    rt: &Runtime,
     token: &str,
     username: &str,
     server_url: &str,
     token_expires_in: i64,
 ) -> anyhow::Result<()> {
     // Store token in OS keyring
-    let entry = keyring_entry()?;
+    let entry = keyring_entry(rt)?;
     entry
         .set_password(token)
         .map_err(|e| anyhow::anyhow!("could not access system keyring: {e}"))?;
@@ -87,13 +97,12 @@ pub fn save(
     };
 
     // Store metadata in TOML file
-    let path =
-        auth_config_path().ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+    let path = require_auth_config_path(rt)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     // Preserve any previously stored fields (e.g. mit_license_accepted, tos_accepted_version)
-    let existing = auth_config_path()
+    let existing = auth_config_path(rt)
         .and_then(|p| fs::read_to_string(&p).ok())
         .and_then(|c| toml::from_str::<StoredAuth>(&c).ok());
     let mit_license_accepted = existing.as_ref().and_then(|e| e.mit_license_accepted);
@@ -120,9 +129,8 @@ pub fn save(
 ///
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
-pub fn save_license_accepted(accepted: bool) -> anyhow::Result<()> {
-    let path =
-        auth_config_path().ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+pub fn save_license_accepted(rt: &Runtime, accepted: bool) -> anyhow::Result<()> {
+    let path = require_auth_config_path(rt)?;
     save_license_accepted_to_path(&path, accepted)
 }
 
@@ -146,9 +154,8 @@ pub(crate) fn save_license_accepted_to_path(
 ///
 /// Returns an error if the config directory cannot be determined or the file
 /// cannot be written.
-pub fn save_tos_accepted_version(version: i64) -> anyhow::Result<()> {
-    let path =
-        auth_config_path().ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
+pub fn save_tos_accepted_version(rt: &Runtime, version: i64) -> anyhow::Result<()> {
+    let path = require_auth_config_path(rt)?;
     save_tos_accepted_version_to_path(&path, version)
 }
 
@@ -197,12 +204,12 @@ fn update_stored_auth(
 ///
 /// Returns `None` if no credentials are stored, the TOML file is missing
 /// or malformed, or the keyring entry is absent.
-pub fn load() -> Option<LoadedAuth> {
-    let path = auth_config_path()?;
+pub fn load(rt: &Runtime) -> Option<LoadedAuth> {
+    let path = auth_config_path(rt)?;
     let content = fs::read_to_string(&path).ok()?;
     let meta: StoredAuth = toml::from_str(&content).ok()?;
 
-    let entry = keyring_entry().ok()?;
+    let entry = keyring_entry(rt).ok()?;
     let token = entry.get_password().ok()?;
 
     Some(LoadedAuth {
@@ -220,7 +227,7 @@ pub fn load() -> Option<LoadedAuth> {
 /// `keyring_core`'s default store is process-global and first-write-wins, so
 /// installing it more than once would either be ignored or swap in a fresh,
 /// empty store underneath a test that had already saved a credential.
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 static MOCK_STORE_INIT: std::sync::Once = std::sync::Once::new();
 
 /// Switch the keyring to an in-memory backend that persists across entries.
@@ -231,7 +238,7 @@ static MOCK_STORE_INIT: std::sync::Once = std::sync::Once::new();
 /// Uses `keyring_core`'s mock store, which reuses one credential per
 /// `(service, user)` pair, so `save()` + `load()` round-trips work in tests
 /// (its persistence is `ProcessOnly`).
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 pub fn use_mock_keyring() {
     MOCK_STORE_INIT.call_once(|| {
         if let Ok(store) = keyring_core::mock::Store::new() {
@@ -244,9 +251,9 @@ pub fn use_mock_keyring() {
 ///
 /// Test builds deliberately use `keyring_core::Entry` rather than
 /// `keyring::Entry`; see [`keyring_entry`] for why that distinction matters.
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 type KeyringEntry = keyring_core::Entry;
-#[cfg(not(any(test, feature = "test-keyring")))]
+#[cfg(not(any(test, feature = "test-support")))]
 type KeyringEntry = keyring::Entry;
 
 /// Construct the keyring entry holding the auth token.
@@ -266,16 +273,16 @@ type KeyringEntry = keyring::Entry;
 /// entirely, so the mock store installed by [`use_mock_keyring`] is the one
 /// actually used. Production builds keep the `keyring::Entry` wrapper and its
 /// platform-store selection, unchanged.
-fn keyring_entry() -> keyring::Result<KeyringEntry> {
-    #[cfg(any(test, feature = "test-keyring"))]
+fn keyring_entry(rt: &Runtime) -> keyring::Result<KeyringEntry> {
+    #[cfg(any(test, feature = "test-support"))]
     {
         use_mock_keyring();
-        keyring_core::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        keyring_core::Entry::new(rt.keyring_service(), KEYRING_USER)
     }
 
-    #[cfg(not(any(test, feature = "test-keyring")))]
+    #[cfg(not(any(test, feature = "test-support")))]
     {
-        keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        keyring::Entry::new(rt.keyring_service(), KEYRING_USER)
     }
 }
 
@@ -283,8 +290,8 @@ fn keyring_entry() -> keyring::Result<KeyringEntry> {
 ///
 /// Silently ignores errors — the credentials may already be absent.
 /// Returns `true` if credentials were present before removal.
-pub fn remove() -> bool {
-    let had_credentials = load().is_some();
+pub fn remove(rt: &Runtime) -> bool {
+    let had_credentials = load(rt).is_some();
 
     // Remove keyring entry (ignore errors — may already be absent).
     //
@@ -292,12 +299,12 @@ pub fn remove() -> bool {
     // and the keyring entry can go out of sync (a hand-deleted auth.toml leaves
     // the token orphaned), and `load()` reports None whenever the TOML is gone.
     // Gating here would silently strand that token forever.
-    if let Ok(entry) = keyring_entry() {
+    if let Ok(entry) = keyring_entry(rt) {
         let _ = entry.delete_credential();
     }
 
     // Remove TOML file
-    if let Some(path) = auth_config_path() {
+    if let Some(path) = auth_config_path(rt) {
         let _ = fs::remove_file(&path);
     }
 
@@ -307,8 +314,6 @@ pub fn remove() -> bool {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use serial_test::serial;
-
     use super::*;
 
     #[test]
@@ -380,9 +385,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn auth_config_path_returns_some() {
-        let path = auth_config_path();
+        let rt = Runtime::isolated();
+        let path = auth_config_path(&rt);
         assert!(path.is_some(), "expected auth config path to be Some");
         let path = path.unwrap();
         assert!(
@@ -393,24 +398,20 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn load_returns_none_when_no_file() {
         use_mock_keyring();
-        let dir = tempfile::TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(dir.path());
-        let result = load();
+        let rt = Runtime::isolated();
+        let result = load(&rt);
         assert!(result.is_none(), "expected None when no auth file exists");
     }
 
     #[test]
-    #[serial]
     fn save_and_load_roundtrip() {
         use_mock_keyring();
-        let dir = tempfile::TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(dir.path());
+        let rt = Runtime::isolated();
 
-        save("secret-token", "alice", "https://api.tokf.net", 3600).unwrap();
-        let loaded = load().expect("credentials should be loadable after save");
+        save(&rt, "secret-token", "alice", "https://api.tokf.net", 3600).unwrap();
+        let loaded = load(&rt).expect("credentials should be loadable after save");
 
         assert_eq!(loaded.token, "secret-token");
         assert_eq!(loaded.username, "alice");
@@ -420,42 +421,39 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn remove_clears_credentials() {
         use_mock_keyring();
-        let dir = tempfile::TempDir::new().unwrap();
-        let _guard = crate::paths::HomeGuard::set(dir.path());
+        let rt = Runtime::isolated();
 
-        save("tok_xyz", "bob", "https://example.com", 0).unwrap();
-        assert!(load().is_some(), "credentials should exist after save");
+        save(&rt, "tok_xyz", "bob", "https://example.com", 0).unwrap();
+        assert!(load(&rt).is_some(), "credentials should exist after save");
 
-        let removed = remove();
+        let removed = remove(&rt);
         assert!(
             removed,
             "remove should return true when credentials existed"
         );
 
-        let after = load();
+        let after = load(&rt);
         assert!(after.is_none(), "credentials should be gone after remove");
     }
 
-    /// Deliberately NOT `#[serial]`: this asserts that a keyring access racing
-    /// the serial auth tests still lands on the mock store.
+    /// Asserts that a keyring access lands on the mock store.
     ///
     /// Before `keyring_entry()` existed, `load()` here could construct an entry
     /// against the real OS keychain, and because `keyring_core`'s default store
     /// is process-global and first-write-wins, that pinned the real store for
     /// every test that ran afterwards — the cause of the intermittent
     /// "item already exists in the keychain" failures.
-    /// `#[serial]` because it writes the shared `(service, user)` credential
-    /// that the other auth tests round-trip; without it this would clobber
-    /// their state mid-test. It does not touch `crate::paths`, whose override
-    /// is also process-global.
+    ///
+    /// The store is still process-global, but each isolated runtime carries its
+    /// own service name, so concurrent tests address disjoint credentials and
+    /// no longer need to be serialised.
     #[test]
-    #[serial]
     fn keyring_entry_installs_the_mock_store_without_an_explicit_call() {
         // No use_mock_keyring() call: keyring_entry() must install it.
-        let entry = keyring_entry().expect("keyring entry should be constructible");
+        let rt = Runtime::isolated();
+        let entry = keyring_entry(&rt).expect("keyring entry should be constructible");
 
         // Against the mock this round-trips; against a real keychain it would
         // prompt for access or fail outright.
@@ -470,16 +468,16 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn use_mock_keyring_is_idempotent_and_preserves_state() {
         use_mock_keyring();
-        let entry = keyring_entry().unwrap();
+        let rt = Runtime::isolated();
+        let entry = keyring_entry(&rt).unwrap();
         entry.set_password("first-write").unwrap();
 
         // A second call must NOT swap in a fresh, empty store underneath us.
         use_mock_keyring();
         assert_eq!(
-            keyring_entry().unwrap().get_password().unwrap(),
+            keyring_entry(&rt).unwrap().get_password().unwrap(),
             "first-write",
             "re-installing the mock store must not discard existing credentials"
         );

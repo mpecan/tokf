@@ -1,21 +1,22 @@
 use std::path::Path;
 
 use tokf::history;
-use tokf::tracking;
 
 use crate::commands::HistoryAction;
+
+use tokf::runtime::Runtime;
 
 /// Dispatch a `tokf history <action>` subcommand.
 ///
 /// # Errors
 /// Returns an error if the underlying history command fails.
-pub fn dispatch_history(action: &HistoryAction) -> anyhow::Result<i32> {
+pub fn dispatch_history(rt: &Runtime, action: &HistoryAction) -> anyhow::Result<i32> {
     match action {
-        HistoryAction::List { limit, all } => cmd_history_list(*limit, *all),
-        HistoryAction::Show { id, raw } => cmd_history_show(*id, *raw),
-        HistoryAction::Last { raw, all } => cmd_history_last(*raw, *all),
-        HistoryAction::Search { query, limit, all } => cmd_history_search(query, *limit, *all),
-        HistoryAction::Clear { all } => cmd_history_clear(*all),
+        HistoryAction::List { limit, all } => cmd_history_list(rt, *limit, *all),
+        HistoryAction::Show { id, raw } => cmd_history_show(rt, *id, *raw),
+        HistoryAction::Last { raw, all } => cmd_history_last(rt, *raw, *all),
+        HistoryAction::Search { query, limit, all } => cmd_history_search(rt, query, *limit, *all),
+        HistoryAction::Clear { all } => cmd_history_clear(rt, *all),
     }
 }
 
@@ -23,29 +24,30 @@ pub fn dispatch_history(action: &HistoryAction) -> anyhow::Result<i32> {
 ///
 /// # Errors
 /// Returns an error if the underlying history command fails.
-pub fn dispatch_raw(target: &str) -> anyhow::Result<i32> {
+pub fn dispatch_raw(rt: &Runtime, target: &str) -> anyhow::Result<i32> {
     if target == "last" {
-        cmd_history_last(true, false)
+        cmd_history_last(rt, true, false)
     } else if let Ok(id) = target.parse::<i64>() {
-        cmd_history_show(id, true)
+        cmd_history_show(rt, id, true)
     } else {
         eprintln!("[tokf] expected `last` or a numeric ID, got: {target}");
         Ok(1)
     }
 }
 
-fn open_history_conn() -> anyhow::Result<rusqlite::Connection> {
-    let path =
-        tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine history DB path"))?;
+fn open_history_conn(rt: &Runtime) -> anyhow::Result<rusqlite::Connection> {
+    let path = rt
+        .tracking_db_path()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine history DB path"))?;
     history::open_db(&path)
 }
 
-pub fn cmd_history_list(limit: usize, all: bool) -> anyhow::Result<i32> {
-    let conn = open_history_conn()?;
+pub fn cmd_history_list(rt: &Runtime, limit: usize, all: bool) -> anyhow::Result<i32> {
+    let conn = open_history_conn(rt)?;
     let project = if all {
         None
     } else {
-        Some(history::current_project())
+        Some(history::current_project(rt))
     };
     let project_ref = project.as_deref();
 
@@ -62,8 +64,8 @@ pub fn cmd_history_list(limit: usize, all: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-pub fn cmd_history_show(id: i64, raw: bool) -> anyhow::Result<i32> {
-    let conn = open_history_conn()?;
+pub fn cmd_history_show(rt: &Runtime, id: i64, raw: bool) -> anyhow::Result<i32> {
+    let conn = open_history_conn(rt)?;
 
     let entry = history::get_history_entry(&conn, id)?;
     let Some(entry) = entry else {
@@ -80,12 +82,12 @@ pub fn cmd_history_show(id: i64, raw: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-pub fn cmd_history_last(raw: bool, all: bool) -> anyhow::Result<i32> {
-    let conn = open_history_conn()?;
+pub fn cmd_history_last(rt: &Runtime, raw: bool, all: bool) -> anyhow::Result<i32> {
+    let conn = open_history_conn(rt)?;
     let project = if all {
         None
     } else {
-        Some(history::current_project())
+        Some(history::current_project(rt))
     };
     let project_ref = project.as_deref();
 
@@ -122,12 +124,17 @@ fn print_entry_detail(entry: &history::HistoryEntry) {
     println!("{}", entry.filtered_output);
 }
 
-pub fn cmd_history_search(query: &str, limit: usize, all: bool) -> anyhow::Result<i32> {
-    let conn = open_history_conn()?;
+pub fn cmd_history_search(
+    rt: &Runtime,
+    query: &str,
+    limit: usize,
+    all: bool,
+) -> anyhow::Result<i32> {
+    let conn = open_history_conn(rt)?;
     let project = if all {
         None
     } else {
-        Some(history::current_project())
+        Some(history::current_project(rt))
     };
     let project_ref = project.as_deref();
 
@@ -144,12 +151,12 @@ pub fn cmd_history_search(query: &str, limit: usize, all: bool) -> anyhow::Resul
     Ok(0)
 }
 
-pub fn cmd_history_clear(all: bool) -> anyhow::Result<i32> {
-    let conn = open_history_conn()?;
+pub fn cmd_history_clear(rt: &Runtime, all: bool) -> anyhow::Result<i32> {
+    let conn = open_history_conn(rt)?;
     let project = if all {
         None
     } else {
-        Some(history::current_project())
+        Some(history::current_project(rt))
     };
     let project_ref = project.as_deref();
 

@@ -2,14 +2,16 @@ use std::path::{Path, PathBuf};
 
 use super::instructions;
 
+use crate::runtime::Runtime;
+
 /// Install the Aider conventions file.
 ///
 /// # Errors
 ///
 /// Returns an error if file I/O fails.
-pub fn install(global: bool) -> anyhow::Result<()> {
+pub fn install(rt: &Runtime, global: bool) -> anyhow::Result<()> {
     if global {
-        let conventions_path = global_conventions_path()?;
+        let conventions_path = global_conventions_path(rt)?;
         write_conventions_file(&conventions_path)?;
         patch_aider_conf(&conventions_path)?;
         eprintln!(
@@ -36,9 +38,8 @@ pub(crate) fn install_to(conventions_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn global_conventions_path() -> anyhow::Result<PathBuf> {
-    let user = crate::paths::user_dir()
-        .ok_or_else(|| anyhow::anyhow!("could not determine config directory"))?;
+fn global_conventions_path(rt: &Runtime) -> anyhow::Result<PathBuf> {
+    let user = rt.require_user_dir()?;
     Ok(user.join("aider-conventions.md"))
 }
 

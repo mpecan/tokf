@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
-
-fn tokf() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_tokf"))
-}
+mod common;
+use common::tokf;
 
 /// `tokf publish git/status` must fail: git/status is a built-in stdlib filter.
 /// Users must eject it first before publishing.
