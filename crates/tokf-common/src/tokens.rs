@@ -8,6 +8,11 @@
 //!
 //! Because it is a heuristic, every user-facing surface that prints these
 //! numbers must keep labelling them `est.`.
+//!
+//! The heuristic can be *verified* against a real cl100k tokenizer via the
+//! optional, off-by-default `tokenizer` feature (see
+//! `crates/tokf-cli/tests/calibration.rs`). cl100k is not Claude's tokenizer,
+//! so even that is an approximation — a calibration target, not truth.
 
 /// Bytes per estimated token.
 ///
@@ -63,6 +68,23 @@ pub fn estimate_tokens(s: &str) -> usize {
 )]
 pub fn estimate_tokens_from_bytes(bytes: usize) -> usize {
     (bytes as f64 / DIVISOR) as usize
+}
+
+/// A real cl100k tokenizer, for verifying and calibrating the estimator.
+///
+/// Available only under the optional, off-by-default `tokenizer` feature.
+/// Nothing in the shipping runtime path may use this — it exists so we can
+/// measure how wrong [`ArithmeticTokenCounter`] is, and re-check that later.
+#[cfg(feature = "tokenizer")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cl100kTokenCounter;
+
+#[cfg(feature = "tokenizer")]
+impl TokenCounter for Cl100kTokenCounter {
+    fn count(&self, text: &str) -> usize {
+        // `cl100k_base()` returns a process-wide static; construction is free.
+        bpe_openai::cl100k_base().count(text)
+    }
 }
 
 #[cfg(test)]
@@ -121,5 +143,22 @@ mod tests {
     fn counter_is_object_safe() {
         let c: &dyn TokenCounter = &ArithmeticTokenCounter;
         assert_eq!(c.count("hello world"), estimate_tokens("hello world"));
+    }
+
+    #[cfg(feature = "tokenizer")]
+    #[test]
+    fn cl100k_matches_hand_verified_counts() {
+        let c = Cl100kTokenCounter;
+        assert_eq!(c.count(""), 0);
+        // Hand-verified against the cl100k_base vocabulary.
+        assert_eq!(c.count("hello world"), 2);
+        assert_eq!(c.count("héllo wörld"), 6);
+    }
+
+    #[cfg(feature = "tokenizer")]
+    #[test]
+    fn cl100k_is_object_safe_too() {
+        let c: &dyn TokenCounter = &Cl100kTokenCounter;
+        assert!(c.count("fn main() {}") > 0);
     }
 }
