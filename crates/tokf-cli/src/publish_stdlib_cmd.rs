@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use tokf::publish_shared::collect_test_files_resolved;
 use tokf::remote::http::Client;
+use tokf::runtime::Runtime;
 
 /// Entry point for the `tokf publish-stdlib` subcommand.
 pub fn cmd_publish_stdlib(rt: &Runtime, registry_url: &str, token: &str, dry_run: bool) -> i32 {
-    match publish_stdlib(registry_url, token, dry_run) {
+    match publish_stdlib(rt, registry_url, token, dry_run) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -52,7 +53,12 @@ struct StdlibFailure {
 
 // ── Core logic ──────────────────────────────────────────────────────────────
 
-fn publish_stdlib(registry_url: &str, token: &str, dry_run: bool) -> anyhow::Result<i32> {
+fn publish_stdlib(
+    rt: &Runtime,
+    registry_url: &str,
+    token: &str,
+    dry_run: bool,
+) -> anyhow::Result<i32> {
     let filters_dir = Path::new("crates/tokf-cli/filters");
     if !filters_dir.is_dir() {
         anyhow::bail!(
@@ -82,7 +88,7 @@ fn publish_stdlib(registry_url: &str, token: &str, dry_run: bool) -> anyhow::Res
         return Ok(0);
     }
 
-    let client = Client::new(registry_url, Some(token))?;
+    let client = Client::new(rt, registry_url, Some(token))?;
     let tally = publish_entries_one_by_one(&client, entries, &version);
 
     eprintln!();
@@ -201,7 +207,7 @@ fn collect_stdlib_entries(filters_dir: &Path) -> anyhow::Result<Vec<StdlibFilter
     Ok(entries)
 }
 
-fn count_test_files(files: &[StdlibTestFile]) -> usize {
+const fn count_test_files(files: &[StdlibTestFile]) -> usize {
     files.len()
 }
 
