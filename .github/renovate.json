@@ -3,33 +3,59 @@
   "extends": [
     "config:recommended"
   ],
-  "schedule": ["before 6am on monday"],
-  "labels": ["dependencies"],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "packageRules": [
     {
       "description": "Group all GitHub Actions updates together",
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "GitHub Actions",
       "automerge": true,
       "automergeType": "pr"
     },
     {
       "description": "Automerge Cargo patch updates",
-      "matchManagers": ["cargo"],
-      "matchUpdateTypes": ["patch"],
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
       "automerge": true,
       "automergeType": "pr"
     },
     {
       "description": "Group Cargo minor updates into one PR",
-      "matchManagers": ["cargo"],
-      "matchUpdateTypes": ["minor"],
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
       "groupName": "Cargo dependencies (minor)"
     },
     {
       "description": "Major updates always get individual PRs",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false
+    },
+    {
+      "description": "rusqlite is held below 0.40: it requires libsqlite3-sys 0.38, which collides with sqlx-sqlite (<0.38) on the `links = \"sqlite3\"` constraint. Lift once sqlx-sqlite allows 0.38.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "rusqlite"
+      ],
+      "allowedVersions": "<0.40"
     }
   ],
   "rust": {
