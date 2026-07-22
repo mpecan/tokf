@@ -8,6 +8,7 @@ use tokf::history;
 use tokf::runner;
 
 use crate::Cli;
+use crate::marker;
 use crate::resolve;
 
 /// Shared execution + tracking for generic fallback commands.
@@ -53,19 +54,18 @@ pub fn cmd_generic_run(
 
     let command_str = command_args.join(" ");
 
-    // Load output config for compression indicator
-    let output_cfg = {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = history::project_root_for(&cwd);
-        history::OutputConfig::load(Some(&project_root))
-    };
+    // Record history first: the entry ID feeds the recovery marker printed below.
+    let history_id = history::try_record(
+        &command_str,
+        filter_name,
+        &cmd_result.combined,
+        &filtered,
+        cmd_result.exit_code,
+    );
 
+    let render_cfg = marker::load_render_config();
     if !filtered.is_empty() {
-        if output_cfg.show_indicator {
-            println!("🗜️ {filtered}");
-        } else {
-            println!("{filtered}");
-        }
+        marker::print_with_indicator(&filtered, &render_cfg, history_id);
     }
 
     // Record tracking
@@ -81,15 +81,6 @@ pub fn cmd_generic_run(
         false,
     );
     resolve::try_auto_sync();
-
-    // Record history
-    history::try_record(
-        &command_str,
-        filter_name,
-        &cmd_result.combined,
-        &filtered,
-        cmd_result.exit_code,
-    );
 
     if cli.no_mask_exit_code {
         Ok(cmd_result.exit_code)

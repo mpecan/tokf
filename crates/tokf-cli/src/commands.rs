@@ -5,7 +5,6 @@ use tokf::baseline;
 use tokf::config;
 use tokf::filter;
 use tokf::history;
-use tokf::history::OutputConfig;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
@@ -13,6 +12,7 @@ use tokf::skill;
 use tokf::telemetry;
 
 use crate::Cli;
+use crate::marker;
 use crate::resolve;
 
 // R6: Rename Opencode → OpenCode; use #[value(name = "opencode")] to keep CLI arg as "opencode".
@@ -376,22 +376,14 @@ pub fn cmd_run(
         cmd_result.exit_code,
     );
 
-    let output_cfg = {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = history::project_root_for(&cwd);
-        OutputConfig::load(Some(&project_root))
-    };
+    let render_cfg = marker::load_render_config();
 
     let mask = !cli.no_mask_exit_code && cmd_result.exit_code != 0;
     if mask {
         println!("Error: Exit code {}", cmd_result.exit_code);
     }
     if !final_output.is_empty() {
-        if output_cfg.show_indicator {
-            println!("🗜️ {final_output}");
-        } else {
-            println!("{final_output}");
-        }
+        marker::print_with_indicator(&final_output, &render_cfg, history_id);
     }
 
     if show_hint && let Some(id) = history_id {
