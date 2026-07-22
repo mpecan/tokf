@@ -55,6 +55,10 @@ pub fn create_router(state: AppState) -> Router {
             "/api/filters/backfill-versions",
             post(filters::backfill_versions),
         )
+        .route(
+            "/api/filters/backfill-v1-hashes",
+            post(filters::backfill_v1_hashes),
+        )
         .route("/api/sync", post(sync::sync_usage))
         .route("/api/catalog/refresh", post(catalog::refresh_catalog))
         .route("/api/catalog/grouped", get(catalog::get_grouped_catalog))

@@ -240,6 +240,93 @@ fn compute_version_timeline(snapshots: &[(String, Vec<(String, String)>)]) -> Ve
         .collect()
 }
 
+// ── v1 hash backfill ─────────────────────────────────────────────────────────
+
+/// Safety backstop against an unbounded loop if the server ever reports
+/// `updated > 0` without shrinking the NULL set. At 500 rows/round this covers
+/// millions of rows — far beyond any real registry.
+const MAX_V1_ROUNDS: usize = 10_000;
+
+/// Entry point for the `tokf backfill-v1-hashes` subcommand.
+pub fn cmd_backfill_v1_hashes(registry_url: &str, token: &str, limit: usize) -> i32 {
+    match backfill_v1_hashes(registry_url, token, limit) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("[tokf] error: {e:#}");
+            1
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct BackfillV1Request {
+    limit: usize,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct BackfillV1Failure {
+    content_hash: String,
+    error: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct BackfillV1Response {
+    processed: usize,
+    updated: usize,
+    failed: Vec<BackfillV1Failure>,
+}
+
+/// Drive `POST /api/filters/backfill-v1-hashes` until a round makes no
+/// progress (`updated == 0`), mirroring the server runbook. Each round
+/// reprocesses up to `limit` legacy rows; rows that fail are surfaced and
+/// — server-side — rotated to the back of the cursor so they can't starve
+/// healthy rows.
+///
+/// Exit code is non-zero when rows remain unprocessable after the run, so a
+/// CI invocation goes red and an operator triages the reported failures.
+fn backfill_v1_hashes(registry_url: &str, token: &str, limit: usize) -> anyhow::Result<i32> {
+    let client = Client::new(registry_url, Some(token))?;
+    let mut total_updated = 0usize;
+
+    for round in 1..=MAX_V1_ROUNDS {
+        let resp = client.post::<_, BackfillV1Response>(
+            "/api/filters/backfill-v1-hashes",
+            &BackfillV1Request { limit },
+        )?;
+        total_updated += resp.updated;
+        eprintln!(
+            "[backfill-v1] round {round}: processed {}, updated {}, failed {}",
+            resp.processed,
+            resp.updated,
+            resp.failed.len()
+        );
+        for f in &resp.failed {
+            eprintln!("[backfill-v1]   FAILED {}: {}", f.content_hash, f.error);
+        }
+
+        // A round that updates nothing means only permanently-failing rows
+        // remain (healthy rows always reduce the NULL set, so `updated` must
+        // reach 0 in finite rounds). Stop here.
+        if resp.updated == 0 {
+            if resp.failed.is_empty() {
+                eprintln!("[backfill-v1] done — all rows backfilled ({total_updated} total).");
+                return Ok(0);
+            }
+            eprintln!(
+                "[backfill-v1] done — {} row(s) remain unprocessable after {total_updated} \
+                 backfilled; triage the failures above.",
+                resp.failed.len()
+            );
+            return Ok(1);
+        }
+    }
+
+    anyhow::bail!(
+        "backfill did not converge after {MAX_V1_ROUNDS} rounds ({total_updated} rows updated); \
+         aborting — the server may be reporting progress without shrinking the backlog"
+    )
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

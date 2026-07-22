@@ -1,0 +1,24 @@
+name: Backfill v1 Hashes
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Backfill canonical v1 hashes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run backfill
+        run: cargo run -p tokf --features stdlib-publish -- backfill-v1-hashes
+        env:
+          TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
+          TOKF_REGISTRY_URL: https://api.tokf.net

@@ -1,22 +1,20 @@
 use std::sync::Arc;
 
-use axum::{
-    body::Body,
-    http::{Request, StatusCode},
-};
+use axum::http::StatusCode;
 use http_body_util::BodyExt;
 use sqlx::PgPool;
-use tower::ServiceExt;
 
 use crate::routes::test_helpers::insert_service_token;
 use crate::storage::StorageClient as _;
 use crate::storage::mock::InMemoryStorageClient;
 
 use super::super::test_helpers::{
-    insert_test_user, make_state_with_storage, publish_filter_helper,
+    insert_test_user, make_state_with_storage, post_json, publish_filter_helper,
 };
 
 const VALID_FILTER_TOML: &[u8] = b"command = \"my-tool\"\n";
+
+const URI: &str = "/api/filters/regenerate-examples";
 
 fn make_state_with_mem_storage(
     pool: PgPool,
@@ -30,17 +28,7 @@ async fn post_regenerate(
     token: &str,
     body: &serde_json::Value,
 ) -> axum::response::Response {
-    app.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/api/filters/regenerate-examples")
-            .header("authorization", format!("Bearer {token}"))
-            .header("content-type", "application/json")
-            .body(Body::from(serde_json::to_vec(body).unwrap()))
-            .unwrap(),
-    )
-    .await
-    .unwrap()
+    post_json(app, token, URI, body).await
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

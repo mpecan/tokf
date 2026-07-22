@@ -70,6 +70,24 @@ pub struct TestFilePayload {
 pub struct DownloadPayload {
     pub filter_toml: String,
     pub test_files: Vec<TestFilePayload>,
+    /// `canonical_hash` recomputed by the current server binary on the
+    /// downloaded TOML. The URL hash is a stable lookup key; this is the
+    /// authoritative identity under the current `FilterConfig` schema. May
+    /// differ from the URL hash when the filter was published before recent
+    /// schema additions — see issue #350.
+    pub content_hash: String,
+    /// Canonical v1 hash (schema-independent; see ADR-0002). Stable
+    /// across `FilterConfig` schema additions, the long-term identity for
+    /// all filters going forward. Clients aware of v1 verify against
+    /// this; older clients ignore the field.
+    ///
+    /// `None` (omitted from the response) when the stored TOML cannot be
+    /// canonicalised under v1 — e.g. a legacy filter containing a
+    /// non-finite float, published before the v1 gate existed. Best-effort
+    /// so a single un-hashable legacy filter doesn't 500 the whole
+    /// download; the client falls back to `content_hash`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v1_hash: Option<String>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -332,6 +350,21 @@ pub async fn download_filter(
     let filter_toml = String::from_utf8(filter_bytes)
         .map_err(|_| AppError::Internal("filter TOML is not valid UTF-8".to_string()))?;
 
+    // Recompute the canonical hash under the current `FilterConfig` schema.
+    // For filters published before schema additions this differs from the URL
+    // hash; the client uses this as the authoritative identity. See #350.
+    let content_hash = recompute_content_hash(&filter_toml).map_err(|e| {
+        tracing::warn!("hash recompute failed for {hash}: {e}");
+        AppError::Internal("filter content cannot be re-hashed".to_string())
+    })?;
+
+    // Compute the schema-independent v1 hash (ADR-0002). Stable across
+    // future `FilterConfig` schema additions; the long-term identity for
+    // every filter going forward. Best-effort: a legacy filter that can't be
+    // canonicalised under v1 must not fail the download — the client falls
+    // back to `content_hash`. See #350.
+    let v1_hash = compute_v1_best_effort(&filter_toml, &hash);
+
     let test_keys: Vec<String> =
         sqlx::query_scalar("SELECT r2_key FROM filter_tests WHERE filter_hash = $1")
             .bind(&hash)
@@ -368,17 +401,98 @@ pub async fn download_filter(
         Json(DownloadPayload {
             filter_toml,
             test_files,
+            content_hash,
+            v1_hash,
         }),
     ))
+}
+
+/// Parse `toml_str` into a [`FilterConfig`] and return its current
+/// `canonical_hash`. Pulled out as a free function so the download handler
+/// stays under the line-count guideline and so unit tests can exercise it
+/// without standing up the full HTTP stack.
+///
+/// We compute on every download rather than backfilling the `filters.content_hash`
+/// DB column. The DB column is the **lookup key** (URL identity, immutable);
+/// the recomputed value is the **content identity** under the current
+/// schema and may change as `FilterConfig` evolves. Backfilling would
+/// require a coordinated re-key / migration we explicitly defer; per-request
+/// cost is one TOML parse + one SHA-256, negligible against R2 latency.
+fn recompute_content_hash(toml_str: &str) -> Result<String, String> {
+    let config: tokf_common::config::types::FilterConfig =
+        toml::from_str(toml_str).map_err(|e| format!("invalid filter TOML: {e}"))?;
+    tokf_common::hash::canonical_hash(&config).map_err(|e| format!("hash error: {e}"))
+}
+
+/// Compute the canonical v1 hash (ADR-0002), returning `None` on failure
+/// instead of erroring. Unlike `content_hash` (the per-request identity the
+/// client relies on), `v1_hash` is advisory for v1-aware clients, so a single
+/// legacy filter that can't be canonicalised under v1 should degrade to "no
+/// v1 hash" rather than 500 the download. The warning is logged for triage —
+/// such a filter is also a backfill failure and warrants a manual look.
+fn compute_v1_best_effort(toml_str: &str, hash: &str) -> Option<String> {
+    match tokf_common::canonical_v1::hash(toml_str) {
+        Ok(h) => Some(h),
+        Err(e) => {
+            tracing::warn!("v1 hash computation failed for {hash} (omitting from response): {e}");
+            None
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 // DB integration tests live in `search_tests.rs` (same pattern as sync/sync_tests).
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::escape_ilike;
+    use super::{compute_v1_best_effort, escape_ilike, recompute_content_hash};
+
+    #[test]
+    fn compute_v1_best_effort_returns_hash_for_valid_filter() {
+        let v1 = compute_v1_best_effort(r#"command = "git push""#, "deadbeef");
+        let v1 = v1.expect("valid filter must produce a v1 hash");
+        assert!(v1.starts_with("v1:"), "got {v1}");
+    }
+
+    #[test]
+    fn compute_v1_best_effort_returns_none_when_uncanonicalisable() {
+        // A non-finite float is rejected by canonical_v1 — the helper must
+        // degrade to None (omit the field) rather than propagate an error.
+        let v1 = compute_v1_best_effort("command = \"x\"\nratio = nan\n", "deadbeef");
+        assert!(v1.is_none(), "non-finite float must yield None, got {v1:?}");
+    }
+
+    #[test]
+    fn recompute_content_hash_matches_canonical_hash() {
+        let toml = r#"command = "git push""#;
+        let cfg: tokf_common::config::types::FilterConfig = toml::from_str(toml).unwrap();
+        let direct = tokf_common::hash::canonical_hash(&cfg).unwrap();
+        let recomputed = recompute_content_hash(toml).unwrap();
+        assert_eq!(direct, recomputed);
+    }
+
+    #[test]
+    fn recompute_content_hash_strips_comments_and_whitespace() {
+        // Two TOMLs that parse to the same FilterConfig must produce the same
+        // hash — proving the recompute is over the parsed shape, not the raw
+        // bytes. This is the property the download endpoint relies on.
+        let a = r#"command = "git push""#;
+        let b = "# attribution comment\ncommand   =   \"git push\"\n\n";
+        assert_eq!(
+            recompute_content_hash(a).unwrap(),
+            recompute_content_hash(b).unwrap()
+        );
+    }
+
+    #[test]
+    fn recompute_content_hash_errors_on_invalid_toml() {
+        let err = recompute_content_hash("this is not [[[ valid toml").unwrap_err();
+        assert!(
+            err.contains("invalid filter TOML"),
+            "expected parse-error message, got: {err}"
+        );
+    }
 
     #[test]
     fn escape_ilike_leaves_normal_text_unchanged() {

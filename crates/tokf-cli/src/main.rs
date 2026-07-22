@@ -84,6 +84,18 @@ pub(crate) struct Cli {
     command: Commands,
 }
 
+/// Registry connection args shared by the CI-only `stdlib-publish` commands.
+#[cfg(feature = "stdlib-publish")]
+#[derive(clap::Args)]
+struct RegistryAuthArgs {
+    /// Registry base URL
+    #[arg(long, env = "TOKF_REGISTRY_URL")]
+    registry_url: String,
+    /// Service token for authentication
+    #[arg(long, env = "TOKF_SERVICE_TOKEN")]
+    token: String,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Run a command and filter its output
@@ -267,12 +279,8 @@ enum Commands {
     /// Publish all stdlib filters to the registry (CI only)
     #[cfg(feature = "stdlib-publish")]
     PublishStdlib {
-        /// Registry base URL
-        #[arg(long, env = "TOKF_REGISTRY_URL")]
-        registry_url: String,
-        /// Service token for authentication
-        #[arg(long, env = "TOKF_SERVICE_TOKEN")]
-        token: String,
+        #[command(flatten)]
+        auth: RegistryAuthArgs,
         /// Preview the payload without uploading
         #[arg(long)]
         dry_run: bool,
@@ -280,15 +288,20 @@ enum Commands {
     /// Backfill filter version history from git tags (CI only)
     #[cfg(feature = "stdlib-publish")]
     BackfillVersions {
-        /// Registry base URL
-        #[arg(long, env = "TOKF_REGISTRY_URL")]
-        registry_url: String,
-        /// Service token for authentication
-        #[arg(long, env = "TOKF_SERVICE_TOKEN")]
-        token: String,
+        #[command(flatten)]
+        auth: RegistryAuthArgs,
         /// Print computed timeline without posting to registry
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Backfill canonical v1 hashes for legacy filters (CI only)
+    #[cfg(feature = "stdlib-publish")]
+    BackfillV1Hashes {
+        #[command(flatten)]
+        auth: RegistryAuthArgs,
+        /// Rows to process per request (server caps at 500)
+        #[arg(long, default_value_t = 500)]
+        limit: usize,
     },
     /// Telemetry configuration and diagnostics
     Telemetry {
@@ -570,17 +583,17 @@ fn main() {
             search_cmd::cmd_search(&joined, *limit, *json)
         }
         #[cfg(feature = "stdlib-publish")]
-        Commands::PublishStdlib {
-            registry_url,
-            token,
-            dry_run,
-        } => publish_stdlib_cmd::cmd_publish_stdlib(registry_url, token, *dry_run),
+        Commands::PublishStdlib { auth, dry_run } => {
+            publish_stdlib_cmd::cmd_publish_stdlib(&auth.registry_url, &auth.token, *dry_run)
+        }
         #[cfg(feature = "stdlib-publish")]
-        Commands::BackfillVersions {
-            registry_url,
-            token,
-            dry_run,
-        } => backfill_cmd::cmd_backfill_versions(registry_url, token, *dry_run),
+        Commands::BackfillVersions { auth, dry_run } => {
+            backfill_cmd::cmd_backfill_versions(&auth.registry_url, &auth.token, *dry_run)
+        }
+        #[cfg(feature = "stdlib-publish")]
+        Commands::BackfillV1Hashes { auth, limit } => {
+            backfill_cmd::cmd_backfill_v1_hashes(&auth.registry_url, &auth.token, *limit)
+        }
         Commands::Telemetry { action } => or_exit(match action {
             TelemetryAction::Status { check } => {
                 telemetry_cmd::cmd_telemetry_status(*check, cli.verbose)

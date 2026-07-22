@@ -369,11 +369,12 @@ async fn persist_filter(
         upload_tests(state, &prepared.content_hash, prepared.test_files.clone()).await?;
 
     sqlx::query(
-        "INSERT INTO filters (content_hash, command_pattern, canonical_command, author_id, r2_key, is_stdlib)
-         VALUES ($1, $2, $3, $4, $5, TRUE)
-         ON CONFLICT (content_hash) DO UPDATE SET is_stdlib = TRUE",
+        "INSERT INTO filters (content_hash, v1_hash, command_pattern, canonical_command, author_id, r2_key, is_stdlib)
+         VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+         ON CONFLICT (content_hash) DO UPDATE SET is_stdlib = TRUE, v1_hash = COALESCE(filters.v1_hash, EXCLUDED.v1_hash)",
     )
     .bind(&prepared.content_hash)
+    .bind(&prepared.v1_hash)
     .bind(&prepared.command_pattern)
     .bind(&prepared.canonical_command)
     .bind(author_id)
