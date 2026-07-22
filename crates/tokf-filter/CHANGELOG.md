@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.51](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.50...tokf-filter-v0.2.51) (2026-07-22)
+
+
+### Features
+
+* **filter:** add rarity-weighted richness metric to tokf verify ([#421](https://github.com/mpecan/tokf/issues/421)) ([4fdc71b](https://github.com/mpecan/tokf/commit/4fdc71ba760632dea5a27168ad71b11b0df40607))
+* **runner:** assert filter output is byte-stable across repeated runs ([#423](https://github.com/mpecan/tokf/issues/423)) ([9e01c6c](https://github.com/mpecan/tokf/commit/9e01c6c175627167793847057d7f7efd4ded00bf))
+* **tracking:** verify and recalibrate the bytes/4 token estimator ([#425](https://github.com/mpecan/tokf/issues/425)) ([5a7f43a](https://github.com/mpecan/tokf/commit/5a7f43a6b534eee5eb3b809168cb6ebc3d1b63d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.50 to 0.2.51
+
 ## [0.2.50](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.49...tokf-filter-v0.2.50) (2026-07-04)
 
 
