@@ -32,7 +32,9 @@ bpe-openai = { version = "0.3", optional = true }
 
 [features]
 default = []
-validation = ["toml", "regex"]
+# `toml` is an unconditional dependency (canonical_v1 needs it), so only the
+# optional `regex` dep is gated here.
+validation = ["dep:regex"]
 # Calibration only. See crates/tokf-cli/tests/calibration.rs.
 tokenizer = ["dep:bpe-openai"]
 
