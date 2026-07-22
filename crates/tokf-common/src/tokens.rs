@@ -16,13 +16,23 @@
 
 /// Bytes per estimated token.
 ///
-/// This is a heuristic, not a measurement. Nothing has ever verified it
-/// against a real tokenizer.
+/// This is a heuristic, not a measurement — but it is a *calibrated* one.
+/// Measured against a real cl100k tokenizer over the whole tokf corpus
+/// (every filter `_test/` case and every file under `tests/fixtures/`,
+/// before and after filtering), the corpus implies 3.53 bytes per token
+/// overall: 3.67 on raw command output, 2.98 on filtered output, with a
+/// per-item spread of p10 2.72 / median 3.39 / p90 4.62. 3.5 is that
+/// combined figure rounded; the previous value of 4.0 systematically
+/// undercounted. See `docs/token-tracking.md` for the caveats.
+///
+/// Reproduce with:
+/// `cargo test -p tokf --features tokenizer --test calibration -- --ignored --nocapture`
 ///
 /// NOTE: while [`ArithmeticTokenCounter`] is the shipping default, every
 /// user-facing surface that prints these numbers (notably `tokf gain`) must
-/// keep labelling them `est.`.
-pub const DIVISOR: f64 = 4.0;
+/// keep labelling them `est.`. Recalibrating removed a bias; it did not make
+/// these counts exact, and the spread above shows one constant cannot.
+pub const DIVISOR: f64 = 3.5;
 
 /// Something that can count the tokens in a string.
 ///
