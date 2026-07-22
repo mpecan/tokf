@@ -29,11 +29,11 @@ raw_line_count: number,
  */
 filtered_line_count: number, 
 /**
- * Estimated tokens in raw input (bytes / 4).
+ * Estimated tokens in raw input (see [`crate::tokens`]).
  */
 raw_tokens_est: number, 
 /**
- * Estimated tokens in filtered output (bytes / 4).
+ * Estimated tokens in filtered output (see [`crate::tokens`]).
  */
 filtered_tokens_est: number, 
 /**

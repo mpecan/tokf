@@ -37,6 +37,8 @@ The skipped flags are preserved in the command that actually runs — they are o
 
 > **Note on `run` override and transparent flags:** If a filter sets a `run` field, transparent global flags are *not* included in `{args}`.  Only the arguments that appear after the matched pattern words are available as `{args}`.
 
+**Local environment wrappers** — you don't need to do anything special for your filter to match through a local wrapper like `nix develop -c cargo test`. tokf strips the wrapper prefix and matches the inner command (`cargo test`) against your existing patterns. See [Local environment wrappers](rewrites-config.md#local-environment-wrappers) for the configurable list.
+
 ## Common fields
 
 ```toml
@@ -530,6 +532,48 @@ contains = "clean"
 
 Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error or uncovered filters (`--require-all`).
 
+### Richness checks
+
+Every assertion above is *positive*: it checks a string the author remembered to think about. Nothing observes what a filter dropped that nobody asserted. That is the failure mode that hurts — someone widens a `skip` regex to suppress a noisy line, it also swallows a panic backtrace, and every test still passes. **Richness** is the counterweight: a rarity-weighted measure of how much irreplaceable information survived filtering.
+
+`tokf verify` prints it on every case line:
+
+```
+    ✓ rejected push (1240 → 88 tokens, 92.9% reduction, richness 0.31 [12/97 atoms])
+```
+
+`kept/atoms` are counts of **distinct** atoms, which is what makes the scalar interpretable — 12/97 on a small fixture means something quite different from 12/997.
+
+**How it is computed:**
+
+1. Split raw and filtered output on whitespace.
+2. Trim non-alphanumeric characters from each token's edges (`(hello_world),` → `hello_world`); interior punctuation is kept, so `src/main.rs` stays intact.
+3. Keep tokens of 6 or more characters (counted in characters, not bytes). Matching is case-sensitive — hashes and paths are case-significant.
+4. Weight each **distinct** atom by its self-information, `-log2(count / total)`, where `total` counts all atom occurrences including repeats. The 400th `Compiling` is worth almost nothing; a unique path, hash, or error code is worth a lot.
+5. Score = surviving weight / total weight. An atom counts as surviving if it appears anywhere in the filtered output, either as a standalone token or as a substring of a rewritten line.
+
+Empty or atom-free input scores `1.0` (nothing irreplaceable existed, so nothing could be lost). If the raw output contains only one distinct atom, its self-information is zero and the weighted ratio is undefined, so the score falls back to the plain `kept / atoms` ratio — dropping that atom still scores `0.0`.
+
+> **There is no default threshold, and richness never fails a build on its own.** tokf is *deliberately* lossy. `cargo check` succeeding and collapsing to `✓ cargo check: ok` scores near zero, and that is **correct**. A low score is information, not a defect.
+
+**The opt-in assertion.** A case can declare a floor with the top-level `min_richness` field (a whole-case scalar, not an `[[expect]]` field), taking a value in `0.0`–`1.0`:
+
+```toml
+name = "panic backtrace survives filtering"
+fixture = "tests/fixtures/cargo_test_panic.txt"
+exit_code = 101
+min_richness = 0.4
+
+[[expect]]
+contains = "panicked at"
+```
+
+When the score falls below the declared floor, the case fails — exit code `1`, and therefore CI via `tokf verify --require-all`. Cases that do not declare `min_richness` are never failed on richness grounds, no matter how low they score.
+
+To pick a value: run `tokf verify <filter>` first, read the printed score, and set the threshold a little under the observed value. It then acts as a ratchet against future skip-pattern widening.
+
+The same assertion is honoured by registry publish validation, so a published filter must satisfy its own declared `min_richness`.
+
 ### Safety checks
 
 Add `--safety` to detect potential security issues in your filter:
@@ -546,3 +590,27 @@ Safety checks scan for:
 - **Hidden Unicode** — zero-width spaces, RTL overrides, and other invisible characters that could smuggle content.
 
 Safety warnings do **not** block publishing — filters with issues are published with `safety_passed = false` and the registry shows a warning badge. Use `--safety` locally to catch issues before publishing.
+
+### Determinism
+
+`tokf verify` runs every test case's filter pipeline **twice** against the identical input and asserts the two outputs are byte-for-byte identical. This is not behind a flag — it always runs, for every case, in every `tokf verify` invocation. Determinism is a correctness invariant of a filter, not an opt-in preference.
+
+If a filter fails this check, `tokf verify` reports it like any other assertion failure — it names the filter and shows the first differing byte offset with context from both runs:
+
+```
+✗ my-filter (0 → 12 tokens, 100.0% reduction)
+    ✗ shows recent count
+        my-filter: output is not byte-stable across repeated runs (first differing byte at offset 14)
+            run 1: "3 files changed"
+            run 2: "5 files changed"
+```
+
+The context window is 20 bytes on each side of the differing byte. A leading or trailing `...` appears only when output was actually clipped there — short outputs, like the one above, are shown whole.
+
+**Why this matters more than it looks like it should.** Tool results get resent on every subsequent turn of a session — the same filtered output is retransmitted as conversation history grows. The provider's prompt cache matches on the request prefix byte-for-byte. If a filter's output for the same input differs between invocations, the bytes at that point shift, and *everything after it* in the prompt misses cache and re-bills at full input rate instead of the cached discount. A filter that trims 200 tokens but knocks 40k tokens of suffix out of cache is a large net loss — and it's invisible in any single local test run, because a single run only ever sees one version of the output.
+
+**Input variance is fine. Output variance is not.** `cargo test` genuinely printing `Finished in 20.81s` on one run and `21.04s` on the next, with the filter passing that duration through unchanged, is correct behavior — not a bug. The invariant under test is that the filter is a **pure function of its input**: same bytes in, same bytes out, every time. The double-run check holds the input constant (the same fixture, fed through `filter::apply` twice) specifically so it isolates the filter's own behavior from legitimate variance in what the underlying command printed.
+
+**The `HashMap`-ordering trap.** Rust's default `HashMap`/`HashSet` hasher is randomly seeded per process, so iteration order is stable *within* a single run — a filter can look perfectly deterministic in one `cargo test` or one `tokf verify` invocation and still vary from run to run of the compiled binary. This is why the check performs two independent `filter::apply` calls rather than comparing a value to itself, and why the filter engine avoids exposing `HashMap`/`HashSet` iteration order to rendered output: sorted collections (`BTreeMap`) or an explicit sort-before-join are used wherever a collected or keyed value reaches the final template. The same trap applies to the Lua escape hatch — a `lua_script` step that iterates a table with `pairs()` should build and iterate an explicit `order` array instead, the way `crates/tokf-cli/filters/docker/images.toml` and `crates/tokf-cli/filters/cargo/clippy.toml` already do, rather than relying on Luau's table iteration order.
+
+The stdlib was audited against this check as part of introducing it. No stdlib filter needed changes — the check exists to hold the invariant going forward, not because a stdlib filter was found broken.

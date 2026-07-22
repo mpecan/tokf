@@ -432,6 +432,67 @@ If you genuinely need a regex rewrite for an ssh-class command, invoke it explic
 
 This was added to address [#338](https://github.com/mpecan/tokf/issues/338), where a long-output `ssh HOST 'cmd'` would land `tokf` on the remote bash and exit 127.
 
+## Local environment wrappers
+
+Some commands wrap an inner command that runs in a *local* environment — the canonical example is `nix develop -c cargo test`, which runs `cargo test` inside a Nix devshell on the same machine. By default tokf only sees the outer command (`nix`), so a `cargo test` filter never matches.
+
+Local wrappers are the **mirror image** of transparent-arg commands. Transparent commands (`ssh`) run their payload remotely, so tokf stays hands-off. Local wrappers run their inner command locally, so tokf can safely:
+
+1. **Inspect** the inner command to pick a filter (`nix develop -c cargo test` → matches the `cargo test` filter), and
+2. **Wrap the whole command** with `tokf run` and filter its combined output.
+
+tokf uses the *outer* wrap — `tokf run nix develop -c cargo test`, not `nix develop -c tokf run cargo test`. Because tokf is the parent process and captures the wrapper's output, nothing requires `tokf` to be on `PATH` *inside* the devshell (which would reintroduce the remote-shell failure mode from #338 locally).
+
+```sh
+# What you type:
+nix develop -c cargo test
+
+# What tokf rewrites it to (outer wrap):
+tokf run nix develop -c cargo test        # → cargo test filter applied to the output
+
+# With a pipe, the pipe is stripped and re-expressed as a baseline:
+nix develop -c cargo test | tail -5
+  →  tokf run --baseline-pipe 'tail -5' nix develop -c cargo test
+```
+
+### Built-in wrappers
+
+The built-in list, active by default, is:
+
+| Command | Prefix matched | Marker (inner command follows) |
+|---|---|---|
+| `nix` | `nix develop …` | `-c`, `--command` |
+
+Any flags or attributes between `nix develop` and the marker are tolerated, so `nix develop .#agent --impure -c cargo test` unwraps correctly. Basename matching applies (`/nix/store/…/bin/nix` is treated as `nix`). A marker with nothing after it (a bare `nix develop -c`) is not a match.
+
+### Configuring wrappers (`[local_wrapper]`)
+
+Add your own wrappers, disable built-ins by name, or turn built-ins off entirely:
+
+```toml
+[local_wrapper]
+# Turn off ALL built-in wrappers (user rules below still apply). Default: true.
+builtins = true
+# Disable specific built-ins by command basename.
+disabled = ["nix"]
+
+# Add your own wrappers. These extend the built-ins.
+[[local_wrapper.rules]]
+command = "distrobox"       # matched against the first word's basename
+subcommands = ["enter"]     # must immediately follow `command`; omit if not needed
+markers = ["--"]            # the inner command starts after the first marker
+```
+
+- `command` / `subcommands` decide **which prefixes** are treated as wrappers.
+- `markers` decides **which part of the command is parsed** as the filterable inner command — everything after the first marker.
+- `disabled` removes named built-ins; `builtins = false` removes all of them. User `rules` always apply.
+
+### Limitation: nested task runners
+
+A task runner nested inside a local wrapper — e.g. `nix develop -c make check` — is **not** filtered per recipe line. Task-runner integration works by injecting `SHELL=tokf` so `make` runs each recipe line through tokf, which would require `tokf` inside the devshell (the exact thing outer-wrapping avoids). Such commands pass through unchanged.
+
+This was added to address [#403](https://github.com/mpecan/tokf/issues/403).
+
 ## Debug settings
 
 The `[debug]` section enables diagnostic logging for the rewrite system. All settings are off by default.

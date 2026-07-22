@@ -1,6 +1,6 @@
 [package]
 name = "tokf-common"
-version = "0.2.49"
+version = "0.2.50"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -21,10 +21,20 @@ sha2 = "0.11"
 toml = "=1.0.3"
 regex = { version = "1", optional = true }
 unicode-normalization = "0.1"
+# Calibration-only, OFF by default (`tokenizer` feature). Fully offline:
+# ships gzipped .tiktoken vocabs and decodes them in a build script (contrary
+# to some claims, it is NOT build-script-free), no network, no model download.
+# ~15 small transitive crates, several already in our tree (serde,
+# regex-automata, memchr, unicode-normalization). MUST NOT be enabled by any
+# workspace member unconditionally — cargo feature unification is additive and
+# one such entry would drag the vocab build into every default build.
+bpe-openai = { version = "0.3", optional = true }
 
 [features]
 default = []
-validation = ["regex"]
+validation = ["toml", "regex"]
+# Calibration only. See crates/tokf-cli/tests/calibration.rs.
+tokenizer = ["dep:bpe-openai"]
 
 [lints]
 workspace = true

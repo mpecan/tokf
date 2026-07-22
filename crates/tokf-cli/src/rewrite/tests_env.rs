@@ -231,6 +231,7 @@ fn rewrite_user_skip_pattern_matches_env_stripped_command() {
         permissions: None,
         debug: None,
         transparent: None,
+        local_wrapper: None,
     };
     // "FOO=bar git status" does NOT start with "git", so skip does not fire
     // and the command IS rewritten.

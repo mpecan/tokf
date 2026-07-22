@@ -6,6 +6,8 @@
 
 mod harness;
 
+use tokf_common::tokens::estimate_tokens_from_bytes;
+
 use tokf::auth::client::{self, PollResult};
 use tokf::remote::client as machine_client;
 use tokf::remote::http::Client;
@@ -152,6 +154,8 @@ async fn auth_then_register_machine_then_sync(pool: PgPool) {
     let gain = h.blocking_gain_with_token(&token).await;
 
     assert_eq!(gain.total_commands, 2);
-    assert_eq!(gain.total_input_tokens, 3000); // 1000 + 2000
-    assert_eq!(gain.total_output_tokens, 350); // 100 + 250
+    // Token counts derive from the shared estimator, never hardcoded.
+    let est = |b: usize| i64::try_from(estimate_tokens_from_bytes(b)).unwrap();
+    assert_eq!(gain.total_input_tokens, est(4000) + est(8000));
+    assert_eq!(gain.total_output_tokens, est(400) + est(1000));
 }

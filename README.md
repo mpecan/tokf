@@ -441,6 +441,8 @@ The skipped flags are preserved in the command that actually runs — they are o
 
 > **Note on `run` override and transparent flags:** If a filter sets a `run` field, transparent global flags are *not* included in `{args}`.  Only the arguments that appear after the matched pattern words are available as `{args}`.
 
+**Local environment wrappers** — you don't need to do anything special for your filter to match through a local wrapper like `nix develop -c cargo test`. tokf strips the wrapper prefix and matches the inner command (`cargo test`) against your existing patterns. See [Local environment wrappers](rewrites-config.md#local-environment-wrappers) for the configurable list.
+
 ## Common fields
 
 ```toml
@@ -934,6 +936,48 @@ contains = "clean"
 
 Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error or uncovered filters (`--require-all`).
 
+### Richness checks
+
+Every assertion above is *positive*: it checks a string the author remembered to think about. Nothing observes what a filter dropped that nobody asserted. That is the failure mode that hurts — someone widens a `skip` regex to suppress a noisy line, it also swallows a panic backtrace, and every test still passes. **Richness** is the counterweight: a rarity-weighted measure of how much irreplaceable information survived filtering.
+
+`tokf verify` prints it on every case line:
+
+```
+    ✓ rejected push (1240 → 88 tokens, 92.9% reduction, richness 0.31 [12/97 atoms])
+```
+
+`kept/atoms` are counts of **distinct** atoms, which is what makes the scalar interpretable — 12/97 on a small fixture means something quite different from 12/997.
+
+**How it is computed:**
+
+1. Split raw and filtered output on whitespace.
+2. Trim non-alphanumeric characters from each token's edges (`(hello_world),` → `hello_world`); interior punctuation is kept, so `src/main.rs` stays intact.
+3. Keep tokens of 6 or more characters (counted in characters, not bytes). Matching is case-sensitive — hashes and paths are case-significant.
+4. Weight each **distinct** atom by its self-information, `-log2(count / total)`, where `total` counts all atom occurrences including repeats. The 400th `Compiling` is worth almost nothing; a unique path, hash, or error code is worth a lot.
+5. Score = surviving weight / total weight. An atom counts as surviving if it appears anywhere in the filtered output, either as a standalone token or as a substring of a rewritten line.
+
+Empty or atom-free input scores `1.0` (nothing irreplaceable existed, so nothing could be lost). If the raw output contains only one distinct atom, its self-information is zero and the weighted ratio is undefined, so the score falls back to the plain `kept / atoms` ratio — dropping that atom still scores `0.0`.
+
+> **There is no default threshold, and richness never fails a build on its own.** tokf is *deliberately* lossy. `cargo check` succeeding and collapsing to `✓ cargo check: ok` scores near zero, and that is **correct**. A low score is information, not a defect.
+
+**The opt-in assertion.** A case can declare a floor with the top-level `min_richness` field (a whole-case scalar, not an `[[expect]]` field), taking a value in `0.0`–`1.0`:
+
+```toml
+name = "panic backtrace survives filtering"
+fixture = "tests/fixtures/cargo_test_panic.txt"
+exit_code = 101
+min_richness = 0.4
+
+[[expect]]
+contains = "panicked at"
+```
+
+When the score falls below the declared floor, the case fails — exit code `1`, and therefore CI via `tokf verify --require-all`. Cases that do not declare `min_richness` are never failed on richness grounds, no matter how low they score.
+
+To pick a value: run `tokf verify <filter>` first, read the printed score, and set the threshold a little under the observed value. It then acts as a ratchet against future skip-pattern widening.
+
+The same assertion is honoured by registry publish validation, so a published filter must satisfy its own declared `min_richness`.
+
 ### Safety checks
 
 Add `--safety` to detect potential security issues in your filter:
@@ -950,6 +994,30 @@ Safety checks scan for:
 - **Hidden Unicode** — zero-width spaces, RTL overrides, and other invisible characters that could smuggle content.
 
 Safety warnings do **not** block publishing — filters with issues are published with `safety_passed = false` and the registry shows a warning badge. Use `--safety` locally to catch issues before publishing.
+
+### Determinism
+
+`tokf verify` runs every test case's filter pipeline **twice** against the identical input and asserts the two outputs are byte-for-byte identical. This is not behind a flag — it always runs, for every case, in every `tokf verify` invocation. Determinism is a correctness invariant of a filter, not an opt-in preference.
+
+If a filter fails this check, `tokf verify` reports it like any other assertion failure — it names the filter and shows the first differing byte offset with context from both runs:
+
+```
+✗ my-filter (0 → 12 tokens, 100.0% reduction)
+    ✗ shows recent count
+        my-filter: output is not byte-stable across repeated runs (first differing byte at offset 14)
+            run 1: "3 files changed"
+            run 2: "5 files changed"
+```
+
+The context window is 20 bytes on each side of the differing byte. A leading or trailing `...` appears only when output was actually clipped there — short outputs, like the one above, are shown whole.
+
+**Why this matters more than it looks like it should.** Tool results get resent on every subsequent turn of a session — the same filtered output is retransmitted as conversation history grows. The provider's prompt cache matches on the request prefix byte-for-byte. If a filter's output for the same input differs between invocations, the bytes at that point shift, and *everything after it* in the prompt misses cache and re-bills at full input rate instead of the cached discount. A filter that trims 200 tokens but knocks 40k tokens of suffix out of cache is a large net loss — and it's invisible in any single local test run, because a single run only ever sees one version of the output.
+
+**Input variance is fine. Output variance is not.** `cargo test` genuinely printing `Finished in 20.81s` on one run and `21.04s` on the next, with the filter passing that duration through unchanged, is correct behavior — not a bug. The invariant under test is that the filter is a **pure function of its input**: same bytes in, same bytes out, every time. The double-run check holds the input constant (the same fixture, fed through `filter::apply` twice) specifically so it isolates the filter's own behavior from legitimate variance in what the underlying command printed.
+
+**The `HashMap`-ordering trap.** Rust's default `HashMap`/`HashSet` hasher is randomly seeded per process, so iteration order is stable *within* a single run — a filter can look perfectly deterministic in one `cargo test` or one `tokf verify` invocation and still vary from run to run of the compiled binary. This is why the check performs two independent `filter::apply` calls rather than comparing a value to itself, and why the filter engine avoids exposing `HashMap`/`HashSet` iteration order to rendered output: sorted collections (`BTreeMap`) or an explicit sort-before-join are used wherever a collected or keyed value reaches the final template. The same trap applies to the Lua escape hatch — a `lua_script` step that iterates a table with `pairs()` should build and iterate an explicit `order` array instead, the way `crates/tokf-cli/filters/docker/images.toml` and `crates/tokf-cli/filters/cargo/clippy.toml` already do, rather than relying on Luau's table iteration order.
+
+The stdlib was audited against this check as part of introducing it. No stdlib filter needed changes — the check exists to hold the invariant going forward, not because a stdlib filter was found broken.
 
 ---
 
@@ -1221,6 +1289,76 @@ tokf gain --by-filter  # breakdown by filter
 tokf gain --json       # machine-readable output
 ```
 
+## How tokens are estimated
+
+tokf does not run a tokenizer. Token counts are derived from byte counts with one constant:
+
+```
+tokens ≈ bytes / 3.5
+```
+
+That is why every token figure `tokf gain` prints is labelled **`est.`**, and why it will keep being labelled that way for as long as this estimator ships. It is a heuristic, not a measurement.
+
+### Where 3.5 comes from
+
+The constant used to be `4`, and nothing had ever checked it. It was measured against a real cl100k tokenizer across the whole tokf corpus — every filter `_test/` case (both the raw input and the filtered output) plus every fixture under `tests/fixtures/` — which gives the *implied* divisor, i.e. bytes per real token:
+
+| corpus | implied divisor |
+|---|---|
+| raw command output | 3.67 |
+| filtered output | 2.98 |
+| combined (byte-weighted) | 3.53 |
+| spread across items | p10 2.72 · median 3.39 · p90 4.62 |
+
+`3.5` is the combined figure rounded. The old `4` undercounted real cl100k tokens by roughly 8% on raw output and 25% on filtered output; `3.5` lands within 1% of the corpus aggregate.
+
+Two honest caveats:
+
+- **cl100k is not Claude's tokenizer.** Even the "real" numbers we calibrated against are an approximation of the thing users actually care about. The goal was removing a large systematic bias, not achieving exactness.
+- **The corpus is what it is** — heavily weighted toward `cargo`, `git`, `npm` and `docker` output. The p10/p90 spread above shows the per-item divisor genuinely ranges from under 2.8 to over 4.6 depending on output shape: prose is cheap per byte to tokenize, dense symbolic output is expensive. One constant cannot capture that, and tokf deliberately does not try. It says `est.` instead.
+
+### Percentages are more reliable than absolute counts — except when filters rewrite
+
+The savings *percentage* divides two counts that share the divisor, so most of the error cancels out. That holds well for filters that mostly **delete** lines:
+
+| case | est. reduction | real reduction | error |
+|---|---|---|---|
+| `cargo/check` (successful check collapses) | 84.4% | 84.6% | −0.2 pt |
+| `cargo/clippy` (grouped by lint rule) | 78.5% | 78.2% | +0.3 pt |
+| `cargo/build` (failure output) | 23.3% | 24.2% | −0.9 pt |
+
+It stops holding for filters that **rewrite** content — replacing English prose with a dense symbolic summary. Prose tokenizes cheaply per byte; the summary does not, so the byte ratio overstates the token ratio and the filter flatters itself:
+
+| case | est. reduction | real reduction | error |
+|---|---|---|---|
+| `docker/ps` (no running containers → zero count) | 0.0% | −300.0% | +300 pt |
+| `git/push` (up-to-date → friendly message) | 33.3% | −50.0% | +83 pt |
+| `git/status` (clean repo → branch marker) | 50.0% | 0.0% | +50 pt |
+
+Those are worst cases on tiny outputs, where a handful of tokens swings the percentage wildly — but the direction of the bias is consistent, and it is upward. **Treat reduction percentages on rewriting filters as indicative, not as a claim.**
+
+### Verifying the estimate yourself
+
+The tokenizer is a contributor tool, not a runtime feature. It sits behind an optional cargo feature that is **off by default**, so normal builds take no tokenizer dependency at all:
+
+```sh
+cargo test -p tokf --features tokenizer --test calibration -- --ignored --nocapture
+```
+
+That prints the full per-item table and the aggregates above, and fails if the shipped constant drifts more than 25% from what the corpus implies. There is no way to enable a real tokenizer at runtime, and no plan to add one — carrying a vocabulary table in the shipping binary to serve a statistic is not a trade tokf wants to make.
+
+### Estimates changed: a deliberate discontinuity
+
+Changing the divisor changes the numbers. Being explicit about what that means:
+
+- Rows recorded **before** the change keep their old `bytes / 4` token counts. They are not rewritten.
+- Rows recorded **after** use `bytes / 3.5`.
+- `tokf gain` totals spanning the changeover therefore show a **step increase in absolute token counts**. Nothing is being saved differently; the estimate simply got less wrong.
+- Savings **percentages** are essentially unaffected, because both sides of the ratio scale together. That is the reason the discontinuity is tolerable.
+- The same applies to server-side aggregates, which receive already-computed token columns via sync.
+
+We deliberately did **not**: version the estimator in the SQLite schema (real surface area across three crates for a statistic), rewrite historical rows (local history would then diverge from already-synced server rows — worse than one honest step), or recompute tokens at read time (touches every aggregate query and still cannot fix the server side). One documented step change beat all three.
+
 ## Remote gain
 
 View aggregate savings across all your registered machines via the tokf server:
@@ -1271,11 +1409,48 @@ output = "{branch} — {counts}"
 🗜️ compressed — run `tokf raw 99` for full output
 ```
 
-The `🗜️` prefix appears on all filtered output (disable with `tokf config set output.show_indicator false` or `TOKF_SHOW_INDICATOR=false`). The hint line is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line or indicator.
+The `🗜️` prefix appears on all filtered output (disable with `tokf config set output.show_indicator false` or `TOKF_SHOW_INDICATOR=false`). The hint line is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line, indicator or recovery marker.
+
+## Per-entry recovery markers
+
+When a filtered command is recorded in history, the indicator carries that entry's ID directly:
+
+```
+🗜️#87 ✓ cargo test: 42 passed
+```
+
+`🗜️#87` means the full, unfiltered output is one command away — `tokf raw 87`. Without an ID (`🗜️` alone) the run was not recorded, so there is nothing to recover.
+
+This is **additive**: the filtered body is byte-identical to what tokf printed before, and the ID rides the indicator that was already being printed. It costs roughly three tokens; there is no extra line and no extra newline. Disabling the indicator (`output.show_indicator = false`) removes the marker too — the ID is not smuggled back in on its own line.
+
+### Why the CLI rather than a tool call
+
+Recovery is deliberately a shell command. `tokf raw <id>` composes:
+
+```sh
+tokf raw 87 | grep -n 'error\[' | head -20
+```
+
+A recovered entry can be enormous — a `cargo metadata` capture runs to hundreds of thousands of tokens — so being able to narrow it *before* it reaches the model matters. Output that arrives through a tool call lands in context whole, with no opportunity to filter it first. Piping also means the recovered text can itself be filtered by tokf.
+
+Prefer `tokf raw <id> | ...` over reading an entry whole.
+
+### Why the ID is decimal
+
+Decimal is the cheapest encoding, which is counterintuitive — a shorter string is not a smaller number of tokens. BPE tokenizers pack runs of digits (up to three per token) while mixed-case alphanumerics fragment. Measured against `cl100k`:
+
+| id | decimal | base36 | base62 |
+|---|---|---|---|
+| 142 | **1** | 2 | 2 |
+| 4821 | **2** | 2 | 2 |
+| 51234 | **2** | 3 | **2** |
+| 998877 | **2** | 2 | 3 |
+
+Decimal is never worse and sometimes better, so the ID is printed as-is.
 
 ## Context injection
 
-During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a two-line context explaining what `🗜️` means and how to retrieve full output (`tokf raw last`). Use `--no-context` to skip this step.
+During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a short context explaining what `🗜️` and `🗜️#<id>` mean and how to retrieve full output (`tokf raw <id>`, or `tokf raw last`). Use `--no-context` to skip this step.
 
 ---
 
@@ -1956,6 +2131,67 @@ If you genuinely need a regex rewrite for an ssh-class command, invoke it explic
 
 This was added to address [#338](https://github.com/mpecan/tokf/issues/338), where a long-output `ssh HOST 'cmd'` would land `tokf` on the remote bash and exit 127.
 
+## Local environment wrappers
+
+Some commands wrap an inner command that runs in a *local* environment — the canonical example is `nix develop -c cargo test`, which runs `cargo test` inside a Nix devshell on the same machine. By default tokf only sees the outer command (`nix`), so a `cargo test` filter never matches.
+
+Local wrappers are the **mirror image** of transparent-arg commands. Transparent commands (`ssh`) run their payload remotely, so tokf stays hands-off. Local wrappers run their inner command locally, so tokf can safely:
+
+1. **Inspect** the inner command to pick a filter (`nix develop -c cargo test` → matches the `cargo test` filter), and
+2. **Wrap the whole command** with `tokf run` and filter its combined output.
+
+tokf uses the *outer* wrap — `tokf run nix develop -c cargo test`, not `nix develop -c tokf run cargo test`. Because tokf is the parent process and captures the wrapper's output, nothing requires `tokf` to be on `PATH` *inside* the devshell (which would reintroduce the remote-shell failure mode from #338 locally).
+
+```sh
+# What you type:
+nix develop -c cargo test
+
+# What tokf rewrites it to (outer wrap):
+tokf run nix develop -c cargo test        # → cargo test filter applied to the output
+
+# With a pipe, the pipe is stripped and re-expressed as a baseline:
+nix develop -c cargo test | tail -5
+  →  tokf run --baseline-pipe 'tail -5' nix develop -c cargo test
+```
+
+### Built-in wrappers
+
+The built-in list, active by default, is:
+
+| Command | Prefix matched | Marker (inner command follows) |
+|---|---|---|
+| `nix` | `nix develop …` | `-c`, `--command` |
+
+Any flags or attributes between `nix develop` and the marker are tolerated, so `nix develop .#agent --impure -c cargo test` unwraps correctly. Basename matching applies (`/nix/store/…/bin/nix` is treated as `nix`). A marker with nothing after it (a bare `nix develop -c`) is not a match.
+
+### Configuring wrappers (`[local_wrapper]`)
+
+Add your own wrappers, disable built-ins by name, or turn built-ins off entirely:
+
+```toml
+[local_wrapper]
+# Turn off ALL built-in wrappers (user rules below still apply). Default: true.
+builtins = true
+# Disable specific built-ins by command basename.
+disabled = ["nix"]
+
+# Add your own wrappers. These extend the built-ins.
+[[local_wrapper.rules]]
+command = "distrobox"       # matched against the first word's basename
+subcommands = ["enter"]     # must immediately follow `command`; omit if not needed
+markers = ["--"]            # the inner command starts after the first marker
+```
+
+- `command` / `subcommands` decide **which prefixes** are treated as wrappers.
+- `markers` decides **which part of the command is parsed** as the filterable inner command — everything after the first marker.
+- `disabled` removes named built-ins; `builtins = false` removes all of them. User `rules` always apply.
+
+### Limitation: nested task runners
+
+A task runner nested inside a local wrapper — e.g. `nix develop -c make check` — is **not** filtered per recipe line. Task-runner integration works by injecting `SHELL=tokf` so `make` runs each recipe line through tokf, which would require `tokf` inside the devshell (the exact thing outer-wrapping avoids). Such commands pass through unchanged.
+
+This was added to address [#403](https://github.com/mpecan/tokf/issues/403).
+
 ## Debug settings
 
 The `[debug]` section enables diagnostic logging for the rewrite system. All settings are off by default.
@@ -2466,6 +2702,8 @@ Total unfiltered output: 28.1k tokens across 443 commands
 4. Matches remaining commands against available tokf filters
 5. By default shows only commands with no matching filter
 6. Aggregates and ranks by estimated token count
+
+Token counts are estimates derived from byte counts, not tokenizer output — see [How tokens are estimated](#how-tokens-are-estimated) under Token Savings Tracking for the constant, its measured accuracy, and its limits.
 
 ---
 

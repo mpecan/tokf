@@ -5,7 +5,6 @@ use tokf::baseline;
 use tokf::config;
 use tokf::filter;
 use tokf::history;
-use tokf::history::OutputConfig;
 use tokf::hook;
 use tokf::rewrite;
 use tokf::runner;
@@ -13,6 +12,7 @@ use tokf::skill;
 use tokf::telemetry;
 
 use crate::Cli;
+use crate::marker;
 use crate::resolve;
 
 // R6: Rename Opencode → OpenCode; use #[value(name = "opencode")] to keep CLI arg as "opencode".
@@ -376,22 +376,14 @@ pub fn cmd_run(
         cmd_result.exit_code,
     );
 
-    let output_cfg = {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let project_root = history::project_root_for(&cwd);
-        OutputConfig::load(Some(&project_root))
-    };
+    let render_cfg = marker::load_render_config();
 
     let mask = !cli.no_mask_exit_code && cmd_result.exit_code != 0;
     if mask {
         println!("Error: Exit code {}", cmd_result.exit_code);
     }
     if !final_output.is_empty() {
-        if output_cfg.show_indicator {
-            println!("🗜️ {final_output}");
-        } else {
-            println!("{final_output}");
-        }
+        marker::print_with_indicator(&final_output, &render_cfg, history_id);
     }
 
     if show_hint && let Some(id) = history_id {
@@ -519,66 +511,6 @@ pub fn cmd_ls(verbose: bool) -> i32 {
     }
 
     0
-}
-
-pub fn cmd_which(command: &str, verbose: bool) -> i32 {
-    let Ok(filters) = resolve::discover_filters(false) else {
-        eprintln!("[tokf] error: failed to discover filters");
-        return 1;
-    };
-
-    let words: Vec<&str> = command.split_whitespace().collect();
-    let cwd = std::env::current_dir().unwrap_or_default();
-
-    for filter in &filters {
-        if filter.matches(&words).is_some() {
-            let display_name = filter
-                .relative_path
-                .with_extension("")
-                .display()
-                .to_string();
-
-            let variant_info = if filter.config.variant.is_empty() {
-                String::new()
-            } else {
-                let res =
-                    config::variant::resolve_variants(&filter.config, &filters, &cwd, verbose);
-                let resolved = res.config.command.first().to_string();
-                if resolved != filter.config.command.first() {
-                    format!(" -> variant: \"{resolved}\"")
-                } else if res.output_variants.is_empty() {
-                    format!(
-                        " ({} variant(s), none matched by file)",
-                        filter.config.variant.len()
-                    )
-                } else {
-                    let names: Vec<&str> = res
-                        .output_variants
-                        .iter()
-                        .map(|v| v.name.as_str())
-                        .collect();
-                    format!(
-                        " ({} variant(s), {} deferred to output-pattern: {})",
-                        filter.config.variant.len(),
-                        res.output_variants.len(),
-                        names.join(", ")
-                    )
-                }
-            };
-            println!(
-                "{display_name}  [{}]  command: \"{}\"{variant_info}",
-                filter.priority_label(),
-                filter.config.command.first()
-            );
-            if verbose {
-                eprintln!("[tokf] source: {}", filter.source_path.display());
-            }
-            return 0;
-        }
-    }
-
-    eprintln!("[tokf] no filter found for \"{command}\"");
-    1
 }
 
 pub fn cmd_rewrite(command: &str, verbose: bool) -> i32 {

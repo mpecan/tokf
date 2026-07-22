@@ -1,3 +1,4 @@
+mod determinism;
 mod discovery;
 mod runner;
 
@@ -28,6 +29,9 @@ pub struct CaseResult {
     pub input_tokens: usize,
     pub output_tokens: usize,
     pub reduction_pct: f64,
+    /// Rarity-weighted retention score for this case (informational unless the
+    /// case declares `min_richness`).
+    pub richness: tokf_common::richness::Richness,
 }
 
 #[derive(Serialize)]
@@ -85,21 +89,8 @@ fn print_results(results: &[SuiteResult], show_safety: bool) {
             total_cases += 1;
             if case.passed {
                 total_passed += 1;
-                println!(
-                    "    \u{2713} {} ({} \u{2192} {} tokens, {:.1}% reduction)",
-                    case.name, case.input_tokens, case.output_tokens, case.reduction_pct
-                );
-            } else {
-                println!(
-                    "    \u{2717} {} ({} \u{2192} {} tokens, {:.1}% reduction)",
-                    case.name, case.input_tokens, case.output_tokens, case.reduction_pct
-                );
-                for failure in &case.failures {
-                    for line in failure.lines() {
-                        println!("        {line}");
-                    }
-                }
             }
+            print_case(case);
         }
 
         grand_input_tokens += suite.total_input_tokens;
@@ -116,6 +107,28 @@ fn print_results(results: &[SuiteResult], show_safety: bool) {
     );
     if show_safety {
         println!("{safety_warnings} safety warning(s)");
+    }
+}
+
+/// Print one case line, including its rarity-weighted richness score.
+fn print_case(case: &CaseResult) {
+    let icon = if case.passed { "\u{2713}" } else { "\u{2717}" };
+    println!(
+        "    {icon} {} ({} \u{2192} {} tokens, {:.1}% reduction, richness {:.2} [{}/{} atoms])",
+        case.name,
+        case.input_tokens,
+        case.output_tokens,
+        case.reduction_pct,
+        case.richness.retained,
+        case.richness.kept,
+        case.richness.atoms,
+    );
+    if !case.passed {
+        for failure in &case.failures {
+            for line in failure.lines() {
+                println!("        {line}");
+            }
+        }
     }
 }
 

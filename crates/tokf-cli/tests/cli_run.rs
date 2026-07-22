@@ -571,3 +571,191 @@ output = "FILTERED_TEMPLATE"
         "filter template must not appear when --jq is passed, got: {stdout}"
     );
 }
+
+// --- local environment wrappers (nix develop -c) ---
+
+/// Write a fake `nix` executable into `dir` that skips its own args until it
+/// sees `-c`/`--command`, then execs everything after. This lets us exercise
+/// the local-wrapper unwrapping end-to-end without a real Nix install.
+#[cfg(unix)]
+fn write_fake_nix(dir: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let script = "#!/bin/sh\n\
+        while [ $# -gt 0 ]; do\n\
+        \x20 case \"$1\" in\n\
+        \x20   -c|--command) shift; exec \"$@\" ;;\n\
+        \x20   *) shift ;;\n\
+        \x20 esac\n\
+        done\n\
+        exit 0\n";
+    let nix_path = dir.join("nix");
+    std::fs::write(&nix_path, script).unwrap();
+    std::fs::set_permissions(&nix_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// PATH with `bindir` prepended so the fake `nix` shadows any real one while
+/// `git` etc. remain resolvable.
+#[cfg(unix)]
+fn path_with(bindir: &std::path::Path) -> String {
+    let existing = std::env::var("PATH").unwrap_or_default();
+    format!("{}:{}", bindir.display(), existing)
+}
+
+#[cfg(unix)]
+#[test]
+fn run_nix_develop_unwraps_git_status() {
+    let bindir = tempfile::TempDir::new().unwrap();
+    write_fake_nix(bindir.path());
+
+    let repo = tempfile::TempDir::new().unwrap();
+    let init = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+    std::fs::write(repo.path().join("a-new-file.txt"), "hi").unwrap();
+
+    let output = tokf()
+        .args(["run", "--verbose", "nix", "develop", "-c", "git", "status"])
+        .env("PATH", path_with(bindir.path()))
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("matched git/status.toml"),
+        "expected the git status filter to match through the nix wrapper, got: {stderr}"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("a-new-file.txt"),
+        "expected filtered git status to list the new file, got: {stdout}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_nix_develop_attr_and_flags_unwrap() {
+    // `nix develop .#agent --impure -c git status` — attrs/flags before -c.
+    let bindir = tempfile::TempDir::new().unwrap();
+    write_fake_nix(bindir.path());
+
+    let repo = tempfile::TempDir::new().unwrap();
+    let init = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+
+    let output = tokf()
+        .args([
+            "run",
+            "--verbose",
+            "nix",
+            "develop",
+            ".#agent",
+            "--impure",
+            "-c",
+            "git",
+            "status",
+        ])
+        .env("PATH", path_with(bindir.path()))
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("matched git/status.toml"),
+        "expected match through nix develop with attr + flags, got: {stderr}"
+    );
+}
+
+/// Real-nix smoke test — opt-in, ignored by default. Runs only when a real
+/// `nix` is on PATH. Creates a minimal flake with an empty devShell and checks
+/// that `tokf run nix develop -c git status` filters correctly.
+///
+/// This can download nixpkgs on first run, so it is `#[ignore]`d and only runs
+/// via `cargo test -- --ignored`.
+#[cfg(unix)]
+#[test]
+#[ignore = "requires a real nix install; may download nixpkgs"]
+fn run_nix_develop_real_nix() {
+    let has_nix = Command::new("nix")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !has_nix {
+        eprintln!("skipping: no real `nix` on PATH");
+        return;
+    }
+
+    let repo = tempfile::TempDir::new().unwrap();
+    let init = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+    std::fs::write(repo.path().join("real-nix-file.txt"), "hi").unwrap();
+
+    // Arch-agnostic: define an empty devShell for every common system so
+    // `nix develop` resolves on x86_64/aarch64 Linux or macOS alike.
+    let flake = r#"{
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  outputs = { self, nixpkgs }:
+    let
+      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
+    in {
+      devShells = forAll (pkgs: { default = pkgs.mkShellNoCC { }; });
+    };
+}
+"#;
+    std::fs::write(repo.path().join("flake.nix"), flake).unwrap();
+    // Stage the flake so `nix develop` (which requires a git tree) sees it.
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+
+    let output = tokf()
+        .args([
+            "run",
+            "--verbose",
+            "nix",
+            "develop",
+            "--extra-experimental-features",
+            "nix-command flakes",
+            "-c",
+            "git",
+            "status",
+        ])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("matched git/status.toml"),
+        "expected the git status filter to match through real nix, got: {stderr}"
+    );
+}

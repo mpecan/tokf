@@ -11,6 +11,11 @@ pub struct TestCase {
     pub exit_code: i32,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Optional per-case rarity-weighted retention floor (0.0..=1.0).
+    ///
+    /// Opt-in only: when absent, richness never fails the case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_richness: Option<f64>,
     #[serde(rename = "expect", default)]
     pub expects: Vec<Expectation>,
 }
@@ -51,6 +56,11 @@ pub fn validate(bytes: &[u8]) -> Result<TestCase, String> {
     }
     if tc.expects.is_empty() {
         return Err("test case must have at least one [[expect]] block".to_string());
+    }
+    if let Some(min) = tc.min_richness
+        && (min.is_nan() || !(0.0..=1.0).contains(&min))
+    {
+        return Err("min_richness must be between 0.0 and 1.0".to_string());
     }
     for (i, exp) in tc.expects.iter().enumerate() {
         if let Some(pat) = &exp.matches {
@@ -113,6 +123,7 @@ matches = "\\d+ errors?"
             inline: Some("hello world".to_string()),
             exit_code: 0,
             args: vec![],
+            min_richness: None,
             expects: vec![Expectation {
                 contains: Some("hello".to_string()),
                 not_contains: None,
@@ -125,9 +136,36 @@ matches = "\\d+ errors?"
             }],
         };
         let json = serde_json::to_string(&tc).unwrap();
+        assert!(
+            !json.contains("min_richness"),
+            "absent min_richness must not be serialized: {json}"
+        );
         let parsed: TestCase = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.name, "roundtrip");
         assert_eq!(parsed.expects[0].contains.as_deref(), Some("hello"));
+        assert!(parsed.min_richness.is_none());
+    }
+
+    #[test]
+    fn deserialize_min_richness() {
+        let with = r#"
+name = "rich"
+min_richness = 0.4
+
+[[expect]]
+contains = "x"
+"#;
+        let tc: TestCase = toml::from_str(with).unwrap();
+        assert!((tc.min_richness.unwrap() - 0.4).abs() < 1e-9);
+
+        let without = r#"
+name = "plain"
+
+[[expect]]
+contains = "x"
+"#;
+        let tc: TestCase = toml::from_str(without).unwrap();
+        assert!(tc.min_richness.is_none());
     }
 }
 
@@ -185,6 +223,32 @@ contains = "x"
             err.contains("[[expect]]"),
             "expected expect error, got: {err}"
         );
+    }
+
+    #[test]
+    fn validate_accepts_in_range_min_richness() {
+        let bytes = br#"
+name = "rich"
+min_richness = 0.4
+
+[[expect]]
+contains = "x"
+"#;
+        let tc = validate(bytes).unwrap();
+        assert!((tc.min_richness.unwrap() - 0.4).abs() < 1e-9);
+    }
+
+    #[test]
+    fn validate_rejects_out_of_range_min_richness() {
+        for value in ["1.5", "-0.1", "nan"] {
+            let src =
+                format!("name = \"bad\"\nmin_richness = {value}\n\n[[expect]]\ncontains = \"x\"\n");
+            let err = validate(src.as_bytes()).unwrap_err();
+            assert!(
+                err.contains("min_richness"),
+                "expected min_richness error for {value}, got: {err}"
+            );
+        }
     }
 
     #[test]

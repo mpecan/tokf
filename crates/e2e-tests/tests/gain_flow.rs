@@ -6,11 +6,14 @@
 
 mod harness;
 
+use tokf_common::tokens::estimate_tokens_from_bytes;
+
 /// Record two standard events and sync them to the server.
 /// Returns `(input_tokens_total, output_tokens_total)` for assertion reference.
 async fn seed_two_events(h: &harness::TestHarness) -> (i64, i64) {
     let conn = h.open_tracking_db();
-    // git/status: 4000 bytes → 1000 tokens in, 400 bytes → 100 tokens out
+    // git/status: 4000 bytes in, 400 bytes out; token counts come from the
+    // shared estimator (tokf_common::tokens), never hardcoded.
     h.record_event(
         &conn,
         "git status",
@@ -19,7 +22,7 @@ async fn seed_two_events(h: &harness::TestHarness) -> (i64, i64) {
         4000,
         400,
     );
-    // cargo/test: 8000 bytes → 2000 tokens in, 1000 bytes → 250 tokens out
+    // cargo/test: 8000 bytes in, 1000 bytes out.
     h.record_event(
         &conn,
         "cargo test",
@@ -30,7 +33,8 @@ async fn seed_two_events(h: &harness::TestHarness) -> (i64, i64) {
     );
     let req = h.build_sync_request(&conn);
     h.blocking_sync_request(&req).await;
-    (3000, 350)
+    let est = |b: usize| i64::try_from(estimate_tokens_from_bytes(b)).unwrap();
+    (est(4000) + est(8000), est(400) + est(1000))
 }
 
 /// Fresh user with no events → GET /api/gain → all zeros.
@@ -159,7 +163,10 @@ async fn gain_raw_tokens_propagated(pool: PgPool) {
     let gain = h.blocking_gain().await;
 
     assert_eq!(gain.total_commands, 1);
-    assert_eq!(gain.total_input_tokens, 1000); // 4000 bytes ≈ 1000 tokens (÷4)
+    assert_eq!(
+        gain.total_input_tokens,
+        i64::try_from(estimate_tokens_from_bytes(4000)).unwrap()
+    );
     assert!(
         gain.total_raw_tokens > gain.total_input_tokens,
         "total_raw_tokens ({}) should be > total_input_tokens ({}) when baseline adjustment occurred",

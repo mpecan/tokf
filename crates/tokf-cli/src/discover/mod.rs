@@ -7,6 +7,7 @@ pub mod types;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use tokf_common::tokens::estimate_tokens_from_bytes;
 use types::{CommandAnalysis, DiscoverResult, DiscoverSummary, ExtractedCommand};
 
 use crate::config::{self, ResolvedFilter};
@@ -136,7 +137,7 @@ fn build_results(aggregated: HashMap<(String, String), AggBucket>) -> Vec<Discov
     let mut results: Vec<DiscoverResult> = aggregated
         .into_iter()
         .map(|((filter_name, command_pattern), bucket)| {
-            let estimated_tokens = bucket.total_output_bytes / 4;
+            let estimated_tokens = estimate_tokens_from_bytes(bucket.total_output_bytes);
             #[allow(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,

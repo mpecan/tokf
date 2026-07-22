@@ -539,6 +539,28 @@ fn which_shows_variant_info() {
 }
 
 #[test]
+fn which_reports_filter_through_nix_wrapper() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    let output = tokf()
+        .args(["which", "nix develop -c cargo test"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "which should report a filter through the nix wrapper, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("cargo/test"),
+        "expected the cargo test filter to be reported, got: {stdout}"
+    );
+}
+
+#[test]
 fn which_variant_file_match() {
     let dir = tempfile::TempDir::new().unwrap();
     // Create a vitest config file so the variant resolves

@@ -121,6 +121,7 @@ mod tests {
             inline: Some(inline.to_string()),
             exit_code,
             args: vec![],
+            min_richness: None,
             expects: vec![Expectation {
                 contains: None,
                 not_contains: None,
@@ -154,7 +155,7 @@ skip = ["^noise"]
         assert_eq!(ex.filtered, "keep this");
         assert_eq!(ex.raw_line_count, 3);
         assert_eq!(ex.filtered_line_count, 1);
-        // Token estimates: raw = 31 bytes / 4 = 7, filtered = 9 bytes / 4 = 2
+        // Token estimates always come from the shared estimator.
         assert_eq!(ex.raw_tokens_est, estimate_tokens(raw_input));
         assert_eq!(ex.filtered_tokens_est, estimate_tokens("keep this"));
         assert!(ex.reduction_pct > 0.0);
@@ -192,6 +193,7 @@ output = "FAILED"
             inline: None,
             exit_code: 0,
             args: vec![],
+            min_richness: None,
             expects: vec![],
         };
         let inline_case = make_case("with-inline", "hello", 0);

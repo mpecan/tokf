@@ -78,6 +78,7 @@ mod tests {
             inline: Some(inline.to_string()),
             exit_code: 0,
             args: vec![],
+            min_richness: None,
             expects,
         }
     }
@@ -147,6 +148,7 @@ skip = ["^noise"]
             inline: None,
             exit_code: 0,
             args: vec![],
+            min_richness: None,
             expects: vec![expect_contains("x")],
         }];
         let err = verify_filter_server(&config, &cases).unwrap_err();
@@ -237,6 +239,7 @@ output = "FAILED"
             inline: Some(String::new()),
             exit_code: 1,
             args: vec![],
+            min_richness: None,
             expects: vec![expect_equals("FAILED")],
         }];
         let result = verify_filter_server(&config, &cases).unwrap();

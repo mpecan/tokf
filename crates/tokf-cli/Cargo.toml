@@ -1,6 +1,6 @@
 [package]
 name = "tokf"
-version = "0.2.49"
+version = "0.2.50"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -14,9 +14,9 @@ name = "tokf"
 path = "src/main.rs"
 
 [dependencies]
-tokf-common = { path = "../tokf-common", version = "0.2.49", features = ["validation"] }
-tokf-filter = { path = "../tokf-filter", version = "0.2.49" }
-tokf-hook-types = { path = "../tokf-hook-types", version = "0.2.49" }
+tokf-common = { path = "../tokf-common", version = "0.2.50", features = ["validation"] }
+tokf-filter = { path = "../tokf-filter", version = "0.2.50" }
+tokf-hook-types = { path = "../tokf-hook-types", version = "0.2.50" }
 clap = { version = "4", features = ["derive", "env"] }
 toml = "1.0"
 serde = { version = "1", features = ["derive"] }
@@ -56,6 +56,8 @@ tonic             = { version = "0.14", optional = true, default-features = fals
 [features]
 default = []
 stdlib-publish = []
+# Calibration only — off by default, never enabled by another crate.
+tokenizer = ["tokf-common/tokenizer"]
 test-keyring = []
 otel = ["otel-http"]
 otel-http = [

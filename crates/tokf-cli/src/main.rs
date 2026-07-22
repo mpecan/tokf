@@ -15,6 +15,7 @@ mod history_cmd;
 mod info_cmd;
 mod install_cmd;
 mod issue_cmd;
+mod marker;
 mod output;
 mod publish_cmd;
 #[cfg(feature = "stdlib-publish")]
@@ -29,6 +30,7 @@ mod sync_cmd;
 mod telemetry_cmd;
 // pub(crate): accessed by install_cmd::run_verify
 pub(crate) mod verify_cmd;
+mod which_cmd;
 
 use std::path::Path;
 
@@ -439,8 +441,9 @@ enum RemoteAction {
 fn main() {
     use commands::{
         cmd_apply, cmd_check, cmd_hook_handle, cmd_hook_install, cmd_ls, cmd_rewrite, cmd_run,
-        cmd_skill_install, cmd_which, or_exit,
+        cmd_skill_install, or_exit,
     };
+    use which_cmd::cmd_which;
 
     tokf::paths::init_from_env();
 
@@ -567,23 +570,8 @@ fn main() {
             RemoteAction::Sync => remote_cmd::cmd_remote_sync(),
             RemoteAction::Backfill => remote_cmd::cmd_remote_backfill(cli.no_cache),
         }),
-        Commands::History { action } => or_exit(match action {
-            HistoryAction::List { limit, all } => history_cmd::cmd_history_list(*limit, *all),
-            HistoryAction::Show { id, raw } => history_cmd::cmd_history_show(*id, *raw),
-            HistoryAction::Last { raw, all } => history_cmd::cmd_history_last(*raw, *all),
-            HistoryAction::Search { query, limit, all } => {
-                history_cmd::cmd_history_search(query, *limit, *all)
-            }
-            HistoryAction::Clear { all } => history_cmd::cmd_history_clear(*all),
-        }),
-        Commands::Raw { target } => or_exit(if target == "last" {
-            history_cmd::cmd_history_last(true, false)
-        } else if let Ok(id) = target.parse::<i64>() {
-            history_cmd::cmd_history_show(id, true)
-        } else {
-            eprintln!("[tokf] expected `last` or a numeric ID, got: {target}");
-            Ok(1)
-        }),
+        Commands::History { action } => or_exit(history_cmd::dispatch_history(action)),
+        Commands::Raw { target } => or_exit(history_cmd::dispatch_raw(target)),
         Commands::Sync { status } => or_exit(sync_cmd::cmd_sync(*status)),
         Commands::Publish {
             filter,

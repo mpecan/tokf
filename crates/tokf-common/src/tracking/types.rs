@@ -9,7 +9,7 @@ pub struct TrackingEvent {
     pub output_tokens_est: i64,
     /// Raw command output bytes before any baseline adjustment.
     pub raw_bytes: i64,
-    /// Estimated raw tokens (`raw_bytes / 4`).
+    /// Estimated raw tokens (see [`crate::tokens`]).
     pub raw_tokens_est: i64,
     pub filter_time_ms: i64,
     pub exit_code: i32,

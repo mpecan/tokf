@@ -47,17 +47,23 @@ pub fn record_history(
     let id = conn.last_insert_rowid();
 
     // Retention is scoped per project so each project keeps its own N entries.
+    //
+    // The row we just inserted is explicitly excluded from the prune. Without
+    // that guard a retention of 0 would delete the entry in the same call that
+    // returns its ID, and callers would print a `🗜️#<id>` recovery marker
+    // pointing at a row that no longer exists.
     let retention_i64 = i64::from(config.retention_count);
     conn.execute(
         "DELETE FROM history
          WHERE project = ?1
+           AND id <> ?3
            AND id NOT IN (
                SELECT id FROM history
                WHERE project = ?1
                ORDER BY id DESC
                LIMIT ?2
            )",
-        rusqlite::params![record.project, retention_i64],
+        rusqlite::params![record.project, retention_i64, id],
     )
     .context("enforce history retention")?;
 
