@@ -548,3 +548,27 @@ Safety checks scan for:
 - **Hidden Unicode** — zero-width spaces, RTL overrides, and other invisible characters that could smuggle content.
 
 Safety warnings do **not** block publishing — filters with issues are published with `safety_passed = false` and the registry shows a warning badge. Use `--safety` locally to catch issues before publishing.
+
+### Determinism
+
+`tokf verify` runs every test case's filter pipeline **twice** against the identical input and asserts the two outputs are byte-for-byte identical. This is not behind a flag — it always runs, for every case, in every `tokf verify` invocation. Determinism is a correctness invariant of a filter, not an opt-in preference.
+
+If a filter fails this check, `tokf verify` reports it like any other assertion failure — it names the filter and shows the first differing byte offset with context from both runs:
+
+```
+✗ my-filter (0 → 12 tokens, 100.0% reduction)
+    ✗ shows recent count
+        my-filter: output is not byte-stable across repeated runs (first differing byte at offset 14)
+            run 1: "3 files changed"
+            run 2: "5 files changed"
+```
+
+The context window is 20 bytes on each side of the differing byte. A leading or trailing `...` appears only when output was actually clipped there — short outputs, like the one above, are shown whole.
+
+**Why this matters more than it looks like it should.** Tool results get resent on every subsequent turn of a session — the same filtered output is retransmitted as conversation history grows. The provider's prompt cache matches on the request prefix byte-for-byte. If a filter's output for the same input differs between invocations, the bytes at that point shift, and *everything after it* in the prompt misses cache and re-bills at full input rate instead of the cached discount. A filter that trims 200 tokens but knocks 40k tokens of suffix out of cache is a large net loss — and it's invisible in any single local test run, because a single run only ever sees one version of the output.
+
+**Input variance is fine. Output variance is not.** `cargo test` genuinely printing `Finished in 20.81s` on one run and `21.04s` on the next, with the filter passing that duration through unchanged, is correct behavior — not a bug. The invariant under test is that the filter is a **pure function of its input**: same bytes in, same bytes out, every time. The double-run check holds the input constant (the same fixture, fed through `filter::apply` twice) specifically so it isolates the filter's own behavior from legitimate variance in what the underlying command printed.
+
+**The `HashMap`-ordering trap.** Rust's default `HashMap`/`HashSet` hasher is randomly seeded per process, so iteration order is stable *within* a single run — a filter can look perfectly deterministic in one `cargo test` or one `tokf verify` invocation and still vary from run to run of the compiled binary. This is why the check performs two independent `filter::apply` calls rather than comparing a value to itself, and why the filter engine avoids exposing `HashMap`/`HashSet` iteration order to rendered output: sorted collections (`BTreeMap`) or an explicit sort-before-join are used wherever a collected or keyed value reaches the final template. The same trap applies to the Lua escape hatch — a `lua_script` step that iterates a table with `pairs()` should build and iterate an explicit `order` array instead, the way `crates/tokf-cli/filters/docker/images.toml` and `crates/tokf-cli/filters/cargo/clippy.toml` already do, rather than relying on Luau's table iteration order.
+
+The stdlib was audited against this check as part of introducing it. No stdlib filter needed changes — the check exists to hold the invariant going forward, not because a stdlib filter was found broken.

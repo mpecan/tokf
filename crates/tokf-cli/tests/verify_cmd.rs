@@ -692,3 +692,176 @@ contains = "Ignore"
         "expected 'safety' field to be absent or null without --safety flag, got:\n{suite}"
     );
 }
+
+// --- determinism check (issue #418) ---
+
+#[test]
+fn verify_fails_on_nondeterministic_filter() {
+    let dir = tempfile::tempdir().unwrap();
+    let filters_dir = dir.path().join("filters").join("mytest");
+    fs::create_dir_all(&filters_dir).unwrap();
+    let suite_dir = dir
+        .path()
+        .join("filters")
+        .join("mytest")
+        .join("random_test");
+    fs::create_dir_all(&suite_dir).unwrap();
+
+    // Genuinely nondeterministic filter: math.random is seeded fresh in each
+    // Luau VM, so two independent filter::apply calls over the same input
+    // produce different output almost every run. This is the same class of
+    // bug the double-run check exists to catch (it stands in for a
+    // per-process-seeded HashMap that "looks fine" in a single run).
+    fs::write(
+        filters_dir.join("random.toml"),
+        r#"command = "mytest random"
+
+[lua_script]
+lang = "luau"
+source = "return tostring(math.random(1, 1000000000))"
+"#,
+    )
+    .unwrap();
+
+    fs::write(
+        suite_dir.join("case.toml"),
+        r#"name = "random number"
+inline = "irrelevant input"
+exit_code = 0
+
+[[expect]]
+matches = "^\\d+$"
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+        .args(["verify", "mytest/random"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "expected nondeterministic filter to fail verify\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mytest/random"),
+        "expected filter name in failure output, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("byte-stable") && stdout.contains("offset"),
+        "expected a byte-offset-shaped determinism message, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn verify_json_still_reports_determinism_failure_shape() {
+    let dir = tempfile::tempdir().unwrap();
+    let filters_dir = dir.path().join("filters").join("mytest");
+    fs::create_dir_all(&filters_dir).unwrap();
+    let suite_dir = dir
+        .path()
+        .join("filters")
+        .join("mytest")
+        .join("random_test");
+    fs::create_dir_all(&suite_dir).unwrap();
+
+    fs::write(
+        filters_dir.join("random.toml"),
+        r#"command = "mytest random"
+
+[lua_script]
+lang = "luau"
+source = "return tostring(math.random(1, 1000000000))"
+"#,
+    )
+    .unwrap();
+
+    fs::write(
+        suite_dir.join("case.toml"),
+        r#"name = "random number"
+inline = "irrelevant input"
+exit_code = 0
+
+[[expect]]
+matches = "^\\d+$"
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+        .args(["verify", "mytest/random", "--json"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert_ne!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Still deserializes into the existing SuiteResult/CaseResult JSON shape —
+    // the determinism failure rides in the existing `failures: Vec<String>`
+    // field rather than a new schema field.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
+    let suite = &parsed.as_array().unwrap()[0];
+    let case = &suite["cases"].as_array().unwrap()[0];
+    assert_eq!(case["passed"].as_bool(), Some(false));
+    let failures = case["failures"]
+        .as_array()
+        .expect("failures should be an array");
+    assert!(
+        failures
+            .iter()
+            .any(|f| f.as_str().is_some_and(|s| s.contains("byte-stable"))),
+        "expected a determinism failure string in failures[], got: {failures:?}"
+    );
+}
+
+#[test]
+fn verify_deterministic_filter_still_passes() {
+    let dir = tempfile::tempdir().unwrap();
+    let filters_dir = dir.path().join("filters").join("mytest");
+    fs::create_dir_all(&filters_dir).unwrap();
+    let suite_dir = dir.path().join("filters").join("mytest").join("cmd_test");
+    fs::create_dir_all(&suite_dir).unwrap();
+
+    fs::write(
+        filters_dir.join("cmd.toml"),
+        r#"command = "mytest cmd"
+
+[on_success]
+output = "OK"
+"#,
+    )
+    .unwrap();
+
+    fs::write(
+        suite_dir.join("pass.toml"),
+        r#"name = "stable output"
+inline = "line one\nline two"
+exit_code = 0
+
+[[expect]]
+equals = "OK"
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokf"))
+        .args(["verify", "mytest/cmd"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "expected a deterministic filter to keep passing verify\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
