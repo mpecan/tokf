@@ -3,11 +3,12 @@ use std::process::Command;
 
 use serde::Serialize;
 use tokf::remote::http::Client;
+use tokf::runtime::Runtime;
 use tokf_common::hash::canonical_hash;
 
 /// Entry point for the `tokf backfill-versions` subcommand.
 pub fn cmd_backfill_versions(rt: &Runtime, registry_url: &str, token: &str, dry_run: bool) -> i32 {
-    match backfill_versions(registry_url, token, dry_run) {
+    match backfill_versions(rt, registry_url, token, dry_run) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -42,7 +43,18 @@ struct BackfillResponse {
 
 // ── Core logic ──────────────────────────────────────────────────────────────
 
-fn backfill_versions(registry_url: &str, token: &str, dry_run: bool) -> anyhow::Result<i32> {
+/// The set of filters present at one release tag: `(content_hash, command_pattern)`.
+type TagFilters = Vec<(String, String)>;
+
+/// A filter snapshot per release tag, oldest tag first: `(tag, filters)`.
+type TagSnapshots = Vec<(String, TagFilters)>;
+
+fn backfill_versions(
+    rt: &Runtime,
+    registry_url: &str,
+    token: &str,
+    dry_run: bool,
+) -> anyhow::Result<i32> {
     let tags = list_release_tags()?;
     if tags.is_empty() {
         eprintln!("[backfill] No release tags found.");
@@ -51,7 +63,7 @@ fn backfill_versions(registry_url: &str, token: &str, dry_run: bool) -> anyhow::
     eprintln!("[backfill] Found {} release tags", tags.len());
 
     // Build per-tag filter snapshots.
-    let mut tag_snapshots: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    let mut tag_snapshots: TagSnapshots = Vec::new();
     for tag in &tags {
         let filters = list_filters_at_tag(tag)?;
         eprintln!("[backfill]   {tag}: {} filters", filters.len());
@@ -66,15 +78,13 @@ fn backfill_versions(registry_url: &str, token: &str, dry_run: bool) -> anyhow::
     );
 
     if dry_run {
-        let payload = serde_json::to_string_pretty(&BackfillVersionsRequest {
-            entries: entries.clone(),
-        })?;
+        let payload = serde_json::to_string_pretty(&BackfillVersionsRequest { entries })?;
         println!("{payload}");
         eprintln!("[backfill] Dry run — payload printed above.");
         return Ok(0);
     }
 
-    let client = Client::new(registry_url, Some(token))?;
+    let client = Client::new(rt, registry_url, Some(token))?;
     let resp = client.post::<_, BackfillResponse>(
         "/api/filters/backfill-versions",
         &BackfillVersionsRequest { entries },
@@ -130,7 +140,7 @@ fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
 /// List filter TOML files at a given git tag and compute their content hashes.
 ///
 /// Returns `Vec<(content_hash, command_pattern)>`.
-fn list_filters_at_tag(tag: &str) -> anyhow::Result<Vec<(String, String)>> {
+fn list_filters_at_tag(tag: &str) -> anyhow::Result<TagFilters> {
     // Try workspace path first; fall back to pre-workspace path when empty.
     // `git ls-tree` returns exit 0 with empty output for non-existent paths,
     // so we check `is_empty()` rather than relying on `or_else`.
@@ -141,14 +151,12 @@ fn list_filters_at_tag(tag: &str) -> anyhow::Result<Vec<(String, String)>> {
 
     let mut results = Vec::new();
     for path in &paths {
-        if let Ok(content) = git_show(tag, path) {
-            if let Ok(config) = toml::from_str::<tokf_common::config::types::FilterConfig>(&content)
-            {
-                if let Ok(hash) = canonical_hash(&config) {
-                    let cmd_pattern = config.command.first().to_string();
-                    results.push((hash, cmd_pattern));
-                }
-            }
+        if let Ok(content) = git_show(tag, path)
+            && let Ok(config) = toml::from_str::<tokf_common::config::types::FilterConfig>(&content)
+            && let Ok(hash) = canonical_hash(&config)
+        {
+            let cmd_pattern = config.command.first().to_string();
+            results.push((hash, cmd_pattern));
         }
     }
     Ok(results)
@@ -164,7 +172,12 @@ fn list_filter_paths_at_tag(tag: &str, prefix: &str) -> anyhow::Result<Vec<Strin
     let text = String::from_utf8(output.stdout)?;
     Ok(text
         .lines()
-        .filter(|l| l.ends_with(".toml") && !l.contains("_test/"))
+        .filter(|l| {
+            std::path::Path::new(l)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("toml"))
+                && !l.contains("_test/")
+        })
         .map(String::from)
         .collect())
 }
@@ -181,11 +194,11 @@ fn git_show(tag: &str, path: &str) -> anyhow::Result<String> {
 
 /// Compute version timeline from tag snapshots.
 ///
-/// For each unique content_hash, determines:
+/// For each unique `content_hash`, determines:
 /// - `introduced_at`: first tag where this hash appears
 /// - `deprecated_at`: first tag where this hash disappears (and a successor exists)
-/// - `successor_hash`: the hash with the same command_pattern at `deprecated_at`
-fn compute_version_timeline(snapshots: &[(String, Vec<(String, String)>)]) -> Vec<BackfillEntry> {
+/// - `successor_hash`: the hash with the same `command_pattern` at `deprecated_at`
+fn compute_version_timeline(snapshots: &[(String, TagFilters)]) -> Vec<BackfillEntry> {
     // Track: hash -> (first_seen_version, command_pattern)
     let mut first_seen: BTreeMap<String, (String, String)> = BTreeMap::new();
     // Track: hash -> (deprecated_version, successor_hash)
@@ -249,7 +262,7 @@ const MAX_V1_ROUNDS: usize = 10_000;
 
 /// Entry point for the `tokf backfill-v1-hashes` subcommand.
 pub fn cmd_backfill_v1_hashes(rt: &Runtime, registry_url: &str, token: &str, limit: usize) -> i32 {
-    match backfill_v1_hashes(registry_url, token, limit) {
+    match backfill_v1_hashes(rt, registry_url, token, limit) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[tokf] error: {e:#}");
@@ -289,8 +302,13 @@ struct BackfillV1Response {
 /// server-side, so the caller must raise `TOKF_HTTP_TIMEOUT` well above the 5s
 /// default — otherwise the request is cancelled mid-batch and the round fails
 /// even though the server made progress. The backfill workflow sets it to 300.
-fn backfill_v1_hashes(registry_url: &str, token: &str, limit: usize) -> anyhow::Result<i32> {
-    let client = Client::new(registry_url, Some(token))?;
+fn backfill_v1_hashes(
+    rt: &Runtime,
+    registry_url: &str,
+    token: &str,
+    limit: usize,
+) -> anyhow::Result<i32> {
+    let client = Client::new(rt, registry_url, Some(token))?;
     let mut total_updated = 0usize;
 
     for round in 1..=MAX_V1_ROUNDS {

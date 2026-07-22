@@ -45,6 +45,12 @@ jobs:
           cargo clippy -p tokf-common --features tokenizer --all-targets -- -D warnings
           cargo clippy -p tokf --features tokenizer --all-targets -- -D warnings
 
+      # CI-only commands (publish-stdlib, backfill-*). Nothing else compiles
+      # this code, so without this step it can break on main unnoticed and only
+      # fail when an operator dispatches the workflow that needs it.
+      - name: Clippy (stdlib-publish feature)
+        run: cargo clippy -p tokf --features stdlib-publish --all-targets -- -D warnings
+
       - name: Check file sizes
         run: bash scripts/check-file-sizes.sh
 
