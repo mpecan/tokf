@@ -3,6 +3,37 @@ use std::path::Path;
 use tokf::history;
 use tokf::tracking;
 
+use crate::commands::HistoryAction;
+
+/// Dispatch a `tokf history <action>` subcommand.
+///
+/// # Errors
+/// Returns an error if the underlying history command fails.
+pub fn dispatch_history(action: &HistoryAction) -> anyhow::Result<i32> {
+    match action {
+        HistoryAction::List { limit, all } => cmd_history_list(*limit, *all),
+        HistoryAction::Show { id, raw } => cmd_history_show(*id, *raw),
+        HistoryAction::Last { raw, all } => cmd_history_last(*raw, *all),
+        HistoryAction::Search { query, limit, all } => cmd_history_search(query, *limit, *all),
+        HistoryAction::Clear { all } => cmd_history_clear(*all),
+    }
+}
+
+/// Dispatch `tokf raw <target>` where target is `last` or a numeric entry ID.
+///
+/// # Errors
+/// Returns an error if the underlying history command fails.
+pub fn dispatch_raw(target: &str) -> anyhow::Result<i32> {
+    if target == "last" {
+        cmd_history_last(true, false)
+    } else if let Ok(id) = target.parse::<i64>() {
+        cmd_history_show(id, true)
+    } else {
+        eprintln!("[tokf] expected `last` or a numeric ID, got: {target}");
+        Ok(1)
+    }
+}
+
 fn open_history_conn() -> anyhow::Result<rusqlite::Connection> {
     let path =
         tracking::db_path().ok_or_else(|| anyhow::anyhow!("cannot determine history DB path"))?;

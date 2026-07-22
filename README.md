@@ -1297,11 +1297,48 @@ output = "{branch} — {counts}"
 🗜️ compressed — run `tokf raw 99` for full output
 ```
 
-The `🗜️` prefix appears on all filtered output (disable with `tokf config set output.show_indicator false` or `TOKF_SHOW_INDICATOR=false`). The hint line is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line or indicator.
+The `🗜️` prefix appears on all filtered output (disable with `tokf config set output.show_indicator false` or `TOKF_SHOW_INDICATOR=false`). The hint line is appended to stdout so it is visible to both humans and LLMs in the tool output. The history entry itself always stores the clean filtered output, without the hint line, indicator or recovery marker.
+
+## Per-entry recovery markers
+
+When a filtered command is recorded in history, the indicator carries that entry's ID directly:
+
+```
+🗜️#87 ✓ cargo test: 42 passed
+```
+
+`🗜️#87` means the full, unfiltered output is one command away — `tokf raw 87`. Without an ID (`🗜️` alone) the run was not recorded, so there is nothing to recover.
+
+This is **additive**: the filtered body is byte-identical to what tokf printed before, and the ID rides the indicator that was already being printed. It costs roughly three tokens; there is no extra line and no extra newline. Disabling the indicator (`output.show_indicator = false`) removes the marker too — the ID is not smuggled back in on its own line.
+
+### Why the CLI rather than a tool call
+
+Recovery is deliberately a shell command. `tokf raw <id>` composes:
+
+```sh
+tokf raw 87 | grep -n 'error\[' | head -20
+```
+
+A recovered entry can be enormous — a `cargo metadata` capture runs to hundreds of thousands of tokens — so being able to narrow it *before* it reaches the model matters. Output that arrives through a tool call lands in context whole, with no opportunity to filter it first. Piping also means the recovered text can itself be filtered by tokf.
+
+Prefer `tokf raw <id> | ...` over reading an entry whole.
+
+### Why the ID is decimal
+
+Decimal is the cheapest encoding, which is counterintuitive — a shorter string is not a smaller number of tokens. BPE tokenizers pack runs of digits (up to three per token) while mixed-case alphanumerics fragment. Measured against `cl100k`:
+
+| id | decimal | base36 | base62 |
+|---|---|---|---|
+| 142 | **1** | 2 | 2 |
+| 4821 | **2** | 2 | 2 |
+| 51234 | **2** | 3 | **2** |
+| 998877 | **2** | 2 | 3 |
+
+Decimal is never worse and sometimes better, so the ID is printed as-is.
 
 ## Context injection
 
-During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a two-line context explaining what `🗜️` means and how to retrieve full output (`tokf raw last`). Use `--no-context` to skip this step.
+During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a short context explaining what `🗜️` and `🗜️#<id>` mean and how to retrieve full output (`tokf raw <id>`, or `tokf raw last`). Use `--no-context` to skip this step.
 
 ---
 

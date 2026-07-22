@@ -282,6 +282,43 @@ fn record_history_enforces_retention_per_project() {
     assert_eq!(all.len(), 4, "total across projects should be 4");
 }
 
+#[test]
+fn record_history_never_prunes_the_entry_it_just_inserted() {
+    // `history.retention = 0` is an accepted config value. The returned ID is
+    // printed as a `🗜️#<id>` recovery marker, so the row it names must still
+    // exist when `record_history` returns — otherwise the marker is dead on
+    // arrival rather than merely going stale after N more commands.
+    let (_dir, conn) = temp_db();
+    let config = HistoryConfig { retention_count: 0 };
+
+    let first = record_history(
+        &conn,
+        &make_record("proj", "cmd-1", None, "raw-1", "filtered", 0),
+        &config,
+    )
+    .expect("record");
+    let entry = get_history_entry(&conn, first).expect("get");
+    assert!(entry.is_some(), "entry {first} must be resolvable");
+
+    // The next insert is allowed to prune the previous one — only the row being
+    // returned right now is protected.
+    let second = record_history(
+        &conn,
+        &make_record("proj", "cmd-2", None, "raw-2", "filtered", 0),
+        &config,
+    )
+    .expect("record");
+    assert!(
+        get_history_entry(&conn, second).expect("get").is_some(),
+        "entry {second} must be resolvable"
+    );
+    assert_eq!(
+        list_history(&conn, 10, Some("proj")).expect("list").len(),
+        1,
+        "retention=0 still keeps only the newest entry"
+    );
+}
+
 // --- list_history ---
 
 #[test]
