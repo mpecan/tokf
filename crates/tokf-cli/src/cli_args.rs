@@ -267,8 +267,10 @@ pub enum Commands {
     BackfillV1Hashes {
         #[command(flatten)]
         auth: RegistryAuthArgs,
-        /// Rows to process per request (server caps at 500)
-        #[arg(long, default_value_t = 500)]
+        /// Rows to process per request (server caps at 500). Kept small so a
+        /// round completes well inside the HTTP timeout; the command loops
+        /// until the backlog is drained regardless of batch size.
+        #[arg(long, default_value_t = 100)]
         limit: usize,
     },
     /// Telemetry configuration and diagnostics

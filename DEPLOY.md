@@ -195,3 +195,28 @@ string with DDL privileges (`CREATE TABLE`, `ALTER TABLE`, etc.) and keep
 `DATABASE_URL` restricted to DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). This
 follows the principle of least privilege — the running application never has
 schema-altering permissions.
+
+## 10. Backfilling canonical v1 hashes
+
+Rows published before the canonical v1 hash shipped (see
+[ADR-0002](docs/adr/0002-canonical-v1-hash.md)) have `v1_hash IS NULL`. The
+**Backfill v1 Hashes** workflow (`workflow_dispatch`) drains them by calling
+`POST /api/filters/backfill-v1-hashes` in a loop until a round reports
+`updated == 0`.
+
+Each round fetches up to `--limit` filter TOMLs from R2 (16 concurrently),
+recomputes the hash, and writes it back. The handler logs
+`backfill-v1-hashes request received`, a `backfill-v1-hashes progress` line
+every 25 rows, and `backfill-v1-hashes complete` at the end.
+
+**If you only ever see the `request received` line**, the client hung up
+mid-batch and axum cancelled the handler. The CLI's default HTTP timeout is 5s
+— far too short for a batch of R2 fetches — so the workflow sets
+`TOKF_HTTP_TIMEOUT: "300"`. Raise it, or lower `--limit`, if batches still time
+out. Progress is never lost: each row commits its own `UPDATE`, so re-running
+picks up where the last attempt stopped.
+
+A round that reports `updated == 0` with a non-empty `failed` list means only
+permanently-broken rows remain (missing R2 object, or TOML that no longer
+canonicalises). The workflow exits non-zero so these get triaged rather than
+silently ignored.

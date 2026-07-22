@@ -284,6 +284,11 @@ struct BackfillV1Response {
 ///
 /// Exit code is non-zero when rows remain unprocessable after the run, so a
 /// CI invocation goes red and an operator triages the reported failures.
+///
+/// Each round is a synchronous request that fetches `limit` filters from R2
+/// server-side, so the caller must raise `TOKF_HTTP_TIMEOUT` well above the 5s
+/// default — otherwise the request is cancelled mid-batch and the round fails
+/// even though the server made progress. The backfill workflow sets it to 300.
 fn backfill_v1_hashes(registry_url: &str, token: &str, limit: usize) -> anyhow::Result<i32> {
     let client = Client::new(registry_url, Some(token))?;
     let mut total_updated = 0usize;

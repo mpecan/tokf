@@ -31,6 +31,7 @@ sha2 = "0.11"
 rand = "0.10"
 hex = "0.4"
 async-trait = "0.1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 chrono = { version = "0.4", features = ["serde"] }
 aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 tokf-common = { path = "../tokf-common", version = "0.2.50", features = ["validation"] }

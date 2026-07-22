@@ -1,4 +1,5 @@
 use axum::{Json, extract::State, http::StatusCode};
+use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::service_token::ServiceAuth;
@@ -115,6 +116,15 @@ const fn default_v1_batch_size() -> usize {
     100
 }
 
+/// How many rows are fetched-and-hashed at once. The work is I/O-bound on R2,
+/// so serial processing made a 300-row batch take minutes and get cancelled by
+/// client timeouts before the handler could reply.
+const V1_CONCURRENCY: usize = 16;
+
+/// Emit a progress log every N completed rows, so a stalled batch is visible
+/// rather than a silent gap between "request received" and "complete".
+const V1_PROGRESS_INTERVAL: usize = 25;
+
 #[derive(Debug, Serialize)]
 pub struct BackfillV1Response {
     pub processed: usize,
@@ -138,10 +148,19 @@ pub struct BackfillV1Failure {
 /// `updated_at` is still bumped so they rotate to the back of the queue
 /// and don't starve newer rows.
 ///
+/// Rows are processed [`V1_CONCURRENCY`] at a time — the work is I/O-bound on
+/// R2 and a serial batch is slow enough that clients time out and cancel the
+/// handler before it can reply.
+///
 /// Operator runbook: invoke repeatedly until `updated == 0`. A response
 /// with `updated == 0` and a non-empty `failed` list means only
 /// permanently-failing rows remain — triage those manually; further calls
 /// will not make progress. Failures don't stop the batch.
+///
+/// Callers must allow a generous request timeout (the `tokf` CLI defaults to
+/// 5s; the backfill workflow raises it via `TOKF_HTTP_TIMEOUT`). A cancelled
+/// request loses no work — each row commits its own `UPDATE` — but the
+/// response, and the `failed` list with it, is lost.
 pub async fn backfill_v1_hashes(
     _auth: ServiceAuth,
     State(state): State<AppState>,
@@ -173,25 +192,7 @@ pub async fn backfill_v1_hashes(
         "backfill-v1-hashes request received"
     );
 
-    let mut updated = 0usize;
-    let mut failed = Vec::new();
-
-    for (content_hash, r2_key) in &rows {
-        match compute_and_store_v1(&state, content_hash, r2_key).await {
-            Ok(()) => updated += 1,
-            Err(e) => {
-                tracing::warn!(hash = %content_hash, "backfill-v1 failed: {e}");
-                // Bump `updated_at` so this row rotates to the back of the
-                // cursor and doesn't starve newer rows on the next call. The
-                // row's `v1_hash` stays NULL, so it remains a candidate.
-                touch_updated_at(&state, content_hash).await;
-                failed.push(BackfillV1Failure {
-                    content_hash: content_hash.clone(),
-                    error: e.to_string(),
-                });
-            }
-        }
-    }
+    let (updated, failed) = process_v1_batch(&state, &rows).await;
 
     tracing::info!(
         processed = rows.len(),
@@ -208,6 +209,67 @@ pub async fn backfill_v1_hashes(
             failed,
         }),
     ))
+}
+
+/// Fetch, hash and store `v1_hash` for every row in `rows`, up to
+/// [`V1_CONCURRENCY`] at a time. Returns `(updated, failures)`.
+///
+/// Failures never abort the batch: the row's `updated_at` is bumped so it
+/// rotates to the back of the cursor, and it is reported to the caller.
+/// Progress is logged every [`V1_PROGRESS_INTERVAL`] completions so a batch
+/// that stalls mid-flight is diagnosable from the logs alone.
+async fn process_v1_batch(
+    state: &AppState,
+    rows: &[(String, String)],
+) -> (usize, Vec<BackfillV1Failure>) {
+    let total = rows.len();
+    // Each future owns its inputs (cloned `AppState`, owned hash/key) rather
+    // than borrowing from the enclosing frame: a borrowing async block here
+    // makes the handler future fail axum's higher-ranked lifetime check.
+    let mut results = stream::iter(rows.to_vec())
+        .map(|(content_hash, r2_key)| {
+            let state = state.clone();
+            async move {
+                match compute_and_store_v1(&state, &content_hash, &r2_key).await {
+                    Ok(()) => None,
+                    Err(e) => {
+                        tracing::warn!(hash = %content_hash, "backfill-v1 failed: {e}");
+                        // Bump `updated_at` so this row rotates to the back of
+                        // the cursor and doesn't starve newer rows on the next
+                        // call. The row's `v1_hash` stays NULL, so it remains
+                        // a candidate.
+                        touch_updated_at(&state, &content_hash).await;
+                        Some(BackfillV1Failure {
+                            content_hash,
+                            error: e.to_string(),
+                        })
+                    }
+                }
+            }
+        })
+        .buffer_unordered(V1_CONCURRENCY);
+
+    let mut updated = 0usize;
+    let mut failed = Vec::new();
+    let mut done = 0usize;
+    while let Some(outcome) = results.next().await {
+        match outcome {
+            None => updated += 1,
+            Some(f) => failed.push(f),
+        }
+        done += 1;
+        if done.is_multiple_of(V1_PROGRESS_INTERVAL) && done < total {
+            tracing::info!(
+                done,
+                total,
+                updated,
+                failed = failed.len(),
+                "backfill-v1-hashes progress"
+            );
+        }
+    }
+
+    (updated, failed)
 }
 
 async fn compute_and_store_v1(

@@ -368,3 +368,55 @@ async fn backfill_v1_caps_limit_at_max(pool: PgPool) {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["processed"], 0);
 }
+
+/// Batches are processed concurrently (16 in flight), so a batch larger than
+/// the concurrency window exercises more than one wave. Verify the counts and
+/// the failure list stay correct when rows complete out of submission order.
+#[crdb_test_macro::crdb_test(migrations = "./migrations")]
+async fn backfill_v1_batch_exceeding_concurrency_window(pool: PgPool) {
+    const ROWS: usize = 20;
+
+    let storage = Arc::new(InMemoryStorageClient::new());
+    let (_, user) = insert_test_user(&pool, "conc_bf").await;
+    let service_token = insert_service_token(&pool, "bf-conc").await;
+
+    let mut hashes = Vec::new();
+    for i in 0..ROWS {
+        let toml = format!("command = \"conc-tool-{i}\"\n");
+        hashes
+            .push(publish_then_null_v1(&pool, Arc::clone(&storage), &user, toml.as_bytes()).await);
+    }
+
+    // Corrupt one row in the middle so a failure has to survive interleaving
+    // with successes from both the first and second wave.
+    let failing_hash = hashes[7].clone();
+    let failing_key = r2_key_for(&pool, &failing_hash).await;
+    storage.delete(&failing_key).await.unwrap();
+
+    let app =
+        crate::routes::create_router(make_state_with_storage(pool.clone(), Arc::clone(&storage)));
+    let resp = post_json(
+        app,
+        &service_token,
+        URI,
+        &serde_json::json!({ "limit": 100 }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["processed"], ROWS);
+    assert_eq!(json["updated"], ROWS - 1);
+
+    let failed = json["failed"].as_array().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["content_hash"], failing_hash);
+
+    // Every healthy row got its v1_hash; only the corrupt one stayed NULL.
+    let still_null: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM filters WHERE v1_hash IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(still_null, 1);
+}
