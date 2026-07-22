@@ -157,6 +157,31 @@ fn write_manifest_bytes(path: &Path, data: &[u8]) -> anyhow::Result<()> {
         .map_err(|err| anyhow::Error::new(err.error).context("rename cache tmp to final"))
 }
 
+/// Generate shims from a cache-discovery path, unless this is a unit-test build.
+///
+/// [`generate_shims`] writes into [`crate::paths::shims_dir`], which is
+/// *process-global* and redirected by `HomeGuard` in tests. `discover_with_cache`
+/// is production code exercised by many non-serial unit tests, so letting it
+/// generate shims meant those tests wrote into whichever temp directory a
+/// concurrently-running serial shim test had `HomeGuard` pointing at — deleting
+/// or adding shims underneath it. That is the source of the intermittent
+/// `generate_shims_*` failures ("only basename shim should exist", and a
+/// vanishing shims directory).
+///
+/// Skipping it under `cfg(test)` costs no coverage: the `generate_shims_*` tests
+/// call [`generate_shims`] directly, and the integration tests exercise this path
+/// through the real binary, which is not a `cfg(test)` build.
+// Under `cfg(test)` the body collapses to a discard, which clippy would rather
+// see as a `const fn`; that is an artefact of the test build, not the real one.
+#[cfg_attr(test, allow(clippy::missing_const_for_fn))]
+fn generate_shims_from_discovery(filters: &[ResolvedFilter]) {
+    #[cfg(not(test))]
+    generate_shims(filters);
+
+    #[cfg(test)]
+    let _ = filters;
+}
+
 /// Generate shim scripts for all filter command basenames.
 ///
 /// Each shim is a small shell script that redirects through `tokf -c`,
@@ -259,7 +284,7 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
         if let Ok(filters) = result {
             // Regenerate shims if the directory was manually deleted
             if crate::paths::shims_dir().is_some_and(|d| !d.exists()) {
-                generate_shims(&filters);
+                generate_shims_from_discovery(&filters);
             }
             return Ok(filters);
         }
@@ -267,7 +292,7 @@ pub fn discover_with_cache(search_dirs: &[PathBuf]) -> anyhow::Result<Vec<Resolv
     }
 
     let filters = discover_all_filters(search_dirs)?;
-    generate_shims(&filters);
+    generate_shims_from_discovery(&filters);
     if let Err(e) = write_manifest(&path, &filters, search_dirs) {
         eprintln!("[tokf] cache write failed ({}): {e:#}", path.display());
         eprintln!(

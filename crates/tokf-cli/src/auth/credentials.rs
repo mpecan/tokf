@@ -71,7 +71,7 @@ pub fn save(
     token_expires_in: i64,
 ) -> anyhow::Result<()> {
     // Store token in OS keyring
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
+    let entry = keyring_entry()?;
     entry
         .set_password(token)
         .map_err(|e| anyhow::anyhow!("could not access system keyring: {e}"))?;
@@ -202,7 +202,7 @@ pub fn load() -> Option<LoadedAuth> {
     let content = fs::read_to_string(&path).ok()?;
     let meta: StoredAuth = toml::from_str(&content).ok()?;
 
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?;
+    let entry = keyring_entry().ok()?;
     let token = entry.get_password().ok()?;
 
     Some(LoadedAuth {
@@ -215,18 +215,67 @@ pub fn load() -> Option<LoadedAuth> {
     })
 }
 
+/// Guards mock-store installation so it happens exactly once per process.
+///
+/// `keyring_core`'s default store is process-global and first-write-wins, so
+/// installing it more than once would either be ignored or swap in a fresh,
+/// empty store underneath a test that had already saved a credential.
+#[cfg(any(test, feature = "test-keyring"))]
+static MOCK_STORE_INIT: std::sync::Once = std::sync::Once::new();
+
 /// Switch the keyring to an in-memory backend that persists across entries.
 ///
-/// Must be called before any keyring operations in tests to avoid touching
-/// real OS credentials. Safe to call multiple times.
+/// Idempotent: the store is installed on the first call and every later call
+/// is a no-op, so concurrent callers all observe the same store.
 ///
 /// Uses `keyring_core`'s mock store, which reuses one credential per
 /// `(service, user)` pair, so `save()` + `load()` round-trips work in tests
 /// (its persistence is `ProcessOnly`).
 #[cfg(any(test, feature = "test-keyring"))]
 pub fn use_mock_keyring() {
-    if let Ok(store) = keyring_core::mock::Store::new() {
-        keyring_core::set_default_store(store);
+    MOCK_STORE_INIT.call_once(|| {
+        if let Ok(store) = keyring_core::mock::Store::new() {
+            keyring_core::set_default_store(store);
+        }
+    });
+}
+
+/// The entry type used to reach the credential store.
+///
+/// Test builds deliberately use `keyring_core::Entry` rather than
+/// `keyring::Entry`; see [`keyring_entry`] for why that distinction matters.
+#[cfg(any(test, feature = "test-keyring"))]
+type KeyringEntry = keyring_core::Entry;
+#[cfg(not(any(test, feature = "test-keyring")))]
+type KeyringEntry = keyring::Entry;
+
+/// Construct the keyring entry holding the auth token.
+///
+/// Every keyring access in this module goes through here.
+///
+/// **Why test builds bypass `keyring::Entry`.** `keyring` 4's `v1` wrapper opens
+/// `Entry::new` with `SET_CREDENTIAL_STORE.call_once(set_credential_store)`,
+/// which calls `keyring_core::set_default_store(platform_store)` — and that
+/// setter overwrites unconditionally. So the *first* `keyring::Entry::new`
+/// anywhere in the process replaces whatever store was installed, including a
+/// mock. Installing the mock earlier cannot win that race; the wrapper always
+/// clobbers it, which is why tests reached the real OS keychain (prompting for
+/// access, and failing with "item already exists" against leftover state).
+///
+/// Going through `keyring_core::Entry` in test builds skips that `call_once`
+/// entirely, so the mock store installed by [`use_mock_keyring`] is the one
+/// actually used. Production builds keep the `keyring::Entry` wrapper and its
+/// platform-store selection, unchanged.
+fn keyring_entry() -> keyring::Result<KeyringEntry> {
+    #[cfg(any(test, feature = "test-keyring"))]
+    {
+        use_mock_keyring();
+        keyring_core::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+    }
+
+    #[cfg(not(any(test, feature = "test-keyring")))]
+    {
+        keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
     }
 }
 
@@ -237,8 +286,13 @@ pub fn use_mock_keyring() {
 pub fn remove() -> bool {
     let had_credentials = load().is_some();
 
-    // Remove keyring entry (ignore errors — may already be absent)
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+    // Remove keyring entry (ignore errors — may already be absent).
+    //
+    // Deliberately unconditional, not gated on `had_credentials`: the TOML file
+    // and the keyring entry can go out of sync (a hand-deleted auth.toml leaves
+    // the token orphaned), and `load()` reports None whenever the TOML is gone.
+    // Gating here would silently strand that token forever.
+    if let Ok(entry) = keyring_entry() {
         let _ = entry.delete_credential();
     }
 
@@ -383,6 +437,53 @@ mod tests {
 
         let after = load();
         assert!(after.is_none(), "credentials should be gone after remove");
+    }
+
+    /// Deliberately NOT `#[serial]`: this asserts that a keyring access racing
+    /// the serial auth tests still lands on the mock store.
+    ///
+    /// Before `keyring_entry()` existed, `load()` here could construct an entry
+    /// against the real OS keychain, and because `keyring_core`'s default store
+    /// is process-global and first-write-wins, that pinned the real store for
+    /// every test that ran afterwards — the cause of the intermittent
+    /// "item already exists in the keychain" failures.
+    /// `#[serial]` because it writes the shared `(service, user)` credential
+    /// that the other auth tests round-trip; without it this would clobber
+    /// their state mid-test. It does not touch `crate::paths`, whose override
+    /// is also process-global.
+    #[test]
+    #[serial]
+    fn keyring_entry_installs_the_mock_store_without_an_explicit_call() {
+        // No use_mock_keyring() call: keyring_entry() must install it.
+        let entry = keyring_entry().expect("keyring entry should be constructible");
+
+        // Against the mock this round-trips; against a real keychain it would
+        // prompt for access or fail outright.
+        entry
+            .set_password("mock-store-probe")
+            .expect("mock store should accept a write");
+        assert_eq!(
+            entry.get_password().expect("mock store should read back"),
+            "mock-store-probe"
+        );
+        let _ = entry.delete_credential();
+    }
+
+    #[test]
+    #[serial]
+    fn use_mock_keyring_is_idempotent_and_preserves_state() {
+        use_mock_keyring();
+        let entry = keyring_entry().unwrap();
+        entry.set_password("first-write").unwrap();
+
+        // A second call must NOT swap in a fresh, empty store underneath us.
+        use_mock_keyring();
+        assert_eq!(
+            keyring_entry().unwrap().get_password().unwrap(),
+            "first-write",
+            "re-installing the mock store must not discard existing credentials"
+        );
+        let _ = entry.delete_credential();
     }
 
     #[test]
