@@ -1,12 +1,112 @@
-command = "git show"
-description = "Show --stat summary instead of full patch"
+# git-show.toml — reduce a full commit patch to metadata + per-file counts
+#
+# Raw: commit metadata, message, and the full patch (often thousands of lines)
+# Filtered: sha, author, date, subject, and one line per file with counts
+#
+# This filter used to `run = "git show --stat {args}"`, which destroyed the
+# patch before tokf ever saw it — `tokf raw <id>` could not give it back
+# (issue #430). The reduction now happens here, over the real output.
 
-# Override: use --stat for compact summary; full diff can be thousands of lines
-run = "git show --stat {args}"
-passthrough_args = ["-p", "--patch", "--format", "--pretty"]
+command = "git show"
+description = "Summarise a commit as metadata plus per-file change counts"
+
+# Skip the filter when the user explicitly asks for patch content or a
+# different output shape than this reduction produces.
+passthrough_args = [
+  "-p",
+  "--patch",
+  "--stat",        # git's own stat rendering
+  "--numstat",
+  "--shortstat",
+  "--format",
+  "--pretty",
+  "--raw",
+]
+
+# Anchored to column 0: patch content and commit messages can both mention
+# "fatal:", and a substring match would collapse a legitimate commit to a
+# single error line. Only git's own errors start at column 0.
+match_output = [
+  { pattern = "(?m)^fatal: ", output = "✗ {line_containing}" },
+]
+
+[[section]]
+name = "file-headers"
+match = '^diff --git '
+collect_as = "file_header_lines"
+
+# `^\+([^+]|$)` / `^-([^-]|$)` exclude the `+++ b/…` and `--- a/…` headers,
+# which are not content lines. Rust's regex crate has no lookahead.
+[[section]]
+name = "added"
+match = '^\+([^+]|$)'
+collect_as = "added_lines"
+
+[[section]]
+name = "removed"
+match = '^-([^-]|$)'
+collect_as = "removed_lines"
+
+# Commit metadata. `body_extract` keeps the first match per rule, which is what
+# reduces a multi-paragraph commit message to its subject line.
+[[chunk]]
+split_on = '^commit [0-9a-f]{7,}'
+collect_as = "commit"
+
+[chunk.extract]
+pattern = '^commit ([0-9a-f]{7})'
+as = "sha"
+
+[[chunk.body_extract]]
+pattern = '^Author: (.*)$'
+as = "author"
+
+[[chunk.body_extract]]
+pattern = '^Date:   (.*)$'
+as = "date"
+
+[[chunk.body_extract]]
+pattern = '^    (\S.*)$'
+as = "subject"
+
+# One chunk per file, counting its own added/removed lines.
+[[chunk]]
+split_on = '^diff --git '
+collect_as = "files"
+
+# Use the `b/` (destination) path so renames report where the file ended up.
+[chunk.extract]
+pattern = '^diff --git a/.* b/(.*)$'
+as = "path"
+
+[[chunk.aggregate]]
+pattern = '^\+([^+]|$)'
+count_as = "added"
+
+[[chunk.aggregate]]
+pattern = '^-([^-]|$)'
+count_as = "removed"
 
 [on_success]
-output = "{output}"
+output = """{commit | each: "{sha} {subject}\n{author} · {date}" | join: "\n"}
+
+{files | each: "{path} | +{added} -{removed}" | join: "\n"}
+{file_count} files changed, {insertions} insertions(+), {deletions} deletions(-)"""
+
+[[on_success.aggregates]]
+from = "file_header_lines"
+pattern = '^diff --git '
+count_as = "file_count"
+
+[[on_success.aggregates]]
+from = "added_lines"
+pattern = '^\+'
+count_as = "insertions"
+
+[[on_success.aggregates]]
+from = "removed_lines"
+pattern = '^-'
+count_as = "deletions"
 
 [on_failure]
 tail = 5

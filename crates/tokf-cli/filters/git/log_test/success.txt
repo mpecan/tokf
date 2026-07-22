@@ -1,5 +1,139 @@
-a1b2c3d feat(filter): implement section state machine
-e4f5g6h feat(filter): implement group/parse pipeline
-i7j8k9l feat(filter): implement skip/keep filtering
-m0n1o2p feat(runner): implement command execution
-q3r4s5t feat(config): implement FilterConfig types
+commit 4c2887241fcf61116ee1e1a965838e2d9b1214d4
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 20 10:10:00 2026 +0200
+
+    feat(filter): add chunk-based git log reduction
+    
+    A longer explanation of the change spanning
+    several lines of body text.
+    
+    Refs #430
+
+commit 04dd4b1f7b9653ccc8d6743155607fed7cb2544d
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 19 10:11:00 2026 +0200
+
+    fix(config): handle missing optional fields
+    
+    Co-Authored-By: Grace Hopper <grace@example.com>
+
+commit fa26181ec60eb2ae8b41c45748514afbd4d67045
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 18 10:12:00 2026 +0200
+
+    test(filter): add fixtures for cargo-test failure case
+
+commit c538c297ccf1fd1db448e73334ae3fc29f5f076a
+Merge: 1a2b3c4 5d6e7f8
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 17 10:13:00 2026 +0200
+
+    docs: document the run override rule
+
+commit c4a3b8e248580111a7c2c2a97201b301be4b60cb
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 16 10:14:00 2026 +0200
+
+    refactor(runner): extract expand_run_command
+
+commit ae283850259575235f0a5a30bedbb1066be8445a
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 15 10:15:00 2026 +0200
+
+    chore(deps): bump serde to 1.0.219
+
+commit 147d207fb81ab920f0d092c3dd503e7daa989a6d
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 14 10:16:00 2026 +0200
+
+    ci: add clippy to the workflow
+
+commit d8ecacc50b189c8b5a01349d85678638fbf5c750
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 13 10:17:00 2026 +0200
+
+    perf(filter): avoid cloning chunk items
+
+commit 19a0bf77bc93890771088801d56c94ed814d6aa0
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 12 10:18:00 2026 +0200
+
+    fix(history): record executed command
+
+commit 8b22a8fd6f319c50b419a3cf519b4fc445d984ad
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 11 10:19:00 2026 +0200
+
+    feat(cli): add tokf raw subcommand
+
+commit cbb1ab571e114f24abe381ac6e51c01fac522ce1
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 10 10:10:00 2026 +0200
+
+    test(history): cover schema migration
+
+commit f1741767ece4681587b6c012ca1133266c4982fb
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 09 10:11:00 2026 +0200
+
+    docs(readme): regenerate from docs/
+
+commit 68a97b570f38e67a7f1a14a4917ccf419a9795a0
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 08 10:12:00 2026 +0200
+
+    fix(hook): stop swallowing stderr
+
+commit 8449705ed01476411190f9c29d4a5a88c0cb3efa
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 07 10:13:00 2026 +0200
+
+    refactor(config): split types module
+
+commit d8a09c97cba3eda464519408b0ff8f46b6a08124
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 06 10:14:00 2026 +0200
+
+    feat(output): annotate with history id
+
+commit aef47ff065244575998aeb59faaa95c3c7c233ca
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 05 10:15:00 2026 +0200
+
+    chore: release main
+
+commit a621bb4a6a353950da76cd0a1670c466d5fffc20
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 04 10:16:00 2026 +0200
+
+    fix(tracking): guard against zero retention
+
+commit 2419eac713021ba0831eae3bab01f8dd5e3e0c1e
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 03 10:17:00 2026 +0200
+
+    test(cli): end-to-end passthrough case
+
+commit ad387a02c3d507e61973885766ba18faacb59347
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 02 10:18:00 2026 +0200
+
+    feat(gh): add pr checks filter
+
+commit 850951619c7aec7a85ee6dd5255a26ed07a49692
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 20 10:19:00 2026 +0200
+
+    fix(docker): correct ps format string
+
+commit df5c8089aebee76c5a34e551fc467ed17a1105ba
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 19 10:10:00 2026 +0200
+
+    docs(filters): explain passthrough semantics
+
+commit 9f89b43d64cbc659c11c1d52d6cdb640b41cec07
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 18 10:11:00 2026 +0200
+
+    chore(deps): update rust to 1.96.1

@@ -1,4 +1,0 @@
- src/main.rs      | 10 +++----
- src/filter/mod.rs |  5 +++--
- src/config.rs    |  3 ++-
- 3 files changed, 8 insertions(+), 10 deletions(-)

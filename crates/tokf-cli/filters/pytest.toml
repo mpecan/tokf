@@ -1,17 +1,51 @@
-command = "pytest"
-description = "Run with --tb=short -q; show failures and pass/fail summary"
-run = "pytest --tb=short -q {args}"
+# pytest.toml — show failing assertions and the pass/fail summary
+#
+# This filter used to `run = "pytest --tb=short -q {args}"`. That answered a
+# narrower question than the user asked: the full tracebacks never reached
+# tokf, so `tokf raw <id>` could not recover them (issue #430). It now runs
+# the user's `pytest` as typed and does the reduction here, over the complete
+# output — long tracebacks included.
 
+command = "pytest"
+description = "Show failing assertions and the pass/fail summary"
+
+# Skip the filter when the user asks for an output shape this reduction would
+# misrepresent or has already reduced for themselves.
+passthrough_args = [
+  "-q",            # user already asked for quiet output
+  "--quiet",
+  "--tb",          # explicit traceback style (--tb=long, --tb=no, …)
+  "-v",            # verbose per-test listing
+  "--verbose",
+  "--collect-only",
+  "--co",
+  "-x",            # stop on first failure — the user wants that one in full
+  "--pdb",
+]
+
+# The FAILURES block holds one section per failing test. In pytest's default
+# (long) traceback format the failing source line is prefixed `>` and the
+# assertion detail lines `E`, both padded — the `keep` in the template below
+# picks exactly those out of each block and discards the surrounding frames.
 [[section]]
 name = "failures"
 enter = "^=+ FAILURES =+$"
 exit = "^=+ short test summary"
 collect_as = "failure_lines"
 
+# Per-test outcome lines from the short summary, plus the final counts line.
+# The counts line is wrapped in `=` padding in the default format
+# (`===== 3 failed, 2 passed in 0.01s =====`), so it is matched on content
+# rather than anchored to the start of the line.
 [[section]]
 name = "summary"
-match = "^(FAILED|ERROR|\\d+ passed)"
+match = "^(FAILED|ERROR)"
 collect_as = "summary_lines"
+
+[[section]]
+name = "counts"
+match = "\\d+ (passed|failed|error|skipped)"
+collect_as = "count_lines"
 
 [on_success]
 extract = { pattern = "(\\d+) passed", output = "✓ pytest: {1} passed" }
@@ -19,7 +53,20 @@ extract = { pattern = "(\\d+) passed", output = "✓ pytest: {1} passed" }
 [on_failure]
 output = """{failure_lines | each: "{value | lines | keep: "^[>E] "}" | join: "\n"}
 
-{summary_lines | join: "\n"}"""
+{summary_lines | join: "\n"}
+{failed} failed, {passed} passed"""
+
+# Pulled off the padded counts line rather than printed verbatim, so the
+# `=====` decoration doesn't reach the output.
+[[on_failure.aggregates]]
+from = "count_lines"
+pattern = '(\d+) failed'
+sum = "failed"
+
+[[on_failure.aggregates]]
+from = "count_lines"
+pattern = '(\d+) passed'
+sum = "passed"
 
 [fallback]
 tail = 10

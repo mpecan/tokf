@@ -1,6 +1,31 @@
-name = "git log output passes through unchanged"
+name = "full git log reduces to one line per commit"
 fixture = "success.txt"
 exit_code = 0
 
+# Subject lines survive, one per commit, prefixed with the short sha.
 [[expect]]
-contains = "feat("
+matches = '(?m)^4c28872 feat\(filter\): add chunk-based git log reduction$'
+
+[[expect]]
+contains = "fix(config): handle missing optional fields"
+
+# Metadata is dropped.
+[[expect]]
+not_contains = "Author:"
+
+[[expect]]
+not_contains = "Date:"
+
+# Message bodies are dropped — only the subject survives.
+[[expect]]
+not_contains = "several lines of body text"
+
+[[expect]]
+not_contains = "Co-Authored-By"
+
+# A merge commit's `Merge:` line must not be mistaken for its subject.
+[[expect]]
+not_contains = "Merge: "
+
+[[expect]]
+contains = "docs: document the run override rule"

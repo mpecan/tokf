@@ -1,6 +1,43 @@
-name = "test failure shows FAILED summary"
+name = "failures reduce to assertion lines plus the summary"
+# Fixture is real pytest output in the default (long traceback) format — the
+# filter no longer forces `--tb=short -q`, so the full tracebacks are captured
+# in history and recoverable via `tokf raw` (issue #430).
 fixture = "failure.txt"
 exit_code = 1
 
+# The failing source line and the assertion detail survive, for every failure.
 [[expect]]
-contains = "FAILED"
+contains = ">       assert add(1, 2) == 4"
+
+[[expect]]
+contains = "E       assert 3 == 4"
+
+[[expect]]
+contains = "E       AssertionError: value too large: 8"
+
+[[expect]]
+contains = "E       RuntimeError: boom"
+
+# Per-test outcomes from the short summary survive.
+[[expect]]
+contains = "FAILED tests/test_math.py::test_add"
+
+[[expect]]
+contains = "FAILED tests/test_math.py::test_error"
+
+# Session preamble and intermediate traceback frames are dropped.
+[[expect]]
+not_contains = "test session starts"
+
+[[expect]]
+not_contains = "rootdir:"
+
+[[expect]]
+not_contains = "return deeper(intermediate)"
+
+# The run totals survive, without pytest's `=====` decoration.
+[[expect]]
+contains = "3 failed, 2 passed"
+
+[[expect]]
+not_contains = "===="

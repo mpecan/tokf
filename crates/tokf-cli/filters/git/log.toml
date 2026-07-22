@@ -1,6 +1,13 @@
-# git-log.toml — Override command to get compact format
-# Raw: multi-line commit entries with full metadata
-# Filtered: one-line-per-commit format
+# git-log.toml — reduce full `git log` to one line per commit
+#
+# Raw: multi-line commit entries with full metadata and message bodies
+# Filtered: `<short-sha> <subject>`, capped at 20 commits
+#
+# This filter used to `run = "git log --oneline --no-decorate -n 20 {args}"`.
+# That destroyed the history before tokf ever saw it: `tokf raw <id>` returned
+# 20 one-line summaries and there was no way to recover the rest (issue #430).
+# The reduction now happens here, over the real `git log` output, so the full
+# history is captured and recoverable.
 #
 # Empty-output handling: when git log returns no commits (e.g. for an
 # untracked pathspec, an empty branch range, or a search that matched
@@ -14,16 +21,15 @@
 command = "git log"
 description = "Show one-line-per-commit format, last 20 entries"
 
-# Override to get compact output directly from git
-run = "git log --oneline --no-decorate -n 20 {args}"
-
-# Skip the override entirely when the user asks for an output format
-# fundamentally incompatible with `--oneline -n 20`. Other common flags
-# (`--all`, `--follow`, `--diff-filter`, `--grep`, `-S`, `-G`, `--author`,
-# `--since`, etc.) compose fine with the override and don't need passthrough.
+# Skip the filter when the user asks for an output shape this reduction would
+# misrepresent. These flags change the structure of the output, so the chunk
+# splitter below either can't parse it (`--oneline`, `--format`, `--graph`) or
+# would silently discard the extra content the user explicitly asked for
+# (`-p`, `--stat`).
 passthrough_args = [
   "-p",            # patch (full diff content per commit)
   "--patch",
+  "--oneline",     # already one line per commit — nothing to reduce
   "--format",      # custom output format
   "--pretty",
   "--graph",       # ASCII graph
@@ -37,10 +43,33 @@ passthrough_args = [
 # most likely causes instead of empty output.
 on_empty = "(no matching commits — if querying a path, verify it's tracked: `git ls-files -- <path>`; for cross-branch history, add `--all`; for renamed-file history, add `--follow`)"
 
-# Nothing to filter — the override command already produces compact output
-# But if args include --stat or --patch, passthrough
+# Cap at 20 commits. Applied after rendering, so the full log is still
+# captured in history and recoverable via `tokf raw`.
+#
+# Must stay above the [[chunk]] tables below: TOML array-of-tables sections
+# capture every subsequent key, so a top-level field written after them is
+# silently absorbed into the table instead.
+max_lines = 20
+
+# One chunk per commit. `Merge:`, `Author:` and `Date:` lines are dropped by
+# not being extracted; the message body is dropped by taking only the first
+# indented line (the subject).
+[[chunk]]
+split_on = '^commit [0-9a-f]{7,}'
+collect_as = "commits"
+
+[chunk.extract]
+pattern = '^commit ([0-9a-f]{7})'
+as = "sha"
+
+# First indented non-blank line of the message is the subject; later body
+# lines match too, but body_extract keeps the first match only.
+[[chunk.body_extract]]
+pattern = '^    (\S.*)$'
+as = "subject"
+
 [on_success]
-output = "{output}"
+output = """{commits | each: "{sha} {subject}" | join: "\n"}"""
 
 # Route --name-only / --name-status to a tree-structured child filter
 # instead of passing through unfiltered.

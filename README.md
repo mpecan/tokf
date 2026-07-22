@@ -258,10 +258,10 @@ FORCE_COLOR=1 tokf run npm test
 |---|---|
 | `git/add` | `git add` |
 | `git/commit` | `git commit` |
-| `git/diff` | `git diff` — overrides to `git diff --stat` for compact output. Pass `-p`/`--patch`/`--no-stat`/`-U<n>`/`--name-only`/`--name-status`/`--numstat`/`--shortstat`/`--raw` to skip the override and get the requested format instead |
-| `git/log` | `git log` — overrides to `git log --oneline --no-decorate -n 20`. Pass `-p`/`--patch`/`--format`/`--pretty`/`--graph`/`--stat`/`--shortstat`/`--dirstat`/`--name-only`/`--name-status`/`-L` to skip the override. Empty results emit a one-line hint pointing at common causes (untracked pathspec, missing `--all`, missing `--follow`) instead of nothing — this stops agents looping through flag variations trying to escape a non-existent filter |
+| `git/diff` | `git diff` — runs the real `git diff` and summarises it as one line per file (`src/main.rs \| +4 -3`) plus a totals line, so the full patch stays recoverable with `tokf raw`. Pass `-p`/`--patch`/`--stat`/`-U<n>`/`--name-only`/`--name-status`/`--numstat`/`--shortstat`/`--raw` to skip the filter and get the requested format instead |
+| `git/log` | `git log` — runs the real `git log` and renders one line per commit (`<short-sha> <subject>`), capped at 20; the full history stays recoverable with `tokf raw`. Pass `-p`/`--patch`/`--format`/`--pretty`/`--graph`/`--stat`/`--shortstat`/`--dirstat`/`--oneline`/`--name-only`/`--name-status`/`-L` to skip the filter. Empty results emit a one-line hint pointing at common causes (untracked pathspec, missing `--all`, missing `--follow`) instead of nothing — this stops agents looping through flag variations trying to escape a non-existent filter |
 | `git/push` | `git push` |
-| `git/show` | `git show` |
+| `git/show` | `git show` — runs the real `git show` and renders the commit's sha, subject, author and date plus one line per file with change counts; the full patch stays recoverable with `tokf raw`. Pass `-p`/`--patch`/`--stat`/`--format`/`--pretty`/`--numstat`/`--shortstat`/`--raw` to skip the filter |
 | `git/status` | `git status` — runs `git status --porcelain=v1 -b -uall --find-renames`; shows branch + upstream sync state (`[synced]`, `[ahead N]`, `[behind N]`, `(no upstream)`) and one porcelain line per changed file (`M  src/main.rs`, `?? scratch.rs`, `R  old.rs -> new.rs`). `-uall` lists every untracked file individually instead of collapsing newly-created directories. When 3+ files share a directory prefix the listing is restructured into a directory tree (see [`[tree]`](writing-filters.md#tree-restructuring)), writing each shared prefix once. Measured 24.4% averaged token reduction across the bundled test fixtures |
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
@@ -279,7 +279,7 @@ FORCE_COLOR=1 tokf run npm test
 | `kubectl/*` | `kubectl get pods` |
 | `next/*` | `next build` |
 | `prisma/*` | `prisma generate` |
-| `pytest` | Python test runner |
+| `pytest` | Python test runner — runs `pytest` as typed and keeps the failing assertion lines (`>` / `E`) plus the pass/fail summary; the full tracebacks stay recoverable with `tokf raw`. Pass `-q`/`--tb`/`-v`/`-x`/`--collect-only`/`--pdb` to skip the filter |
 | `tsc` | TypeScript compiler |
 | `ls` | `ls` |
 

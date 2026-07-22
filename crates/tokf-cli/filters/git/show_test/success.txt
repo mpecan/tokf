@@ -1,8 +1,34 @@
-commit a1b2c3d4e5f6789012345678901234567890abcd
-Author: User <user@example.com>
-Date:   Fri Feb 20 12:00:00 2026 +0100
+commit 4c28872f4ba3f5f6b8a1c2d3e4f5061728394a5b
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 20 10:10:00 2026 +0200
 
-    feat(filter): add new filter
+    feat(filter): add chunk-based reduction
 
- src/filter/mod.rs | 10 ++++++++++
- 1 file changed, 10 insertions(+), 0 deletions(-)
+    A longer explanation of the change spanning
+    several lines of body text.
+
+    Refs #430
+
+diff --git a/src/filter/mod.rs b/src/filter/mod.rs
+index c2f62a6..79d15bc 100644
+--- a/src/filter/mod.rs
++++ b/src/filter/mod.rs
+@@ -10,6 +10,9 @@ impl Engine {
+     pub fn new() -> Self {
+         Self::default()
+     }
++
++    pub fn reduce(&self) -> String {
++        String::new()
++    }
+ }
+diff --git a/src/config.rs b/src/config.rs
+index 49728a7..d2d8dfb 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -3,5 +3,4 @@ pub struct Config {
+     pub name: String,
+-    pub unused: bool,
+-    pub also_unused: bool,
++    pub used: bool,
+ }
