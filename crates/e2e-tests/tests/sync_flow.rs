@@ -7,6 +7,7 @@
 mod harness;
 
 use tokf::tracking;
+use tokf_common::tokens::estimate_tokens_from_bytes;
 
 /// Record 3 events → build sync request → POST /api/sync → assert accepted count & cursor.
 #[crdb_test_macro::crdb_test(migrations = "../tokf-server/migrations")]
@@ -55,7 +56,8 @@ async fn sync_then_gain_reflects_totals(pool: PgPool) {
     let h = harness::TestHarness::new(pool).await;
     let conn = h.open_tracking_db();
 
-    // input_bytes=4000 → input_tokens=1000, output_bytes=400 → output_tokens=100
+    // input_bytes=4000, output_bytes=400; token estimates derive from the
+    // shared estimator (tokf_common::tokens).
     h.record_event(
         &conn,
         "git status",
@@ -64,7 +66,6 @@ async fn sync_then_gain_reflects_totals(pool: PgPool) {
         4000,
         400,
     );
-    // input_bytes=8000 → input_tokens=2000, output_bytes=1000 → output_tokens=250
     h.record_event(
         &conn,
         "git push",
@@ -79,8 +80,10 @@ async fn sync_then_gain_reflects_totals(pool: PgPool) {
 
     let gain = h.blocking_gain().await;
 
-    assert_eq!(gain.total_input_tokens, 3000); // 1000 + 2000
-    assert_eq!(gain.total_output_tokens, 350); // 100 + 250
+    // Token counts derive from the shared estimator, never hardcoded.
+    let est = |b: usize| i64::try_from(estimate_tokens_from_bytes(b)).unwrap();
+    assert_eq!(gain.total_input_tokens, est(4000) + est(8000));
+    assert_eq!(gain.total_output_tokens, est(400) + est(1000));
     assert_eq!(gain.total_commands, 2);
     assert!(!gain.by_filter.is_empty());
 }
@@ -143,7 +146,8 @@ async fn sync_multiple_batches_advances_cursor(pool: PgPool) {
     let gain = h.blocking_gain().await;
 
     assert_eq!(gain.total_commands, 3);
-    assert_eq!(gain.total_input_tokens, 6000); // 1000 + 2000 + 3000
+    let est = |b: usize| i64::try_from(estimate_tokens_from_bytes(b)).unwrap();
+    assert_eq!(gain.total_input_tokens, est(4000) + est(8000) + est(12000));
 }
 
 /// Sync with an invalid token → expect an error.
@@ -206,5 +210,8 @@ async fn sync_replay_is_idempotent(pool: PgPool) {
     // Gain should reflect exactly the original sync — no double-counting.
     let gain = h.blocking_gain().await;
     assert_eq!(gain.total_commands, 1);
-    assert_eq!(gain.total_input_tokens, 1000); // 4000 bytes / 4
+    assert_eq!(
+        gain.total_input_tokens,
+        i64::try_from(estimate_tokens_from_bytes(4000)).unwrap()
+    );
 }

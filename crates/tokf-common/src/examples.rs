@@ -2,11 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::safety::SafetyWarning;
 
-/// Estimate token count from a string using the bytes/4 heuristic.
+/// Estimate token count from a string.
 ///
-/// This matches the estimation used by the tracking module.
-pub const fn estimate_tokens(s: &str) -> usize {
-    s.len() / 4
+/// Delegates to [`crate::tokens::estimate_tokens`] so every token count tokf
+/// reports comes from a single implementation.
+pub fn estimate_tokens(s: &str) -> usize {
+    crate::tokens::estimate_tokens(s)
 }
 
 /// Compute the reduction percentage between raw and filtered token estimates.
@@ -44,11 +45,11 @@ pub struct FilterExample {
     /// Number of lines in filtered output.
     #[cfg_attr(test, ts(type = "number"))]
     pub filtered_line_count: usize,
-    /// Estimated tokens in raw input (bytes / 4).
+    /// Estimated tokens in raw input (see [`crate::tokens`]).
     #[serde(default)]
     #[cfg_attr(test, ts(type = "number"))]
     pub raw_tokens_est: usize,
-    /// Estimated tokens in filtered output (bytes / 4).
+    /// Estimated tokens in filtered output (see [`crate::tokens`]).
     #[serde(default)]
     #[cfg_attr(test, ts(type = "number"))]
     pub filtered_tokens_est: usize,
@@ -176,5 +177,35 @@ mod tests {
         let dto = SafetyWarningDto::from(&warning);
         assert_eq!(dto.kind, "template_injection");
         assert_eq!(dto.message, "bad template");
+    }
+
+    /// `examples::estimate_tokens` must not re-derive the heuristic — it
+    /// delegates, so registry counts and `tokf gain` never disagree.
+    #[test]
+    fn estimate_tokens_delegates_to_the_shared_counter() {
+        for s in ["", "a", "hello world", "error[E0308]: mismatched types"] {
+            assert_eq!(estimate_tokens(s), crate::tokens::estimate_tokens(s));
+        }
+    }
+
+    /// Reduction percentages are ratios of two counts that share the divisor,
+    /// so recalibrating the divisor barely moves them. This pins that claim:
+    /// published filter-registry percentages need no regeneration.
+    #[test]
+    fn reduction_pct_is_insensitive_to_the_divisor() {
+        let raw = "noise\n".repeat(200);
+        let filtered = "kept\n".repeat(20);
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        let with = |d: f64| {
+            reduction_pct(
+                (raw.len() as f64 / d) as usize,
+                (filtered.len() as f64 / d) as usize,
+            )
+        };
+        assert!((with(4.0) - with(crate::tokens::DIVISOR)).abs() < 0.5);
     }
 }

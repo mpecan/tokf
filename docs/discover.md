@@ -63,3 +63,5 @@ Total unfiltered output: 28.1k tokens across 443 commands
 4. Matches remaining commands against available tokf filters
 5. By default shows only commands with no matching filter
 6. Aggregates and ranks by estimated token count
+
+Token counts are estimates derived from byte counts, not tokenizer output — see [How tokens are estimated](#how-tokens-are-estimated) under Token Savings Tracking for the constant, its measured accuracy, and its limits.

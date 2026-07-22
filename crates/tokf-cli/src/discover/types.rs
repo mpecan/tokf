@@ -39,7 +39,7 @@ pub struct DiscoverResult {
     pub occurrences: usize,
     /// Total output bytes across all occurrences.
     pub total_output_bytes: usize,
-    /// Estimated tokens (`output_bytes / 4`).
+    /// Estimated tokens from output bytes (see `tokf_common::tokens`).
     pub estimated_tokens: usize,
     /// Estimated tokens that would be saved.
     pub estimated_savings: usize,

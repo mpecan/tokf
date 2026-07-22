@@ -56,6 +56,8 @@ tonic             = { version = "0.14", optional = true, default-features = fals
 [features]
 default = []
 stdlib-publish = []
+# Calibration only — off by default, never enabled by another crate.
+tokenizer = ["tokf-common/tokenizer"]
 test-keyring = []
 otel = ["otel-http"]
 otel-http = [

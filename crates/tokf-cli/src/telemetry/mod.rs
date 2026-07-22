@@ -10,6 +10,8 @@
 
 pub mod config;
 
+use tokf_common::tokens::estimate_tokens_from_bytes;
+
 #[cfg(any(feature = "otel", feature = "otel-grpc", feature = "otel-http"))]
 mod otel;
 
@@ -23,11 +25,11 @@ pub struct TelemetryEvent {
     pub input_lines: u64,
     /// Line count after filtering.
     pub output_lines: u64,
-    /// Estimated input tokens (bytes / 4).
+    /// Estimated input tokens (see `tokf_common::tokens`).
     pub input_tokens: u64,
-    /// Estimated output tokens (bytes / 4).
+    /// Estimated output tokens (see `tokf_common::tokens`).
     pub output_tokens: u64,
-    /// Estimated raw tokens before baseline adjustment (`raw_bytes / 4`).
+    /// Estimated raw tokens before baseline adjustment (see `tokf_common::tokens`).
     pub raw_tokens: u64,
     /// Wall-clock time spent in the filter pipeline (seconds).
     pub filter_duration_secs: f64,
@@ -40,7 +42,7 @@ pub struct TelemetryEvent {
 impl TelemetryEvent {
     /// Build a `TelemetryEvent` from raw execution data.
     ///
-    /// Centralizes the `bytes / 4` token estimation, `.lines().count()`, and
+    /// Centralizes the token estimation (`tokf_common::tokens`), `.lines().count()`, and
     /// `TOKF_OTEL_PIPELINE` env-var read so callers don't duplicate these.
     #[allow(
         clippy::cast_possible_truncation,
@@ -63,9 +65,9 @@ impl TelemetryEvent {
             command,
             input_lines: raw_output.lines().count() as u64,
             output_lines: filtered_output.lines().count() as u64,
-            input_tokens: (input_bytes / 4) as u64,
-            output_tokens: (output_bytes / 4) as u64,
-            raw_tokens: (raw_bytes / 4) as u64,
+            input_tokens: estimate_tokens_from_bytes(input_bytes) as u64,
+            output_tokens: estimate_tokens_from_bytes(output_bytes) as u64,
+            raw_tokens: estimate_tokens_from_bytes(raw_bytes) as u64,
             filter_duration_secs: filter_duration.as_secs_f64(),
             exit_code,
             pipeline: std::env::var("TOKF_OTEL_PIPELINE").ok(),
@@ -203,8 +205,8 @@ mod tests {
         );
         assert_eq!(event.input_lines, 3);
         assert_eq!(event.output_lines, 1);
-        assert_eq!(event.input_tokens, 100); // 400 / 4
-        assert_eq!(event.output_tokens, 25); // 100 / 4
+        assert_eq!(event.input_tokens, estimate_tokens_from_bytes(400) as u64);
+        assert_eq!(event.output_tokens, estimate_tokens_from_bytes(100) as u64);
         assert!((event.filter_duration_secs - 0.005).abs() < 0.001);
         assert_eq!(event.exit_code, 0);
         assert_eq!(event.filter_name, Some("cargo/build".to_string()));
@@ -239,5 +241,41 @@ mod tests {
         let reporter = init(true); // otel_export_requested=true, but feature not compiled in
         // endpoint_description() returns None for NoopReporter
         assert!(reporter.endpoint_description().is_none());
+    }
+
+    /// Anti-divergence net: `TelemetryEvent::new` and `tracking::build_event`
+    /// must report identical token counts for identical byte counts. These
+    /// were independently duplicated `bytes / 4` expressions once; they now
+    /// share `tokf_common::tokens`, and this test keeps them sharing it.
+    #[test]
+    fn telemetry_and_tracking_agree_on_token_estimates() {
+        for (i, o, r) in [
+            (0, 0, 0),
+            (1, 1, 1),
+            (400, 100, 400),
+            (98_765, 4_321, 98_765),
+        ] {
+            let ev = TelemetryEvent::new(
+                None,
+                "cmd".to_string(),
+                i,
+                o,
+                r,
+                "",
+                "",
+                std::time::Duration::ZERO,
+                0,
+            );
+            let tr = crate::tracking::build_event("cmd", None, None, i, o, r, 0, 0, false);
+            assert_eq!(
+                i64::try_from(ev.input_tokens).ok(),
+                Some(tr.input_tokens_est)
+            );
+            assert_eq!(
+                i64::try_from(ev.output_tokens).ok(),
+                Some(tr.output_tokens_est)
+            );
+            assert_eq!(i64::try_from(ev.raw_tokens).ok(), Some(tr.raw_tokens_est));
+        }
     }
 }

@@ -144,6 +144,20 @@ See `docs/lua-escape-hatch.md` for the full API, globals, and examples.
 
 ---
 
+## Token estimator calibration
+
+tokf estimates tokens from byte counts (see `crates/tokf-common/src/tokens.rs`). An optional
+`tokenizer` cargo feature adds a real cl100k counter so that constant can be verified:
+
+```sh
+cargo test -p tokf --features tokenizer --test calibration -- --ignored --nocapture
+```
+
+The feature is **off by default and must stay that way**. It is for calibration only — nothing in
+the runtime path may use it. In particular, never add `features = ["tokenizer"]` to any workspace
+member's `tokf-common` dependency: cargo feature unification is additive, so one such entry would
+drag the tokenizer's vocabulary build into every default build.
+
 ## Database & end-to-end tests
 
 `tokf-server` uses CockroachDB. The DB integration tests and end-to-end tests are `#[ignore]`d by default — they only run when `DATABASE_URL` is set and you pass `--ignored`.

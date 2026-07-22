@@ -13,6 +13,7 @@ pub mod rewrite;
 pub mod runner;
 pub mod setup;
 pub mod skill;
+pub mod suite_discovery;
 pub mod sync_core;
 pub mod telemetry;
 pub mod tracking;
