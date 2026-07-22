@@ -220,7 +220,7 @@ pub fn load() -> Option<LoadedAuth> {
 /// `keyring_core`'s default store is process-global and first-write-wins, so
 /// installing it more than once would either be ignored or swap in a fresh,
 /// empty store underneath a test that had already saved a credential.
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 static MOCK_STORE_INIT: std::sync::Once = std::sync::Once::new();
 
 /// Switch the keyring to an in-memory backend that persists across entries.
@@ -231,7 +231,7 @@ static MOCK_STORE_INIT: std::sync::Once = std::sync::Once::new();
 /// Uses `keyring_core`'s mock store, which reuses one credential per
 /// `(service, user)` pair, so `save()` + `load()` round-trips work in tests
 /// (its persistence is `ProcessOnly`).
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 pub fn use_mock_keyring() {
     MOCK_STORE_INIT.call_once(|| {
         if let Ok(store) = keyring_core::mock::Store::new() {
@@ -244,9 +244,9 @@ pub fn use_mock_keyring() {
 ///
 /// Test builds deliberately use `keyring_core::Entry` rather than
 /// `keyring::Entry`; see [`keyring_entry`] for why that distinction matters.
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 type KeyringEntry = keyring_core::Entry;
-#[cfg(not(any(test, feature = "test-keyring")))]
+#[cfg(not(any(test, feature = "test-support")))]
 type KeyringEntry = keyring::Entry;
 
 /// Construct the keyring entry holding the auth token.
@@ -267,13 +267,13 @@ type KeyringEntry = keyring::Entry;
 /// actually used. Production builds keep the `keyring::Entry` wrapper and its
 /// platform-store selection, unchanged.
 fn keyring_entry() -> keyring::Result<KeyringEntry> {
-    #[cfg(any(test, feature = "test-keyring"))]
+    #[cfg(any(test, feature = "test-support"))]
     {
         use_mock_keyring();
         keyring_core::Entry::new(KEYRING_SERVICE, KEYRING_USER)
     }
 
-    #[cfg(not(any(test, feature = "test-keyring")))]
+    #[cfg(not(any(test, feature = "test-support")))]
     {
         keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
     }

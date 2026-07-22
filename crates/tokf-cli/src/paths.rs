@@ -227,10 +227,10 @@ pub fn shims_dir() -> Option<PathBuf> {
 ///
 /// Use [`HomeGuard::set`] for the common case of overriding `TOKF_HOME` to a
 /// specific path, or [`HomeGuard::new`] to pass `None` (platform defaults).
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 pub struct HomeGuard(());
 
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 impl HomeGuard {
     /// Set the `TOKF_HOME` override and return a guard that resets it on drop.
     pub fn new(path: Option<PathBuf>) -> Self {
@@ -244,7 +244,7 @@ impl HomeGuard {
     }
 }
 
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for HomeGuard {
     fn drop(&mut self) {
         reset_home();
@@ -252,10 +252,10 @@ impl Drop for HomeGuard {
 }
 
 /// RAII guard that calls [`reset_db_path`] on drop.
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 pub struct DbPathGuard(());
 
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 impl DbPathGuard {
     /// Set the `TOKF_DB_PATH` override and return a guard that resets it on drop.
     pub fn new(path: Option<PathBuf>) -> Self {
@@ -269,7 +269,7 @@ impl DbPathGuard {
     }
 }
 
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for DbPathGuard {
     fn drop(&mut self) {
         reset_db_path();
@@ -277,10 +277,10 @@ impl Drop for DbPathGuard {
 }
 
 /// RAII guard that calls [`reset_debug`] on drop.
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 pub struct DebugGuard(());
 
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 impl DebugGuard {
     /// Set the `TOKF_DEBUG` flag and return a guard that resets it on drop.
     pub fn new(enabled: bool) -> Self {
@@ -289,7 +289,7 @@ impl DebugGuard {
     }
 }
 
-#[cfg(any(test, feature = "test-keyring"))]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for DebugGuard {
     fn drop(&mut self) {
         reset_debug();

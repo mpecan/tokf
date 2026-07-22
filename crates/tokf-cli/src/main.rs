@@ -447,7 +447,7 @@ fn main() {
 
     tokf::paths::init_from_env();
 
-    #[cfg(feature = "test-keyring")]
+    #[cfg(feature = "test-support")]
     tokf::auth::credentials::use_mock_keyring();
 
     // Pre-clap shell mode detection.
