@@ -22,3 +22,7 @@ jobs:
         env:
           TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
           TOKF_REGISTRY_URL: https://api.tokf.net
+          # Each round fetches and hashes up to `limit` filters from R2. The
+          # 5s CLI default cancels the request mid-batch, so the server never
+          # gets to reply and the backfill can't converge.
+          TOKF_HTTP_TIMEOUT: "300"

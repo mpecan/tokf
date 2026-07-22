@@ -4095,6 +4095,7 @@ dependencies = [
  "chrono",
  "clap",
  "crdb-test-macro",
+ "futures-util",
  "hex",
  "http-body-util",
  "rand 0.10.1",
