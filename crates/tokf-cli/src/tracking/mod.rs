@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context as _;
 use rusqlite::{Connection, OptionalExtension as _};
 
+use tokf_common::tokens::estimate_tokens_from_bytes;
 pub use tokf_common::tracking::types::{DailyGain, FilterGain, GainSummary, TrackingEvent};
 
 /// Returns the DB path: `TOKF_DB_PATH` env var overrides; else
@@ -156,11 +157,11 @@ pub fn build_event(
     pipe_override: bool,
 ) -> TrackingEvent {
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let input_tokens_est = (input_bytes / 4) as i64;
+    let input_tokens_est = estimate_tokens_from_bytes(input_bytes) as i64;
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let output_tokens_est = (output_bytes / 4) as i64;
+    let output_tokens_est = estimate_tokens_from_bytes(output_bytes) as i64;
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let raw_tokens_est = (raw_bytes / 4) as i64;
+    let raw_tokens_est = estimate_tokens_from_bytes(raw_bytes) as i64;
     #[allow(clippy::cast_possible_truncation)]
     let filter_time_ms_i64 = filter_time_ms.min(i64::MAX as u128) as i64;
     TrackingEvent {

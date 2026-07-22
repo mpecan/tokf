@@ -164,11 +164,11 @@ contains = "OK"
     let suite = &parsed.as_array().unwrap()[0];
     let case = &suite["cases"].as_array().unwrap()[0];
 
-    // Input tokens should be > 0 (40 bytes / 4 = 10)
+    // Input tokens should be > 0.
     let input_tokens = case["input_tokens"].as_u64().unwrap();
     assert!(input_tokens > 0, "input_tokens should be > 0");
 
-    // Output tokens should be small (2 bytes / 4 = 0, but "OK" is the template)
+    // Output tokens should be small — "OK" is the whole template.
     let output_tokens = case["output_tokens"].as_u64().unwrap();
     assert!(
         output_tokens < input_tokens,

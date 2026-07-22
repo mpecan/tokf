@@ -2,6 +2,13 @@
 
 use super::*;
 use tempfile::TempDir;
+use tokf_common::tokens::estimate_tokens_from_bytes;
+
+/// Shared estimator as `i64`, so assertions never hardcode the divisor.
+#[allow(clippy::cast_possible_wrap)]
+fn est_i64(bytes: usize) -> i64 {
+    estimate_tokens_from_bytes(bytes) as i64
+}
 
 fn temp_db() -> (TempDir, Connection) {
     let dir = TempDir::new().expect("tempdir");
@@ -22,21 +29,33 @@ fn record_event_raw_bytes_persisted() {
         })
         .expect("select");
     assert_eq!(rb, 400, "raw_bytes should be persisted");
-    assert_eq!(rt, 100, "raw_tokens_est should be raw_bytes / 4");
+    assert_eq!(
+        rt,
+        est_i64(400),
+        "raw_tokens_est should be the shared byte estimate of raw_bytes"
+    );
 }
 
 #[test]
 fn query_summary_includes_raw_tokens() {
     let (_dir, conn) = temp_db();
-    // ev1: input=200B (50 tokens), raw=400B (100 tokens)
-    // ev2: input=800B (200 tokens), raw=1200B (300 tokens)
+    // Token counts are derived from bytes via the shared estimator; assert
+    // against it rather than literals so the divisor can be recalibrated.
     let ev1 = build_event("cmd1", Some("f"), None, 200, 50, 400, 5, 0, false);
     let ev2 = build_event("cmd2", Some("f"), None, 800, 100, 1200, 5, 0, false);
     record_event(&conn, &ev1).expect("record");
     record_event(&conn, &ev2).expect("record");
     let s = query_summary(&conn).expect("summary");
-    assert_eq!(s.total_raw_tokens, 400, "total_raw_tokens: 100 + 300");
-    assert_eq!(s.total_input_tokens, 250, "total_input_tokens: 50 + 200");
+    assert_eq!(
+        s.total_raw_tokens,
+        est_i64(400) + est_i64(1200),
+        "total_raw_tokens sums the per-event raw estimates"
+    );
+    assert_eq!(
+        s.total_input_tokens,
+        est_i64(200) + est_i64(800),
+        "total_input_tokens sums the per-event input estimates"
+    );
 }
 
 #[test]

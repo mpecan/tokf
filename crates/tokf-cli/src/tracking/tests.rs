@@ -3,6 +3,13 @@
 use super::*;
 use serial_test::serial;
 use tempfile::TempDir;
+use tokf_common::tokens::estimate_tokens_from_bytes;
+
+/// Shared estimator as `i64`, so assertions never hardcode the divisor.
+#[allow(clippy::cast_possible_wrap)]
+fn est_i64(bytes: usize) -> i64 {
+    estimate_tokens_from_bytes(bytes) as i64
+}
 
 fn temp_db() -> (TempDir, Connection) {
     let dir = TempDir::new().expect("tempdir");
@@ -127,8 +134,8 @@ fn record_event_all_fields_persisted() {
     assert_eq!(fname.as_deref(), Some("git status"));
     assert_eq!(ib, 400);
     assert_eq!(ob, 200);
-    assert_eq!(it, 100); // 400 / 4
-    assert_eq!(ot, 50); // 200 / 4
+    assert_eq!(it, est_i64(400));
+    assert_eq!(ot, est_i64(200));
     assert_eq!(ft, 10);
     assert_eq!(ec, 0);
 }
@@ -179,10 +186,14 @@ fn record_event_timestamp_iso8601() {
 
 #[test]
 fn build_event_token_estimation() {
+    // Assert against the shared estimator, never a literal: the divisor is a
+    // calibrated constant and these tests must survive recalibrating it.
     let ev = build_event("x", None, None, 400, 0, 400, 0, 0, false);
-    assert_eq!(ev.input_tokens_est, 100);
+    assert_eq!(ev.input_tokens_est, est_i64(400));
     let ev2 = build_event("x", None, None, 399, 0, 399, 0, 0, false);
-    assert_eq!(ev2.input_tokens_est, 99);
+    assert_eq!(ev2.input_tokens_est, est_i64(399));
+    // Truncating, so a slightly smaller input never estimates more tokens.
+    assert!(ev2.input_tokens_est <= ev.input_tokens_est);
 }
 
 #[test]
@@ -208,15 +219,16 @@ fn query_summary_empty_db() {
 #[test]
 fn query_summary_with_events() {
     let (_dir, conn) = temp_db();
-    // input_tokens 100, output_tokens 25 → saved 75
     let ev = build_event("cmd", Some("f"), None, 400, 100, 400, 5, 0, false);
     record_event(&conn, &ev).expect("record");
     let s = query_summary(&conn).expect("summary");
     assert_eq!(s.total_commands, 1);
-    assert_eq!(s.total_input_tokens, 100);
-    assert_eq!(s.total_output_tokens, 25);
-    assert_eq!(s.tokens_saved, 75);
-    assert!((s.savings_pct - 75.0).abs() < 0.01);
+    assert_eq!(s.total_input_tokens, est_i64(400));
+    assert_eq!(s.total_output_tokens, est_i64(100));
+    assert_eq!(s.tokens_saved, est_i64(400) - est_i64(100));
+    // 400 -> 100 bytes is a 75% reduction; the ratio is divisor-independent
+    // up to truncation, which is why percentages barely move when it changes.
+    assert!((s.savings_pct - 75.0).abs() < 1.0);
 }
 
 #[test]
@@ -246,10 +258,12 @@ fn query_summary_accumulates_multiple_events() {
     }
     let s = query_summary(&conn).expect("summary");
     assert_eq!(s.total_commands, 3);
-    assert_eq!(s.total_input_tokens, 600); // (400+800+1200)/4
-    assert_eq!(s.total_output_tokens, 125); // (100+400+0)/4
-    assert_eq!(s.tokens_saved, 475); // 600-125
-    assert!((s.savings_pct - 79.166_666).abs() < 0.01);
+    let inp = est_i64(400) + est_i64(800) + est_i64(1200);
+    let out = est_i64(100) + est_i64(400) + est_i64(0);
+    assert_eq!(s.total_input_tokens, inp);
+    assert_eq!(s.total_output_tokens, out);
+    assert_eq!(s.tokens_saved, inp - out);
+    assert!((s.savings_pct - 79.166_666).abs() < 1.0);
 }
 
 // --- query_by_filter ---

@@ -397,3 +397,25 @@ fn discover_sessions_counts_already_filtered() {
     assert_eq!(summary.already_filtered, 1);
     assert_eq!(summary.filterable_commands, 0);
 }
+
+/// `tokf discover`'s estimated token counts must come from the same shared
+/// estimator as `tokf gain` — this arithmetic used to be duplicated inline.
+#[test]
+fn build_results_uses_the_shared_token_estimator() {
+    let mut agg = HashMap::new();
+    agg.insert(
+        ("git/status".to_string(), "git status".to_string()),
+        AggBucket {
+            occurrences: 3,
+            total_output_bytes: 4000,
+            savings_pct: 50.0,
+            has_filter: true,
+        },
+    );
+    let results = build_results(agg);
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].estimated_tokens,
+        estimate_tokens_from_bytes(4000)
+    );
+}
