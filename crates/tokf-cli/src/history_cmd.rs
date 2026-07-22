@@ -74,6 +74,7 @@ pub fn cmd_history_show(rt: &Runtime, id: i64, raw: bool) -> anyhow::Result<i32>
     };
 
     if raw {
+        print_substitution_note(&entry);
         print!("{}", entry.raw_output);
         return Ok(0);
     }
@@ -98,6 +99,7 @@ pub fn cmd_history_last(rt: &Runtime, raw: bool, all: bool) -> anyhow::Result<i3
     };
 
     if raw {
+        print_substitution_note(&entry);
         print!("{}", entry.raw_output);
         return Ok(0);
     }
@@ -106,11 +108,33 @@ pub fn cmd_history_last(rt: &Runtime, raw: bool, all: bool) -> anyhow::Result<i3
     Ok(0)
 }
 
+/// Warn on stderr when the captured output came from a substituted command.
+///
+/// Written to stderr so `tokf raw <id> | grep …` still sees only the output
+/// itself, while a human or model reading the terminal learns that the bytes
+/// below are not what the recorded command would have produced.
+fn print_substitution_note(entry: &history::HistoryEntry) {
+    let Some(executed) = entry.executed_command.as_deref() else {
+        return;
+    };
+    eprintln!(
+        "[tokf] note: this output came from `{executed}` — the `{}` filter \
+         substituted it for `{}`",
+        entry.filter_name.as_deref().unwrap_or("(unknown)"),
+        entry.command
+    );
+}
+
 fn print_entry_detail(entry: &history::HistoryEntry) {
     println!("ID: {}", entry.id);
     println!("Timestamp: {}", entry.timestamp);
     println!("Project: {}", entry.project);
     println!("Command: {}", entry.command);
+    // Only shown when a `run` override was in play; entries where the user's
+    // command ran verbatim look exactly as they did before.
+    if let Some(executed) = entry.executed_command.as_deref() {
+        println!("Executed: {executed}");
+    }
     // filter_name is always Some for recorded entries; the Option is defensive for
     // manually-inserted rows or future code paths.
     println!(

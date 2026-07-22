@@ -241,18 +241,27 @@ pub struct ResolvedCommand<'a> {
     pub matched_command: Option<&'a str>,
     pub command_args: &'a [String],
     pub remaining_args: &'a [String],
+    pub verbose: bool,
 }
 
+/// Execute the resolved command.
+///
+/// Returns the command result together with the command tokf actually ran when
+/// a filter's `run` override replaced what the user typed, and `None` when the
+/// user's command was run verbatim. Callers must record that string: without it
+/// history entries, `tokf raw` and savings figures would all be labelled with a
+/// command that never produced the captured output (issue #430).
 pub fn run_command(
     rt: &Runtime,
     cmd: ResolvedCommand<'_>,
-) -> anyhow::Result<runner::CommandResult> {
+) -> anyhow::Result<(runner::CommandResult, Option<String>)> {
     let ResolvedCommand {
         filter_cfg,
         words_consumed,
         matched_command,
         command_args,
         remaining_args,
+        verbose,
     } = cmd;
     let env_overrides = build_inject_env(rt, filter_cfg);
     let env_refs: Vec<(&str, &str)> = env_overrides
@@ -274,12 +283,26 @@ pub fn run_command(
                 )
             },
         );
-        runner::execute_shell_with_env(&run_cmd, remaining_args, &env_refs)
+        let executed = runner::expand_run_command(&run_cmd, remaining_args);
+        if verbose {
+            eprintln!(
+                "[tokf] executing: {executed}\n[tokf]   (substituted by `run` for: {})",
+                command_args.join(" ")
+            );
+        }
+        let result = runner::execute_shell_with_env(&run_cmd, remaining_args, &env_refs)?;
+        Ok((result, Some(executed)))
     } else if words_consumed > 0 {
         let cmd_str = command_args[..words_consumed].join(" ");
-        runner::execute_with_env(&cmd_str, remaining_args, &env_refs)
+        Ok((
+            runner::execute_with_env(&cmd_str, remaining_args, &env_refs)?,
+            None,
+        ))
     } else {
-        runner::execute_with_env(&command_args[0], remaining_args, &env_refs)
+        Ok((
+            runner::execute_with_env(&command_args[0], remaining_args, &env_refs)?,
+            None,
+        ))
     }
 }
 
@@ -556,6 +579,64 @@ run = "pnpm test --reporter=dot {args}"
             env[0]
                 .1
                 .starts_with(&format!("{}:/usr/bin:/bin", shims.display()))
+        );
+    }
+
+    // --- run_command reports what it actually executed (issue #430) ---
+
+    #[test]
+    fn run_command_reports_the_substituted_command() {
+        let rt = Runtime::builder().build();
+        let cfg: FilterConfig =
+            toml::from_str("command = \"fake-cmd\"\nrun = \"echo substituted {args}\"").unwrap();
+        let command_args = vec!["fake-cmd".to_string()];
+        let remaining = vec!["extra".to_string()];
+
+        let (result, executed) = run_command(
+            &rt,
+            ResolvedCommand {
+                filter_cfg: Some(&cfg),
+                words_consumed: 1,
+                matched_command: Some("fake-cmd"),
+                command_args: &command_args,
+                remaining_args: &remaining,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.stdout.trim(), "substituted extra");
+        assert_eq!(
+            executed.as_deref(),
+            // Args are shell-quoted: this is the literal line handed to `sh`.
+            Some("echo substituted 'extra'"),
+            "the fully expanded substituted command must be reported to the caller"
+        );
+    }
+
+    #[test]
+    fn run_command_reports_no_substitution_without_run_override() {
+        let rt = Runtime::builder().build();
+        let command_args = vec!["echo".to_string(), "plain".to_string()];
+        let remaining = vec!["plain".to_string()];
+
+        let (result, executed) = run_command(
+            &rt,
+            ResolvedCommand {
+                filter_cfg: None,
+                words_consumed: 0,
+                matched_command: None,
+                command_args: &command_args,
+                remaining_args: &remaining,
+                verbose: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.stdout.trim(), "plain");
+        assert_eq!(
+            executed, None,
+            "a verbatim run must not claim a substitution occurred"
         );
     }
 }

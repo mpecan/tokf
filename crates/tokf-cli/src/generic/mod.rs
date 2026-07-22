@@ -73,6 +73,9 @@ pub fn cmd_generic_run(
         rt,
         &history::RecordedRun {
             command: &command_str,
+            // The generic path executes `command_args` verbatim — no `run`
+            // override exists, so there is no substitution to record.
+            executed_command: None,
             filter_name,
             raw_output: &cmd_result.combined,
             filtered_output: &filtered,

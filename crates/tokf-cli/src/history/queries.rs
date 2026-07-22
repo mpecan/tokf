@@ -4,16 +4,22 @@ use rusqlite::Connection;
 use super::config::HistoryConfig;
 use super::types::{HistoryEntry, HistoryRecord};
 
+/// Column list shared by every entry-returning query. Kept in one place so the
+/// positional indices in [`map_row`] can't drift apart from the SELECTs.
+const ENTRY_COLUMNS: &str = "id, timestamp, project, command, executed_command,
+                             filter_name, raw_output, filtered_output, exit_code";
+
 pub(super) fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
     Ok(HistoryEntry {
         id: row.get(0)?,
         timestamp: row.get(1)?,
         project: row.get(2)?,
         command: row.get(3)?,
-        filter_name: row.get(4)?,
-        raw_output: row.get(5)?,
-        filtered_output: row.get(6)?,
-        exit_code: row.get(7)?,
+        executed_command: row.get(4)?,
+        filter_name: row.get(5)?,
+        raw_output: row.get(6)?,
+        filtered_output: row.get(7)?,
+        exit_code: row.get(8)?,
     })
 }
 
@@ -30,12 +36,14 @@ pub fn record_history(
 ) -> anyhow::Result<i64> {
     conn.execute(
         "INSERT INTO history
-            (timestamp, project, command, filter_name, raw_output, filtered_output, exit_code)
+            (timestamp, project, command, executed_command, filter_name,
+             raw_output, filtered_output, exit_code)
          VALUES
-            (strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?1, ?2, ?3, ?4, ?5, ?6)",
+            (strftime('%Y-%m-%dT%H:%M:%SZ','now'), ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             record.project,
             record.command,
+            record.executed_command,
             record.filter_name,
             record.raw_output,
             record.filtered_output,
@@ -84,14 +92,13 @@ pub fn list_history(
     #[allow(clippy::cast_possible_wrap)]
     let limit_i64 = limit as i64;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, timestamp, project, command, filter_name,
-                raw_output, filtered_output, exit_code
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ENTRY_COLUMNS}
          FROM history
          WHERE (?1 IS NULL OR project = ?1)
          ORDER BY id DESC
-         LIMIT ?2",
-    )?;
+         LIMIT ?2"
+    ))?;
 
     let rows = stmt.query_map(rusqlite::params![project, limit_i64], map_row)?;
     let mut result = Vec::new();
@@ -106,12 +113,11 @@ pub fn list_history(
 /// # Errors
 /// Returns an error if the query fails or entry not found.
 pub fn get_history_entry(conn: &Connection, id: i64) -> anyhow::Result<Option<HistoryEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, timestamp, project, command, filter_name,
-                raw_output, filtered_output, exit_code
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ENTRY_COLUMNS}
          FROM history
-         WHERE id = ?1",
-    )?;
+         WHERE id = ?1"
+    ))?;
 
     let mut rows = stmt.query([id])?;
     if let Some(row) = rows.next()? {
@@ -137,15 +143,14 @@ pub fn search_history(
     let limit_i64 = limit as i64;
     let search_pattern = format!("%{query}%");
 
-    let mut stmt = conn.prepare(
-        "SELECT id, timestamp, project, command, filter_name,
-                raw_output, filtered_output, exit_code
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ENTRY_COLUMNS}
          FROM history
          WHERE (?1 IS NULL OR project = ?1)
            AND (command LIKE ?2 OR raw_output LIKE ?2 OR filtered_output LIKE ?2)
          ORDER BY id DESC
-         LIMIT ?3",
-    )?;
+         LIMIT ?3"
+    ))?;
 
     let rows = stmt.query_map(
         rusqlite::params![project, search_pattern, limit_i64],
@@ -168,14 +173,13 @@ pub fn get_latest_entry(
     conn: &Connection,
     project: Option<&str>,
 ) -> anyhow::Result<Option<HistoryEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, timestamp, project, command, filter_name,
-                raw_output, filtered_output, exit_code
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ENTRY_COLUMNS}
          FROM history
          WHERE (?1 IS NULL OR project = ?1)
          ORDER BY id DESC
-         LIMIT 1",
-    )?;
+         LIMIT 1"
+    ))?;
     let mut rows = stmt.query([project])?;
     if let Some(row) = rows.next()? {
         Ok(Some(map_row(row)?))

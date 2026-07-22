@@ -219,6 +219,23 @@ pub fn execute_shell(run: &str, args: &[String]) -> anyhow::Result<CommandResult
     execute_shell_with_env(run, args, &[])
 }
 
+/// Expand a filter's `run` template into the exact shell command line that will
+/// be executed: `{args}` is replaced with the shell-escaped user arguments.
+///
+/// A template without `{args}` drops the user's arguments — that is the
+/// documented behaviour, and this function reproduces it faithfully so callers
+/// can record what actually ran (issue #430).
+#[must_use]
+pub fn expand_run_command(run: &str, args: &[String]) -> String {
+    let joined_args = args
+        .iter()
+        .map(|a| shell_escape(a))
+        .collect::<Vec<_>>()
+        .join(" ");
+    #[allow(clippy::literal_string_with_formatting_args)]
+    run.replace("{args}", &joined_args)
+}
+
 /// Execute a shell command with extra environment variables.
 ///
 /// # Errors
@@ -229,13 +246,7 @@ pub fn execute_shell_with_env(
     args: &[String],
     extra_env: &[(&str, &str)],
 ) -> anyhow::Result<CommandResult> {
-    let joined_args = args
-        .iter()
-        .map(|a| shell_escape(a))
-        .collect::<Vec<_>>()
-        .join(" ");
-    #[allow(clippy::literal_string_with_formatting_args)]
-    let shell_cmd = run.replace("{args}", &joined_args);
+    let shell_cmd = expand_run_command(run, args);
 
     let shell_program = if cfg!(windows) {
         "powershell.exe"
@@ -325,6 +336,53 @@ mod tests {
     }
 
     // --- execute_shell tests ---
+
+    // --- expand_run_command: what gets recorded as the executed command ---
+
+    #[test]
+    fn expand_run_command_interpolates_args() {
+        // Args are shell-quoted, exactly as execute_shell hands them to `sh`.
+        // The recorded command is the literal shell input, quotes included.
+        let args = vec!["--all".to_string(), "HEAD".to_string()];
+        assert_eq!(
+            expand_run_command("git log --oneline {args}", &args),
+            "git log --oneline '--all' 'HEAD'"
+        );
+    }
+
+    #[test]
+    fn expand_run_command_escapes_args_like_the_shell_sees_them() {
+        let args = vec!["a b".to_string()];
+        assert_eq!(
+            expand_run_command("git log {args}", &args),
+            "git log 'a b'",
+            "the recorded command must be the one actually handed to the shell"
+        );
+    }
+
+    #[test]
+    fn expand_run_command_drops_args_when_template_has_no_placeholder() {
+        // Mirrors execute_shell: without {args} the user's arguments never reach
+        // the command. Recording them would misrepresent what ran.
+        let args = vec!["--json".to_string()];
+        assert_eq!(
+            expand_run_command("docker ps --format json", &args),
+            "docker ps --format json"
+        );
+    }
+
+    #[test]
+    fn expand_run_command_matches_what_execute_shell_runs() {
+        let args = vec!["hi there".to_string()];
+        let expanded = expand_run_command("echo {args}", &args);
+        let result = execute_shell("echo {args}", &args).unwrap();
+        // `expanded` is `echo 'hi there'`; running it must produce the same output.
+        assert_eq!(result.stdout.trim(), "hi there");
+        assert_eq!(
+            execute_shell(&expanded, &[]).unwrap().stdout.trim(),
+            "hi there"
+        );
+    }
 
     #[test]
     fn test_execute_shell_basic() {

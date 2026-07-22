@@ -50,7 +50,20 @@ pub fn open_db(path: &std::path::Path) -> anyhow::Result<Connection> {
     Ok(conn)
 }
 
-/// Initialize the history table and migrate existing DBs that lack the `project` column.
+/// Return `true` when the `history` table already has a column named `column`.
+fn has_column(conn: &Connection, column: &str) -> bool {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('history') WHERE name = ?1",
+            [column],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    count > 0
+}
+
+/// Initialize the history table and migrate existing DBs that lack the
+/// `project` or `executed_command` columns.
 ///
 /// # Errors
 /// Returns an error if the table creation or migration fails.
@@ -64,6 +77,7 @@ pub fn init_history_table(conn: &Connection) -> anyhow::Result<()> {
             timestamp         TEXT    NOT NULL,
             project           TEXT    NOT NULL DEFAULT '',
             command           TEXT    NOT NULL,
+            executed_command  TEXT,
             filter_name       TEXT,
             raw_output        TEXT    NOT NULL,
             filtered_output   TEXT    NOT NULL,
@@ -75,16 +89,17 @@ pub fn init_history_table(conn: &Connection) -> anyhow::Result<()> {
     .context("create history table")?;
 
     // Migration: add project column when upgrading from a schema without it.
-    let has_project: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('history') WHERE name='project'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-    if has_project == 0 {
+    if !has_column(conn, "project") {
         conn.execute_batch("ALTER TABLE history ADD COLUMN project TEXT NOT NULL DEFAULT '';")
             .context("migrate history table: add project column")?;
+    }
+
+    // Migration: add executed_command when upgrading from a schema without it.
+    // Nullable with no default — pre-migration rows genuinely don't know what
+    // was executed, and `NULL` says that rather than claiming it was `command`.
+    if !has_column(conn, "executed_command") {
+        conn.execute_batch("ALTER TABLE history ADD COLUMN executed_command TEXT;")
+            .context("migrate history table: add executed_command column")?;
     }
 
     // Create the project index after ensuring the column exists (fresh or migrated).
@@ -97,6 +112,9 @@ pub fn init_history_table(conn: &Connection) -> anyhow::Result<()> {
 /// A completed filter run, ready to be recorded to history.
 pub struct RecordedRun<'a> {
     pub command: &'a str,
+    /// The command actually executed when the filter's `run` override replaced
+    /// `command`. `None` when `command` was run verbatim.
+    pub executed_command: Option<&'a str>,
     pub filter_name: &'a str,
     pub raw_output: &'a str,
     pub filtered_output: &'a str,
@@ -112,6 +130,7 @@ pub struct RecordedRun<'a> {
 pub fn try_record(rt: &Runtime, run: &RecordedRun<'_>) -> Option<i64> {
     let RecordedRun {
         command,
+        executed_command,
         filter_name,
         raw_output,
         filtered_output,
@@ -134,6 +153,7 @@ pub fn try_record(rt: &Runtime, run: &RecordedRun<'_>) -> Option<i64> {
     let record = HistoryRecord {
         project,
         command: command.to_owned(),
+        executed_command: executed_command.map(ToOwned::to_owned),
         filter_name: Some(filter_name.to_owned()),
         raw_output: raw_output.to_owned(),
         filtered_output: filtered_output.to_owned(),

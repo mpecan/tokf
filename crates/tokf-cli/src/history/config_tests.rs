@@ -446,6 +446,7 @@ fn try_record_records_entry_to_db() {
         &rt,
         &RecordedRun {
             command: "git status",
+            executed_command: None,
             filter_name: "git-status",
             raw_output: "raw output",
             filtered_output: "filtered output",
@@ -470,6 +471,7 @@ fn try_record_returns_id_on_success() {
         &rt,
         &RecordedRun {
             command: "cargo test",
+            executed_command: None,
             filter_name: "cargo/test",
             raw_output: "raw",
             filtered_output: "filtered",
@@ -493,6 +495,7 @@ fn try_record_does_not_panic_on_unwritable_db_path() {
         &rt,
         &RecordedRun {
             command: "cmd",
+            executed_command: None,
             filter_name: "filter",
             raw_output: "raw",
             filtered_output: "filtered",
@@ -516,6 +519,7 @@ fn try_record_does_not_panic_on_unwritable_db_path_with_debug() {
         &rt,
         &RecordedRun {
             command: "cmd",
+            executed_command: None,
             filter_name: "filter",
             raw_output: "raw",
             filtered_output: "filtered",
@@ -535,6 +539,7 @@ fn try_was_recently_run_returns_true_for_repeated_command() {
         &rt,
         &RecordedRun {
             command: "git status",
+            executed_command: None,
             filter_name: "git/status",
             raw_output: "raw",
             filtered_output: "filtered",
@@ -558,6 +563,7 @@ fn try_was_recently_run_returns_false_for_different_command() {
         &rt,
         &RecordedRun {
             command: "git status",
+            executed_command: None,
             filter_name: "git/status",
             raw_output: "raw",
             filtered_output: "filtered",

@@ -89,6 +89,40 @@ output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 tail = 10                     # keep the last N lines (overrides top-level tail)
 ```
 
+## The `run` override
+
+`run` makes tokf execute a *different* command than the user typed. It is a sharp
+tool, and there is one rule:
+
+> **`run` must not lose information.** It may re-encode the same data more densely
+> (`--porcelain`, `--format json`, `-o json`). It must never truncate, cap, or
+> otherwise answer a narrower question than the user asked.
+
+The reason is recoverability. tokf only ever sees the output of the command it
+actually ran, so that is what lands in history and what `tokf raw <id>` gives
+back. If `run` throws data away before tokf sees it, **nothing can recover it** —
+not `tokf raw`, not anything else. Reductions that drop content belong in the
+filter pipeline (`skip`, `chunk`, `max_lines`, templates), which runs *after*
+the full output has been captured.
+
+Substitutions are recorded and shown. `tokf history show` prints an `Executed:`
+line, `tokf raw` prints a note to stderr (stdout stays pure output, so pipes are
+unaffected), and `--verbose` reports the substitution as it happens:
+
+```
+$ tokf run --verbose -- git status
+[tokf] executing: git status --porcelain=v1 -b -uall --find-renames
+[tokf]   (substituted by `run` for: git status)
+
+$ tokf history last
+Command: git status
+Executed: git status --porcelain=v1 -b -uall --find-renames
+```
+
+Note that savings for a `run`-override filter are measured against the
+substituted command's output — that is the only baseline tokf ever observes.
+The `Executed:` line tells you which command the figure refers to.
+
 ## Passthrough args
 
 Some filters inject flags like `--json` or `--format` via the `run` field. When users pass conflicting flags (e.g. `--watch`), the combined command fails. The `passthrough_args` field declares flag prefixes that trigger passthrough mode — tokf skips the filter entirely and runs the original command as-is.
