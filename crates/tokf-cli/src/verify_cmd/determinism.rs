@@ -61,11 +61,15 @@ fn snap_to_char_boundary(s: &str, offset: usize, forward: bool) -> usize {
 }
 
 /// A boundary-safe window of `s` around byte `offset`, `DIFF_CONTEXT_BYTES`
-/// bytes on either side.
-fn context_window(s: &str, offset: usize) -> &str {
+/// bytes on either side, rendered with a leading/trailing `...` only where
+/// content was actually elided. Short outputs are shown whole, with no
+/// misleading ellipsis suggesting there is more to see.
+fn context_window(s: &str, offset: usize) -> String {
     let start = snap_to_char_boundary(s, offset.saturating_sub(DIFF_CONTEXT_BYTES), false);
     let end = snap_to_char_boundary(s, offset.saturating_add(DIFF_CONTEXT_BYTES), true);
-    &s[start..end]
+    let prefix = if start > 0 { "..." } else { "" };
+    let suffix = if end < s.len() { "..." } else { "" };
+    format!("{prefix}{:?}{suffix}", &s[start..end])
 }
 
 /// Build a human-readable determinism-failure message naming the filter and
@@ -82,8 +86,8 @@ fn format_failure(filter_name: &str, first: &str, second: &str) -> String {
     format!(
         "{filter_name}: output is not byte-stable across repeated runs \
          (first differing byte at offset {offset})\n\
-         \x20   run 1: ...{:?}...\n\
-         \x20   run 2: ...{:?}...",
+         \x20   run 1: {}\n\
+         \x20   run 2: {}",
         context_window(first, offset),
         context_window(second, offset),
     )
@@ -135,6 +139,24 @@ mod tests {
         let win_b = context_window(b, offset);
         assert!(std::str::from_utf8(win_a.as_bytes()).is_ok());
         assert!(std::str::from_utf8(win_b.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn context_window_elides_only_when_content_is_clipped() {
+        // Short output fits entirely in the window — no ellipsis at either end.
+        assert_eq!(context_window("short", 0), "\"short\"");
+        // Long output clipped on both sides — ellipsis on both ends.
+        let long = "x".repeat(200);
+        let win = context_window(&long, 100);
+        assert!(win.starts_with("..."), "expected leading ellipsis: {win}");
+        assert!(win.ends_with("..."), "expected trailing ellipsis: {win}");
+        // Diff at offset 0 of a long string: clipped only on the right.
+        let win = context_window(&long, 0);
+        assert!(
+            !win.starts_with("..."),
+            "unexpected leading ellipsis: {win}"
+        );
+        assert!(win.ends_with("..."), "expected trailing ellipsis: {win}");
     }
 
     #[test]

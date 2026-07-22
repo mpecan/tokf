@@ -559,9 +559,11 @@ If a filter fails this check, `tokf verify` reports it like any other assertion 
 ✗ my-filter (0 → 12 tokens, 100.0% reduction)
     ✗ shows recent count
         my-filter: output is not byte-stable across repeated runs (first differing byte at offset 14)
-            run 1: ..."3 files changed"...
-            run 2: ..."5 files changed"...
+            run 1: "3 files changed"
+            run 2: "5 files changed"
 ```
+
+The context window is 20 bytes on each side of the differing byte. A leading or trailing `...` appears only when output was actually clipped there — short outputs, like the one above, are shown whole.
 
 **Why this matters more than it looks like it should.** Tool results get resent on every subsequent turn of a session — the same filtered output is retransmitted as conversation history grows. The provider's prompt cache matches on the request prefix byte-for-byte. If a filter's output for the same input differs between invocations, the bytes at that point shift, and *everything after it* in the prompt misses cache and re-bills at full input rate instead of the cached discount. A filter that trims 200 tokens but knocks 40k tokens of suffix out of cache is a large net loss — and it's invisible in any single local test run, because a single run only ever sees one version of the output.
 

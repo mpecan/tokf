@@ -266,12 +266,18 @@ mod tests {
     }
 
     /// Regression test for the determinism fix (issue #418): `vars` is a
-    /// `BTreeMap`, so substitution order is fixed by key, not by
-    /// process-random `HashMap` iteration order. This test pins that by
-    /// running `render_output` twice over vars whose values reference each
-    /// other's placeholder syntax and asserting byte-identical results.
+    /// `BTreeMap`, so substitution order is fixed by key order, not by
+    /// process-random `HashMap` iteration order.
+    ///
+    /// The vars here are order-sensitive on purpose: `a`'s value contains
+    /// `b`'s placeholder, so ascending key order (`a` then `b`) renders
+    /// `"XX"`, while any other order renders `"X"` (the leaked `{b}` is
+    /// swept away by the unresolved-placeholder cleanup). Asserting the
+    /// exact string — rather than just that two calls agree — is what
+    /// actually pins `BTreeMap`; a `HashMap` would satisfy a
+    /// two-calls-agree assertion on a single instance.
     #[test]
-    fn render_output_is_deterministic_across_repeated_calls() {
+    fn render_output_substitutes_vars_in_ascending_key_order() {
         let output_config = OutputConfig {
             format: Some("{a}{b}".to_string()),
             group_counts_format: None,
@@ -285,11 +291,6 @@ mod tests {
             group_counts: vec![],
         };
 
-        let first = render_output(&output_config, &parse_result);
-        let second = render_output(&output_config, &parse_result);
-        assert_eq!(
-            first, second,
-            "render_output must be a pure function of its input"
-        );
+        assert_eq!(render_output(&output_config, &parse_result), "XX");
     }
 }
