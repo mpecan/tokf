@@ -35,16 +35,39 @@ name = "file-headers"
 match = '^diff --git '
 collect_as = "file_header_lines"
 
-# `^\+([^+]|$)` / `^-([^-]|$)` exclude the `+++ b/…` and `--- a/…` headers,
-# which are not content lines. Rust's regex crate has no lookahead.
+# NOTE: the counting sections, the per-file [[chunk]] and the totals
+# aggregates below are duplicated in git/diff.toml. tokf filters have no
+# include mechanism (config resolution is first-match-wins, by design),
+# so this is copied on purpose — but it is logic, not boilerplate.
+# Fix the sign-prefix patterns in both files or neither.
+# Whole-output counts for the totals line.
+#
+# These are stateful on purpose: they only collect inside a hunk body (between
+# an `@@` header and the next file's `diff --git`). That matters because
+# `git show <rev>:<path>` prints a *file*, not a diff — and a markdown file
+# full of `- bullet` lines would otherwise be counted as deletions, replacing
+# the file's contents with a fabricated "0 files changed, N deletions".
+# With nothing collected, the filter falls through and prints the file as-is.
+#
+# The patterns exclude the `+++ b/…` / `--- a/…` headers — and nothing else.
+# An earlier, simpler `^\+([^+]|$)` also swallowed every content line whose own
+# first character was `+` or `-` (markdown bullets, YAML list items, `--flag`
+# in a script), silently undercounting very ordinary diffs. Read them as
+# "starts with the sign, but is not the literal `+++ `/`--- ` header"; the
+# alternation spells out the 1-, 2- and 3-character cases because Rust's regex
+# crate has no lookahead.
 [[section]]
 name = "added"
-match = '^\+([^+]|$)'
+enter = '^@@ '
+exit = '^diff --git '
+match = '^\+([^+]|$|\+([^+]|$)|\+\+[^ ])'
 collect_as = "added_lines"
 
 [[section]]
 name = "removed"
-match = '^-([^-]|$)'
+enter = '^@@ '
+exit = '^diff --git '
+match = '^-([^-]|$|-([^-]|$)|--[^ ])'
 collect_as = "removed_lines"
 
 # Commit metadata. `body_extract` keeps the first match per rule, which is what
@@ -80,11 +103,11 @@ pattern = '^diff --git a/.* b/(.*)$'
 as = "path"
 
 [[chunk.aggregate]]
-pattern = '^\+([^+]|$)'
+pattern = '^\+([^+]|$|\+([^+]|$)|\+\+[^ ])'
 count_as = "added"
 
 [[chunk.aggregate]]
-pattern = '^-([^-]|$)'
+pattern = '^-([^-]|$|-([^-]|$)|--[^ ])'
 count_as = "removed"
 
 [on_success]

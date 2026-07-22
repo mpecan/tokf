@@ -51,6 +51,23 @@ on_empty = "(no matching commits — if querying a path, verify it's tracked: `g
 # silently absorbed into the table instead.
 max_lines = 20
 
+# Guard: only render the reduction when the output actually looks like the
+# default `git log` format.
+#
+# `on_empty` fires whenever the rendered output is empty, and the chunk
+# splitter renders nothing for output it can't parse. Without this section, a
+# user with `format.pretty = oneline` in their gitconfig — which is invisible
+# to `passthrough_args`, since it isn't a CLI flag — would be told "no matching
+# commits" about a log full of commits.
+#
+# When no section collects, the branch falls back to the raw output, so
+# unparseable-but-real output is passed through and `on_empty` is left to mean
+# what it says.
+[[section]]
+name = "commit-headers"
+match = '^commit [0-9a-f]{7,}'
+collect_as = "commit_header_lines"
+
 # One chunk per commit. `Merge:`, `Author:` and `Date:` lines are dropped by
 # not being extracted; the message body is dropped by taking only the first
 # indented line (the subject).

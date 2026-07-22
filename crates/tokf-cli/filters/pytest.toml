@@ -9,18 +9,15 @@
 command = "pytest"
 description = "Show failing assertions and the pass/fail summary"
 
-# Skip the filter when the user asks for an output shape this reduction would
-# misrepresent or has already reduced for themselves.
+# Only flags that change what pytest *does*, rather than how much it prints.
+# `-q`, `-v`, `-x` and `--tb=…` all still emit the FAILURES block and the short
+# summary this filter keys off, so filtering them works and is worth doing —
+# they were previously listed here and that silently disabled the filter for
+# the most common invocations.
 passthrough_args = [
-  "-q",            # user already asked for quiet output
-  "--quiet",
-  "--tb",          # explicit traceback style (--tb=long, --tb=no, …)
-  "-v",            # verbose per-test listing
-  "--verbose",
-  "--collect-only",
+  "--collect-only", # lists tests instead of running them
   "--co",
-  "-x",            # stop on first failure — the user wants that one in full
-  "--pdb",
+  "--pdb",          # drops into an interactive debugger
 ]
 
 # The FAILURES block holds one section per failing test. In pytest's default
@@ -33,40 +30,53 @@ enter = "^=+ FAILURES =+$"
 exit = "^=+ short test summary"
 collect_as = "failure_lines"
 
-# Per-test outcome lines from the short summary, plus the final counts line.
-# The counts line is wrapped in `=` padding in the default format
-# (`===== 3 failed, 2 passed in 0.01s =====`), so it is matched on content
-# rather than anchored to the start of the line.
+# Collection errors (bad import, syntax error) land in an ERRORS block rather
+# than FAILURES, and their `E` line carries the actual reason — without this
+# section a failed collection reported only "ERROR tests/test_x.py", leaving
+# the model to guess why.
+[[section]]
+name = "errors"
+enter = "^=+ ERRORS =+$"
+exit = "^=+ short test summary"
+collect_as = "error_lines"
+
+# Per-test outcome lines from the short summary.
 [[section]]
 name = "summary"
 match = "^(FAILED|ERROR)"
 collect_as = "summary_lines"
 
-[[section]]
-name = "counts"
-match = "\\d+ (passed|failed|error|skipped)"
-collect_as = "count_lines"
+# The final counts line, captured verbatim rather than reassembled from
+# aggregates.
+#
+# Summing `(\d+) failed` across the whole output would double-count: with the
+# full output now flowing through this filter, any traceback or captured-stdout
+# line containing something like "2 passed" would be added to the totals. And
+# reassembling the line from `failed`/`passed` aggregates alone reports
+# "0 failed, 0 passed" for a collection error or a skip-only run — both false.
+#
+# Capturing pytest's own line keeps every outcome pytest reports (errors,
+# skips, xfails, "no tests ran") and can never invent a number.
+[[chunk]]
+split_on = '^=+ .*\d+ (passed|failed|error|skipped|xfailed|xpassed).* in '
+collect_as = "totals"
+
+# Strip the `=` padding: `==== 3 failed, 2 passed in 0.01s ====` → the middle.
+[chunk.extract]
+pattern = '^=+ (.*[^ =]) =+$'
+as = "line"
 
 [on_success]
-extract = { pattern = "(\\d+) passed", output = "✓ pytest: {1} passed" }
+# Anchored to the padded summary line so a test name or captured output
+# containing "N passed" can't be picked up instead.
+extract = { pattern = "^=+ .*?(\\d+) passed", output = "✓ pytest: {1} passed" }
 
 [on_failure]
 output = """{failure_lines | each: "{value | lines | keep: "^[>E] "}" | join: "\n"}
+{error_lines | keep: "^E  " | join: "\n"}
 
 {summary_lines | join: "\n"}
-{failed} failed, {passed} passed"""
-
-# Pulled off the padded counts line rather than printed verbatim, so the
-# `=====` decoration doesn't reach the output.
-[[on_failure.aggregates]]
-from = "count_lines"
-pattern = '(\d+) failed'
-sum = "failed"
-
-[[on_failure.aggregates]]
-from = "count_lines"
-pattern = '(\d+) passed'
-sum = "passed"
+{totals | each: "{line}" | join: "\n"}"""
 
 [fallback]
 tail = 10

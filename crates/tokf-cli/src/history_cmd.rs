@@ -212,8 +212,15 @@ fn print_entry_line(entry: &history::HistoryEntry, show_project: bool) {
     } else {
         String::new()
     };
+    // Mark substituted runs so the list view doesn't make them look identical
+    // to verbatim ones; `history show <id>` has the full `Executed:` line.
+    let substituted = if entry.executed_command.is_some() {
+        " (substituted)"
+    } else {
+        ""
+    };
     println!(
-        "{} {} {} [{}] {}{}",
-        entry.id, entry.timestamp, exit_status, filter, entry.command, project_suffix
+        "{} {} {} [{}] {}{}{}",
+        entry.id, entry.timestamp, exit_status, filter, entry.command, substituted, project_suffix
     );
 }

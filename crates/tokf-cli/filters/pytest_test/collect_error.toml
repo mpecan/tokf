@@ -1,0 +1,21 @@
+name = "a collection error reports the error, not '0 failed, 0 passed'"
+# Regression: with the totals reassembled from `failed`/`passed` aggregates, a
+# collection error (exit 2) rendered "0 failed, 0 passed" — a false statement
+# about a run that did fail. pytest's own summary line is now captured
+# verbatim, so every outcome it reports survives.
+fixture = "err.txt"
+exit_code = 2
+
+[[expect]]
+contains = "1 error in 0.04s"
+
+[[expect]]
+not_contains = "0 failed, 0 passed"
+
+# The failing import and the test file that caused it must both survive.
+[[expect]]
+contains = "ERROR tests/test_imp.py"
+
+# The reason for the collection failure must survive, not just its existence.
+[[expect]]
+contains = "ModuleNotFoundError: No module named 'nonexistent_module_xyz'"

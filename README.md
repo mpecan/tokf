@@ -527,6 +527,20 @@ Note that savings for a `run`-override filter are measured against the
 substituted command's output — that is the only baseline tokf ever observes.
 The `Executed:` line tells you which command the figure refers to.
 
+### The cost of capturing everything
+
+Reducing in the pipeline rather than in `run` means tokf captures the command's
+full output, holds it in memory, and writes it to the history database. That is
+what makes `tokf raw` able to give it back, and it is not free: `tokf run -- git
+log` on a repository with a few thousand commits captures hundreds of KB per
+invocation, where `git log --oneline -n 20` captured about a kilobyte.
+
+History keeps `history.retention` entries per project (default 10) with no
+per-entry size cap, so the database grows with the largest output you filter.
+`tokf history clear` resets it. Prefer a `passthrough_args` entry over a `run`
+override when a flag means the user wants the unreduced output anyway — that
+skips both the reduction and the capture.
+
 ## Passthrough args
 
 Some filters inject flags like `--json` or `--format` via the `run` field. When users pass conflicting flags (e.g. `--watch`), the combined command fails. The `passthrough_args` field declares flag prefixes that trigger passthrough mode — tokf skips the filter entirely and runs the original command as-is.

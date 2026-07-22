@@ -1,0 +1,29 @@
+name = "git show <rev>:<path> prints the file, not a fabricated diffstat"
+# Regression: `git show HEAD:notes.md` prints a FILE, not a diff. The counting
+# sections used to match anywhere in the output, so a markdown file's `- item`
+# bullets were counted as deletions and the file's contents were replaced by
+# "0 files changed, 0 insertions(+), 3 deletions(-)" — data destroyed at the
+# filter layer, which is exactly what issue #430 set out to stop.
+#
+# The sections are now scoped to hunk bodies, so a non-diff collects nothing
+# and the output falls through untouched.
+inline = """
+# Notes
+
+- alpha
+- beta
+- gamma
+"""
+exit_code = 0
+
+[[expect]]
+contains = "- alpha"
+
+[[expect]]
+contains = "- gamma"
+
+[[expect]]
+not_contains = "files changed"
+
+[[expect]]
+not_contains = "deletions"

@@ -1,0 +1,24 @@
+name = "counts come from pytest's summary, not from traceback text"
+# Regression: the counts line used to be reassembled by summing `(\d+) failed`
+# and `(\d+) passed` across the whole output. Once the full output (rather than
+# `--tb=short -q`) started flowing through this filter, any traceback or
+# captured-stdout line mentioning counts was added to the totals.
+#
+# This fixture's traceback contains the literal text "9 passed, 7 failed" while
+# the run's real result is 1 failed, 1 passed.
+fixture = "decoy.txt"
+exit_code = 1
+
+[[expect]]
+contains = "1 failed, 1 passed in 0.01s"
+
+[[expect]]
+not_contains = "10 passed"
+
+[[expect]]
+not_contains = "8 failed"
+
+# The decoy text is still visible in the assertion lines — it is real output
+# from the failing test. It just must not reach the totals.
+[[expect]]
+contains = "FAILED tests/test_decoy.py::test_reports_counts"

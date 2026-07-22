@@ -1,0 +1,18 @@
+name = "a merge commit with no patch is passed through, not reported as empty"
+# `git show <merge>` prints metadata and no patch by default. Nothing collects,
+# so the output falls through rather than claiming "0 files changed".
+inline = """
+commit 4c28872f4ba3f5f6b8a1c2d3e4f5061728394a5b
+Merge: 1a2b3c4 5d6e7f8
+Author: Ada Lovelace <ada@example.com>
+Date:   Mon Jul 20 10:10:00 2026 +0200
+
+    Merge branch 'feature' into main
+"""
+exit_code = 0
+
+[[expect]]
+contains = "Merge branch 'feature' into main"
+
+[[expect]]
+not_contains = "0 files changed"

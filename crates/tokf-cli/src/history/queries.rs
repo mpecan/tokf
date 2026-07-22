@@ -147,7 +147,8 @@ pub fn search_history(
         "SELECT {ENTRY_COLUMNS}
          FROM history
          WHERE (?1 IS NULL OR project = ?1)
-           AND (command LIKE ?2 OR raw_output LIKE ?2 OR filtered_output LIKE ?2)
+           AND (command LIKE ?2 OR executed_command LIKE ?2
+                OR raw_output LIKE ?2 OR filtered_output LIKE ?2)
          ORDER BY id DESC
          LIMIT ?3"
     ))?;
