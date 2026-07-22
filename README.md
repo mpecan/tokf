@@ -936,6 +936,48 @@ contains = "clean"
 
 Exit codes from `tokf verify`: `0` = all pass, `1` = assertion failure, `2` = config/IO error or uncovered filters (`--require-all`).
 
+### Richness checks
+
+Every assertion above is *positive*: it checks a string the author remembered to think about. Nothing observes what a filter dropped that nobody asserted. That is the failure mode that hurts — someone widens a `skip` regex to suppress a noisy line, it also swallows a panic backtrace, and every test still passes. **Richness** is the counterweight: a rarity-weighted measure of how much irreplaceable information survived filtering.
+
+`tokf verify` prints it on every case line:
+
+```
+    ✓ rejected push (1240 → 88 tokens, 92.9% reduction, richness 0.31 [12/97 atoms])
+```
+
+`kept/atoms` are counts of **distinct** atoms, which is what makes the scalar interpretable — 12/97 on a small fixture means something quite different from 12/997.
+
+**How it is computed:**
+
+1. Split raw and filtered output on whitespace.
+2. Trim non-alphanumeric characters from each token's edges (`(hello_world),` → `hello_world`); interior punctuation is kept, so `src/main.rs` stays intact.
+3. Keep tokens of 6 or more characters (counted in characters, not bytes). Matching is case-sensitive — hashes and paths are case-significant.
+4. Weight each **distinct** atom by its self-information, `-log2(count / total)`, where `total` counts all atom occurrences including repeats. The 400th `Compiling` is worth almost nothing; a unique path, hash, or error code is worth a lot.
+5. Score = surviving weight / total weight. An atom counts as surviving if it appears anywhere in the filtered output, either as a standalone token or as a substring of a rewritten line.
+
+Empty or atom-free input scores `1.0` (nothing irreplaceable existed, so nothing could be lost). If the raw output contains only one distinct atom, its self-information is zero and the weighted ratio is undefined, so the score falls back to the plain `kept / atoms` ratio — dropping that atom still scores `0.0`.
+
+> **There is no default threshold, and richness never fails a build on its own.** tokf is *deliberately* lossy. `cargo check` succeeding and collapsing to `✓ cargo check: ok` scores near zero, and that is **correct**. A low score is information, not a defect.
+
+**The opt-in assertion.** A case can declare a floor with the top-level `min_richness` field (a whole-case scalar, not an `[[expect]]` field), taking a value in `0.0`–`1.0`:
+
+```toml
+name = "panic backtrace survives filtering"
+fixture = "tests/fixtures/cargo_test_panic.txt"
+exit_code = 101
+min_richness = 0.4
+
+[[expect]]
+contains = "panicked at"
+```
+
+When the score falls below the declared floor, the case fails — exit code `1`, and therefore CI via `tokf verify --require-all`. Cases that do not declare `min_richness` are never failed on richness grounds, no matter how low they score.
+
+To pick a value: run `tokf verify <filter>` first, read the printed score, and set the threshold a little under the observed value. It then acts as a ratchet against future skip-pattern widening.
+
+The same assertion is honoured by registry publish validation, so a published filter must satisfy its own declared `min_richness`.
+
 ### Safety checks
 
 Add `--safety` to detect potential security issues in your filter:

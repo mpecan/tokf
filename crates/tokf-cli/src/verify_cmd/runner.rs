@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use tokf::config;
 use tokf::filter;
 use tokf::runner::CommandResult;
+use tokf_common::richness::{self, Richness};
 use tokf_common::safety;
 
 use tokf_common::examples::{self, ExamplesSafety, SafetyWarningDto};
@@ -178,6 +179,36 @@ fn error_case(name: String, failure: String) -> CaseResult {
         input_tokens: 0,
         output_tokens: 0,
         reduction_pct: 0.0,
+        // An errored case has no meaningful score; 1.0 keeps it from reading
+        // as a richness failure.
+        richness: Richness {
+            atoms: 0,
+            kept: 0,
+            retained: 1.0,
+        },
+    }
+}
+
+/// Line/token/richness statistics for one raw/filtered pair.
+struct CaseStats {
+    input_lines: usize,
+    output_lines: usize,
+    input_tokens: usize,
+    output_tokens: usize,
+    reduction_pct: f64,
+    richness: Richness,
+}
+
+fn case_stats(raw: &str, out: &str) -> CaseStats {
+    let input_tokens = examples::estimate_tokens(raw);
+    let output_tokens = examples::estimate_tokens(out);
+    CaseStats {
+        input_lines: raw.lines().count(),
+        output_lines: out.lines().count(),
+        input_tokens,
+        output_tokens,
+        reduction_pct: examples::reduction_pct(input_tokens, output_tokens),
+        richness: richness::score(raw, out),
     }
 }
 
@@ -211,28 +242,32 @@ fn run_case(
     };
 
     let (output, mut failures) = apply_and_check(cfg, filter_name, &cmd_result, &case);
+
+    // Scored once against the first run's output — the determinism check
+    // above guarantees the second run is byte-identical, so either will do.
+    let stats = case_stats(&cmd_result.combined, &output);
+
     for expect in &case.expects {
         if let Some(msg) = evaluate(expect, &output) {
             failures.push(msg);
         }
     }
-
-    let input_lines = cmd_result.combined.lines().count();
-    let output_lines = output.lines().count();
-    let input_tokens = examples::estimate_tokens(&cmd_result.combined);
-    let output_tokens = examples::estimate_tokens(&output);
-    let reduction_pct = examples::reduction_pct(input_tokens, output_tokens);
+    // Opt-in only: a case that declares no min_richness never fails on richness.
+    if let Some(msg) = richness::check_min_richness(case.min_richness, stats.richness) {
+        failures.push(msg);
+    }
 
     let passed = failures.is_empty();
     CaseResult {
         name: case.name,
         passed,
         failures,
-        input_lines,
-        output_lines,
-        input_tokens,
-        output_tokens,
-        reduction_pct,
+        input_lines: stats.input_lines,
+        output_lines: stats.output_lines,
+        input_tokens: stats.input_tokens,
+        output_tokens: stats.output_tokens,
+        reduction_pct: stats.reduction_pct,
+        richness: stats.richness,
     }
 }
 
@@ -274,6 +309,14 @@ fn load_case(case_path: &Path) -> anyhow::Result<TestCase> {
     if case.expects.is_empty() {
         anyhow::bail!(
             "{}: test case has no [[expect]] blocks",
+            case_path.display()
+        );
+    }
+    if let Some(min) = case.min_richness
+        && (min.is_nan() || !(0.0..=1.0).contains(&min))
+    {
+        anyhow::bail!(
+            "{}: min_richness must be between 0.0 and 1.0",
             case_path.display()
         );
     }

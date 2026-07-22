@@ -121,6 +121,7 @@ mod tests {
             inline: Some(inline.to_string()),
             exit_code,
             args: vec![],
+            min_richness: None,
             expects: vec![Expectation {
                 contains: None,
                 not_contains: None,
@@ -192,6 +193,7 @@ output = "FAILED"
             inline: None,
             exit_code: 0,
             args: vec![],
+            min_richness: None,
             expects: vec![],
         };
         let inline_case = make_case("with-inline", "hello", 0);

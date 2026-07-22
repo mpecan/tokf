@@ -25,6 +25,21 @@ impl VerifyResult {
     }
 }
 
+/// Enforce a case's declared `min_richness`, if any.
+///
+/// Deliberately a no-op when the case declares no threshold: richness is an
+/// opt-in per-case assertion, never a global gate. tokf is deliberately lossy
+/// and a near-zero score is frequently correct.
+fn check_richness(case: &TestCase, raw: &str, filtered: &str, failures: &mut Vec<String>) {
+    if case.min_richness.is_none() {
+        return;
+    }
+    let richness = tokf_common::richness::score(raw, filtered);
+    if let Some(msg) = tokf_common::richness::check_min_richness(case.min_richness, richness) {
+        failures.push(msg);
+    }
+}
+
 /// Run a single test case against a filter configuration (in-memory).
 ///
 /// This is the core verification function used by both CLI (`tokf verify`)
@@ -58,6 +73,7 @@ pub fn run_case_in_memory(config: &FilterConfig, case: &TestCase) -> CaseResult 
             failures.push(msg);
         }
     }
+    check_richness(case, &cmd_result.combined, &filtered.output, &mut failures);
 
     let passed = failures.is_empty();
     CaseResult {
@@ -120,6 +136,7 @@ pub fn run_case_in_memory_sandboxed(
             failures.push(msg);
         }
     }
+    check_richness(case, &cmd_result.combined, &filtered.output, &mut failures);
 
     let passed = failures.is_empty();
     CaseResult {
@@ -231,6 +248,7 @@ mod tests {
             inline: Some(inline.to_string()),
             exit_code,
             args: vec![],
+            min_richness: None,
             expects,
         }
     }
@@ -342,11 +360,76 @@ skip = ["^noise"]
             inline: None,
             exit_code: 0,
             args: vec![],
+            min_richness: None,
             expects: vec![expect_equals("")],
         };
         let result = run_case_in_memory(&config, &case);
         assert!(!result.passed);
         assert!(result.failures[0].contains("no 'inline' data"));
+    }
+
+    fn lossy_config() -> FilterConfig {
+        make_config(
+            r#"
+command = "test"
+skip = ["."]
+"#,
+        )
+    }
+
+    const RICH_INPUT: &str = "Compiling tokf-common v0.1.0\n\
+        thread 'main' panicked at src/lib/module.rs:42:9\n\
+        assertion `left == right` failed";
+
+    #[test]
+    fn min_richness_failure_is_reported() {
+        let mut case = make_case("lossy", RICH_INPUT, 0, vec![]);
+        case.min_richness = Some(0.9);
+        let result = run_case_in_memory(&lossy_config(), &case);
+        assert!(!result.passed);
+        assert!(
+            result.failures.iter().any(|f| f.contains("min_richness")),
+            "expected min_richness failure, got: {:?}",
+            result.failures
+        );
+    }
+
+    #[test]
+    fn min_richness_satisfied_passes() {
+        let mut case = make_case("passthrough", RICH_INPUT, 0, vec![]);
+        case.min_richness = Some(0.9);
+        let result = run_case_in_memory(&make_config(r#"command = "test""#), &case);
+        assert!(result.passed, "failures: {:?}", result.failures);
+    }
+
+    #[test]
+    fn absent_min_richness_never_fails_on_lossiness() {
+        // Anti-global-gate regression test: tokf is deliberately lossy, so a
+        // case that declares no threshold must never fail on richness grounds.
+        let case = make_case("lossy", RICH_INPUT, 0, vec![]);
+        assert!(case.min_richness.is_none());
+        let result = run_case_in_memory(&lossy_config(), &case);
+        assert!(result.passed, "failures: {:?}", result.failures);
+    }
+
+    #[cfg(feature = "lua")]
+    #[test]
+    fn sandboxed_min_richness_failure_is_reported() {
+        let limits = filter::lua::SandboxLimits::default();
+        let mut case = make_case("lossy", RICH_INPUT, 0, vec![]);
+        case.min_richness = Some(0.9);
+        let result = run_case_in_memory_sandboxed(&lossy_config(), &case, &limits);
+        assert!(!result.passed);
+        assert!(result.failures.iter().any(|f| f.contains("min_richness")));
+    }
+
+    #[cfg(feature = "lua")]
+    #[test]
+    fn sandboxed_absent_min_richness_never_fails_on_lossiness() {
+        let limits = filter::lua::SandboxLimits::default();
+        let case = make_case("lossy", RICH_INPUT, 0, vec![]);
+        let result = run_case_in_memory_sandboxed(&lossy_config(), &case, &limits);
+        assert!(result.passed, "failures: {:?}", result.failures);
     }
 
     #[test]
