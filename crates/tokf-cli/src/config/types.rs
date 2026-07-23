@@ -230,9 +230,12 @@ empty = "nothing to show"
 
         assert_eq!(cfg.command.first(), "git log");
 
-        let run = cfg.run.clone().unwrap();
-        assert!(run.contains("{args}"));
-        assert!(run.contains("--oneline"));
+        // No `run` override: the real `git log` must execute so its full output
+        // is captured and recoverable via `tokf raw` (issue #430). The 20-commit
+        // cap is applied to the rendered output instead.
+        assert_eq!(cfg.run, None, "git/log must not substitute the command");
+        assert_eq!(cfg.max_lines, Some(20));
+        assert_eq!(cfg.chunk.len(), 1, "one chunk per commit");
 
         // on_empty hint: empty results must be unambiguous and actionable.
         let on_empty = cfg.on_empty.as_deref().expect("on_empty hint required");
@@ -245,6 +248,7 @@ empty = "nothing to show"
         for flag in [
             "-p",
             "--patch",
+            "--oneline",
             "--format",
             "--pretty",
             "--graph",
@@ -268,8 +272,11 @@ empty = "nothing to show"
         assert!(cfg.should_passthrough(&["-L1,10:src/main.rs".to_string()]));
         assert!(!cfg.should_passthrough(&["--all".to_string()]));
 
+        // The template renders one line per commit from the chunk collection.
         let success = cfg.on_success.unwrap();
-        assert_eq!(success.output.as_deref(), Some("{output}"));
+        let output = success.output.expect("on_success output template");
+        assert!(output.contains("{commits"), "renders the commit collection");
+        assert!(output.contains("{sha}") && output.contains("{subject}"));
     }
 
     #[test]
@@ -278,17 +285,18 @@ empty = "nothing to show"
 
         assert_eq!(cfg.command.first(), "git diff");
 
-        let run = cfg.run.clone().unwrap();
-        assert!(run.contains("--stat"));
-        assert!(run.contains("{args}"));
+        // No `run` override: the real patch must be captured so it stays
+        // recoverable via `tokf raw` (issue #430). The per-file summary is
+        // computed from chunks over that patch instead.
+        assert_eq!(cfg.run, None, "git/diff must not substitute the command");
+        assert_eq!(cfg.chunk.len(), 1, "one chunk per file");
 
         // Escape hatches: these flags must trigger passthrough so the model
-        // can get the actual diff content (or alternative summaries) instead
-        // of being trapped behind the forced --stat override.
+        // gets the output shape it asked for rather than our summary.
         for flag in [
             "-p",
             "--patch",
-            "--no-stat",
+            "--stat",
             "-U",
             "--unified",
             "--numstat",
@@ -311,14 +319,23 @@ empty = "nothing to show"
         // (e.g. -U3, -U10) and patch variants (--patch-with-stat).
         assert!(cfg.should_passthrough(&["-U3".to_string()]));
         assert!(cfg.should_passthrough(&["--patch-with-stat".to_string()]));
-        assert!(cfg.should_passthrough(&["--no-stat".to_string()]));
         assert!(!cfg.should_passthrough(&["origin/main...HEAD".to_string()]));
 
+        // Anchored regex, not `contains`: the full patch flows through this
+        // filter now, so a substring match on "fatal:" would collapse any diff
+        // that merely mentions it (issue #430).
         assert_eq!(cfg.match_output.len(), 1);
-        assert_eq!(cfg.match_output[0].contains.as_deref().unwrap(), "fatal:");
+        assert_eq!(cfg.match_output[0].contains, None);
+        assert_eq!(
+            cfg.match_output[0].pattern.as_deref().unwrap(),
+            "(?m)^fatal: "
+        );
 
+        // The template renders per-file counts plus a totals line.
         let success = cfg.on_success.unwrap();
-        assert_eq!(success.output.as_deref(), Some("{output}"));
+        let output = success.output.expect("on_success output template");
+        assert!(output.contains("{files"), "renders the per-file collection");
+        assert!(output.contains("files changed"), "renders a totals line");
 
         let failure = cfg.on_failure.unwrap();
         assert_eq!(failure.tail, Some(5));

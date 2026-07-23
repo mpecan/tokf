@@ -258,10 +258,10 @@ FORCE_COLOR=1 tokf run npm test
 |---|---|
 | `git/add` | `git add` |
 | `git/commit` | `git commit` |
-| `git/diff` | `git diff` — overrides to `git diff --stat` for compact output. Pass `-p`/`--patch`/`--no-stat`/`-U<n>`/`--name-only`/`--name-status`/`--numstat`/`--shortstat`/`--raw` to skip the override and get the requested format instead |
-| `git/log` | `git log` — overrides to `git log --oneline --no-decorate -n 20`. Pass `-p`/`--patch`/`--format`/`--pretty`/`--graph`/`--stat`/`--shortstat`/`--dirstat`/`--name-only`/`--name-status`/`-L` to skip the override. Empty results emit a one-line hint pointing at common causes (untracked pathspec, missing `--all`, missing `--follow`) instead of nothing — this stops agents looping through flag variations trying to escape a non-existent filter |
+| `git/diff` | `git diff` — runs the real `git diff` and summarises it as one line per file (`src/main.rs \| +4 -3`) plus a totals line, so the full patch stays recoverable with `tokf raw`. Pass `-p`/`--patch`/`--stat`/`-U<n>`/`--name-only`/`--name-status`/`--numstat`/`--shortstat`/`--raw` to skip the filter and get the requested format instead |
+| `git/log` | `git log` — runs the real `git log` and renders one line per commit (`<short-sha> <subject>`), capped at 20; the full history stays recoverable with `tokf raw`. Pass `-p`/`--patch`/`--format`/`--pretty`/`--graph`/`--stat`/`--shortstat`/`--dirstat`/`--oneline`/`--name-only`/`--name-status`/`-L` to skip the filter. Empty results emit a one-line hint pointing at common causes (untracked pathspec, missing `--all`, missing `--follow`) instead of nothing — this stops agents looping through flag variations trying to escape a non-existent filter |
 | `git/push` | `git push` |
-| `git/show` | `git show` |
+| `git/show` | `git show` — runs the real `git show` and renders the commit's sha, subject, author and date plus one line per file with change counts; the full patch stays recoverable with `tokf raw`. Pass `-p`/`--patch`/`--stat`/`--format`/`--pretty`/`--numstat`/`--shortstat`/`--raw` to skip the filter |
 | `git/status` | `git status` — runs `git status --porcelain=v1 -b -uall --find-renames`; shows branch + upstream sync state (`[synced]`, `[ahead N]`, `[behind N]`, `(no upstream)`) and one porcelain line per changed file (`M  src/main.rs`, `?? scratch.rs`, `R  old.rs -> new.rs`). `-uall` lists every untracked file individually instead of collapsing newly-created directories. When 3+ files share a directory prefix the listing is restructured into a directory tree (see [`[tree]`](writing-filters.md#tree-restructuring)), writing each shared prefix once. Measured 24.4% averaged token reduction across the bundled test fixtures |
 | `cargo/build` | `cargo build` |
 | `cargo/check` | `cargo check` |
@@ -279,7 +279,7 @@ FORCE_COLOR=1 tokf run npm test
 | `kubectl/*` | `kubectl get pods` |
 | `next/*` | `next build` |
 | `prisma/*` | `prisma generate` |
-| `pytest` | Python test runner |
+| `pytest` | Python test runner — runs `pytest` as typed and keeps the failing assertion lines (`>` / `E`) plus the pass/fail summary; the full tracebacks stay recoverable with `tokf raw`. Pass `-q`/`--tb`/`-v`/`-x`/`--collect-only`/`--pdb` to skip the filter |
 | `tsc` | TypeScript compiler |
 | `ls` | `ls` |
 
@@ -492,6 +492,54 @@ output = "ok ✓ {2}"          # template; {output} = pre-filtered output
 [on_failure]                  # branch for non-zero exit
 tail = 10                     # keep the last N lines (overrides top-level tail)
 ```
+
+## The `run` override
+
+`run` makes tokf execute a *different* command than the user typed. It is a sharp
+tool, and there is one rule:
+
+> **`run` must not lose information.** It may re-encode the same data more densely
+> (`--porcelain`, `--format json`, `-o json`). It must never truncate, cap, or
+> otherwise answer a narrower question than the user asked.
+
+The reason is recoverability. tokf only ever sees the output of the command it
+actually ran, so that is what lands in history and what `tokf raw <id>` gives
+back. If `run` throws data away before tokf sees it, **nothing can recover it** —
+not `tokf raw`, not anything else. Reductions that drop content belong in the
+filter pipeline (`skip`, `chunk`, `max_lines`, templates), which runs *after*
+the full output has been captured.
+
+Substitutions are recorded and shown. `tokf history show` prints an `Executed:`
+line, `tokf raw` prints a note to stderr (stdout stays pure output, so pipes are
+unaffected), and `--verbose` reports the substitution as it happens:
+
+```
+$ tokf run --verbose -- git status
+[tokf] executing: git status --porcelain=v1 -b -uall --find-renames
+[tokf]   (substituted by `run` for: git status)
+
+$ tokf history last
+Command: git status
+Executed: git status --porcelain=v1 -b -uall --find-renames
+```
+
+Note that savings for a `run`-override filter are measured against the
+substituted command's output — that is the only baseline tokf ever observes.
+The `Executed:` line tells you which command the figure refers to.
+
+### The cost of capturing everything
+
+Reducing in the pipeline rather than in `run` means tokf captures the command's
+full output, holds it in memory, and writes it to the history database. That is
+what makes `tokf raw` able to give it back, and it is not free: `tokf run -- git
+log` on a repository with a few thousand commits captures hundreds of KB per
+invocation, where `git log --oneline -n 20` captured about a kilobyte.
+
+History keeps `history.retention` entries per project (default 10) with no
+per-entry size cap, so the database grows with the largest output you filter.
+`tokf history clear` resets it. Prefer a `passthrough_args` entry over a `run`
+override when a flag means the user wants the unreduced output anyway — that
+skips both the reduction and the capture.
 
 ## Passthrough args
 

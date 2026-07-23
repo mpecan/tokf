@@ -1,0 +1,21 @@
+name = "output is capped at 20 commits"
+# The fixture holds 22 commits. Previously the cap was enforced by running
+# `git log -n 20`, which meant commits 21+ never reached tokf and could not be
+# recovered. The cap now applies to the rendered output only — the full log is
+# still captured in history (issue #430).
+fixture = "success.txt"
+exit_code = 0
+
+[[expect]]
+line_count = 20
+
+# The 20th commit (index 19) is present...
+[[expect]]
+contains = "fix(docker): correct ps format string"
+
+# ...and the 21st and 22nd are cut.
+[[expect]]
+not_contains = "docs(filters): explain passthrough semantics"
+
+[[expect]]
+not_contains = "chore(deps): update rust to 1.96.1"

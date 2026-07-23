@@ -23,6 +23,7 @@ pub(super) fn make_record(
     HistoryRecord {
         project: project.to_owned(),
         command: cmd.to_owned(),
+        executed_command: None,
         filter_name: filter.map(ToOwned::to_owned),
         raw_output: raw.to_owned(),
         filtered_output: filtered.to_owned(),
@@ -121,6 +122,112 @@ fn init_history_table_migrates_schema_adds_project_column() {
         )
         .expect("check column");
     assert_eq!(has_project, 1, "project column must exist after migration");
+}
+
+#[test]
+fn init_history_table_migrates_schema_adds_executed_command_column() {
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("history.db");
+    let conn = Connection::open(&path).expect("open db");
+
+    // Simulate the previous schema: has `project`, but no `executed_command`.
+    conn.execute_batch(
+        "CREATE TABLE history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp       TEXT    NOT NULL,
+            project         TEXT    NOT NULL DEFAULT '',
+            command         TEXT    NOT NULL,
+            filter_name     TEXT,
+            raw_output      TEXT    NOT NULL,
+            filtered_output TEXT    NOT NULL,
+            exit_code       INTEGER NOT NULL
+        );
+        INSERT INTO history
+            (timestamp, project, command, filter_name, raw_output, filtered_output, exit_code)
+         VALUES ('2026-01-01T00:00:00Z', '/proj', 'git log', 'git-log', 'raw', 'filtered', 0);",
+    )
+    .expect("create previous schema with a row");
+
+    init_history_table(&conn).expect("migrate");
+
+    // Pre-existing rows must read back with executed_command = None: we genuinely
+    // do not know what produced them, and NULL says that.
+    let entry = get_history_entry(&conn, 1)
+        .expect("query")
+        .expect("entry exists");
+    assert_eq!(entry.command, "git log");
+    assert_eq!(
+        entry.executed_command, None,
+        "pre-migration rows must not claim a known executed command"
+    );
+}
+
+// --- executed_command round-trip ---
+
+#[test]
+fn record_history_round_trips_executed_command() {
+    let (_dir, conn) = temp_db();
+    let mut record = make_record("/proj", "git status", Some("git-status"), "raw", "out", 0);
+    record.executed_command = Some("git status --porcelain=v1 -b -uall".to_owned());
+
+    let id = record_history(&conn, &record, &HistoryConfig::default()).expect("record");
+
+    let entry = get_history_entry(&conn, id)
+        .expect("query")
+        .expect("entry exists");
+    assert_eq!(entry.command, "git status");
+    assert_eq!(
+        entry.executed_command.as_deref(),
+        Some("git status --porcelain=v1 -b -uall"),
+        "the substituted command must survive the round-trip"
+    );
+}
+
+#[test]
+fn record_history_keeps_executed_command_null_without_override() {
+    let (_dir, conn) = temp_db();
+    let record = make_record("/proj", "cargo build", Some("cargo-build"), "raw", "out", 0);
+
+    let id = record_history(&conn, &record, &HistoryConfig::default()).expect("record");
+
+    let entry = get_history_entry(&conn, id)
+        .expect("query")
+        .expect("entry exists");
+    assert_eq!(
+        entry.executed_command, None,
+        "commands run verbatim must not record a substitution"
+    );
+}
+
+#[test]
+fn latest_and_search_queries_return_executed_command() {
+    let (_dir, conn) = temp_db();
+    let mut record = make_record("/proj", "git log", Some("git-log"), "raw body", "out", 0);
+    record.executed_command = Some("git log --oneline -n 20".to_owned());
+    record_history(&conn, &record, &HistoryConfig::default()).expect("record");
+
+    let latest = get_latest_entry(&conn, Some("/proj"))
+        .expect("query")
+        .expect("entry exists");
+    assert_eq!(
+        latest.executed_command.as_deref(),
+        Some("git log --oneline -n 20")
+    );
+
+    let found = search_history(&conn, "git log", 10, Some("/proj")).expect("search");
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0].executed_command.as_deref(),
+        Some("git log --oneline -n 20"),
+        "search results must carry the column too"
+    );
+
+    let listed = list_history(&conn, 10, Some("/proj")).expect("list");
+    assert_eq!(
+        listed[0].executed_command.as_deref(),
+        Some("git log --oneline -n 20"),
+        "list results must carry the column too"
+    );
 }
 
 // --- record_history ---

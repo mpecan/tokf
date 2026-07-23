@@ -1,0 +1,22 @@
+name = "a patch whose content mentions fatal: is not mistaken for an error"
+# Regression: `match_output` used to be `contains = "fatal:"`, a whole-output
+# substring check. That was harmless while this filter ran `git diff --stat`,
+# but the full patch now flows through it — so any diff touching a line with
+# "fatal:" in it would collapse to a single bogus error line.
+inline = """
+diff --git a/src/log.rs b/src/log.rs
+index c2f62a6..79d15bc 100644
+--- a/src/log.rs
++++ b/src/log.rs
+@@ -1,3 +1,3 @@
+-    eprintln!("fatal: {}", err);
++    eprintln!("fatal: {} ({})", err, code);
+ }
+"""
+exit_code = 0
+
+[[expect]]
+contains = "src/log.rs | +1 -1"
+
+[[expect]]
+not_contains = "✗"

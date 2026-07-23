@@ -1,9 +1,48 @@
-.F...
-================================== FAILURES ===================================
-_________________________________ test_add ____________________________________
-tests/test_math.py:10: in test_add
->     assert add(1, 2) == 4
-E     AssertionError: assert 3 == 4
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/dev/myproject
+collected 5 items
+
+tests/test_math.py F..FF                                                 [100%]
+
+=================================== FAILURES ===================================
+___________________________________ test_add ___________________________________
+
+    def test_add():
+>       assert add(1, 2) == 4
+E       assert 3 == 4
+E        +  where 3 = add(1, 2)
+
+tests/test_math.py:16: AssertionError
+_____________________________ test_nested_failure ______________________________
+
+    def test_nested_failure():
+>       helper(4)
+
+tests/test_math.py:28: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_math.py:7: in helper
+    return deeper(intermediate)
+           ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 8
+
+    def deeper(value):
+>       assert value < 5, f"value too large: {value}"
+E       AssertionError: value too large: 8
+E       assert 8 < 5
+
+tests/test_math.py:11: AssertionError
+__________________________________ test_error __________________________________
+
+    def test_error():
+>       raise RuntimeError("boom")
+E       RuntimeError: boom
+
+tests/test_math.py:32: RuntimeError
 =========================== short test summary info ============================
-FAILED tests/test_math.py::test_add - AssertionError: assert 3 == 4
-1 failed, 4 passed in 0.15s
+FAILED tests/test_math.py::test_add - assert 3 == 4
+FAILED tests/test_math.py::test_nested_failure - AssertionError: value too la...
+FAILED tests/test_math.py::test_error - RuntimeError: boom
+========================= 3 failed, 2 passed in 0.01s ==========================

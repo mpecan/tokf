@@ -1,25 +1,82 @@
-command = "pytest"
-description = "Run with --tb=short -q; show failures and pass/fail summary"
-run = "pytest --tb=short -q {args}"
+# pytest.toml — show failing assertions and the pass/fail summary
+#
+# This filter used to `run = "pytest --tb=short -q {args}"`. That answered a
+# narrower question than the user asked: the full tracebacks never reached
+# tokf, so `tokf raw <id>` could not recover them (issue #430). It now runs
+# the user's `pytest` as typed and does the reduction here, over the complete
+# output — long tracebacks included.
 
+command = "pytest"
+description = "Show failing assertions and the pass/fail summary"
+
+# Only flags that change what pytest *does*, rather than how much it prints.
+# `-q`, `-v`, `-x` and `--tb=…` all still emit the FAILURES block and the short
+# summary this filter keys off, so filtering them works and is worth doing —
+# they were previously listed here and that silently disabled the filter for
+# the most common invocations.
+passthrough_args = [
+  "--collect-only", # lists tests instead of running them
+  "--co",
+  "--pdb",          # drops into an interactive debugger
+]
+
+# The FAILURES block holds one section per failing test. In pytest's default
+# (long) traceback format the failing source line is prefixed `>` and the
+# assertion detail lines `E`, both padded — the `keep` in the template below
+# picks exactly those out of each block and discards the surrounding frames.
 [[section]]
 name = "failures"
 enter = "^=+ FAILURES =+$"
 exit = "^=+ short test summary"
 collect_as = "failure_lines"
 
+# Collection errors (bad import, syntax error) land in an ERRORS block rather
+# than FAILURES, and their `E` line carries the actual reason — without this
+# section a failed collection reported only "ERROR tests/test_x.py", leaving
+# the model to guess why.
+[[section]]
+name = "errors"
+enter = "^=+ ERRORS =+$"
+exit = "^=+ short test summary"
+collect_as = "error_lines"
+
+# Per-test outcome lines from the short summary.
 [[section]]
 name = "summary"
-match = "^(FAILED|ERROR|\\d+ passed)"
+match = "^(FAILED|ERROR)"
 collect_as = "summary_lines"
 
+# The final counts line, captured verbatim rather than reassembled from
+# aggregates.
+#
+# Summing `(\d+) failed` across the whole output would double-count: with the
+# full output now flowing through this filter, any traceback or captured-stdout
+# line containing something like "2 passed" would be added to the totals. And
+# reassembling the line from `failed`/`passed` aggregates alone reports
+# "0 failed, 0 passed" for a collection error or a skip-only run — both false.
+#
+# Capturing pytest's own line keeps every outcome pytest reports (errors,
+# skips, xfails, "no tests ran") and can never invent a number.
+[[chunk]]
+split_on = '^=+ .*\d+ (passed|failed|error|skipped|xfailed|xpassed).* in '
+collect_as = "totals"
+
+# Strip the `=` padding: `==== 3 failed, 2 passed in 0.01s ====` → the middle.
+[chunk.extract]
+pattern = '^=+ (.*[^ =]) =+$'
+as = "line"
+
 [on_success]
-extract = { pattern = "(\\d+) passed", output = "✓ pytest: {1} passed" }
+# Anchored to the padded summary line so a test name or captured output
+# containing "N passed" can't be picked up instead.
+extract = { pattern = "^=+ .*?(\\d+) passed", output = "✓ pytest: {1} passed" }
 
 [on_failure]
 output = """{failure_lines | each: "{value | lines | keep: "^[>E] "}" | join: "\n"}
+{error_lines | keep: "^E  " | join: "\n"}
 
-{summary_lines | join: "\n"}"""
+{summary_lines | join: "\n"}
+{totals | each: "{line}" | join: "\n"}"""
 
 [fallback]
 tail = 10

@@ -1,6 +1,32 @@
-name = "commit stat passes through unchanged"
+name = "full commit patch reduces to metadata plus per-file counts"
 fixture = "success.txt"
 exit_code = 0
 
+# Commit identity and subject survive.
 [[expect]]
-contains = "file changed"
+contains = "4c28872 feat(filter): add chunk-based reduction"
+
+[[expect]]
+contains = "Ada Lovelace <ada@example.com> · Mon Jul 20 10:10:00 2026 +0200"
+
+# Per-file counts replace the patch.
+[[expect]]
+contains = "src/filter/mod.rs | +4 -0"
+
+[[expect]]
+contains = "src/config.rs | +1 -2"
+
+[[expect]]
+contains = "2 files changed, 5 insertions(+), 2 deletions(-)"
+
+# The message body beyond the subject is dropped.
+[[expect]]
+not_contains = "several lines of body text"
+
+# The patch content itself is gone from the filtered output — but still
+# recoverable from history, which is the point of issue #430.
+[[expect]]
+not_contains = "pub fn reduce"
+
+[[expect]]
+not_contains = "@@"

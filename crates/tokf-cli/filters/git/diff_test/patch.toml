@@ -1,0 +1,41 @@
+name = "full patch reduces to per-file insertion/deletion counts"
+fixture = "patch.txt"
+exit_code = 0
+
+# Per-file lines, using the destination path.
+[[expect]]
+contains = "src/main.rs | +4 -3"
+
+[[expect]]
+contains = "src/config.rs | +1 -2"
+
+# A rename reports where the file ended up, not where it came from.
+[[expect]]
+contains = "docs/new-name.md | +1 -1"
+
+# A new file counts all its lines as insertions.
+[[expect]]
+contains = "src/added.rs | +3 -0"
+
+# A binary file still appears, with no line counts.
+[[expect]]
+contains = "assets/logo.png | +0 -0"
+
+[[expect]]
+contains = "5 files changed, 9 insertions(+), 6 deletions(-)"
+
+# The `+++ b/…` and `--- a/…` headers are not content and must not be counted
+# as insertions or deletions.
+[[expect]]
+not_contains = "+++ b/"
+
+[[expect]]
+not_contains = "--- a/"
+
+# The patch body itself is gone from the filtered output (but still recoverable
+# from history — that is the point of issue #430).
+[[expect]]
+not_contains = "brand_new"
+
+[[expect]]
+not_contains = "@@"

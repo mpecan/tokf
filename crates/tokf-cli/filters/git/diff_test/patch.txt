@@ -1,0 +1,53 @@
+diff --git a/src/main.rs b/src/main.rs
+index c2f62a6..79d15bc 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,8 +1,9 @@
+ use std::process::exit;
+
+-fn main() {
+-    let code = run();
+-    exit(code);
++fn main() -> anyhow::Result<()> {
++    let code = run()?;
++    exit(code)
+ }
++
+ // trailing comment
+diff --git a/src/config.rs b/src/config.rs
+index 49728a7..d2d8dfb 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -12,7 +12,6 @@ impl Config {
+     pub fn load() -> Self {
+         Self::default()
+     }
+-
+-    pub fn unused(&self) {}
++    pub fn used(&self) {}
+ }
+diff --git a/docs/old-name.md b/docs/new-name.md
+similarity index 94%
+rename from docs/old-name.md
+rename to docs/new-name.md
+index ef8c5ff..e2bb6e0 100644
+--- a/docs/old-name.md
++++ b/docs/new-name.md
+@@ -1,4 +1,4 @@
+-# Old Title
++# New Title
+
+ Body text that did not change.
+ More body text.
+diff --git a/assets/logo.png b/assets/logo.png
+index 1088fc2..0cbf404 100644
+Binary files a/assets/logo.png and b/assets/logo.png differ
+diff --git a/src/added.rs b/src/added.rs
+new file mode 100644
+index 0000000..7cfcc0f
+--- /dev/null
++++ b/src/added.rs
+@@ -0,0 +1,3 @@
++pub fn brand_new() -> u32 {
++    42
++}

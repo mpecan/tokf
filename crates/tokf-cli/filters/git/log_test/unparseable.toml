@@ -1,0 +1,19 @@
+name = "output the splitter can't parse is passed through, not called empty"
+# Regression: `on_empty` fires whenever the rendered output is empty, and the
+# chunk splitter renders nothing for output it can't parse. A user with
+# `format.pretty = oneline` in their gitconfig — invisible to passthrough_args,
+# since it isn't a CLI flag — was told "no matching commits" about a log full
+# of commits.
+inline = """abc1234 some subject
+def5678 another subject
+"""
+exit_code = 0
+
+[[expect]]
+contains = "abc1234 some subject"
+
+[[expect]]
+contains = "def5678 another subject"
+
+[[expect]]
+not_contains = "no matching commits"

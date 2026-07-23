@@ -1,0 +1,24 @@
+name = "content lines starting with + or - are counted, not mistaken for headers"
+# Regression: the counting patterns used to be `^\+([^+]|$)` / `^-([^-]|$)`,
+# which excluded the `+++`/`---` file headers but ALSO excluded every content
+# line whose own first character was `+` or `-`. Markdown bullets, YAML list
+# items and `--flag` lines were silently counted as zero.
+#
+# Every number below is git's own, from `git diff --numstat` / `--shortstat`
+# on the repo this fixture was captured from:
+#     2  0  flags.sh
+#     3  2  notes.md
+#     2 files changed, 5 insertions(+), 2 deletions(-)
+fixture = "sign_prefixed_content.txt"
+exit_code = 0
+
+# `+--verbose` / `+--quiet` — added lines whose content starts with `--`.
+[[expect]]
+contains = "flags.sh | +2 -0"
+
+# `-- beta` is a removed bullet; `+- BETA` and `+- delta` are added bullets.
+[[expect]]
+contains = "notes.md | +3 -2"
+
+[[expect]]
+contains = "2 files changed, 5 insertions(+), 2 deletions(-)"

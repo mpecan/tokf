@@ -249,7 +249,7 @@ pub fn cmd_run(
         filter_match.as_ref().map(|m| &m.config)
     };
     let matched_command = filter_match.as_ref().map(|m| m.matched_command.as_str());
-    let cmd_result = resolve::run_command(
+    let (cmd_result, executed_command) = resolve::run_command(
         rt,
         resolve::ResolvedCommand {
             filter_cfg,
@@ -257,6 +257,7 @@ pub fn cmd_run(
             matched_command,
             command_args,
             remaining_args: &remaining_args,
+            verbose: cli.verbose,
         },
     )?;
 
@@ -392,6 +393,7 @@ pub fn cmd_run(
         rt,
         &history::RecordedRun {
             command: &command_str,
+            executed_command: executed_command.as_deref(),
             filter_name,
             raw_output: &cmd_result.combined,
             filtered_output: &final_output,

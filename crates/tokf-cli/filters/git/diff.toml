@@ -1,27 +1,31 @@
-# git-diff.toml — Override to --stat for compact output
-# Raw: full unified diff (potentially hundreds of lines)
-# Filtered: compact stat summary (files changed + insertions/deletions)
+# git-diff.toml — reduce a full unified diff to a per-file change summary
+#
+# Raw: full unified diff (potentially thousands of lines)
+# Filtered: one line per file with insertion/deletion counts, plus a total
+#
+# This filter used to `run = "git diff --stat {args}"`. The patch content was
+# then destroyed before tokf ever saw it — a user asking for a diff got a line
+# summary, and `tokf raw <id>` could not give the patch back (issue #430).
+# The summary is now computed here, over the real diff, so the patch is
+# captured in history and recoverable.
 #
 # Escape hatches: when the model needs the actual diff content (or an
 # alternative summary format), it can pass any of the flags in
-# `passthrough_args` and tokf will skip the override and run `git diff`
-# as the user requested. The list below was chosen from observed agent
-# retry patterns: forcing --stat with no escape caused models to thrash
-# through ~50 retries trying every variation of `git diff` to get the
-# patch content out.
+# `passthrough_args` and tokf will pass `git diff` straight through. The list
+# below was chosen from observed agent retry patterns: forcing a summary with
+# no escape caused models to thrash through ~50 retries trying every variation
+# of `git diff` to get the patch content out.
 
 command = "git diff"
-description = "Show compact --stat summary instead of full diff"
+description = "Summarise a diff as per-file insertion/deletion counts"
 
-# Override: use --stat for compact summary output
-run = "git diff --stat {args}"
-
-# Skip the override entirely when the user explicitly asks for diff content,
-# specific context-line counts, or alternative summary formats.
+# Skip the filter entirely when the user explicitly asks for diff content,
+# specific context-line counts, or an alternative summary format they would
+# rather have than ours.
 passthrough_args = [
   "-p",            # patch (full diff content)
   "--patch",       # also matches --patch-with-stat, --patch-with-raw, --patch-id
-  "--no-stat",     # explicitly disable our forced --stat
+  "--stat",        # git's own stat rendering
   "-U",            # -U3, -U10, ... custom unified context line counts
   "--unified",
   "--numstat",     # alternative summary: machine-readable
@@ -29,12 +33,90 @@ passthrough_args = [
   "--raw",         # alternative summary: raw format
 ]
 
+# Anchored to column 0 on purpose. `contains = "fatal:"` would fire on any
+# patch whose *content* mentions "fatal:", collapsing a legitimate diff to a
+# single error line — a real hazard now that the full patch flows through this
+# filter rather than a `--stat` summary. In a unified diff every content line
+# is prefixed with `+`, `-`, or a space, so only git's own errors start at
+# column 0.
 match_output = [
-  { contains = "fatal:", output = "✗ {line_containing}" },
+  { pattern = "(?m)^fatal: ", output = "✗ {line_containing}" },
 ]
 
+# NOTE: the counting sections, the per-file [[chunk]] and the totals
+# aggregates below are duplicated in git/show.toml. tokf filters have no
+# include mechanism (config resolution is first-match-wins, by design),
+# so this is copied on purpose — but it is logic, not boilerplate.
+# Fix the sign-prefix patterns in both files or neither.
+# Whole-output counts for the totals line.
+#
+# Stateful on purpose: they only collect inside a hunk body (between an `@@`
+# header and the next file's `diff --git`), so nothing outside a real diff can
+# be mistaken for changed content.
+#
+# The patterns exclude the `+++ b/…` / `--- a/…` file headers — and nothing
+# else. An earlier, simpler `^\+([^+]|$)` also swallowed every content line
+# whose own first character was `+` or `-` (markdown bullets, YAML list items,
+# `--flag` in a script), silently undercounting very ordinary diffs.
+#
+# Read them as "starts with the sign, but is not the literal `+++ `/`--- `
+# header": the alternation spells out the 1-, 2- and 3-character cases because
+# Rust's regex crate has no lookahead.
+[[section]]
+name = "file-headers"
+match = '^diff --git '
+collect_as = "file_header_lines"
+
+[[section]]
+name = "added"
+enter = '^@@ '
+exit = '^diff --git '
+match = '^\+([^+]|$|\+([^+]|$)|\+\+[^ ])'
+collect_as = "added_lines"
+
+[[section]]
+name = "removed"
+enter = '^@@ '
+exit = '^diff --git '
+match = '^-([^-]|$|-([^-]|$)|--[^ ])'
+collect_as = "removed_lines"
+
+# One chunk per file, counting its own added/removed lines.
+[[chunk]]
+split_on = '^diff --git '
+collect_as = "files"
+
+# Use the `b/` (destination) path so renames report where the file ended up.
+[chunk.extract]
+pattern = '^diff --git a/.* b/(.*)$'
+as = "path"
+
+[[chunk.aggregate]]
+pattern = '^\+([^+]|$|\+([^+]|$)|\+\+[^ ])'
+count_as = "added"
+
+[[chunk.aggregate]]
+pattern = '^-([^-]|$|-([^-]|$)|--[^ ])'
+count_as = "removed"
+
 [on_success]
-output = "{output}"
+output = """{files | each: "{path} | +{added} -{removed}" | join: "\n"}
+{file_count} files changed, {insertions} insertions(+), {deletions} deletions(-)"""
+
+[[on_success.aggregates]]
+from = "file_header_lines"
+pattern = '^diff --git '
+count_as = "file_count"
+
+[[on_success.aggregates]]
+from = "added_lines"
+pattern = '^\+'
+count_as = "insertions"
+
+[[on_success.aggregates]]
+from = "removed_lines"
+pattern = '^-'
+count_as = "deletions"
 
 [on_failure]
 tail = 5

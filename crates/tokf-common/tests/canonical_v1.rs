@@ -4,13 +4,24 @@
 //!
 //! Every `.toml` under `crates/tokf-cli/filters/` (excluding `_test/` dirs)
 //! is hashed; the result is checked against the recorded value in
-//! `tests/canonical_v1_stdlib.txt`. **Do not modify recorded values** —
-//! a change in any expected hash means v1's behaviour drifted, which is
-//! either a bug to fix or a v2 trigger, never a "just update the
-//! expected" case.
+//! `tests/canonical_v1_stdlib.txt`.
 //!
-//! Authoring: when adding new stdlib filters or building this file for the
-//! first time, run:
+//! **A drifting hash has two possible causes, and they are not equally
+//! acceptable.** Because the corpus hashes the *live* filter files, editing a
+//! filter's content necessarily changes its hash — this test cannot tell the
+//! two apart, so the reader must:
+//!
+//! 1. **The filter's content changed** (you edited the `.toml`). Expected.
+//!    Refresh the recorded value with the command below, and check that the
+//!    diff to `canonical_v1_stdlib.txt` lists *only* the filters you touched.
+//!    An unexplained extra line is case 2 in disguise.
+//! 2. **`canonical_v1::hash` itself changed** while the filters did not. This
+//!    is a bug to fix or a v2 trigger — never a "just update the expected"
+//!    case. A hash moving with no corresponding filter edit means v1's
+//!    behaviour drifted, which breaks every already-published filter.
+//!
+//! Authoring: when adding new stdlib filters, editing an existing one, or
+//! building this file for the first time, run:
 //!
 //! ```sh
 //! cargo test -p tokf-common --test canonical_v1 -- dump_stdlib_hashes \

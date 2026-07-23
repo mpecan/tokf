@@ -1,0 +1,20 @@
+diff --git a/flags.sh b/flags.sh
+new file mode 100644
+index 0000000..886e1ac
+--- /dev/null
++++ b/flags.sh
+@@ -0,0 +1,2 @@
++--verbose
++--quiet
+diff --git a/notes.md b/notes.md
+index 510a976..7888c12 100644
+--- a/notes.md
++++ b/notes.md
+@@ -1,4 +1,5 @@
+ - alpha
+-- beta
++- BETA
+ - gamma
+-plain
++- delta
++plain2

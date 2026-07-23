@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/dev/myproject
+collected 2 items
+
+tests/test_decoy.py F.                                                   [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_reports_counts ______________________________
+
+    def test_reports_counts():
+        summary = "9 passed, 7 failed"
+>       assert summary == "all good"
+E       AssertionError: assert '9 passed, 7 failed' == 'all good'
+E         
+E         - all good
+E         + 9 passed, 7 failed
+
+tests/test_decoy.py:3: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_decoy.py::test_reports_counts - AssertionError: assert '9 p...
+========================= 1 failed, 1 passed in 0.01s ==========================
