@@ -8,9 +8,9 @@ use tokf_common::safety;
 
 use tokf_common::examples::{self, ExamplesSafety, SafetyWarningDto};
 
-use super::determinism;
 use super::discovery::DiscoveredSuite;
 use super::{CaseResult, SuiteResult, TestCase};
+use tokf_filter::determinism;
 
 // Delegate assertion evaluation to tokf-filter's verify module.
 use tokf_filter::verify::evaluate;

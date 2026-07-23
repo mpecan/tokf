@@ -10,7 +10,7 @@
 /// Compare two independent filter runs over the same input and return a
 /// failure message if they diverge. Returns `None` when the outputs are
 /// byte-identical (the expected, invariant case).
-pub(super) fn check(filter_name: &str, first: &str, second: &str) -> Option<String> {
+pub fn check(filter_name: &str, first: &str, second: &str) -> Option<String> {
     if first == second {
         return None;
     }
