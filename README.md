@@ -1067,6 +1067,8 @@ The context window is 20 bytes on each side of the differing byte. A leading or 
 
 The stdlib was audited against this check as part of introducing it. No stdlib filter needed changes — the check exists to hold the invariant going forward, not because a stdlib filter was found broken.
 
+**Enforced at publish time, too.** The identical byte-stability check now runs **server-side** when you [`tokf publish`](publishing-filters.md) a filter: during publish validation the server runs each test case's filter pipeline twice and rejects the upload — with the same failure-message shape shown above — if the two outputs differ. A nondeterministic filter therefore cannot enter the registry even if a contributor skipped running `tokf verify` locally, so nobody downstream silently pays the prompt-cache cost. The same across-process caveat applies (a single-process double run cannot see `HashMap`-seed drift), so the `BTreeMap`/explicit-ordering discipline above remains the real defence.
+
 ---
 
 
@@ -2775,7 +2777,7 @@ Publishes a local filter to the community registry under the MIT license. Authen
 1. The filter TOML is read and validated.
 2. If the filter uses `lua_script.file`, the referenced script is **automatically inlined** — its content is embedded as `lua_script.source` so the published filter is self-contained. The script file must reside within the filter's directory (path traversal is rejected).
 3. A content hash is computed from the parsed config. This hash is the filter's permanent identity.
-4. The filter and test files are uploaded. The server verifies tests pass before accepting.
+4. The filter and test files are uploaded. The server verifies tests pass before accepting. Verification includes the [determinism / byte-stability check](writing-filters.md#determinism): each test case's filter pipeline is run twice, and a filter whose output is not byte-stable is rejected at publish time just like a failed assertion.
 5. On success, the registry URL is printed.
 
 ### Options

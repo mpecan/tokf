@@ -2,7 +2,8 @@ use tokf_common::config::types::FilterConfig;
 use tokf_common::test_case::{Expectation, TestCase};
 
 use crate::CommandResult;
-use crate::filter::{self, FilterOptions};
+use crate::determinism;
+use crate::filter::{self, FilterOptions, FilterResult};
 
 /// Result of a single test case execution.
 #[derive(Debug, Clone)]
@@ -40,12 +41,37 @@ fn check_richness(case: &TestCase, raw: &str, filtered: &str, failures: &mut Vec
     }
 }
 
-/// Run a single test case against a filter configuration (in-memory).
+/// Run a single in-memory test case, applying `apply_fn` to the fixture.
 ///
-/// This is the core verification function used by both CLI (`tokf verify`)
-/// and server-side publish validation. Returns a failing result when
-/// `inline` is `None` (fixture-based cases cannot run in-memory).
-pub fn run_case_in_memory(config: &FilterConfig, case: &TestCase) -> CaseResult {
+/// Shared body of [`run_case_in_memory`] (non-sandboxed) and
+/// [`run_case_in_memory_sandboxed`], parameterised only by how the filter is
+/// applied. Returns a failing result when `inline` is `None` (fixture-based
+/// cases cannot run in-memory).
+///
+/// # Determinism check
+///
+/// `apply_fn` is invoked **twice** over the identical input and the two
+/// outputs are compared byte-for-byte via [`determinism::check`]; a divergence
+/// is reported as a failure with the same message shape as `tokf verify`. This
+/// runs on both the non-sandboxed and sandboxed paths — since they now share
+/// this one code path there is nothing to diverge, and it keeps the
+/// non-sandboxed `verify_filter` honest for any caller too.
+///
+/// Cost: this doubles filter execution per case. On the sandboxed/server path
+/// the second run is bounded by the same [`filter::lua::SandboxLimits`]
+/// (`instruction_limit`/`memory_limit`) as the first, so worst-case CPU per
+/// publish doubles rather than becoming unbounded.
+///
+/// Known limitation (see `docs/writing-filters.md#determinism`): a same-process
+/// double run cannot catch nondeterminism that varies *across* processes (e.g.
+/// Rust's per-process `HashMap` seed). The mitigation there — avoid unordered
+/// iteration reaching output; use `BTreeMap`/explicit ordering — is the real
+/// defence for that class of drift.
+fn run_case_generic(
+    config: &FilterConfig,
+    case: &TestCase,
+    apply_fn: impl Fn(&CommandResult) -> FilterResult,
+) -> CaseResult {
     let Some(inline) = case.inline.as_deref() else {
         return CaseResult {
             name: case.name.clone(),
@@ -65,9 +91,14 @@ pub fn run_case_in_memory(config: &FilterConfig, case: &TestCase) -> CaseResult 
         combined: fixture,
     };
 
-    let filtered = filter::apply(config, &cmd_result, &case.args, &FilterOptions::default());
+    let filtered = apply_fn(&cmd_result);
+    let filtered_again = apply_fn(&cmd_result);
 
     let mut failures = Vec::new();
+    let filter_name = config.command.first();
+    if let Some(msg) = determinism::check(filter_name, &filtered.output, &filtered_again.output) {
+        failures.push(msg);
+    }
     for expect in &case.expects {
         if let Some(msg) = evaluate(expect, &filtered.output) {
             failures.push(msg);
@@ -81,6 +112,17 @@ pub fn run_case_in_memory(config: &FilterConfig, case: &TestCase) -> CaseResult 
         passed,
         failures,
     }
+}
+
+/// Run a single test case against a filter configuration (in-memory).
+///
+/// This is the core verification function used by both CLI (`tokf verify`)
+/// and server-side publish validation. Returns a failing result when
+/// `inline` is `None` (fixture-based cases cannot run in-memory).
+pub fn run_case_in_memory(config: &FilterConfig, case: &TestCase) -> CaseResult {
+    run_case_generic(config, case, |cmd_result| {
+        filter::apply(config, cmd_result, &case.args, &FilterOptions::default())
+    })
 }
 
 /// Verify a filter against a set of test cases (all in-memory, no filesystem access).
@@ -103,47 +145,15 @@ pub fn run_case_in_memory_sandboxed(
     case: &TestCase,
     lua_limits: &filter::lua::SandboxLimits,
 ) -> CaseResult {
-    let Some(inline) = case.inline.as_deref() else {
-        return CaseResult {
-            name: case.name.clone(),
-            passed: false,
-            failures: vec![
-                "test case has no 'inline' data (fixture-based cases cannot run in-memory)"
-                    .to_string(),
-            ],
-        };
-    };
-    let fixture = inline.trim_end().to_string();
-
-    let cmd_result = CommandResult {
-        stdout: String::new(),
-        stderr: String::new(),
-        exit_code: case.exit_code,
-        combined: fixture,
-    };
-
-    let filtered = filter::apply_sandboxed(
-        config,
-        &cmd_result,
-        &case.args,
-        &FilterOptions::default(),
-        lua_limits,
-    );
-
-    let mut failures = Vec::new();
-    for expect in &case.expects {
-        if let Some(msg) = evaluate(expect, &filtered.output) {
-            failures.push(msg);
-        }
-    }
-    check_richness(case, &cmd_result.combined, &filtered.output, &mut failures);
-
-    let passed = failures.is_empty();
-    CaseResult {
-        name: case.name.clone(),
-        passed,
-        failures,
-    }
+    run_case_generic(config, case, |cmd_result| {
+        filter::apply_sandboxed(
+            config,
+            cmd_result,
+            &case.args,
+            &FilterOptions::default(),
+            lua_limits,
+        )
+    })
 }
 
 /// Verify a filter against test cases with sandboxed Lua execution.
@@ -444,5 +454,77 @@ output = "FAILED"
         let case = make_case("failure branch", "", 1, vec![expect_equals("FAILED")]);
         let result = run_case_in_memory(&config, &case);
         assert!(result.passed);
+    }
+
+    fn expect_matches(pattern: &str) -> Expectation {
+        Expectation {
+            contains: None,
+            not_contains: None,
+            equals: None,
+            starts_with: None,
+            ends_with: None,
+            line_count: None,
+            matches: Some(pattern.to_string()),
+            not_matches: None,
+        }
+    }
+
+    #[cfg(feature = "lua")]
+    const NONDETERMINISTIC_LUA: &str = r#"
+command = "test"
+
+[lua_script]
+lang = "luau"
+source = "return tostring(math.random(1, 1000000000))"
+"#;
+
+    #[cfg(feature = "lua")]
+    #[test]
+    fn run_case_in_memory_sandboxed_rejects_nondeterministic_lua_filter() {
+        let limits = filter::lua::SandboxLimits::default();
+        let config = make_config(NONDETERMINISTIC_LUA);
+        // The expect passes trivially — the failure must come from the
+        // byte-stability check, not the assertion.
+        let case = make_case("random", "input", 0, vec![expect_matches(r"^\d+$")]);
+        let result = run_case_in_memory_sandboxed(&config, &case, &limits);
+        assert!(!result.passed, "nondeterministic filter should fail");
+        assert!(
+            result.failures.iter().any(|f| f.contains("byte-stable")),
+            "expected a byte-stability failure, got: {:?}",
+            result.failures
+        );
+    }
+
+    #[cfg(feature = "lua")]
+    #[test]
+    fn run_case_in_memory_sandboxed_deterministic_filter_still_passes() {
+        let limits = filter::lua::SandboxLimits::default();
+        let config = make_config(
+            r#"
+command = "test"
+
+[lua_script]
+lang = "luau"
+source = 'return "OK"'
+"#,
+        );
+        let case = make_case("stable", "input", 0, vec![expect_equals("OK")]);
+        let result = run_case_in_memory_sandboxed(&config, &case, &limits);
+        assert!(result.passed, "failures: {:?}", result.failures);
+    }
+
+    #[cfg(feature = "lua")]
+    #[test]
+    fn run_case_in_memory_rejects_nondeterministic_lua_filter() {
+        // The non-sandboxed twin: step 2 applies the double-run check here too.
+        let config = make_config(NONDETERMINISTIC_LUA);
+        let case = make_case("random", "input", 0, vec![expect_matches(r"^\d+$")]);
+        let result = run_case_in_memory(&config, &case);
+        assert!(!result.passed, "nondeterministic filter should fail");
+        assert!(
+            result.failures.iter().any(|f| f.contains("byte-stable")),
+            "expected a byte-stability failure, got: {:?}",
+            result.failures
+        );
     }
 }

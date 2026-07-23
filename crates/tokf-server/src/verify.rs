@@ -179,6 +179,10 @@ file = "/some/path/script.luau"
 
     #[test]
     fn server_verify_allows_inline_lua_source() {
+        // Deterministic-still-passes companion to
+        // `server_verify_rejects_nondeterministic_filter`: this Luau filter is
+        // a pure function of its input, so it must survive the byte-stability
+        // check the publish path now runs (each case's pipeline runs twice).
         let config = make_config(
             r#"
 command = "test"
@@ -191,6 +195,51 @@ source = 'return "filtered"'
         let cases = vec![make_case("lua", "input", vec![expect_equals("filtered")])];
         let result = verify_filter_server(&config, &cases).unwrap();
         assert!(result.all_passed());
+    }
+
+    fn expect_matches(pattern: &str) -> Expectation {
+        Expectation {
+            contains: None,
+            not_contains: None,
+            equals: None,
+            starts_with: None,
+            ends_with: None,
+            line_count: None,
+            matches: Some(pattern.to_string()),
+            not_matches: None,
+        }
+    }
+
+    /// Acceptance criterion: a nondeterministic Luau filter is rejected by
+    /// `verify_filter_server`, with a message naming the filter and reporting
+    /// the first differing byte — the same shape `tokf verify` emits.
+    #[test]
+    fn server_verify_rejects_nondeterministic_filter() {
+        let config = make_config(
+            r#"
+command = "test"
+
+[lua_script]
+lang = "luau"
+source = "return tostring(math.random(1, 1000000000))"
+"#,
+        );
+        // The assertion would otherwise pass — the rejection must come from the
+        // determinism/byte-stability check.
+        let cases = vec![make_case("random", "input", vec![expect_matches(r"^\d+$")])];
+        let result = verify_filter_server(&config, &cases).unwrap();
+        assert!(!result.all_passed(), "nondeterministic filter must fail");
+        let failures = &result.cases[0].failures;
+        assert!(
+            failures.iter().any(|f| f.contains("test")),
+            "expected the filter name in the failure, got: {failures:?}"
+        );
+        assert!(
+            failures
+                .iter()
+                .any(|f| f.contains("byte-stable") && f.contains("first differing byte")),
+            "expected a byte-stability failure, got: {failures:?}"
+        );
     }
 
     #[test]

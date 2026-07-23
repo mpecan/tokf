@@ -1,3 +1,4 @@
+pub mod determinism;
 pub mod examples;
 pub mod filter;
 pub mod verify;

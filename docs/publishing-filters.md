@@ -23,7 +23,7 @@ Publishes a local filter to the community registry under the MIT license. Authen
 1. The filter TOML is read and validated.
 2. If the filter uses `lua_script.file`, the referenced script is **automatically inlined** — its content is embedded as `lua_script.source` so the published filter is self-contained. The script file must reside within the filter's directory (path traversal is rejected).
 3. A content hash is computed from the parsed config. This hash is the filter's permanent identity.
-4. The filter and test files are uploaded. The server verifies tests pass before accepting.
+4. The filter and test files are uploaded. The server verifies tests pass before accepting. Verification includes the [determinism / byte-stability check](writing-filters.md#determinism): each test case's filter pipeline is run twice, and a filter whose output is not byte-stable is rejected at publish time just like a failed assertion.
 5. On success, the registry URL is printed.
 
 ### Options
