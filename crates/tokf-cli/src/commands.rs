@@ -555,12 +555,17 @@ pub fn cmd_skill_install(rt: &Runtime, global: bool) -> i32 {
     }
 }
 
-pub fn cmd_hook_handle(rt: &Runtime, format: &HookFormat, no_cache: bool) -> i32 {
+pub fn cmd_hook_handle(
+    rt: &Runtime,
+    format: &HookFormat,
+    no_cache: bool,
+    no_mask_exit_code: bool,
+) -> i32 {
     let outcome = match format {
-        HookFormat::ClaudeCode => hook::handle(rt, no_cache),
-        HookFormat::Gemini => hook::handle_gemini(rt, no_cache),
-        HookFormat::Cursor => hook::handle_cursor(rt, no_cache),
-        HookFormat::Codex => hook::handle_codex(rt, no_cache),
+        HookFormat::ClaudeCode => hook::handle(rt, no_cache, no_mask_exit_code),
+        HookFormat::Gemini => hook::handle_gemini(rt, no_cache, no_mask_exit_code),
+        HookFormat::Cursor => hook::handle_cursor(rt, no_cache, no_mask_exit_code),
+        HookFormat::Codex => hook::handle_codex(rt, no_cache, no_mask_exit_code),
     };
     hook_outcome_exit_code(format, outcome)
 }

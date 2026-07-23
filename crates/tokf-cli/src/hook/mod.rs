@@ -95,37 +95,44 @@ impl CodexRewriteMode {
 ///
 /// Returns the outcome of the hook (allow/ask/deny/pass-through).
 /// Errors are intentionally swallowed to never block commands.
-pub fn handle(rt: &Runtime, no_cache: bool) -> HookOutcome {
-    handle_from_reader_with_cache(rt, &mut std::io::stdin(), no_cache)
+pub fn handle(rt: &Runtime, no_cache: bool, no_mask_exit_code: bool) -> HookOutcome {
+    handle_from_reader_with_cache(rt, &mut std::io::stdin(), no_cache, no_mask_exit_code)
 }
 
 fn handle_from_reader_with_cache<R: Read>(
     rt: &Runtime,
     reader: &mut R,
     no_cache: bool,
+    no_mask_exit_code: bool,
 ) -> HookOutcome {
     let mut input = String::new();
     if reader.read_to_string(&mut input).is_err() {
         return HookOutcome::PassThrough;
     }
 
-    handle_json_with_cache(rt, &input, no_cache)
+    handle_json_with_cache(rt, &input, no_cache, no_mask_exit_code)
 }
 
 /// Core handle logic operating on a JSON string.
 #[cfg(test)]
 pub(crate) fn handle_json(json: &str) -> HookOutcome {
     let rt = &Runtime::isolated();
-    handle_json_with_cache(rt, json, false)
+    handle_json_with_cache(rt, json, false, false)
 }
 
-fn handle_json_with_cache(rt: &Runtime, json: &str, no_cache: bool) -> HookOutcome {
+fn handle_json_with_cache(
+    rt: &Runtime,
+    json: &str,
+    no_cache: bool,
+    no_mask_exit_code: bool,
+) -> HookOutcome {
     handle_with_autodiscovery(
         rt,
         json,
         "Bash",
         HookFormat::ClaudeCode,
         no_cache,
+        no_mask_exit_code,
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
         HookResponse::deny,
@@ -150,6 +157,7 @@ pub(crate) fn handle_json_with_rules(
         user_config,
         search_dirs,
         false,
+        false,
         HookResponse::rewrite,
         HookResponse::rewrite_ask,
         HookResponse::deny,
@@ -159,28 +167,34 @@ pub(crate) fn handle_json_with_rules(
 }
 
 /// Process a Gemini CLI `BeforeTool` hook invocation.
-pub fn handle_gemini(rt: &Runtime, no_cache: bool) -> HookOutcome {
+pub fn handle_gemini(rt: &Runtime, no_cache: bool, no_mask_exit_code: bool) -> HookOutcome {
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         return HookOutcome::PassThrough;
     }
-    handle_gemini_json_with_cache(rt, &input, no_cache)
+    handle_gemini_json_with_cache(rt, &input, no_cache, no_mask_exit_code)
 }
 
 /// Core Gemini handle logic operating on a JSON string.
 #[cfg(test)]
 pub(crate) fn handle_gemini_json(json: &str) -> HookOutcome {
     let rt = &Runtime::isolated();
-    handle_gemini_json_with_cache(rt, json, false)
+    handle_gemini_json_with_cache(rt, json, false, false)
 }
 
-fn handle_gemini_json_with_cache(rt: &Runtime, json: &str, no_cache: bool) -> HookOutcome {
+fn handle_gemini_json_with_cache(
+    rt: &Runtime,
+    json: &str,
+    no_cache: bool,
+    no_mask_exit_code: bool,
+) -> HookOutcome {
     handle_with_autodiscovery(
         rt,
         json,
         "run_shell_command",
         HookFormat::Gemini,
         no_cache,
+        no_mask_exit_code,
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
         GeminiHookResponse::deny,
@@ -205,6 +219,7 @@ pub(crate) fn handle_gemini_json_with_rules(
         user_config,
         search_dirs,
         false,
+        false,
         GeminiHookResponse::rewrite,
         GeminiHookResponse::rewrite_ask,
         GeminiHookResponse::deny,
@@ -222,6 +237,7 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
     expected_tool: &str,
     format: HookFormat,
     no_cache: bool,
+    no_mask_exit_code: bool,
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
@@ -238,6 +254,7 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
         &user_config,
         &search_dirs,
         no_cache,
+        no_mask_exit_code,
         build_allow,
         build_ask,
         build_deny,
@@ -247,12 +264,12 @@ fn handle_with_autodiscovery<R: serde::Serialize>(
 }
 
 /// Process a Cursor `preToolUse` hook invocation.
-pub fn handle_cursor(rt: &Runtime, no_cache: bool) -> HookOutcome {
+pub fn handle_cursor(rt: &Runtime, no_cache: bool, no_mask_exit_code: bool) -> HookOutcome {
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         return HookOutcome::PassThrough;
     }
-    handle_cursor_json_with_cache(rt, &input, no_cache)
+    handle_cursor_json_with_cache(rt, &input, no_cache, no_mask_exit_code)
 }
 
 /// Core Cursor handle logic operating on a JSON string.
@@ -262,13 +279,25 @@ pub fn handle_cursor(rt: &Runtime, no_cache: bool) -> HookOutcome {
 #[cfg(test)]
 pub(crate) fn handle_cursor_json(json: &str) -> HookOutcome {
     let rt = &Runtime::isolated();
-    handle_cursor_json_with_cache(rt, json, false)
+    handle_cursor_json_with_cache(rt, json, false, false)
 }
 
-fn handle_cursor_json_with_cache(rt: &Runtime, json: &str, no_cache: bool) -> HookOutcome {
+fn handle_cursor_json_with_cache(
+    rt: &Runtime,
+    json: &str,
+    no_cache: bool,
+    no_mask_exit_code: bool,
+) -> HookOutcome {
     let user_config = rewrite::load_user_config(rt).unwrap_or_default();
     let search_dirs = crate::config::default_search_dirs(rt);
-    handle_cursor_json_inner(rt, json, &user_config, &search_dirs, no_cache)
+    handle_cursor_json_inner(
+        rt,
+        json,
+        &user_config,
+        &search_dirs,
+        no_cache,
+        no_mask_exit_code,
+    )
 }
 
 /// Fully injectable Cursor handle logic with explicit config (hermetic).
@@ -279,33 +308,45 @@ pub(crate) fn handle_cursor_json_with_rules(
     search_dirs: &[PathBuf],
 ) -> HookOutcome {
     let rt = &Runtime::isolated();
-    handle_cursor_json_inner(rt, json, user_config, search_dirs, false)
+    handle_cursor_json_inner(rt, json, user_config, search_dirs, false, false)
 }
 
 /// Process an `OpenAI` Codex CLI `PreToolUse` hook invocation.
-pub fn handle_codex(rt: &Runtime, no_cache: bool) -> HookOutcome {
+pub fn handle_codex(rt: &Runtime, no_cache: bool, no_mask_exit_code: bool) -> HookOutcome {
     let mut input = String::new();
     if std::io::stdin().read_to_string(&mut input).is_err() {
         return HookOutcome::PassThrough;
     }
-    handle_codex_json_with_cache(rt, &input, no_cache)
+    handle_codex_json_with_cache(rt, &input, no_cache, no_mask_exit_code)
 }
 
 /// Core Codex handle logic operating on a JSON string.
 #[cfg(test)]
 pub(crate) fn handle_codex_json(json: &str) -> HookOutcome {
     let rt = &Runtime::isolated();
-    handle_codex_json_with_cache(rt, json, false)
+    handle_codex_json_with_cache(rt, json, false, false)
 }
 
-fn handle_codex_json_with_cache(rt: &Runtime, json: &str, no_cache: bool) -> HookOutcome {
-    handle_codex_json_with_mode(rt, json, no_cache, CodexRewriteMode::from_runtime(rt))
+fn handle_codex_json_with_cache(
+    rt: &Runtime,
+    json: &str,
+    no_cache: bool,
+    no_mask_exit_code: bool,
+) -> HookOutcome {
+    handle_codex_json_with_mode(
+        rt,
+        json,
+        no_cache,
+        no_mask_exit_code,
+        CodexRewriteMode::from_runtime(rt),
+    )
 }
 
 fn handle_codex_json_with_mode(
     rt: &Runtime,
     json: &str,
     no_cache: bool,
+    no_mask_exit_code: bool,
     mode: CodexRewriteMode,
 ) -> HookOutcome {
     match mode {
@@ -315,6 +356,7 @@ fn handle_codex_json_with_mode(
             "Bash",
             HookFormat::Codex,
             no_cache,
+            no_mask_exit_code,
             CodexHookResponse::rewrite,
             CodexHookResponse::rewrite_ask,
             CodexHookResponse::deny,
@@ -327,6 +369,7 @@ fn handle_codex_json_with_mode(
             "Bash",
             HookFormat::Codex,
             no_cache,
+            no_mask_exit_code,
             CodexHookResponse::rewrite_deny_rerun,
             CodexHookResponse::rewrite_ask,
             CodexHookResponse::deny,
@@ -337,12 +380,14 @@ fn handle_codex_json_with_mode(
 }
 
 /// Cursor handle logic with explicit permission rules.
+#[allow(clippy::too_many_arguments)]
 fn handle_cursor_json_inner(
     rt: &Runtime,
     json: &str,
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
     no_cache: bool,
+    no_mask_exit_code: bool,
 ) -> HookOutcome {
     let Ok(input) = serde_json::from_str::<CursorInput>(json) else {
         return HookOutcome::PassThrough;
@@ -361,6 +406,7 @@ fn handle_cursor_json_inner(
         user_config,
         search_dirs,
         no_cache,
+        no_mask_exit_code,
         CursorHookResponse::rewrite,
         CursorHookResponse::rewrite_ask,
         CursorHookResponse::deny,
@@ -418,6 +464,7 @@ fn handle_generic<R: serde::Serialize>(
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
     no_cache: bool,
+    no_mask_exit_code: bool,
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
@@ -445,6 +492,7 @@ fn handle_generic<R: serde::Serialize>(
         user_config,
         search_dirs,
         no_cache,
+        no_mask_exit_code,
         build_allow,
         build_ask,
         build_deny,
@@ -469,6 +517,7 @@ fn process_command<R: serde::Serialize>(
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
     no_cache: bool,
+    no_mask_exit_code: bool,
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
@@ -483,6 +532,7 @@ fn process_command<R: serde::Serialize>(
         user_config,
         search_dirs,
         no_cache,
+        no_mask_exit_code,
         build_allow,
         build_ask,
         build_deny,
@@ -514,12 +564,17 @@ fn decide<R: serde::Serialize>(
     user_config: &RewriteConfig,
     search_dirs: &[PathBuf],
     no_cache: bool,
+    no_mask_exit_code: bool,
     build_allow: impl FnOnce(String, Option<String>) -> R,
     build_ask: impl FnOnce(String, Option<String>) -> R,
     build_deny: impl FnOnce(String, Option<String>) -> R,
     allow_outcome: HookOutcome,
     ask_outcome: HookOutcome,
 ) -> (HookOutcome, Option<String>) {
+    // Propagate `tokf hook --no-mask-exit-code handle` into every generated
+    // `tokf run` invocation (including each member of a compound command) —
+    // otherwise the flag is silently dropped and exit codes stay masked (#414).
+    let options = rewrite::types::RewriteOptions { no_mask_exit_code };
     // When an external permission engine is configured, consult it on every
     // command — even ones tokf has no filter for.
     if let Some(verdict) = query_external_engine(rt, command, json, format, user_config) {
@@ -530,7 +585,7 @@ fn decide<R: serde::Serialize>(
             }
             return (HookOutcome::PassThrough, None);
         }
-        let rewritten = rewrite::rewrite_with_config(
+        let rewritten = rewrite::rewrite_with_config_and_options(
             rewrite::RewriteCtx {
                 rt,
                 user_config,
@@ -538,6 +593,7 @@ fn decide<R: serde::Serialize>(
             },
             command,
             no_cache,
+            &options,
         );
         let rewrite_changed = rewritten != command;
         let output_cmd = if rewrite_changed {
@@ -564,7 +620,7 @@ fn decide<R: serde::Serialize>(
     }
 
     // No external engine — only act when tokf has a matching filter.
-    let rewritten = rewrite::rewrite_with_config(
+    let rewritten = rewrite::rewrite_with_config_and_options(
         rewrite::RewriteCtx {
             rt,
             user_config,
@@ -572,6 +628,7 @@ fn decide<R: serde::Serialize>(
         },
         command,
         no_cache,
+        &options,
     );
     if rewritten == command {
         return (HookOutcome::PassThrough, None);
