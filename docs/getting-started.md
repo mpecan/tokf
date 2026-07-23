@@ -126,7 +126,7 @@ This copies the filter TOML and its test suite to your config directory, where i
 | `--verbose` | Show which filter was matched (also explains skipped rewrites) |
 | `--no-filter` | Pass output through without filtering |
 | `--no-cache` | Bypass the filter discovery cache |
-| `--no-mask-exit-code` | Disable exit-code masking. By default tokf exits 0 and prepends `Error: Exit code N` on failure |
+| `--no-mask-exit-code` | Disable exit-code masking. By default tokf exits 0 and prepends `Error: Exit code N` on failure. Also propagates into hook-emitted `tokf run` rewrites (`tokf hook --no-mask-exit-code handle`), including each segment of compound `&&`/`;`/`\|\|` commands |
 | `--preserve-color` | Preserve ANSI color codes in filtered output (env: `TOKF_PRESERVE_COLOR=1`). See [Color passthrough](#color-passthrough) below |
 | `--baseline-pipe` | Pipe command for fair baseline accounting (injected by rewrite) |
 | `--prefer-less` | Compare filtered vs piped output and use whichever is smaller (requires `--baseline-pipe`) |

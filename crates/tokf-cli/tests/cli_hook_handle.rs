@@ -504,6 +504,55 @@ fn hook_handle_stdlib_yarn_test_rewrites() {
     );
 }
 
+// --- --no-mask-exit-code propagation into hook rewrites (regression for #414) ---
+
+/// Issue #414: `tokf --no-mask-exit-code hook handle` must propagate the flag
+/// into the emitted `tokf run` rewrite, not silently drop it.
+#[test]
+fn hook_handle_no_mask_exit_code_propagates_to_rewrite() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let (stdout, _stderr, success) =
+        hook_handle_format_with_args(dir.path(), json, &["--no-mask-exit-code", "hook", "handle"]);
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run --no-mask-exit-code git status"
+    );
+}
+
+/// Issue #414: every member of a compound command must carry the flag.
+#[test]
+fn hook_handle_no_mask_exit_code_propagates_to_compound() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status && cargo test"}}"#;
+    let (stdout, _stderr, success) =
+        hook_handle_format_with_args(dir.path(), json, &["--no-mask-exit-code", "hook", "handle"]);
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run --no-mask-exit-code git status && tokf run --no-mask-exit-code cargo test"
+    );
+}
+
+/// Sanity: without the flag, the default masking behavior is unchanged.
+#[test]
+fn hook_handle_default_still_masks() {
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let (stdout, success) = hook_handle_with_stdlib(json);
+    assert!(success);
+
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["command"],
+        "tokf run git status"
+    );
+}
+
 // --- External permission engine ask verdict (regression for #343) ---
 
 /// Regression for #343: when the external permission engine returns an "ask"

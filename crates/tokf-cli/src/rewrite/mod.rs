@@ -300,11 +300,6 @@ pub(crate) struct RewriteCtx<'a> {
     pub search_dirs: &'a [PathBuf],
 }
 
-/// Testable version with explicit config and search dirs (default options).
-pub(crate) fn rewrite_with_config(ctx: RewriteCtx<'_>, command: &str, verbose: bool) -> String {
-    rewrite_with_config_and_options(ctx, command, verbose, &RewriteOptions::default())
-}
-
 /// Testable version with explicit config, search dirs, and rewrite options.
 pub(crate) fn rewrite_with_config_and_options(
     ctx: RewriteCtx<'_>,

@@ -137,7 +137,9 @@ fn main() {
             eject_cmd::cmd_eject(&rt, filter, *global, cli.no_cache)
         }
         Commands::Hook { action } => match action {
-            HookAction::Handle { format } => cmd_hook_handle(&rt, format, cli.no_cache),
+            HookAction::Handle { format } => {
+                cmd_hook_handle(&rt, format, cli.no_cache, cli.no_mask_exit_code)
+            }
             HookAction::Install {
                 global,
                 tool,
