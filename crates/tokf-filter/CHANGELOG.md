@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.52](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.51...tokf-filter-v0.2.52) (2026-07-23)
+
+
+### Features
+
+* **filter:** reject nondeterministic filters at publish time ([#427](https://github.com/mpecan/tokf/issues/427)) ([#440](https://github.com/mpecan/tokf/issues/440)) ([2b17819](https://github.com/mpecan/tokf/commit/2b178198114213719e56498e10b53ac38527d1bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.51 to 0.2.52
+
 ## [0.2.51](https://github.com/mpecan/tokf/compare/tokf-filter-v0.2.50...tokf-filter-v0.2.51) (2026-07-22)
 
 

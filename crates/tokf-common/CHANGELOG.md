@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.52](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.51...tokf-common-v0.2.52) (2026-07-23)
+
+
+### Bug Fixes
+
+* **filter:** make `run` overrides honest about what was executed ([#436](https://github.com/mpecan/tokf/issues/436)) ([97d5ed8](https://github.com/mpecan/tokf/commit/97d5ed8b41af458c12df9fb0e1702929cf7cec79))
+
 ## [0.2.51](https://github.com/mpecan/tokf/compare/tokf-common-v0.2.50...tokf-common-v0.2.51) (2026-07-22)
 
 

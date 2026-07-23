@@ -1,6 +1,6 @@
 [package]
 name = "tokf-hook-types"
-version = "0.2.51"
+version = "0.2.52"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
