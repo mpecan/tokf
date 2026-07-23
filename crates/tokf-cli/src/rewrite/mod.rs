@@ -55,10 +55,15 @@ fn build_wrapper_rules() -> Vec<RewriteRule> {
 /// These patterns are matched using [`config::pattern_matches_prefix`] — the
 /// same authoritative matching logic used by `tokf run` and `tokf which` — so
 /// that `tokf -c` (shell mode) and `tokf rewrite` produce identical results.
-fn collect_filter_patterns(rt: &Runtime, search_dirs: &[PathBuf]) -> Vec<String> {
+fn collect_filter_patterns(rt: &Runtime, search_dirs: &[PathBuf], no_cache: bool) -> Vec<String> {
     let mut patterns = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let Ok(filters) = config::cache::discover_with_cache(rt, search_dirs) else {
+    let discovered = if no_cache {
+        config::discover_all_filters(search_dirs)
+    } else {
+        config::cache::discover_with_cache(rt, search_dirs)
+    };
+    let Ok(filters) = discovered else {
         return patterns;
     };
     for filter in filters {
@@ -132,6 +137,10 @@ pub fn rewrite_with_options(
             rt,
             user_config: &user_config,
             search_dirs: &config::default_search_dirs(rt),
+            // `--no-cache` is not threaded through the `tokf rewrite` subcommand
+            // or the `tokf -c` shell path yet (see #431 follow-up); those callers
+            // always use the cache. The hook path sets this explicitly.
+            no_cache: false,
         },
         command,
         verbose,
@@ -298,6 +307,11 @@ pub(crate) struct RewriteCtx<'a> {
     pub rt: &'a Runtime,
     pub user_config: &'a RewriteConfig,
     pub search_dirs: &'a [PathBuf],
+    /// Bypass the on-disk filter discovery cache (honours `--no-cache`).
+    /// Kept in the context — rather than as a positional `bool` argument next to
+    /// `verbose` — so call sites name the flag and can't silently swap the two
+    /// (the exact footgun behind #431).
+    pub no_cache: bool,
 }
 
 /// Testable version with explicit config, search dirs, and rewrite options.
@@ -307,11 +321,7 @@ pub(crate) fn rewrite_with_config_and_options(
     verbose: bool,
     options: &RewriteOptions,
 ) -> String {
-    let RewriteCtx {
-        rt,
-        user_config,
-        search_dirs,
-    } = ctx;
+    let user_config = ctx.user_config;
     let user_skip_patterns = user_config
         .skip
         .as_ref()
@@ -342,7 +352,7 @@ pub(crate) fn rewrite_with_config_and_options(
     }
 
     let wrapper_rules = build_wrapper_rules();
-    let filter_patterns = collect_filter_patterns(rt, search_dirs);
+    let filter_patterns = collect_filter_patterns(ctx.rt, ctx.search_dirs, ctx.no_cache);
     let local_wrapper = user_config.local_wrapper.clone().unwrap_or_default();
     let log_parse_failures = user_config
         .debug
@@ -422,6 +432,7 @@ pub(crate) fn rewrite_isolated_with_options(
             rt: &rt,
             user_config,
             search_dirs,
+            no_cache: false,
         },
         command,
         verbose,
@@ -432,7 +443,7 @@ pub(crate) fn rewrite_isolated_with_options(
 #[cfg(test)]
 pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<String> {
     let rt = Runtime::isolated();
-    collect_filter_patterns(&rt, search_dirs)
+    collect_filter_patterns(&rt, search_dirs, false)
 }
 
 #[cfg(test)]
