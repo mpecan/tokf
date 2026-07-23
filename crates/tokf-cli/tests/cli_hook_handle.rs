@@ -236,6 +236,32 @@ fn hook_handle_no_cache_skips_project_cache_for_matching_command() {
 }
 
 #[test]
+fn hook_handle_no_cache_does_not_enable_verbose_pipe_diagnostics() {
+    // Regression for #431: --no-cache was mis-mapped into rewrite's `verbose`
+    // parameter, so the hook path silently emitted `[tokf] stripped pipe …`
+    // diagnostics to stderr. --no-cache must not enable verbose rewrite
+    // diagnostics on stderr.
+    let dir = tempfile::TempDir::new().unwrap();
+    let json = r#"{"tool_name":"Bash","tool_input":{"command":"cargo test | grep FAILED"}}"#;
+
+    let (stdout, stderr, success) = hook_handle_format_with_args(
+        dir.path(),
+        json,
+        &["--no-cache", "hook", "handle", "--format", "claude-code"],
+    );
+
+    assert!(success);
+    assert!(
+        stderr.trim().is_empty(),
+        "--no-cache must not enable verbose rewrite diagnostics on stderr, got: {stderr}"
+    );
+    assert!(
+        stdout.contains("tokf run --baseline-pipe 'grep FAILED' cargo test"),
+        "expected the pipe rewrite to still work, got: {stdout}"
+    );
+}
+
+#[test]
 fn hook_handle_non_bash_tool_silent() {
     let json = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
     let (stdout, success) = hook_handle_with_stdlib(json);

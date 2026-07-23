@@ -575,6 +575,22 @@ fn decide<R: serde::Serialize>(
     // `tokf run` invocation (including each member of a compound command) —
     // otherwise the flag is silently dropped and exit codes stay masked (#414).
     let options = rewrite::types::RewriteOptions { no_mask_exit_code };
+    // `verbose` is `false`: hook rewrites must not emit diagnostics to the
+    // agent's stderr, and `no_cache` rides in `RewriteCtx`, not the old
+    // positional bool that used to be mistaken for it (#431).
+    let rewrite_cmd = |cmd: &str| {
+        rewrite::rewrite_with_config_and_options(
+            rewrite::RewriteCtx {
+                rt,
+                user_config,
+                search_dirs,
+                no_cache,
+            },
+            cmd,
+            false,
+            &options,
+        )
+    };
     // When an external permission engine is configured, consult it on every
     // command — even ones tokf has no filter for.
     if let Some(verdict) = query_external_engine(rt, command, json, format, user_config) {
@@ -585,16 +601,7 @@ fn decide<R: serde::Serialize>(
             }
             return (HookOutcome::PassThrough, None);
         }
-        let rewritten = rewrite::rewrite_with_config_and_options(
-            rewrite::RewriteCtx {
-                rt,
-                user_config,
-                search_dirs,
-            },
-            command,
-            no_cache,
-            &options,
-        );
+        let rewritten = rewrite_cmd(command);
         let rewrite_changed = rewritten != command;
         let output_cmd = if rewrite_changed {
             rewritten
@@ -620,16 +627,7 @@ fn decide<R: serde::Serialize>(
     }
 
     // No external engine — only act when tokf has a matching filter.
-    let rewritten = rewrite::rewrite_with_config_and_options(
-        rewrite::RewriteCtx {
-            rt,
-            user_config,
-            search_dirs,
-        },
-        command,
-        no_cache,
-        &options,
-    );
+    let rewritten = rewrite_cmd(command);
     if rewritten == command {
         return (HookOutcome::PassThrough, None);
     }
