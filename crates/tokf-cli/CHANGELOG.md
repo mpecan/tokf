@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.52](https://github.com/mpecan/tokf/compare/tokf-v0.2.51...tokf-v0.2.52) (2026-07-23)
+
+
+### Features
+
+* **filter:** reject nondeterministic filters at publish time ([#427](https://github.com/mpecan/tokf/issues/427)) ([#440](https://github.com/mpecan/tokf/issues/440)) ([2b17819](https://github.com/mpecan/tokf/commit/2b178198114213719e56498e10b53ac38527d1bf))
+
+
+### Bug Fixes
+
+* **filter:** make `run` overrides honest about what was executed ([#436](https://github.com/mpecan/tokf/issues/436)) ([97d5ed8](https://github.com/mpecan/tokf/commit/97d5ed8b41af458c12df9fb0e1702929cf7cec79))
+* **hook:** propagate --no-mask-exit-code into hook-generated rewrites ([#414](https://github.com/mpecan/tokf/issues/414)) ([#439](https://github.com/mpecan/tokf/issues/439)) ([3b3cd2e](https://github.com/mpecan/tokf/commit/3b3cd2ebcd6e0cd34e7eefb4f52ee66eb64bd002))
+* **hook:** stop --no-cache from enabling verbose rewrite diagnostics ([#431](https://github.com/mpecan/tokf/issues/431)) ([#441](https://github.com/mpecan/tokf/issues/441)) ([a739d21](https://github.com/mpecan/tokf/commit/a739d21ff4b53f30e02cfcd8b58e57979d809088))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.51 to 0.2.52
+    * tokf-filter bumped from 0.2.51 to 0.2.52
+    * tokf-hook-types bumped from 0.2.51 to 0.2.52
+
 ## [0.2.51](https://github.com/mpecan/tokf/compare/tokf-v0.2.50...tokf-v0.2.51) (2026-07-22)
 
 
