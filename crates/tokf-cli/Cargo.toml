@@ -86,6 +86,7 @@ otel-grpc = [
 tokf-dev = { path = ".", package = "tokf", features = ["test-support"] }
 mockito = "1.7.2"
 filetime = "0.2"
+proptest = "1"
 
 [lints]
 workspace = true
