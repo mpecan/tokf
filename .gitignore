@@ -8,3 +8,6 @@ tarpaulin-report.html
 .claude/worktrees/
 .opencode/
 examples/
+
+# proptest failure-seed cache (regenerated locally on real failures)
+proptest-regressions/

@@ -177,6 +177,23 @@ Two rules follow from this:
   it was hiding (see issue #429). If a test truly needs exclusive access to a
   shared *external* resource, raise it in review.
 
+### Property tests for the rewrite engine
+
+The shell rewrite engine has a property-based invariant suite in
+`crates/tokf-cli/src/rewrite/proptest_rewrite.rs` (uses `proptest`, a dev-only
+dependency). It generates bash from a narrow grammar (simple/piped/compound
+commands, quoted args) and asserts structural invariants on the rewrite output:
+`compound_segments` round-trips byte-for-byte, argv is never fabricated, the
+output always parses, rewriting is idempotent, and quoted literals survive
+intact. This class of bug (a rewrite that *looks* plausible but has a different
+argv structure, e.g. #355's `head -1\necho` → `head -1echo`) slips past
+example-based tests, so extend the grammar or add an invariant here when you
+touch the engine. Run it with:
+
+```sh
+cargo test -p tokf proptest_rewrite
+```
+
 ---
 
 ## Adding a built-in filter

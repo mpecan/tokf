@@ -447,6 +447,8 @@ pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<S
 }
 
 #[cfg(test)]
+mod proptest_rewrite;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_compound;
