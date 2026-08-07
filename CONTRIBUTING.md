@@ -144,6 +144,77 @@ Dependency updates are batched by Renovate into a single weekly PR, and new
 releases are quarantined for 7 days (`minimumReleaseAge`) so that a malicious
 version has time to be caught and yanked before it reaches us. Security fixes
 skip both the quarantine and the weekly window.
+### Testing on Windows
+
+Windows is where program resolution diverges most — `CreateProcessW` only ever
+appends `.exe`, `PATH` is `;`-separated, and `:` appears inside every absolute
+path. Issues #449, #450 and #451 all lived there and none were reachable from a
+Linux runner. CI now has a `windows-latest` job, but a local VM makes the loop
+minutes instead of a CI round trip.
+
+**Write the test so it does not need Windows where possible.** Several
+invariants hold on every platform and should be asserted everywhere — the
+`PATH` round-trip through `split_paths` in `path_env.rs` and the argv
+pass-through in `runner.rs` both fail on macOS if the fix regresses. Reserve
+`#[cfg(windows)]` for assertions only Windows can observe, such as a drive
+letter surviving as a single `PATH` entry.
+
+#### Setting up a disposable VM
+
+Windows evaluation images expire after 90 days, so treat the VM as disposable
+and re-create it when it lapses — that is Microsoft's intended path, not a
+workaround. On Apple Silicon you need an **ARM64** build; the ordinary x64 ISO
+will not install.
+
+```sh
+brew install --cask utm crystalfetch   # virtualiser + official ARM64 ISO downloader
+```
+
+1. Use **CrystalFetch** to build a Windows 11 ARM64 ISO. It assembles one from
+   Microsoft's official UUP update packages via UUP Dump — the payload is
+   Microsoft's, the tooling that fetches and assembles it is third-party. If you
+   would rather avoid that, Microsoft publishes ARM64 VHDX images to Windows
+   Insider members, and VMware Fusion (free, but behind a Broadcom account) can
+   download Windows 11 ARM directly.
+2. Create a UTM VM from that ISO (Virtualise, not Emulate — Apple's hypervisor
+   runs ARM64 guests at native speed). Give it 4+ CPUs, 8 GB RAM and 80 GB disk;
+   the first build compiles Luau, SQLite and aws-lc from source.
+3. In an **elevated** PowerShell inside the VM:
+
+   ```powershell
+   iwr -useb https://raw.githubusercontent.com/mpecan/tokf/main/scripts/provision-windows-dev.ps1 | iex
+   ```
+
+   That installs Git, rustup (honouring `rust-toolchain.toml`), Visual Studio
+   Build Tools with the C++ workload, CMake and NASM, then clones the repo.
+4. **Snapshot the VM once the first build succeeds.** That snapshot is what you
+   return to — both after a bad experiment and when the licence lapses.
+
+Then run what CI runs:
+
+```powershell
+cargo clippy --locked -p tokf --all-targets -- -D warnings
+cargo test   --locked -p tokf --lib
+cargo test   --locked -p tokf --bin tokf
+```
+
+Two caveats worth knowing:
+
+- A VM on Apple Silicon is **ARM64**, while CI runs **x86-64**. For OS-level
+  behaviour — `PATHEXT`, path separators, `CreateProcess` semantics — the two
+  are equivalent, which covers this whole bug class. Anything architecture-
+  specific still only shows up in CI.
+- `aws-lc-sys` is the most fragile dependency to build on Windows, ARM64
+  especially. If it fails, that is a toolchain problem in the VM (usually a
+  missing C++ workload or CMake), not a problem with your change.
+
+#### What cross-compiling from macOS cannot do
+
+`cargo check --target x86_64-pc-windows-msvc` does **not** work as a shortcut:
+`libsqlite3-sys`, `mlua-sys` and `aws-lc-sys` all run build scripts that need a
+Windows C/C++ toolchain. `cross` does not help on Apple Silicon either — its
+images are x86-64 and the host cannot install the matching toolchain. The VM
+and CI are the two real options.
 
 ### Writing an isolated test
 
