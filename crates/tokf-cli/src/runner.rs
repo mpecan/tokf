@@ -413,7 +413,15 @@ mod tests {
         // execute() uses Command::new (no shell), so special chars are passed literally
         let (program, args) = echo_program(&["hello world"]);
         let result = execute(program, &args).unwrap();
-        assert_eq!(result.stdout.trim(), "hello world");
+        // `cmd /C echo` prints the argument in the quoted form it received it
+        // in. Those quotes are the point: they show the space did not split it
+        // into two arguments, which is exactly what this test is about.
+        let expected = if cfg!(windows) {
+            "\"hello world\""
+        } else {
+            "hello world"
+        };
+        assert_eq!(result.stdout.trim(), expected);
         assert_eq!(result.exit_code, 0);
     }
 
@@ -477,7 +485,10 @@ mod tests {
     fn test_execute_shell_args_interpolation() {
         let args = vec!["a".to_string(), "b".to_string()];
         let result = execute_shell("echo {args}", &args).unwrap();
-        assert_eq!(result.stdout.trim(), "a b");
+        // PowerShell's `echo` is an alias for Write-Output, which emits one
+        // line per argument where `sh` emits one space-separated line. Both
+        // interpolated both arguments, which is what is under test.
+        assert_eq!(result.stdout.trim().replace('\n', " "), "a b");
     }
 
     #[test]
@@ -515,7 +526,7 @@ mod tests {
 
     #[test]
     fn test_execute_stderr() {
-        let result = execute_shell("echo err >&2", &[]).unwrap();
+        let result = execute_shell(&write_stderr("err"), &[]).unwrap();
         assert!(result.stderr.contains("err"));
         assert!(result.stdout.is_empty());
         assert_eq!(result.combined, "err");
@@ -662,7 +673,15 @@ mod tests {
     #[test]
     fn test_execute_shell_with_env_propagates_vars() {
         let env = vec![("TOKF_TEST_VAR2", "shell_env_val")];
-        let result = execute_shell_with_env("echo $TOKF_TEST_VAR2", &[], &env).unwrap();
+        // In PowerShell `$NAME` reads a shell variable; environment variables
+        // live in the `env:` drive, so the snippet differs by platform even
+        // though the behaviour under test does not.
+        let snippet = if cfg!(windows) {
+            "echo $env:TOKF_TEST_VAR2"
+        } else {
+            "echo $TOKF_TEST_VAR2"
+        };
+        let result = execute_shell_with_env(snippet, &[], &env).unwrap();
         assert_eq!(result.stdout.trim(), "shell_env_val");
     }
 

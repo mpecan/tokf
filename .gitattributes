@@ -1,0 +1,29 @@
+# Normalise line endings to LF in the working tree on every platform.
+#
+# This is not only cosmetic. Several files are embedded into the binary
+# verbatim with `include_str!` and then written to the user's disk —
+# `crates/tokf-cli/skills/**/SKILL.md` among them. Git's `core.autocrlf=true`,
+# the default on Windows installs and on the Windows CI runners, would check
+# those out as CRLF, so a build from a Windows checkout embeds CRLF and
+# `tokf skill install` writes YAML frontmatter that begins `---\r\n`.
+#
+# Filter TOMLs and their fixtures are equally sensitive: fixtures are compared
+# line by line against captured command output, and a stray CR changes the
+# comparison.
+* text=auto eol=lf
+
+# Windows shell scripts are the one thing that genuinely wants CRLF — some
+# Windows shells mis-parse an LF-only .bat/.cmd. None are checked in today;
+# this keeps that true if one ever is.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary

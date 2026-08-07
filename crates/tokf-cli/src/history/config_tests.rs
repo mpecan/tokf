@@ -485,9 +485,16 @@ fn try_record_returns_id_on_success() {
 
 #[test]
 fn try_record_does_not_panic_on_unwritable_db_path() {
-    // Point to a path whose parent cannot be created.
+    // Point to a path whose parent cannot be created. Using a regular *file* as
+    // the parent directory works on every platform: `/dev/null/...` only fails
+    // this way on Unix, and on Windows the path is merely unusual, so the
+    // directory got created and the test asserted the wrong thing.
+    let dir = TempDir::new().unwrap();
+    let blocker = dir.path().join("not-a-directory");
+    std::fs::write(&blocker, b"x").unwrap();
+
     let rt = Runtime::builder()
-        .db_path("/dev/null/no-such-dir/tracking.db")
+        .db_path(blocker.join("no-such-dir").join("tracking.db"))
         .debug(false)
         .build();
     // Must not panic — errors are silently swallowed when TOKF_DEBUG is unset.
