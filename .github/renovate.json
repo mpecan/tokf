@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
   ],
   "schedule": [
     "before 6am on monday"
@@ -9,43 +10,50 @@
   "labels": [
     "dependencies"
   ],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "description": "Security fixes skip the quarantine and the weekly window — a known-exploited hole is worse than an unvetted release.",
+    "minimumReleaseAge": null,
+    "schedule": [
+      "at any time"
+    ],
+    "labels": [
+      "dependencies",
+      "security"
+    ]
+  },
   "packageRules": [
     {
       "description": "Group all GitHub Actions updates together",
       "matchManagers": [
         "github-actions"
       ],
-      "groupName": "GitHub Actions",
-      "automerge": true,
-      "automergeType": "pr"
+      "groupName": "GitHub Actions"
     },
     {
-      "description": "Automerge Cargo patch updates",
+      "description": "Batch every non-major cargo update into a single PR",
       "matchManagers": [
         "cargo"
       ],
       "matchUpdateTypes": [
-        "patch"
+        "patch",
+        "minor",
+        "digest",
+        "pin"
       ],
-      "automerge": true,
-      "automergeType": "pr"
+      "groupName": "cargo dependencies"
     },
     {
-      "description": "Group Cargo minor updates into one PR",
-      "matchManagers": [
-        "cargo"
-      ],
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "groupName": "Cargo dependencies (minor)"
-    },
-    {
-      "description": "Major updates always get individual PRs",
+      "description": "Major updates always get individual PRs, so a breaking bump cannot block the batch",
       "matchUpdateTypes": [
         "major"
       ],
-      "automerge": false
+      "labels": [
+        "dependencies",
+        "major"
+      ]
     },
     {
       "description": "rusqlite is held below 0.40: it requires libsqlite3-sys 0.38, which collides with sqlx-sqlite (<0.38) on the `links = \"sqlite3\"` constraint. Lift once sqlx-sqlite allows 0.38.",
