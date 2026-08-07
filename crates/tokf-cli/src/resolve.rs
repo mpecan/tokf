@@ -572,20 +572,35 @@ run = "pnpm test --reporter=dot {args}"
     #[test]
     fn build_inject_env_uses_original_path_when_nested() {
         // Simulate a nested invocation: TOKF_ORIGINAL_PATH is already set.
-        let rt = Runtime::builder().original_path("/usr/bin:/bin").build();
+        // Build the original value with the platform separator — hard-coding
+        // `:` is the #451 bug itself, and a test that assumes it cannot observe
+        // the fix.
+        let original = std::env::join_paths(["/usr/bin", "/bin"].iter())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let rt = Runtime::builder().original_path(&original).build();
         let shims = rt.shims_dir().unwrap();
         std::fs::create_dir_all(&shims).unwrap();
 
         let cfg = config_with_inject(true);
         let env = build_inject_env(&rt, Some(&cfg));
 
-        // PATH should be shims:/usr/bin:/bin (not shims:shims:/usr/bin:/bin)
         assert_eq!(env[1].0, "TOKF_ORIGINAL_PATH");
-        assert_eq!(env[1].1, "/usr/bin:/bin");
-        assert!(
-            env[0]
-                .1
-                .starts_with(&format!("{}:/usr/bin:/bin", shims.display()))
+        assert_eq!(env[1].1, original);
+
+        // PATH must be shims + the original entries, and must not stack the
+        // shims dir twice on a nested invocation. Compare parsed entries rather
+        // than a formatted string so the assertion holds on either separator.
+        let entries: Vec<std::path::PathBuf> = std::env::split_paths(&env[0].1).collect();
+        assert_eq!(
+            entries,
+            vec![
+                shims,
+                std::path::PathBuf::from("/usr/bin"),
+                std::path::PathBuf::from("/bin"),
+            ],
+            "expected the shims dir once, then the original entries"
         );
     }
 
@@ -612,7 +627,9 @@ run = "pnpm test --reporter=dot {args}"
         )
         .unwrap();
 
-        assert_eq!(result.stdout.trim(), "substituted extra");
+        // PowerShell's `echo` is Write-Output, one line per argument; `sh`
+        // emits a single space-separated line. Both substituted both words.
+        assert_eq!(result.stdout.trim().replace('\n', " "), "substituted extra");
         assert_eq!(
             executed.as_deref(),
             // Args are shell-quoted: this is the literal line handed to `sh`.
