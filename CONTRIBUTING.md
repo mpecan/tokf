@@ -101,6 +101,50 @@ cargo dupes stats        # statistics only
 cargo dupes check        # CI gate — fails if thresholds exceeded
 ```
 
+### Supply chain
+
+A dependency is executable code: `build.rs` scripts and proc macros run
+arbitrary code on your machine and in CI the moment you build. CI therefore
+gates on [cargo-deny](https://crates.io/crates/cargo-deny):
+
+```sh
+cargo install cargo-deny --locked
+cargo deny check advisories bans sources
+```
+
+Three checks run, with the policy and the reasoning behind each in `deny.toml`:
+
+- **advisories** — RustSec vulnerability reports, and **yanked** crates. A yank
+  is how a compromised release is withdrawn from crates.io, so a yanked version
+  in `Cargo.lock` fails the build.
+- **bans** — wildcard version requirements, which accept any future release
+  sight-unseen.
+- **sources** — every crate must come from crates.io. A dependency that
+  suddenly resolves to a git repository is the shape a takeover attack takes,
+  and it would otherwise pass unnoticed in a lockfile diff.
+
+If it fails on a *yanked* crate, the fix is usually
+`cargo update -p <crate>@<version> --precise <newer>` — check for a non-yanked
+release inside the same semver range first. If it fails on a real advisory with
+no fix available, add an entry to `ignore` in `deny.toml` **with a reason and a
+condition for revisiting it**. An entry there is a decision, not a TODO.
+
+Two related rules apply to anything under `.github/`:
+
+- **Actions are pinned to full commit SHAs**, with the version in a trailing
+  comment (`uses: actions/checkout@d23441a… # v6`). A tag like `@v6` or
+  `@master` is mutable, so whoever controls that repository can repoint it at
+  new code that then runs with our token. Renovate keeps the digests current.
+- **`persist-credentials: false` on every checkout** except the two Homebrew
+  taps in `release.yml`, which push with those credentials. Without it the token
+  is left in `.git/config`, where a build script compiled later in the same job
+  can read it.
+
+Dependency updates are batched by Renovate into a single weekly PR, and new
+releases are quarantined for 7 days (`minimumReleaseAge`) so that a malicious
+version has time to be caught and yanked before it reaches us. Security fixes
+skip both the quarantine and the weekly window.
+
 ### Writing an isolated test
 
 tokf keeps its runtime configuration **explicit**. User directories, the

@@ -11,14 +11,21 @@ jobs:
     name: Backfill canonical v1 hashes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Do not leave the token in .git/config. Build scripts and proc
+          # macros compiled in this job run arbitrary code with access to the
+          # workspace and could otherwise read it back out.
+          persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Run backfill
-        run: cargo run -p tokf --features stdlib-publish -- backfill-v1-hashes
+        run: cargo run --locked -p tokf --features stdlib-publish -- backfill-v1-hashes
         env:
           TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
           TOKF_REGISTRY_URL: https://api.tokf.net

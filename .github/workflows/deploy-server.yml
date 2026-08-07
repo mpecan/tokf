@@ -25,9 +25,13 @@ jobs:
       group: deploy-server
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Do not leave the token in .git/config — the remote build that
+          # follows has access to the workspace.
+          persist-credentials: false
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master
 
       - run: flyctl deploy --remote-only
         env:

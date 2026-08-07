@@ -23,13 +23,19 @@ jobs:
     if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ env.RELEASE_TAG }}
+          # Do not leave the token in .git/config. Build scripts and proc
+          # macros compiled in this job run arbitrary code with access to the
+          # workspace and could otherwise read it back out.
+          persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Publish tokf-common
         run: |
@@ -88,10 +94,11 @@ jobs:
       contents: read
       id-token: write   # mint the OIDC token for npm trusted publishing
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-node@v6
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
@@ -117,15 +124,17 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: ${{ matrix.target }}
 
@@ -133,7 +142,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }} -p tokf
+        run: cargo build --locked --release --target ${{ matrix.target }} -p tokf
 
       - name: Package binary
         shell: bash
@@ -184,21 +193,25 @@ jobs:
 
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
           private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}
           repositories: homebrew-tokf,homebrew-tools
 
+      # These two taps deliberately keep their credentials: the "Commit and
+      # push" steps below push the regenerated formula back with them. They are
+      # the only checkouts in the repo that do, which is why they are the only
+      # ones without persist-credentials: false.
       - name: Checkout homebrew-tokf tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: mpecan/homebrew-tokf
           token: ${{ steps.app-token.outputs.token }}
           path: homebrew-tokf
 
       - name: Checkout homebrew-tools tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: mpecan/homebrew-tools
           token: ${{ steps.app-token.outputs.token }}
@@ -281,16 +294,19 @@ jobs:
     if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
 
       - name: Publish stdlib filters
-        run: cargo run -p tokf --features stdlib-publish -- publish-stdlib
+        run: cargo run --locked -p tokf --features stdlib-publish -- publish-stdlib
         env:
           TOKF_SERVICE_TOKEN: ${{ secrets.TOKF_SERVICE_TOKEN }}
           TOKF_REGISTRY_URL: https://api.tokf.net
@@ -303,7 +319,7 @@ jobs:
     steps:
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.REPOSITORY_BUTLER_APP_ID }}
           private-key: ${{ secrets.REPOSITORY_BUTLER_PEM }}

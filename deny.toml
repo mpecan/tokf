@@ -1,0 +1,49 @@
+# cargo-deny configuration — supply-chain checks for the dependency tree.
+#
+# CI runs `cargo deny check advisories bans sources` (see .github/workflows/ci.yml).
+# The licences check is deliberately not run: this file exists to catch
+# compromised, vulnerable, or untrusted dependencies, and licence policy is a
+# separate concern that would only add noise to that signal.
+#
+# Run locally with:
+#   cargo install cargo-deny --locked
+#   cargo deny check advisories bans sources
+
+[graph]
+# Check every feature. otel, otel-grpc, tokenizer and stdlib-publish are all
+# off by default, so without this their dependencies are never audited — and
+# stdlib-publish is the one that runs against the production registry.
+all-features = true
+# Dev-dependencies are excluded: crates/tokf-server dev-depends on itself under
+# an alias to enable its `test-helpers` feature, and krates (inside cargo-deny)
+# hits an unreachable!() on that node. See the note in .github/workflows/ci.yml.
+exclude-dev = true
+
+[advisories]
+# RustSec advisory database.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# A yanked crate is the strongest signal we get that a release was pulled —
+# it is how a compromised version disappears from crates.io. Fail on it.
+yanked = "deny"
+# Advisories consciously accepted, each with a reason and a revisit condition.
+# Keep this list empty where possible; an entry here is a decision, not a TODO.
+ignore = []
+
+[bans]
+# The workspace legitimately carries duplicate versions (sqlx and rusqlite
+# share libsqlite3-sys under a version pin — see .github/renovate.json).
+# Duplicate tracking lives in dupes.toml / `cargo dupes check` instead.
+multiple-versions = "allow"
+# A wildcard version requirement means any future release is accepted
+# sight-unseen, including a malicious one. Never acceptable here.
+wildcards = "deny"
+deny = []
+
+[sources]
+# Only crates.io. A dependency that suddenly resolves to a git repository or a
+# private registry is the shape a dependency-confusion or takeover attack
+# takes, and it would otherwise pass unnoticed in a lockfile diff.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
