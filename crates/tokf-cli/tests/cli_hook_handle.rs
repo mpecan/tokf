@@ -872,6 +872,9 @@ fn hook_log_unwritable_path_does_not_block_hook() {
     );
 }
 
+// Unix-only: the external engine is a `#!/bin/sh` script made executable with
+// a permission bit, neither of which exists on Windows.
+#[cfg(unix)]
 #[test]
 fn hook_log_records_ask_outcome() {
     // Wires the same external-engine harness as the existing #343 test

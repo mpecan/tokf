@@ -221,10 +221,46 @@ jobs:
       - name: Run E2E integration tests
         run: cargo test --locked -p e2e-tests -- --ignored
 
+  # Windows is where program resolution differs most: CreateProcessW only ever
+  # appends `.exe`, PATH is `;`-separated, and `:` appears inside every absolute
+  # path. Issues #449, #450 and #451 all lived here and none were reachable from
+  # an ubuntu-only matrix — they had to be reported from outside the project.
+  #
+  # Scope note: this runs the tokf unit tests, not the whole workspace. Much of
+  # the integration suite shells out to `sh` and asserts POSIX semantics
+  # (see #360), which is a separate problem from program resolution. Widening
+  # this job is tracked rather than done here, so the gate stays green and
+  # therefore meaningful.
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: "1.96.1"
+          components: clippy
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      # Catches the compile-time class of Windows breakage — an unguarded
+      # `std::os::unix` import, or one left dead by a cfg'd-out test.
+      - name: Clippy
+        run: cargo clippy --locked -p tokf --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --locked -p tokf --lib
+
+      - name: Binary-crate tests
+        run: cargo test --locked -p tokf --bin tokf
+
   check:
     name: Check
     if: always()
-    needs: [lint, supply-chain, test, db-test, docker]
+    needs: [lint, supply-chain, test, db-test, docker, windows]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed
@@ -247,6 +283,10 @@ jobs:
           fi
           if [[ "${{ needs.docker.result }}" != "success" ]]; then
             echo "Docker build failed"
+            exit 1
+          fi
+          if [[ "${{ needs.windows.result }}" != "success" ]]; then
+            echo "Windows failed"
             exit 1
           fi
           echo "All checks passed"

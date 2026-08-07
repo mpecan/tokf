@@ -101,15 +101,16 @@ fn run_interleaved(mut child: std::process::Child) -> anyhow::Result<CommandResu
 ///
 /// This is used when we're about to override `PATH` with a shims directory —
 /// we must resolve the original program first so it doesn't find our own shim.
+///
+/// Delegates to `which`, which applies the platform's own resolution rules.
+/// That matters on Windows, where a bare name is resolved through `PATHEXT`:
+/// a hand-rolled `dir.join(program)` loop had no success mode there. For `npm`
+/// it matched the extensionless POSIX shell script that ships next to
+/// `npm.cmd` — a file `CreateProcessW` cannot execute — and for a normal `.exe`
+/// such as `git` it found nothing at all, so the shim-avoidance this function
+/// exists for never happened.
 pub fn resolve_program(program: &str) -> Option<std::path::PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(program);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
+    which::which(program).ok()
 }
 
 /// Build the system shell command for a shell snippet.
@@ -130,14 +131,20 @@ fn build_shell_command(command: &str) -> Command {
     }
 }
 
-fn spawn_command(mut cmd: Command, program: &str) -> anyhow::Result<std::process::Child> {
-    match cmd.spawn() {
-        Ok(child) => Ok(child),
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            Err(anyhow::anyhow!("program not found: {program}"))
-        }
-        Err(err) => Err(err.into()),
-    }
+/// Spawn a prepared command, leaving the `io::Error` intact.
+///
+/// The raw error kind is preserved so callers can distinguish `NotFound` and
+/// retry with a differently-resolved program path.
+fn spawn_command(mut cmd: Command) -> std::io::Result<std::process::Child> {
+    cmd.spawn()
+}
+
+/// Spawn a prepared command, reporting a missing program by name.
+fn spawn_named(cmd: Command, program: &str) -> anyhow::Result<std::process::Child> {
+    spawn_command(cmd).map_err(|err| match err.kind() {
+        ErrorKind::NotFound => anyhow::anyhow!("program not found: {program}"),
+        _ => err.into(),
+    })
 }
 
 /// Escape a string for safe inclusion in a shell command.
@@ -175,15 +182,13 @@ pub fn execute(command: &str, args: &[String]) -> anyhow::Result<CommandResult> 
 ///
 /// Returns an error if the command string is empty or the process fails to spawn.
 pub fn execute_with_env(
-    command: &str,
+    program: &str,
     args: &[String],
     extra_env: &[(&str, &str)],
 ) -> anyhow::Result<CommandResult> {
-    let mut parts = command.split_whitespace();
-    let program = parts
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("empty command"))?;
-    let base_args: Vec<&str> = parts.collect();
+    if program.is_empty() {
+        anyhow::bail!("empty command");
+    }
 
     let has_path_override = extra_env.iter().any(|(k, _)| *k == "PATH");
     let resolved = if has_path_override {
@@ -195,16 +200,41 @@ pub fn execute_with_env(
         .as_ref()
         .map_or(program, |p| p.to_str().unwrap_or(program));
 
-    let mut cmd = Command::new(actual_program);
-    cmd.args(&base_args)
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    match spawn_command(build_command(actual_program, args, extra_env)) {
+        Ok(child) => run_interleaved(child),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            // Windows resolves a bare program name through CreateProcessW,
+            // which only ever appends `.exe`. Every other PATHEXT entry —
+            // `.cmd`, `.bat`, `.com`, … — is unreachable, so `npm` fails while
+            // `npm.cmd` works. `which` applies PATHEXT, so retry through it
+            // once before giving up. On Unix this second attempt simply finds
+            // nothing new and the original error stands.
+            let fallback = resolve_program(actual_program)
+                .filter(|p| p.as_os_str() != actual_program)
+                .ok_or_else(|| anyhow::anyhow!("program not found: {actual_program}"))?;
+
+            let child = spawn_named(
+                build_command(&fallback.to_string_lossy(), args, extra_env),
+                actual_program,
+            )?;
+            run_interleaved(child)
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Build the child process for `program`, without spawning it.
+///
+/// Separate from the spawn so a failed attempt can be rebuilt and retried with
+/// a different program path — `Command` does not allow changing it after the
+/// fact.
+fn build_command(program: &str, args: &[String], extra_env: &[(&str, &str)]) -> Command {
+    let mut cmd = Command::new(program);
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
-
-    run_interleaved(spawn_command(cmd, actual_program)?)
+    cmd
 }
 
 /// Execute a shell command with `{args}` interpolation.
@@ -259,7 +289,7 @@ pub fn execute_shell_with_env(
         cmd.env(k, v);
     }
 
-    run_interleaved(spawn_command(cmd, shell_program)?)
+    run_interleaved(spawn_named(cmd, shell_program)?)
 }
 
 #[cfg(test)]
@@ -271,11 +301,57 @@ pub fn execute_shell_with_env(
 mod tests {
     use super::*;
 
+    // --- cross-platform process helpers ---
+    //
+    // These tests spawn real processes, and the usual Unix stand-ins do not
+    // exist on Windows: `echo` and `false` are `cmd.exe` builtins with no
+    // executable behind them, so `Command::new("echo")` genuinely finds
+    // nothing. Routing through `cmd /C` keeps the same assertions meaningful on
+    // both platforms rather than compiling the coverage out on one of them.
+
+    /// Program + leading args that echo `words` back on the current platform.
+    fn echo_program(words: &[&str]) -> (&'static str, Vec<String>) {
+        let (program, mut args) = if cfg!(windows) {
+            ("cmd", vec!["/C".to_string(), "echo".to_string()])
+        } else {
+            ("echo", Vec::new())
+        };
+        args.extend(words.iter().map(|w| (*w).to_string()));
+        (program, args)
+    }
+
+    /// Program + args that exit non-zero without printing anything.
+    fn failing_program() -> (&'static str, Vec<String>) {
+        if cfg!(windows) {
+            ("cmd", vec!["/C".to_string(), "exit 1".to_string()])
+        } else {
+            ("false", Vec::new())
+        }
+    }
+
+    /// A shell snippet writing `msg` to stderr, in the platform shell's own
+    /// syntax — `execute_shell` uses `sh` on Unix and `powershell.exe` on
+    /// Windows, where `>&2` is not a redirection.
+    fn write_stderr(msg: &str) -> String {
+        if cfg!(windows) {
+            format!("[Console]::Error.WriteLine('{msg}')")
+        } else {
+            format!("echo {msg} >&2")
+        }
+    }
+
+    /// Join shell statements so they run in order. Windows PowerShell 5.1 — the
+    /// `powershell.exe` on the runners — has no `&&`.
+    fn shell_seq(parts: &[String]) -> String {
+        parts.join(if cfg!(windows) { "; " } else { " && " })
+    }
+
     // --- execute tests ---
 
     #[test]
     fn test_execute_echo() {
-        let result = execute("echo hello", &[]).unwrap();
+        let (program, args) = echo_program(&["hello"]);
+        let result = execute(program, &args).unwrap();
         assert_eq!(result.stdout.trim(), "hello");
         assert_eq!(result.exit_code, 0);
         assert!(result.stderr.is_empty());
@@ -283,21 +359,27 @@ mod tests {
 
     #[test]
     fn test_execute_with_args() {
-        let args = vec!["hello".to_string(), "world".to_string()];
-        let result = execute("echo", &args).unwrap();
+        let (program, args) = echo_program(&["hello", "world"]);
+        let result = execute(program, &args).unwrap();
         assert_eq!(result.stdout.trim(), "hello world");
     }
 
+    /// The first argument is a program, never a command line: it must reach
+    /// the OS whole. Splitting it on whitespace is what tore
+    /// `C:\Program Files\node.exe` in half and reported it as not found (#450).
     #[test]
-    fn test_execute_embedded_and_extra_args() {
-        let args = vec!["world".to_string()];
-        let result = execute("echo hello", &args).unwrap();
-        assert_eq!(result.stdout.trim(), "hello world");
+    fn execute_does_not_split_the_program_on_whitespace() {
+        let err = execute("echo hello", &[]).unwrap_err().to_string();
+        assert_eq!(
+            err, "program not found: echo hello",
+            "the whole string must be treated as one program name"
+        );
     }
 
     #[test]
     fn test_execute_failure() {
-        let result = execute("false", &[]).unwrap();
+        let (program, args) = failing_program();
+        let result = execute(program, &args).unwrap();
         assert_ne!(result.exit_code, 0);
     }
 
@@ -329,8 +411,8 @@ mod tests {
     #[test]
     fn test_execute_args_with_special_characters() {
         // execute() uses Command::new (no shell), so special chars are passed literally
-        let args = vec!["hello world".to_string()];
-        let result = execute("echo", &args).unwrap();
+        let (program, args) = echo_program(&["hello world"]);
+        let result = execute(program, &args).unwrap();
         assert_eq!(result.stdout.trim(), "hello world");
         assert_eq!(result.exit_code, 0);
     }
@@ -449,19 +531,21 @@ mod tests {
 
     #[test]
     fn test_combined_stdout_only() {
-        let result = execute("echo hello", &[]).unwrap();
+        let (program, args) = echo_program(&["hello"]);
+        let result = execute(program, &args).unwrap();
         assert_eq!(result.combined, "hello");
     }
 
     #[test]
     fn test_combined_stderr_only() {
-        let result = execute_shell("echo err >&2", &[]).unwrap();
+        let result = execute_shell(&write_stderr("err"), &[]).unwrap();
         assert_eq!(result.combined, "err");
     }
 
     #[test]
     fn test_combined_both_streams() {
-        let result = execute_shell("echo out && echo err >&2", &[]).unwrap();
+        let script = shell_seq(&["echo out".to_string(), write_stderr("err")]);
+        let result = execute_shell(&script, &[]).unwrap();
         // Both streams present in combined; exact order depends on scheduling
         assert!(result.combined.contains("out"));
         assert!(result.combined.contains("err"));
@@ -470,11 +554,13 @@ mod tests {
     #[test]
     fn test_combined_interleaving() {
         // Verify that stderr lines appear interleaved with stdout, not appended
-        let result = execute_shell(
-            "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
-            &[],
-        )
-        .unwrap();
+        let script = shell_seq(&[
+            "echo out1".to_string(),
+            write_stderr("err1"),
+            "echo out2".to_string(),
+            write_stderr("err2"),
+        ]);
+        let result = execute_shell(&script, &[]).unwrap();
         assert!(result.combined.contains("out1"));
         assert!(result.combined.contains("out2"));
         assert!(result.combined.contains("err1"));
@@ -487,10 +573,16 @@ mod tests {
 
     // --- resolve_program tests ---
 
+    /// A program every platform has, resolved by bare name.
+    ///
+    /// This failed on Windows before the switch to `which`: the old
+    /// `dir.join(program)` loop never appended an extension, so no `.exe` was
+    /// ever found by its bare name.
     #[test]
-    fn resolve_program_finds_sh() {
-        let result = resolve_program("sh");
-        assert!(result.is_some(), "sh should be on PATH");
+    fn resolve_program_finds_a_shell_by_bare_name() {
+        let name = if cfg!(windows) { "cmd" } else { "sh" };
+        let result = resolve_program(name);
+        assert!(result.is_some(), "{name} should be on PATH");
         assert!(result.unwrap().is_absolute());
     }
 
@@ -498,6 +590,56 @@ mod tests {
     fn resolve_program_returns_none_for_missing() {
         let result = resolve_program("nonexistent_program_xyz_abc_123");
         assert!(result.is_none());
+    }
+
+    /// Windows resolves a bare program name through `PATHEXT`, but
+    /// `CreateProcessW` only ever appends `.exe`. `which` applies the full
+    /// list, so a `.cmd` is reachable by a name that omits the extension.
+    ///
+    /// Uses an absolute path rather than mutating `PATH`, which is global
+    /// state — `CreateProcess` skips the `.exe` append for any name containing
+    /// a separator too, so this exercises the same gap. (#449)
+    #[cfg(windows)]
+    #[test]
+    fn execute_runs_a_cmd_shim_named_without_its_extension() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let script = dir.path().join("tokf_probe.cmd");
+        std::fs::write(&script, "@echo off\r\necho probe-ok\r\n").unwrap();
+
+        let extensionless = dir.path().join("tokf_probe");
+        let result = execute(&extensionless.to_string_lossy(), &[]).unwrap();
+
+        assert_eq!(result.stdout.trim(), "probe-ok");
+        assert_eq!(result.exit_code, 0);
+    }
+
+    /// A program whose *path* contains a space must reach the OS intact.
+    /// This is the #450 repro: `C:\Program Files\...` was cut at the space and
+    /// the leading half reported as the program.
+    #[test]
+    fn execute_runs_a_program_whose_path_contains_a_space() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let spaced = dir.path().join("probe dir");
+        std::fs::create_dir_all(&spaced).unwrap();
+
+        #[cfg(windows)]
+        let program = {
+            let p = spaced.join("probe.cmd");
+            std::fs::write(&p, "@echo off\r\necho probe-ok\r\n").unwrap();
+            p
+        };
+
+        #[cfg(unix)]
+        let program = {
+            use std::os::unix::fs::PermissionsExt;
+            let p = spaced.join("probe.sh");
+            std::fs::write(&p, "#!/bin/sh\necho probe-ok\n").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+
+        let result = execute(&program.to_string_lossy(), &[]).unwrap();
+        assert_eq!(result.stdout.trim(), "probe-ok");
     }
 
     // --- execute_with_env tests ---
@@ -512,7 +654,8 @@ mod tests {
 
     #[test]
     fn test_execute_with_env_empty_env() {
-        let result = execute_with_env("echo", &["hi".into()], &[]).unwrap();
+        let (program, args) = echo_program(&["hi"]);
+        let result = execute_with_env(program, &args, &[]).unwrap();
         assert_eq!(result.stdout.trim(), "hi");
     }
 

@@ -6,6 +6,8 @@ use tokf::tracking;
 
 use tokf::runtime::Runtime;
 
+use crate::path_env::prepend_to_path;
+
 /// Result of filter resolution, including any deferred output-pattern variants.
 pub struct FilterMatch {
     pub config: FilterConfig,
@@ -190,7 +192,7 @@ fn build_inject_env(rt: &Runtime, filter_cfg: Option<&FilterConfig>) -> Vec<(Str
         .map(std::borrow::ToOwned::to_owned)
         .or_else(|| std::env::var("PATH").ok())
         .unwrap_or_default();
-    let new_path = format!("{}:{}", shims.display(), original_path);
+    let new_path = prepend_to_path(&shims, &original_path);
     let tokf_exe = std::env::current_exe()
         .unwrap_or_else(|_| "tokf".into())
         .to_string_lossy()
@@ -292,15 +294,20 @@ pub fn run_command(
         }
         let result = runner::execute_shell_with_env(&run_cmd, remaining_args, &env_refs)?;
         Ok((result, Some(executed)))
-    } else if words_consumed > 0 {
-        let cmd_str = command_args[..words_consumed].join(" ");
-        Ok((
-            runner::execute_with_env(&cmd_str, remaining_args, &env_refs)?,
-            None,
-        ))
     } else {
+        // Pass argv straight through. This used to join the matched prefix with
+        // spaces and let the runner split it again, which tore apart any element
+        // containing one — `C:\Program Files\node.exe` became two arguments and
+        // the program was reported as not found.
+        //
+        // words_consumed is how many argv elements the filter's `command`
+        // pattern matched (0 when nothing matched); element 0 is the program
+        // either way, so the rest of the matched prefix simply leads the args.
+        let prefix_end = words_consumed.max(1);
+        let mut args = command_args[1..prefix_end].to_vec();
+        args.extend_from_slice(remaining_args);
         Ok((
-            runner::execute_with_env(&command_args[0], remaining_args, &env_refs)?,
+            runner::execute_with_env(&command_args[0], &args, &env_refs)?,
             None,
         ))
     }

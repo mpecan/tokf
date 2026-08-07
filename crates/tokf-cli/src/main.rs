@@ -18,6 +18,7 @@ mod install_cmd;
 mod issue_cmd;
 mod marker;
 mod output;
+mod path_env;
 mod publish_cmd;
 #[cfg(feature = "stdlib-publish")]
 mod publish_stdlib_cmd;

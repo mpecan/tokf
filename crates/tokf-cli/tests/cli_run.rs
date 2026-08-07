@@ -4,6 +4,10 @@ mod common;
 
 use common::tokf;
 
+// Only the `nix develop -c` wrapper tests below use this, and they are
+// Unix-only — without the guard the import is dead on Windows and `-D warnings`
+// turns that into a build failure.
+#[cfg(unix)]
 use std::process::Command;
 
 // --- tokf run ---

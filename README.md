@@ -2531,6 +2531,35 @@ Records are appended; nothing rotates or trims the file, so prune it yourself if
 
 This was added in response to issue #355, where stray `1echo` files in the agent's cwd turned out to come from a multi-line rewrite collapsing newlines into adjacent tokens — the kind of bug that's invisible in `tokf rewrite "..."` runs but obvious in a hook log.
 
+## Windows notes
+
+`tokf run` resolves a bare program name the way the platform does, which on
+Windows means consulting `PATHEXT`. That matters because most of the Node
+ecosystem ships as `.cmd` shims rather than `.exe` files:
+
+```console
+> tokf run npm --version
+11.11.0
+```
+
+Earlier versions could only find `.exe` programs, so `npm`, `npx`, `pnpm`,
+`tsc`, `eslint` and `gradlew` all failed with `program not found` unless you
+spelled out the extension (`npm.cmd`). If you added a `run =` line to a filter
+purely to work around that, it is no longer needed — though it is harmless.
+
+Two related fixes landed at the same time:
+
+- A program whose **path contains a space** — anything under
+  `C:\Program Files\` — is passed through whole. It used to be cut at the first
+  space, and the leading half reported as the program.
+- The **shims `PATH`** built for `inject_path = true` filters now uses `;`, the
+  Windows separator. With `:` the shims entry and the first real entry were both
+  lost, so shim injection silently did nothing.
+
+Still outstanding on Windows: filters that carry a `run =` line execute through
+`powershell.exe`, and a few built-ins assume POSIX shell syntax. Track that in
+[#360](https://github.com/mpecan/tokf/issues/360).
+
 ---
 
 
