@@ -23,7 +23,7 @@ jobs:
     if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           # Do not leave the token in .git/config. Build scripts and proc
@@ -94,11 +94,11 @@ jobs:
       contents: read
       id-token: write   # mint the OIDC token for npm trusted publishing
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
@@ -124,7 +124,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
@@ -204,14 +204,14 @@ jobs:
       # the only checkouts in the repo that do, which is why they are the only
       # ones without persist-credentials: false.
       - name: Checkout homebrew-tokf tap
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: mpecan/homebrew-tokf
           token: ${{ steps.app-token.outputs.token }}
           path: homebrew-tokf
 
       - name: Checkout homebrew-tools tap
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: mpecan/homebrew-tools
           token: ${{ steps.app-token.outputs.token }}
@@ -294,7 +294,7 @@ jobs:
     if: startsWith(inputs.tag || github.event.release.tag_name, 'tokf-v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
