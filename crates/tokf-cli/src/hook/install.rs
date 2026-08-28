@@ -90,22 +90,57 @@ pub(super) fn resolve_paths(
     }
 }
 
-/// Write the TOKF.md context file that explains the compression indicator.
-/// Skips writing if the file already exists (preserves user edits).
-/// Returns `true` if the file was created, `false` if it already existed.
-pub(super) fn write_context_doc(dir: &Path) -> anyhow::Result<bool> {
-    std::fs::create_dir_all(dir)?;
-    let tokf_md = dir.join("TOKF.md");
-    if tokf_md.exists() {
-        return Ok(false);
-    }
-    let content = "\
+/// The context file tokf writes for the agent.
+///
+/// Kept as a constant so [`write_context_doc`] can recognise an earlier
+/// version byte-for-byte and safely replace it — without that, users who
+/// installed before a line was added would never see it, while anyone who
+/// edited the file keeps their edits.
+const CONTEXT_DOC: &str = "\
 🗜️ means this output was compressed by tokf.
 🗜️#42 means the full, unfiltered output is recoverable as history entry 42 —
 run `tokf raw 42`. Pipe it (`tokf raw 42 | grep ...`, `| head`) rather than
 reading it whole; a recovered entry can be very large.
 Run `tokf raw last` for the last command's full output.
+
+A pipeline reports its LAST stage's exit code, so `cmd | tail` can report 0
+for a command that failed. When tokf prints a line like
+`Error: `X` exited 1 but the pipeline reported 0 — this is NOT a pass.`,
+that line is the verdict — the exit code is not. Likewise
+`[tokf] no output — `X` exited 1; the pipeline matched nothing.` means the
+question was not answered, not that nothing is wrong.
 ";
+
+/// Every earlier version of [`CONTEXT_DOC`], newest first. A file matching one
+/// of these is tokf's own and is safe to replace; anything else is a user edit.
+const CONTEXT_DOC_PRIOR_VERSIONS: &[&str] = &["\
+🗜️ means this output was compressed by tokf.
+🗜️#42 means the full, unfiltered output is recoverable as history entry 42 —
+run `tokf raw 42`. Pipe it (`tokf raw 42 | grep ...`, `| head`) rather than
+reading it whole; a recovered entry can be very large.
+Run `tokf raw last` for the last command's full output.
+"];
+
+/// Write the TOKF.md context file that explains tokf's output markers.
+///
+/// Preserves user edits: an existing file is replaced only when it is
+/// byte-identical to a version tokf itself wrote (see
+/// [`CONTEXT_DOC_PRIOR_VERSIONS`]).
+///
+/// Returns `true` when the file was written, `false` when it was left alone.
+pub(super) fn write_context_doc(dir: &Path) -> anyhow::Result<bool> {
+    std::fs::create_dir_all(dir)?;
+    let tokf_md = dir.join("TOKF.md");
+    if let Ok(existing) = std::fs::read_to_string(&tokf_md) {
+        if existing == CONTEXT_DOC {
+            return Ok(false);
+        }
+        // Upgrade an unedited file left by an older tokf; leave user edits be.
+        if !CONTEXT_DOC_PRIOR_VERSIONS.contains(&existing.as_str()) {
+            return Ok(false);
+        }
+    }
+    let content = CONTEXT_DOC;
     std::fs::write(&tokf_md, content)?;
     Ok(true)
 }

@@ -16,10 +16,7 @@ use tokf::runtime::Runtime;
 /// Matches: `-c`, `-cu`, `-ec`, `-ecu`, etc.
 /// Does NOT match: `--cache`, `--color`, or any long flag.
 pub fn is_shell_flag(flag: &str) -> bool {
-    flag.starts_with('-')
-        && !flag.starts_with("--")
-        && flag.len() > 1
-        && flag.as_bytes()[1..].contains(&b'c')
+    tokf::rewrite::capture::is_short_flag_with(flag, b'c')
 }
 
 /// Restore the original PATH (without shims) so that delegated commands

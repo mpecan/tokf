@@ -19,6 +19,7 @@ mod issue_cmd;
 mod marker;
 mod output;
 mod path_env;
+mod pipeline;
 mod publish_cmd;
 #[cfg(feature = "stdlib-publish")]
 mod publish_stdlib_cmd;
@@ -108,16 +109,40 @@ fn main() {
             command_args,
             baseline_pipe,
             prefer_less,
-        } => or_exit(cmd_run(
-            &rt,
-            commands::RunRequest {
-                command_args,
-                baseline_pipe: baseline_pipe.as_deref(),
-                prefer_less: *prefer_less,
-            },
-            &cli,
-            reporter.as_ref(),
-        )),
+            pipe_through,
+            merge_stderr,
+            propagate_exit,
+        } => {
+            // Capture mode never runs a filter — the caller's own pipe
+            // decides what is shown — so it branches before filter resolution.
+            pipe_through.as_ref().map_or_else(
+                || {
+                    or_exit(cmd_run(
+                        &rt,
+                        commands::RunRequest {
+                            command_args,
+                            baseline_pipe: baseline_pipe.as_deref(),
+                            prefer_less: *prefer_less,
+                        },
+                        &cli,
+                        reporter.as_ref(),
+                    ))
+                },
+                |tail| {
+                    or_exit(pipeline::run_captured(
+                        &rt,
+                        pipeline::CaptureRequest {
+                            command_args,
+                            pipe_through: tail,
+                            merge_stderr: *merge_stderr,
+                            propagate_exit: *propagate_exit,
+                        },
+                        &cli,
+                        reporter.as_ref(),
+                    ))
+                },
+            )
+        }
         Commands::Completions { shell } => completions_cmd::cmd_completions(*shell),
         Commands::Check { filter_path } => cmd_check(Path::new(filter_path)),
         Commands::Apply {

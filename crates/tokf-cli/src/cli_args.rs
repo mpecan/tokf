@@ -74,6 +74,18 @@ pub enum Commands {
         /// Use whichever output is smaller: filtered or piped (no-op without --baseline-pipe)
         #[arg(long)]
         prefer_less: bool,
+        /// Pipeline capture: run this pipeline on the command's output, print
+        /// the result verbatim, and report any exit-code mismatch between the
+        /// command and the pipeline (set by rewrite when `[pipe] capture` is on)
+        #[arg(long)]
+        pipe_through: Option<String>,
+        /// Feed the combined stdout+stderr into --pipe-through (the command
+        /// used `2>&1`), rather than stdout alone
+        #[arg(long, requires = "pipe_through")]
+        merge_stderr: bool,
+        /// Exit with the command's code rather than the pipeline's
+        #[arg(long, requires = "pipe_through")]
+        propagate_exit: bool,
         #[arg(trailing_var_arg = true, required = true)]
         command_args: Vec<String>,
     },

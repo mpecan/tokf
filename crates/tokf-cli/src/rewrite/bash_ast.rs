@@ -97,6 +97,11 @@ pub struct ParsedCommand {
 }
 
 impl ParsedCommand {
+    /// The original source text this AST was parsed from.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
     /// Parse a bash command string into an AST.
     pub fn parse(source: &str) -> Option<Self> {
         let nodes = rable::parse(source, false).ok()?;
@@ -149,6 +154,25 @@ impl ParsedCommand {
             collect_pipe_positions(&self.source, node, &mut positions);
         }
         positions
+    }
+
+    /// The pipeline's stages, split at bare pipes.
+    ///
+    /// Uses the AST's own pipe offsets, so a `|` inside quotes or inside a
+    /// command substitution is *not* a stage boundary: `grep -E 'a|b' | wc -l`
+    /// is two stages, not three. Splitting the source on `'|'` instead gets
+    /// this wrong in a way that silently disables any check reading the stage
+    /// names.
+    pub fn pipeline_stages(&self) -> Vec<&str> {
+        let positions = self.pipe_positions();
+        let mut stages = Vec::with_capacity(positions.len() + 1);
+        let mut start = 0;
+        for pos in positions {
+            stages.push(self.source[start..pos].trim());
+            start = pos + 1;
+        }
+        stages.push(self.source[start..].trim());
+        stages
     }
 
     /// Returns `true` if the command contains at least one bare pipe.
@@ -223,6 +247,37 @@ impl ParsedCommand {
     /// See [`has_toplevel_output_redirect`] for the full semantics.
     pub fn has_toplevel_output_redirect(&self) -> bool {
         self.nodes.iter().any(has_output_redirect_to_file)
+    }
+
+    /// Redirects attached to the command's *first* simple command, as
+    /// `(fd, op, target_text)` triples — e.g. `cargo test 2>&1` yields
+    /// `[(2, ">&", "1")]`.
+    ///
+    /// Parsing only: deciding which combinations are safe to reproduce is
+    /// policy and lives in [`super::capture`].
+    pub fn first_command_redirects(&self) -> Vec<(i32, String, String)> {
+        let Some(cmd) = find_first_command(&self.nodes) else {
+            return Vec::new();
+        };
+        let NodeKind::Command { redirects, .. } = &cmd.kind else {
+            return Vec::new();
+        };
+        redirects
+            .iter()
+            .filter_map(|r| match &r.kind {
+                NodeKind::Redirect { op, target, fd, .. } => {
+                    // The target's span is not resolvable through
+                    // `source_text` for fd-duplication redirects, so read the
+                    // Word's value directly.
+                    let target_text = match &target.kind {
+                        NodeKind::Word { value, .. } => unquote(value),
+                        _ => String::new(),
+                    };
+                    Some((*fd, op.clone(), target_text))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// Extract command words (command name + arguments) from a simple command.

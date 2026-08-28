@@ -1,6 +1,7 @@
 pub mod types;
 
 pub(crate) mod bash_ast;
+pub mod capture;
 pub(crate) mod rules;
 pub(crate) mod transparent;
 pub(crate) mod user_config;
@@ -8,9 +9,9 @@ pub(crate) mod user_config;
 use std::path::PathBuf;
 
 use crate::config;
-use bash_ast::{StrippedPipe, split_compound, strip_env_prefix};
+use bash_ast::{split_compound, strip_env_prefix};
 use rules::{apply_rules, should_skip};
-use types::{RewriteConfig, RewriteOptions, RewriteRule};
+use types::{PipeConfig, RewriteConfig, RewriteOptions, RewriteRule};
 
 pub use user_config::{load_local_wrapper_config, load_user_config};
 
@@ -110,7 +111,7 @@ fn try_filter_match(
 
 /// Match a segment against filter patterns using the fields collected in
 /// [`SegmentRules`]. Thin wrapper over [`try_filter_match`].
-fn segment_filter_match(cmd: &str, rules: &SegmentRules<'_>) -> Option<String> {
+pub(super) fn segment_filter_match(cmd: &str, rules: &SegmentRules<'_>) -> Option<String> {
     try_filter_match(
         cmd,
         rules.filter_patterns,
@@ -149,18 +150,26 @@ pub fn rewrite_with_options(
 }
 
 /// Collected rewrite rules passed to [`rewrite_segment`].
-struct SegmentRules<'a> {
+pub(super) struct SegmentRules<'a> {
     /// Wrapper rules for task runners (tried first, before pipe handling).
-    wrapper: &'a [RewriteRule],
+    pub(super) wrapper: &'a [RewriteRule],
     /// Raw filter pattern strings matched via `pattern_matches_prefix`.
-    filter_patterns: &'a [String],
+    pub(super) filter_patterns: &'a [String],
     /// Local environment wrappers (e.g. `nix develop -c`) to unwrap when
     /// matching filter patterns.
-    local_wrapper: &'a types::LocalWrapperConfig,
+    pub(super) local_wrapper: &'a types::LocalWrapperConfig,
     /// Options controlling `tokf run` generation (e.g. `--no-mask-exit-code`).
-    options: &'a RewriteOptions,
+    pub(super) options: &'a RewriteOptions,
+    /// User `[pipe]` settings: pipe stripping, prefer-less, and capture.
+    pub(super) pipe: &'a PipeConfig,
+    /// True when the *whole* command already handles pipeline status itself
+    /// (`set -o pipefail`, `${PIPESTATUS[0]}`). Capture is declined for these:
+    /// the author has dealt with it, so a mismatch report would be redundant.
+    /// Deliberately not a `should_skip` pattern — that would also cost
+    /// `set -o pipefail; cargo test` its filter, which is unrelated.
+    pub(super) pipefail_handled: bool,
     /// When true, log to stderr when the bash parser fails to parse a command.
-    log_parse_failures: bool,
+    pub(super) log_parse_failures: bool,
 }
 
 /// Rewrite a single command segment, handling pipe stripping and env var
@@ -180,13 +189,7 @@ struct SegmentRules<'a> {
 /// stripped and `--baseline-pipe` is injected — unless `strip_pipes` is false.
 /// When `prefer_less` is true, `--prefer-less` is also injected so that at
 /// runtime the smaller of filtered vs piped output is used.
-fn rewrite_segment(
-    segment: &str,
-    rules: &SegmentRules<'_>,
-    strip_pipes: bool,
-    prefer_less: bool,
-    verbose: bool,
-) -> String {
+fn rewrite_segment(segment: &str, sep: &str, rules: &SegmentRules<'_>, verbose: bool) -> String {
     // Parse once — reuse the AST for env_prefix, pipe detection, and stripping.
     let parsed = bash_ast::ParsedCommand::parse(segment);
     if parsed.is_none() && rules.log_parse_failures {
@@ -199,16 +202,6 @@ fn rewrite_segment(
         .and_then(bash_ast::ParsedCommand::env_prefix)
         .unwrap_or_else(|| (String::new(), segment.to_string()));
     let cmd = cmd_owned.as_str();
-
-    // Wrapper rules are tried first — they inject SHELL=tokf rather than
-    // wrapping with `tokf run`, so pipe stripping does not apply to them.
-    let wrapper_result = apply_rules(rules.wrapper, cmd);
-    if wrapper_result != cmd {
-        if verbose {
-            eprintln!("[tokf] wrapper rewrite: task runner shell override");
-        }
-        return format!("{env_prefix}{wrapper_result}");
-    }
 
     // Parse the env-stripped command for pipe analysis (reuse if no env prefix).
     let cmd_parsed = if env_prefix.is_empty() {
@@ -225,29 +218,58 @@ fn rewrite_segment(
         .as_ref()
         .is_some_and(bash_ast::ParsedCommand::has_bare_pipe)
     {
-        if strip_pipes
-            && let Some(StrippedPipe { base, suffix }) = cmd_parsed
-                .as_ref()
-                .and_then(bash_ast::ParsedCommand::strip_simple_pipe)
-            && let Some(rewritten) = segment_filter_match(&base, rules)
-        {
-            if verbose {
-                eprintln!("[tokf] stripped pipe — tokf filter provides structured output");
-            }
-            let injected =
-                inject_pipe_flags_with_options(&rewritten, &suffix, prefer_less, rules.options);
-            return format!("{env_prefix}{injected}");
-        }
-        if verbose {
-            eprintln!("[tokf] skipping rewrite: command contains a pipe");
-        }
-        return segment.to_string();
+        return capture::rewrite_piped_segment(
+            capture::PipedSegment {
+                segment,
+                sep,
+                cmd,
+                env_prefix: &env_prefix,
+                parsed: cmd_parsed.as_ref(),
+            },
+            rules,
+            verbose,
+        );
+    }
+
+    if let Some(wrapped) = apply_rules(rules.wrapper, cmd) {
+        return wrapper_rewrite(&env_prefix, &wrapped, verbose);
     }
 
     segment_filter_match(cmd, rules).map_or_else(
         || segment.to_string(),
         |result| format!("{env_prefix}{result}"),
     )
+}
+
+/// True when the command already propagates pipeline status itself.
+///
+/// A substring scan rather than an AST predicate, which is deliberately
+/// conservative: `git commit -m "fix pipefail handling"` also declines
+/// capture. Erring toward leaving a command alone is the safe direction, and
+/// the alternative would need `set -o` and `${PIPESTATUS[…]}` modelled per
+/// segment for no gain on any realistic command.
+fn handles_pipe_status(command: &str) -> bool {
+    command.contains("pipefail") || command.contains("PIPESTATUS")
+}
+
+/// Emit a wrapper rewrite (`make SHELL=tokf …`), with its verbose note.
+///
+/// Shared because both the piped and unpiped paths end here when a task-runner
+/// rule claims the segment.
+pub(super) fn wrapper_rewrite(env_prefix: &str, wrapped: &str, verbose: bool) -> String {
+    if verbose {
+        eprintln!("[tokf] wrapper rewrite: task runner shell override");
+    }
+    format!("{env_prefix}{wrapped}")
+}
+
+/// Escape a fragment for embedding inside single quotes in generated shell.
+///
+/// Both `--baseline-pipe` and `--pipe-through` hand a shell fragment through
+/// `tokf run` to `sh -c`, and both need the `'\''` idiom so a quoted pattern
+/// like `grep -E 'fail|error'` survives the round trip intact.
+pub(super) fn single_quote(fragment: &str) -> String {
+    fragment.replace('\'', "'\\''")
 }
 
 /// Insert `--baseline-pipe '<suffix>'` (and optionally `--prefer-less`) after
@@ -260,7 +282,7 @@ fn inject_pipe_flags(rewritten: &str, suffix: &str, prefer_less: bool) -> String
     inject_pipe_flags_with_options(rewritten, suffix, prefer_less, &RewriteOptions::default())
 }
 
-fn inject_pipe_flags_with_options(
+pub(super) fn inject_pipe_flags_with_options(
     rewritten: &str,
     suffix: &str,
     prefer_less: bool,
@@ -272,7 +294,7 @@ fn inject_pipe_flags_with_options(
             // rest may start with --no-mask-exit-code from the rule template;
             // strip it so we don't duplicate the flag when options also requests it.
             let rest = rest.strip_prefix("--no-mask-exit-code ").unwrap_or(rest);
-            let escaped = suffix.replace('\'', "'\\''");
+            let escaped = single_quote(suffix);
             let prefer_flag = if prefer_less { " --prefer-less" } else { "" };
             let mask_flag = if options.no_mask_exit_code {
                 " --no-mask-exit-code"
@@ -327,9 +349,6 @@ pub(crate) fn rewrite_with_config_and_options(
         .as_ref()
         .map_or(&[] as &[String], |s| &s.patterns);
 
-    let strip_pipes = user_config.pipe.as_ref().is_none_or(|p| p.strip);
-    let prefer_less = user_config.pipe.as_ref().is_some_and(|p| p.prefer_less);
-
     if should_skip_effective(command, user_skip_patterns) {
         return command.to_string();
     }
@@ -344,11 +363,10 @@ pub(crate) fn rewrite_with_config_and_options(
     // (#338): regex rewrites operate on the full command string, so even an
     // ssh segment buried behind a `cd … &&` could have text spliced into its
     // opaque payload. Argv-preserving wraps below still apply per-segment.
-    if !transparent::any_segment_is_transparent(command, transparent_extras) {
-        let user_result = apply_rules(&user_config.rewrite, command);
-        if user_result != command {
-            return user_result;
-        }
+    if !transparent::any_segment_is_transparent(command, transparent_extras)
+        && let Some(user_result) = apply_rules(&user_config.rewrite, command)
+    {
+        return user_result;
     }
 
     let wrapper_rules = build_wrapper_rules();
@@ -358,17 +376,27 @@ pub(crate) fn rewrite_with_config_and_options(
         .debug
         .as_ref()
         .is_some_and(|d| d.log_parse_failures);
+    let mut pipe_cfg = user_config.pipe.clone().unwrap_or_default();
+    // `TOKF_PIPE_CAPTURE` wins over the file in both directions: capture
+    // changes how commands execute, so turning it off must not require an edit.
+    if let Some(override_capture) = ctx.rt.pipe_capture() {
+        pipe_cfg.capture = override_capture;
+    }
     let rules = SegmentRules {
         wrapper: &wrapper_rules,
         filter_patterns: &filter_patterns,
         local_wrapper: &local_wrapper,
         options,
+        pipe: &pipe_cfg,
+        // Only consulted on the capture path, so it is not computed at all
+        // in the default configuration.
+        pipefail_handled: pipe_cfg.capture && handles_pipe_status(command),
         log_parse_failures,
     };
     let segments = split_compound(command);
 
     if segments.len() == 1 {
-        return rewrite_segment(command, &rules, strip_pipes, prefer_less, verbose);
+        return rewrite_segment(command, "", &rules, verbose);
     }
 
     // Compound command: rewrite each segment independently so every sub-command
@@ -381,7 +409,7 @@ pub(crate) fn rewrite_with_config_and_options(
         {
             trimmed.to_string()
         } else {
-            let r = rewrite_segment(trimmed, &rules, strip_pipes, prefer_less, verbose);
+            let r = rewrite_segment(trimmed, sep, &rules, verbose);
             if r != trimmed {
                 changed = true;
             }
@@ -450,6 +478,8 @@ pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<S
 mod proptest_rewrite;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_capture;
 #[cfg(test)]
 mod tests_compound;
 #[cfg(test)]

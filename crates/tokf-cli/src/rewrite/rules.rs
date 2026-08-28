@@ -52,19 +52,24 @@ pub fn should_skip(command: &str, user_patterns: &[String]) -> bool {
     false
 }
 
-/// Apply the first matching rewrite rule. Returns the original command if none match.
-pub fn apply_rules(rules: &[RewriteRule], command: &str) -> String {
+/// Apply the first matching rewrite rule.
+///
+/// Returns `None` when no rule matched, rather than echoing the input back:
+/// callers need to know *whether* a rule fired, and recovering that by
+/// comparing the result to the input makes every call site restate the
+/// encoding — and forces the result to be computed eagerly just to compare it.
+pub fn apply_rules(rules: &[RewriteRule], command: &str) -> Option<String> {
     for rule in rules {
         let Ok(re) = Regex::new(&rule.match_pattern) else {
             continue;
         };
 
         if let Some(caps) = re.captures(command) {
-            return interpolate_rewrite(&rule.replace, &caps, command);
+            return Some(interpolate_rewrite(&rule.replace, &caps, command));
         }
     }
 
-    command.to_string()
+    None
 }
 
 /// Interpolate `{0}`, `{1}`, `{2}`, ... and `{rest}` in the replacement template.
@@ -266,7 +271,10 @@ EOF
                 replace: "second {0}".to_string(),
             },
         ];
-        assert_eq!(apply_rules(&rules, "git status"), "first git status");
+        assert_eq!(
+            apply_rules(&rules, "git status").as_deref(),
+            Some("first git status")
+        );
     }
 
     #[test]
@@ -275,12 +283,12 @@ EOF
             match_pattern: "^git".to_string(),
             replace: "tokf run {0}".to_string(),
         }];
-        assert_eq!(apply_rules(&rules, "ls -la"), "ls -la");
+        assert_eq!(apply_rules(&rules, "ls -la"), None);
     }
 
     #[test]
     fn apply_rules_empty_rules_returns_original() {
-        assert_eq!(apply_rules(&[], "git status"), "git status");
+        assert_eq!(apply_rules(&[], "git status"), None);
     }
 
     #[test]
@@ -289,7 +297,10 @@ EOF
             match_pattern: r"^(git) (status)".to_string(),
             replace: "wrapped {1} {2}".to_string(),
         }];
-        assert_eq!(apply_rules(&rules, "git status"), "wrapped git status");
+        assert_eq!(
+            apply_rules(&rules, "git status").as_deref(),
+            Some("wrapped git status")
+        );
     }
 
     #[test]
@@ -304,7 +315,10 @@ EOF
                 replace: "tokf run {0}".to_string(),
             },
         ];
-        assert_eq!(apply_rules(&rules, "git status"), "tokf run git status");
+        assert_eq!(
+            apply_rules(&rules, "git status").as_deref(),
+            Some("tokf run git status")
+        );
     }
 
     // --- interpolate_rewrite ---

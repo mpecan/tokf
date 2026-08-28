@@ -76,7 +76,7 @@ pub fn cmd_generic_run(
             // The generic path executes `command_args` verbatim — no `run`
             // override exists, so there is no substitution to record.
             executed_command: None,
-            filter_name,
+            filter_name: Some(filter_name),
             raw_output: &cmd_result.combined,
             filtered_output: &filtered,
             exit_code: cmd_result.exit_code,

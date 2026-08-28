@@ -377,19 +377,15 @@ pub fn try_auto_sync(rt: &Runtime) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn record_run(
-    rt: &Runtime,
-    command_args: &[String],
-    filter_name: Option<&str>,
-    filter_hash: Option<&str>,
-    input_bytes: usize,
-    output_bytes: usize,
-    raw_bytes: usize,
-    filter_time_ms: u128,
-    exit_code: i32,
-    pipe_override: bool,
-) {
+/// Stamp an event with the current project and insert it.
+///
+/// The single place that opens the tracking DB for a write, so every recording
+/// path — filtered, generic, and pipeline capture — gets the same project
+/// stamping and the same diagnostics when the DB cannot be opened. Callers
+/// that need extra columns (capture sets `pipeline_tail`/`head_exit_code`)
+/// build the event, adjust it, and hand it here rather than reimplementing
+/// this tail.
+pub fn persist_event(rt: &Runtime, event: &mut tracking::TrackingEvent) {
     let Some(path) = rt.tracking_db_path() else {
         eprintln!("[tokf] tracking: cannot determine DB path");
         return;
@@ -405,6 +401,28 @@ pub fn record_run(
             return;
         }
     };
+    event.project = current_project(rt);
+    if let Err(e) = tracking::record_event(&conn, event) {
+        eprintln!(
+            "[tokf] tracking error (record) at {}: {e:#}",
+            path.display()
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn record_run(
+    rt: &Runtime,
+    command_args: &[String],
+    filter_name: Option<&str>,
+    filter_hash: Option<&str>,
+    input_bytes: usize,
+    output_bytes: usize,
+    raw_bytes: usize,
+    filter_time_ms: u128,
+    exit_code: i32,
+    pipe_override: bool,
+) {
     let command = command_args.join(" ");
     let mut event = tracking::build_event(
         &command,
@@ -417,13 +435,7 @@ pub fn record_run(
         exit_code,
         pipe_override,
     );
-    event.project = current_project(rt);
-    if let Err(e) = tracking::record_event(&conn, &event) {
-        eprintln!(
-            "[tokf] tracking error (record) at {}: {e:#}",
-            path.display()
-        );
-    }
+    persist_event(rt, &mut event);
 }
 
 #[cfg(test)]

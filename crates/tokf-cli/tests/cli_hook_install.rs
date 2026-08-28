@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_const_for_fn)]
 
 mod common;
-use common::tokf;
+use common::{TestHome, tokf};
 
 // --- tokf hook install ---
 
@@ -378,5 +378,57 @@ fn hook_install_codex_shows_info_on_stderr() {
     assert!(
         stderr.contains("hooks.json"),
         "expected hooks.json path in output, got: {stderr}"
+    );
+}
+
+#[test]
+fn context_doc_upgrades_an_unedited_older_version() {
+    use std::fs;
+
+    let home = TestHome::new();
+    let dir = home.path().join(".claude");
+    fs::create_dir_all(&dir).unwrap();
+    // Exactly what an older tokf wrote.
+    let old = "\
+🗜️ means this output was compressed by tokf.
+🗜️#42 means the full, unfiltered output is recoverable as history entry 42 —
+run `tokf raw 42`. Pipe it (`tokf raw 42 | grep ...`, `| head`) rather than
+reading it whole; a recovered entry can be very large.
+Run `tokf raw last` for the last command's full output.
+";
+    fs::write(dir.join("TOKF.md"), old).unwrap();
+
+    home.cmd()
+        .args(["hook", "install", "--global"])
+        .env("HOME", home.path())
+        .output()
+        .unwrap();
+
+    let now = fs::read_to_string(dir.join("TOKF.md")).unwrap();
+    assert!(
+        now.contains("NOT a pass"),
+        "an unedited older doc should be upgraded, got: {now}"
+    );
+}
+
+#[test]
+fn context_doc_preserves_user_edits() {
+    use std::fs;
+
+    let home = TestHome::new();
+    let dir = home.path().join(".claude");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("TOKF.md"), "my own notes\n").unwrap();
+
+    home.cmd()
+        .args(["hook", "install", "--global"])
+        .env("HOME", home.path())
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        fs::read_to_string(dir.join("TOKF.md")).unwrap(),
+        "my own notes\n",
+        "user edits must survive"
     );
 }

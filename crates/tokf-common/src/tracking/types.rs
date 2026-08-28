@@ -15,6 +15,15 @@ pub struct TrackingEvent {
     pub exit_code: i32,
     /// True when `--prefer-less` chose the piped output over the filtered output.
     pub pipe_override: bool,
+    /// For a captured pipeline, everything after the first bare pipe (the part
+    /// tokf ran on the command's behalf). `None` for every other run — which is
+    /// what lets `gain`/`doctor` tell capture rows apart from real passthroughs
+    /// rather than lumping both under `COALESCE(filter_name, 'passthrough')`.
+    pub pipeline_tail: Option<String>,
+    /// For a captured pipeline, the *first stage's* exit code. `exit_code`
+    /// stays the shell-native one, so `head_exit_code != exit_code` is exactly
+    /// the swallowed-status signal.
+    pub head_exit_code: Option<i32>,
     /// Project identifier — typically the cwd's directory name when the
     /// event was recorded. Empty string means "unknown" (legacy events
     /// recorded before this column existed, or test fixtures).
@@ -29,6 +38,9 @@ pub struct GainSummary {
     pub tokens_saved: i64,
     pub savings_pct: f64,
     pub pipe_override_count: i64,
+    /// Captured pipelines where the command's exit code and the code the shell
+    /// reported disagreed — i.e. the pipeline hid a failure.
+    pub exit_mismatch_count: i64,
     pub total_filter_time_ms: i64,
     pub avg_filter_time_ms: f64,
     /// Total raw tokens intercepted (before baseline adjustment).
