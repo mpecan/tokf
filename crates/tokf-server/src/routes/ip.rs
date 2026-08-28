@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::net::SocketAddr;
 
 use axum::extract::ConnectInfo;
@@ -15,12 +16,17 @@ pub struct PeerIp(pub Option<String>);
 impl<S: Send + Sync> axum::extract::FromRequestParts<S> for PeerIp {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    // Not an `async fn`: there is nothing to await, and returning a ready
+    // future avoids generating an async state machine for a plain lookup.
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> {
         let ip = parts
             .extensions
             .get::<ConnectInfo<SocketAddr>>()
             .map(|ci| ci.0.ip().to_string());
-        Ok(Self(ip))
+        std::future::ready(Ok(Self(ip)))
     }
 }
 

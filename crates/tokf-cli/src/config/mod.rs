@@ -192,11 +192,7 @@ pub fn pattern_matches_prefix(pattern: &str, words: &[&str]) -> Option<usize> {
                 word_idx += 1;
             } else if pat_idx > 0 {
                 // Between pattern words, try to skip over global flag tokens.
-                if let Some(advance) = skip_flags_to_match(&words[word_idx..], pword) {
-                    word_idx += advance;
-                } else {
-                    return None;
-                }
+                word_idx += skip_flags_to_match(&words[word_idx..], pword)?;
             } else {
                 return None;
             }
