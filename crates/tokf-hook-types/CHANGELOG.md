@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.53](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.52...tokf-hook-types-v0.2.53) (2026-08-28)
+
+
+### Features
+
+* **rewrite:** capture pipelines to surface swallowed exit codes ([#462](https://github.com/mpecan/tokf/issues/462)) ([7369dcf](https://github.com/mpecan/tokf/commit/7369dcf57875b6ccbedcefd15110967ca868adc6))
+
 ## [0.2.52](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.51...tokf-hook-types-v0.2.52) (2026-07-23)
 
 

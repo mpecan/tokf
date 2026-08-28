@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.53](https://github.com/mpecan/tokf/compare/tokf-v0.2.52...tokf-v0.2.53) (2026-08-28)
+
+
+### Features
+
+* **rewrite:** capture pipelines to surface swallowed exit codes ([#462](https://github.com/mpecan/tokf/issues/462)) ([7369dcf](https://github.com/mpecan/tokf/commit/7369dcf57875b6ccbedcefd15110967ca868adc6))
+
+
+### Bug Fixes
+
+* **runner:** resolve programs the way Windows does ([#454](https://github.com/mpecan/tokf/issues/454)) ([e79c794](https://github.com/mpecan/tokf/commit/e79c794f04b3348bb39e6c9e6d14ad925e21c4ad))
+
+
+### Documentation
+
+* **rewrite:** fill the gaps left by pipeline capture ([#464](https://github.com/mpecan/tokf/issues/464)) ([3b69747](https://github.com/mpecan/tokf/commit/3b69747733d488e15873d95ba7306ad6c8037c91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * tokf-common bumped from 0.2.52 to 0.2.53
+    * tokf-filter bumped from 0.2.52 to 0.2.53
+    * tokf-hook-types bumped from 0.2.52 to 0.2.53
+
 ## [0.2.52](https://github.com/mpecan/tokf/compare/tokf-v0.2.51...tokf-v0.2.52) (2026-07-23)
 
 
