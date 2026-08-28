@@ -258,6 +258,7 @@ fn make_summary(commands: i64, input: i64, output: i64, filter_ms: i64) -> GainS
         tokens_saved: saved,
         savings_pct: pct,
         pipe_override_count: 0,
+        exit_mismatch_count: 0,
         total_filter_time_ms: filter_ms,
         avg_filter_time_ms: avg,
         total_raw_tokens: input,
@@ -570,4 +571,21 @@ fn from_remote_renders_without_filter_time() {
     assert!(!tty.contains("Filter Time"), "output: {tty}");
     let plain = render_summary_plain(&summary, &filters, 10);
     assert!(!plain.contains("filter time:"), "output: {plain}");
+}
+
+#[test]
+fn summary_reports_hidden_exit_codes() {
+    let mut summary = make_summary(10, 100, 50, 5);
+    summary.exit_mismatch_count = 12;
+    let out = render_summary_plain(&summary, &[], 10);
+    assert!(
+        out.contains("exit codes hidden: 12 runs"),
+        "a pipeline that hid a failure must be surfaced: {out}"
+    );
+}
+
+#[test]
+fn summary_stays_quiet_when_no_exit_code_was_hidden() {
+    let out = render_summary_plain(&make_summary(10, 100, 50, 5), &[], 10);
+    assert!(!out.contains("exit codes hidden"), "{out}");
 }

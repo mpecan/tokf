@@ -394,7 +394,7 @@ pub fn cmd_run(
         &history::RecordedRun {
             command: &command_str,
             executed_command: executed_command.as_deref(),
-            filter_name,
+            filter_name: Some(filter_name),
             raw_output: &cmd_result.combined,
             filtered_output: &final_output,
             exit_code: cmd_result.exit_code,

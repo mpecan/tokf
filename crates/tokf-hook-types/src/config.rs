@@ -155,6 +155,65 @@ pub struct PipeConfig {
     /// smaller.
     #[serde(default)]
     pub prefer_less: bool,
+
+    /// Opt-in pipeline capture. When true, pipelines tokf would otherwise leave
+    /// alone are rewritten so that tokf runs the first stage itself, feeds its
+    /// output through the rest of the pipeline, and compares the two exit codes.
+    /// Default: false.
+    #[serde(default)]
+    pub capture: bool,
+
+    /// What capture mode does with the first stage's exit code.
+    #[serde(default)]
+    pub capture_exit: CaptureExit,
+
+    /// Above this many bytes of captured output, the history row is skipped
+    /// (the pipeline still runs normally). Default: 2 MiB.
+    #[serde(default = "default_capture_max_bytes")]
+    pub capture_max_bytes: usize,
+
+    /// Extra command basenames that capture mode must never wrap. Extends —
+    /// does not replace — the built-in denylist.
+    #[serde(default)]
+    pub capture_deny: Vec<String>,
+}
+
+impl Default for PipeConfig {
+    /// Mirrors the serde defaults exactly, so an absent `[pipe]` section and an
+    /// empty one behave identically.
+    fn default() -> Self {
+        Self {
+            strip: true,
+            prefer_less: false,
+            capture: false,
+            capture_exit: CaptureExit::Report,
+            capture_max_bytes: default_capture_max_bytes(),
+            capture_deny: Vec::new(),
+        }
+    }
+}
+
+/// What pipeline capture does with the first stage's exit code.
+///
+/// The default is [`CaptureExit::Report`]: the process exit code stays exactly
+/// what the shell would have produced (the pipeline's last stage), and a
+/// divergence between the two codes is reported instead of being papered over.
+/// Nothing downstream changes, so nothing downstream can break.
+///
+/// [`CaptureExit::Propagate`] is the escalation for callers who want the hard
+/// guarantee and accept that `cmd | grep -q x && …` changes meaning.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CaptureExit {
+    /// Keep the shell-native exit code; report any mismatch. Default.
+    #[default]
+    Report,
+    /// Exit with the first stage's code instead of the pipeline's.
+    Propagate,
+}
+
+const fn default_capture_max_bytes() -> usize {
+    2 * 1024 * 1024
 }
 
 /// Extra skip patterns from user config.

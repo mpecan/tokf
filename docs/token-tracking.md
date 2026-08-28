@@ -172,6 +172,34 @@ Decimal is the cheapest encoding, which is counterintuitive — a shorter string
 
 Decimal is never worse and sometimes better, so the ID is printed as-is.
 
+## Pipeline capture is recorded, not credited
+
+When [pipeline capture](rewrites-config.md#pipeline-capture) is on, a captured run is recorded like any other — but with **no savings attributed to tokf**. The reduction came from your own `| tail`, not from a filter, so claiming it would inflate the numbers.
+
+This falls out of how savings are computed rather than being a special case: they are derived at query time as `input_tokens_est - output_tokens_est`, and a capture row sets both to the size of what the pipeline printed. The difference is exactly zero.
+
+What the row *does* carry is the part worth having:
+
+| Column | Capture row |
+|--------|-------------|
+| `filter_name` | `NULL` — no filter ran |
+| `input_bytes`, `output_bytes` | both the pipeline's output → zero savings |
+| `raw_bytes` | the command's full output, so the discarded volume is visible |
+| `pipeline_tail` | everything after the first pipe; `tokf gain --by-filter` buckets these rows as `pipeline-capture` rather than lumping them in with `passthrough` |
+| `head_exit_code` | the *first stage's* code, while `exit_code` stays the shell-native one |
+
+Those last two make the swallowed-status problem measurable rather than anecdotal: `head_exit_code != exit_code` is exactly the set of runs where a pipeline hid a failure. `tokf gain` counts them:
+
+```
+tokf gain summary
+  total runs:        42
+  tokens saved:      9,300 est. (74.4%)
+  pipe preferred:    5 runs (pipe output was smaller than filter)
+  exit codes hidden: 12 runs (a pipeline reported a different verdict than the command)
+```
+
+That names a habit rather than an individual incident.
+
 ## Context injection
 
-During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a short context explaining what `🗜️` and `🗜️#<id>` mean and how to retrieve full output (`tokf raw <id>`, or `tokf raw last`). Use `--no-context` to skip this step.
+During `tokf hook install`, tokf creates a `.claude/TOKF.md` file and adds an `@TOKF.md` reference to `.claude/CLAUDE.md`. This gives LLMs a short context explaining what `🗜️` and `🗜️#<id>` mean, how to retrieve full output (`tokf raw <id>`, or `tokf raw last`), and that an `Error:` line reporting an exit-code mismatch overrides the pipeline's own verdict. Use `--no-context` to skip this step.

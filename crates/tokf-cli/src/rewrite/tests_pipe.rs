@@ -24,6 +24,7 @@ fn rewrite_pipe_strip_disabled_preserves_pipe() {
         pipe: Some(types::PipeConfig {
             strip: false,
             prefer_less: false,
+            ..Default::default()
         }),
         rewrite: vec![],
         permissions: None,
@@ -55,6 +56,7 @@ fn rewrite_pipe_strip_disabled_non_piped_still_rewritten() {
         pipe: Some(types::PipeConfig {
             strip: false,
             prefer_less: false,
+            ..Default::default()
         }),
         rewrite: vec![],
         permissions: None,
@@ -88,6 +90,7 @@ fn rewrite_prefer_less_injects_flag() {
         pipe: Some(types::PipeConfig {
             strip: true,
             prefer_less: true,
+            ..Default::default()
         }),
         rewrite: vec![],
         permissions: None,
@@ -121,6 +124,7 @@ fn rewrite_prefer_less_without_pipe_no_effect() {
         pipe: Some(types::PipeConfig {
             strip: true,
             prefer_less: true,
+            ..Default::default()
         }),
         rewrite: vec![],
         permissions: None,
@@ -152,6 +156,7 @@ fn rewrite_strip_false_overrides_prefer_less() {
         pipe: Some(types::PipeConfig {
             strip: false,
             prefer_less: true,
+            ..Default::default()
         }),
         rewrite: vec![],
         permissions: None,
@@ -180,6 +185,7 @@ fn rewrite_compound_prefer_less_per_segment() {
         pipe: Some(types::PipeConfig {
             strip: true,
             prefer_less: true,
+            ..Default::default()
         }),
         rewrite: vec![],
         permissions: None,

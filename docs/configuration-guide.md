@@ -128,6 +128,7 @@ Rewrite rules let tokf intercept and transform commands before execution — wra
 | `TOKF_NO_FILTER` | Skip filtering in shell mode (set to `1`, `true`, or `yes`) | unset |
 | `TOKF_VERBOSE` | Print filter resolution details in shell mode | unset |
 | `TOKF_PRESERVE_COLOR` | Preserve ANSI color codes in filtered output | unset |
+| `TOKF_PIPE_CAPTURE` | Force [pipeline capture](#pipeline-capture) on (`1`) or off (`0`), overriding `[pipe] capture` | unset |
 | `TOKF_HTTP_TIMEOUT` | HTTP request timeout in seconds (for remote operations) | `5` |
 | `NO_COLOR` | Disable colored output in `tokf gain` (per [no-color.org](https://no-color.org/)) | unset |
 | **Telemetry** | | |
@@ -165,6 +166,9 @@ Available on all `tokf run` invocations and most subcommands:
 |------|-------------|
 | `--baseline-pipe <cmd>` | Pipe command for fair baseline accounting (injected by rewrite rules) |
 | `--prefer-less` | Compare filtered vs piped output and use whichever is smaller |
+| `--pipe-through <cmd>` | Run this pipeline on the command's output and report any exit-code mismatch (injected by [pipeline capture](#pipeline-capture)) |
+| `--merge-stderr` | Feed combined stdout+stderr into `--pipe-through` (the command used `2>&1`) |
+| `--propagate-exit` | Exit with the command's code rather than the pipeline's |
 
 ---
 

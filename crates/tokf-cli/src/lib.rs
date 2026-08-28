@@ -6,6 +6,7 @@ pub mod doctor;
 pub mod fs;
 pub mod history;
 pub mod hook;
+pub mod pipe_exec;
 pub mod publish_shared;
 pub mod remote;
 pub mod rewrite;

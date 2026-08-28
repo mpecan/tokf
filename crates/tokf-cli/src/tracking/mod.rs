@@ -58,67 +58,75 @@ pub fn open_db(path: &Path) -> anyhow::Result<Connection> {
     Ok(conn)
 }
 
+/// Add one or more columns when `probe_column` is absent from `events`.
+///
+/// Every migration below is the same shape — check `pragma_table_info`, then
+/// `ALTER TABLE` — so the probe lives here rather than being spelled out once
+/// per column.
+fn add_columns_if_missing(
+    conn: &Connection,
+    probe_column: &str,
+    ddl: &str,
+    what: &str,
+) -> anyhow::Result<()> {
+    let present: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name=?1",
+            [probe_column],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if present == 0 {
+        conn.execute_batch(ddl)
+            .with_context(|| format!("migrate events table: add {what}"))?;
+    }
+    Ok(())
+}
+
 /// Run schema migrations for the events table.
 fn run_migrations(conn: &Connection) -> anyhow::Result<()> {
-    // Migration: add pipe_override column when upgrading from a schema without it.
-    let has_pipe_override: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='pipe_override'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-    if has_pipe_override == 0 {
-        conn.execute_batch(
-            "ALTER TABLE events ADD COLUMN pipe_override INTEGER NOT NULL DEFAULT 0;",
-        )
-        .context("migrate events table: add pipe_override column")?;
-    }
+    add_columns_if_missing(
+        conn,
+        "pipe_override",
+        "ALTER TABLE events ADD COLUMN pipe_override INTEGER NOT NULL DEFAULT 0;",
+        "pipe_override column",
+    )?;
 
-    // Migration: add filter_hash column when upgrading from a schema without it.
-    let has_filter_hash: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='filter_hash'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-    if has_filter_hash == 0 {
-        conn.execute_batch("ALTER TABLE events ADD COLUMN filter_hash TEXT;")
-            .context("migrate events table: add filter_hash column")?;
-    }
+    add_columns_if_missing(
+        conn,
+        "filter_hash",
+        "ALTER TABLE events ADD COLUMN filter_hash TEXT;",
+        "filter_hash column",
+    )?;
 
-    // Migration: add raw_bytes and raw_tokens_est columns.
-    let has_raw_bytes: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='raw_bytes'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-    if has_raw_bytes == 0 {
-        conn.execute_batch(
-            "ALTER TABLE events ADD COLUMN raw_bytes INTEGER NOT NULL DEFAULT 0;
-             ALTER TABLE events ADD COLUMN raw_tokens_est INTEGER NOT NULL DEFAULT 0;
-             UPDATE events SET raw_bytes = input_bytes, raw_tokens_est = input_tokens_est;",
-        )
-        .context("migrate events table: add raw_bytes columns")?;
-    }
+    add_columns_if_missing(
+        conn,
+        "raw_bytes",
+        "ALTER TABLE events ADD COLUMN raw_bytes INTEGER NOT NULL DEFAULT 0;
+         ALTER TABLE events ADD COLUMN raw_tokens_est INTEGER NOT NULL DEFAULT 0;
+         UPDATE events SET raw_bytes = input_bytes, raw_tokens_est = input_tokens_est;",
+        "raw_bytes columns",
+    )?;
 
-    // Migration: add project column when upgrading from a schema without it.
     // Pre-existing rows get the empty-string default — `tokf doctor` treats
     // empty as "unknown" and shows them under all projects.
-    let has_project: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='project'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-    if has_project == 0 {
-        conn.execute_batch("ALTER TABLE events ADD COLUMN project TEXT NOT NULL DEFAULT '';")
-            .context("migrate events table: add project column")?;
-    }
+    add_columns_if_missing(
+        conn,
+        "project",
+        "ALTER TABLE events ADD COLUMN project TEXT NOT NULL DEFAULT '';",
+        "project column",
+    )?;
+
+    // Pipeline capture. `head_exit_code != exit_code` is the swallowed-status
+    // signal; `pipeline_tail` keeps capture rows out of the `passthrough`
+    // bucket they would otherwise fall into.
+    add_columns_if_missing(
+        conn,
+        "pipeline_tail",
+        "ALTER TABLE events ADD COLUMN pipeline_tail TEXT;
+         ALTER TABLE events ADD COLUMN head_exit_code INTEGER;",
+        "pipeline capture columns",
+    )?;
 
     // Indexes used by `tokf doctor` burst-detection and per-filter queries.
     // Created here (not in CREATE TABLE) so existing DBs pick them up too.
@@ -170,9 +178,12 @@ pub fn build_event(
         filter_time_ms: filter_time_ms_i64,
         exit_code,
         pipe_override,
-        // `project` defaults to empty here. Callers that know the project
-        // (currently `resolve::record_run`) set it on the event before
+        // `project` defaults to empty here, and the pipeline-capture columns
+        // to `None`. Callers that know better (`resolve::record_run` for the
+        // project, `crate::pipeline` for capture) set them on the event before
         // passing it to `record_event`.
+        pipeline_tail: None,
+        head_exit_code: None,
         project: String::new(),
     }
 }
@@ -188,10 +199,11 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
              input_bytes, output_bytes,
              input_tokens_est, output_tokens_est,
              raw_bytes, raw_tokens_est,
-             filter_time_ms, exit_code, pipe_override, project)
+             filter_time_ms, exit_code, pipe_override, project,
+             pipeline_tail, head_exit_code)
          VALUES
             (strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         rusqlite::params![
             event.command,
             event.filter_name,
@@ -206,6 +218,8 @@ pub fn record_event(conn: &Connection, event: &TrackingEvent) -> anyhow::Result<
             event.exit_code,
             i64::from(event.pipe_override),
             event.project,
+            event.pipeline_tail,
+            event.head_exit_code,
         ],
     )
     .context("insert event")?;
@@ -222,7 +236,10 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     COALESCE(SUM(input_tokens_est - output_tokens_est),0),
                     COALESCE(SUM(pipe_override),0),
                     COALESCE(SUM(filter_time_ms),0),
-                    COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
+                    COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0),
+                    COALESCE(SUM(CASE WHEN head_exit_code IS NOT NULL
+                                       AND head_exit_code != exit_code
+                                      THEN 1 ELSE 0 END),0)
              FROM events",
             [],
             |row| {
@@ -234,6 +251,7 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
                     row.get::<_, i64>(4)?,
                     row.get::<_, i64>(5)?,
                     row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
                 ))
             },
         )
@@ -247,32 +265,40 @@ pub fn query_summary(conn: &Connection) -> anyhow::Result<GainSummary> {
         pipe_override_count,
         total_filter_time_ms,
         total_raw_tokens,
+        exit_mismatch_count,
     ) = row;
-    let savings_pct = if total_input_tokens == 0 {
-        0.0
-    } else {
-        #[allow(clippy::cast_precision_loss)]
-        let pct = tokens_saved as f64 / total_input_tokens as f64 * 100.0;
-        pct
-    };
-    #[allow(clippy::cast_precision_loss)]
-    let avg_filter_time_ms = if total_commands == 0 {
-        0.0
-    } else {
-        total_filter_time_ms as f64 / total_commands as f64
-    };
-
     Ok(GainSummary {
         total_commands,
         total_input_tokens,
         total_output_tokens,
         tokens_saved,
-        savings_pct,
+        savings_pct: percentage(tokens_saved, total_input_tokens),
         pipe_override_count,
+        exit_mismatch_count,
         total_filter_time_ms,
-        avg_filter_time_ms,
+        avg_filter_time_ms: mean(total_filter_time_ms, total_commands),
         total_raw_tokens,
     })
+}
+
+/// `part` as a percentage of `whole`, or `0.0` when `whole` is zero.
+#[allow(clippy::cast_precision_loss)]
+fn percentage(part: i64, whole: i64) -> f64 {
+    if whole == 0 {
+        0.0
+    } else {
+        part as f64 / whole as f64 * 100.0
+    }
+}
+
+/// `total / count`, or `0.0` when `count` is zero.
+#[allow(clippy::cast_precision_loss)]
+fn mean(total: i64, count: i64) -> f64 {
+    if count == 0 {
+        0.0
+    } else {
+        total as f64 / count as f64
+    }
 }
 
 /// Row type returned by aggregate queries.
@@ -307,14 +333,24 @@ fn savings_pct(input_tokens: i64, tokens_saved: i64) -> f64 {
 /// Returns an error if the SQL query fails.
 pub fn query_by_filter(conn: &Connection) -> anyhow::Result<Vec<FilterGain>> {
     let mut stmt = conn.prepare(
-        "SELECT COALESCE(filter_name, 'passthrough'), COUNT(*),
+        // Capture rows are bucketed as `pipeline-capture`, not `passthrough`:
+        // both have a NULL filter_name, but they mean different things. A
+        // passthrough is a command tokf had no filter for; a capture is a
+        // pipeline the caller reduced themselves, and lumping them together
+        // would attribute the caller's own `| tail` to tokf's filter coverage.
+        "SELECT CASE
+                    WHEN filter_name IS NOT NULL THEN filter_name
+                    WHEN pipeline_tail IS NOT NULL THEN 'pipeline-capture'
+                    ELSE 'passthrough'
+                END AS bucket,
+                COUNT(*),
                 SUM(input_tokens_est), SUM(output_tokens_est),
                 SUM(input_tokens_est - output_tokens_est),
                 COALESCE(SUM(pipe_override),0),
                 COALESCE(SUM(filter_time_ms),0),
                 COALESCE(SUM(CASE WHEN raw_tokens_est = 0 THEN input_tokens_est ELSE raw_tokens_est END),0)
          FROM events
-         GROUP BY filter_name
+         GROUP BY bucket
          ORDER BY SUM(input_tokens_est - output_tokens_est) DESC",
     )?;
 

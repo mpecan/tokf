@@ -447,7 +447,7 @@ fn try_record_records_entry_to_db() {
         &RecordedRun {
             command: "git status",
             executed_command: None,
-            filter_name: "git-status",
+            filter_name: Some("git-status"),
             raw_output: "raw output",
             filtered_output: "filtered output",
             exit_code: 0,
@@ -472,7 +472,7 @@ fn try_record_returns_id_on_success() {
         &RecordedRun {
             command: "cargo test",
             executed_command: None,
-            filter_name: "cargo/test",
+            filter_name: Some("cargo/test"),
             raw_output: "raw",
             filtered_output: "filtered",
             exit_code: 0,
@@ -503,7 +503,7 @@ fn try_record_does_not_panic_on_unwritable_db_path() {
         &RecordedRun {
             command: "cmd",
             executed_command: None,
-            filter_name: "filter",
+            filter_name: Some("filter"),
             raw_output: "raw",
             filtered_output: "filtered",
             exit_code: 0,
@@ -527,7 +527,7 @@ fn try_record_does_not_panic_on_unwritable_db_path_with_debug() {
         &RecordedRun {
             command: "cmd",
             executed_command: None,
-            filter_name: "filter",
+            filter_name: Some("filter"),
             raw_output: "raw",
             filtered_output: "filtered",
             exit_code: 0,
@@ -547,7 +547,7 @@ fn try_was_recently_run_returns_true_for_repeated_command() {
         &RecordedRun {
             command: "git status",
             executed_command: None,
-            filter_name: "git/status",
+            filter_name: Some("git/status"),
             raw_output: "raw",
             filtered_output: "filtered",
             exit_code: 0,
@@ -571,7 +571,7 @@ fn try_was_recently_run_returns_false_for_different_command() {
         &RecordedRun {
             command: "git status",
             executed_command: None,
-            filter_name: "git/status",
+            filter_name: Some("git/status"),
             raw_output: "raw",
             filtered_output: "filtered",
             exit_code: 0,

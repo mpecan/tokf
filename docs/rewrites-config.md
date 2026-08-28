@@ -186,6 +186,98 @@ tokf gain summary
 
 Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_less` has no effect.
 
+### Pipeline capture
+
+**Opt-in.** A pipeline reports its *last* stage's exit code, so `just check 2>&1 | tail -8` reports `tail`'s success even when the tests failed:
+
+```sh
+$ just check 2>&1 | tail -8
+test result: FAILED. 118 passed; 9 failed
+$ echo $?
+0            # ← reads as a pass
+```
+
+This is not bad luck. The operations you reach for to keep output small — `| tail`, `| head`, `| grep` — are the same operations that discard the failure signal, so every shortcut errs toward a false green.
+
+Pipeline capture closes that gap for the pipelines tokf would otherwise leave alone entirely:
+
+```toml
+[pipe]
+capture = true   # default: false
+```
+
+With it on, tokf runs the *first* stage itself, feeds its output through the rest of the pipeline, and prints the result verbatim — so you still get exactly what you asked for. What tokf adds is that it is the only thing that sees **both** exit codes:
+
+```sh
+$ just check 2>&1 | tail -8
+Error: `just check` exited 1 but the pipeline reported 0 — this is NOT a pass.
+test result: FAILED. 118 passed; 9 failed
+[tokf] full output: tokf raw 4711 (~14200 bytes discarded)
+$ echo $?
+0            # ← unchanged; see below
+```
+
+The discarded output is recorded, so `tokf raw 4711` gets back everything the pipe threw away.
+
+#### Difference is the signal
+
+The rule is not "detect false greens" — it is that whenever the two exit codes **differ**, tokf says so. The direction decides the wording and where the line goes, never whether to speak:
+
+| First stage | Pipeline | Meaning | Result |
+|-------------|----------|---------|--------|
+| *equal* | *equal* | agreement | silent |
+| non-zero | `0` | **false green** | `Error:` line on stdout |
+| `0` | non-zero | the pipeline matched nothing, or the consumer failed | note |
+| non-zero | non-zero, different | both failed; the first stage's code is the verdict | note |
+
+Empty output is also labelled whenever the command itself failed — an empty result reading as "no problems found" is the same mistake one layer down:
+
+```sh
+$ ./check.sh | grep FAILED
+[tokf] no output — `./check.sh` exited 1; the pipeline matched nothing.
+```
+
+#### The exit code is not changed
+
+By default the process exit code stays exactly what the shell would have produced. That is deliberate: rewriting it to the first stage's code would break every caller that consumes the pipeline's status on purpose, such as `cargo build | grep -q warning && echo found`. Reporting changes nothing downstream, so capture is safe to leave on.
+
+If you want the stricter behaviour:
+
+```toml
+[pipe]
+capture = true
+capture_exit = "propagate"   # default: "report"
+```
+
+In `propagate` mode tokf exits with the first stage's code, and declines to capture pipelines whose status is clearly being consumed (`&&`/`||` chains, and `grep -q`, `test`, `[` as the final stage).
+
+#### What capture does not touch
+
+Capture applies only where tokf declines today — multi-pipe chains, unsupported pipe targets, and pipelines whose base command has no filter. The existing `--baseline-pipe` stripping keeps priority. Beyond that, these are left alone:
+
+| Left alone | Why |
+|------------|-----|
+| `set -o pipefail; …`, `${PIPESTATUS[0]}` | You already handle the status |
+| `tail -f app.log \| grep ERROR`, `docker logs -f`, `yes`, `watch` | Capture buffers, so a producer that never ends would show nothing at all |
+| `cargo test \| less`, `\| fzf`, `\| vim` | Pagers and interactive tools cannot be fed a buffer |
+| `cargo test 2>/dev/null \| grep x` | tokf forwards the command's stderr, which would resurrect what you silenced |
+| `cargo test \| tail -5 > out.txt` | Output redirects are skipped before rewriting |
+
+Add your own with `capture_deny`, and cap what gets recorded with `capture_max_bytes`:
+
+```toml
+[pipe]
+capture = true
+capture_deny = ["mytool"]
+capture_max_bytes = 2097152   # default: 2 MiB; above this, no history row
+```
+
+Set `TOKF_PIPE_CAPTURE=0` to turn capture off without editing config, or `=1` to turn it on.
+
+#### `2>&1` is handled structurally
+
+`cargo test 2>&1 | grep error` and `cargo test | grep error` are different questions — cargo writes most of its output to stderr — so tokf feeds the pipeline the combined stream only when you asked for it. The distinction comes from a real bash AST, not a regex: a regex that splits on shell operators cuts `2>&1` in half at the `&`, which is how this exact command evades naive checks.
+
 ## External permission engine
 
 By default, tokf does **no** permission checking — the AI tool (Claude Code, Gemini, Cursor) handles its own deny/ask rules natively. tokf only rewrites commands that match a filter and auto-allows them.

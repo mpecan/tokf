@@ -1,15 +1,16 @@
 //! Compute the "fair baseline" byte count by piping raw output through
 //! the original pipe command the user would have used without tokf.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::pipe_exec::{self, PipeSpec, Stderr};
+
+/// A baseline runs on a sample of already-captured output, so it should be
+/// quick; a slow one means something is wrong, not that it needs longer.
+const BASELINE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Allowed first words for baseline pipe commands (security whitelist).
 const ALLOWED_COMMANDS: &[&str] = &["tail", "head", "grep"];
-
-/// Maximum time to wait for the baseline pipe command before falling back.
-const TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Run the pipe command on the raw output and return the actual text the
 /// user would have seen.
@@ -27,52 +28,18 @@ pub fn compute_output(raw_output: &str, pipe_cmd: &str) -> Option<String> {
         return None;
     }
 
-    let Ok(mut child) = Command::new("sh")
-        .args(["-c", pipe_cmd])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    else {
-        eprintln!("[tokf] warning: --baseline-pipe failed to spawn, using full output");
-        return None;
+    // stderr is discarded: this is an invisible accounting run, and leaking the
+    // measurement subprocess's stderr into the terminal would be noise the user
+    // never asked for.
+    let spec = PipeSpec {
+        timeout: BASELINE_TIMEOUT,
+        stderr: Stderr::Discard,
     };
-
-    if let Some(stdin) = child.stdin.as_mut() {
-        let _ = stdin.write_all(raw_output.as_bytes());
-    }
-    drop(child.stdin.take());
-
-    // Wait with timeout to prevent hanging on misbehaving pipe commands.
-    let start = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_status)) => {
-                return match child.wait_with_output() {
-                    Ok(output) => String::from_utf8(output.stdout).ok(),
-                    Err(e) => {
-                        eprintln!(
-                            "[tokf] warning: --baseline-pipe read failed: {e}, using full output"
-                        );
-                        None
-                    }
-                };
-            }
-            Ok(None) => {
-                if start.elapsed() >= TIMEOUT {
-                    let _ = child.kill();
-                    eprintln!(
-                        "[tokf] warning: --baseline-pipe timed out after {}s, using full output",
-                        TIMEOUT.as_secs()
-                    );
-                    return None;
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(e) => {
-                eprintln!("[tokf] warning: --baseline-pipe wait failed: {e}, using full output");
-                return None;
-            }
+    match pipe_exec::run(raw_output, pipe_cmd, spec) {
+        Ok(out) => Some(out.stdout),
+        Err(e) => {
+            eprintln!("[tokf] warning: --baseline-pipe {e}, using full output");
+            None
         }
     }
 }

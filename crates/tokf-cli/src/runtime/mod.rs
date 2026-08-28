@@ -179,6 +179,11 @@ impl Runtime {
         self.flags.show_indicator
     }
 
+    /// `TOKF_PIPE_CAPTURE` override for `[pipe] capture`, when set.
+    pub const fn pipe_capture(&self) -> Option<bool> {
+        self.flags.pipe_capture
+    }
+
     // -- network ----------------------------------------------------------
 
     /// The tokf server URL.

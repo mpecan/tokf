@@ -115,7 +115,9 @@ pub struct RecordedRun<'a> {
     /// The command actually executed when the filter's `run` override replaced
     /// `command`. `None` when `command` was run verbatim.
     pub executed_command: Option<&'a str>,
-    pub filter_name: &'a str,
+    /// The filter that produced `filtered_output`. `None` for a captured
+    /// pipeline, where the caller's own pipe did the reducing, not tokf.
+    pub filter_name: Option<&'a str>,
     pub raw_output: &'a str,
     pub filtered_output: &'a str,
     pub exit_code: i32,
@@ -123,8 +125,10 @@ pub struct RecordedRun<'a> {
 
 /// Record a filtered command run to history, swallowing errors unless `TOKF_DEBUG` is set.
 ///
-/// Only records commands where a filter was applied. Passthrough runs (no filter)
-/// are excluded because raw and filtered output would be identical.
+/// Records runs where the stored `raw_output` and `filtered_output` actually
+/// differ. Plain passthrough runs are excluded because the two would be
+/// identical — but a captured pipeline qualifies even with `filter_name: None`,
+/// because the caller's own pipe discarded the difference.
 ///
 /// Returns `Some(id)` with the new history entry ID on success, `None` on error.
 pub fn try_record(rt: &Runtime, run: &RecordedRun<'_>) -> Option<i64> {
@@ -154,7 +158,7 @@ pub fn try_record(rt: &Runtime, run: &RecordedRun<'_>) -> Option<i64> {
         project,
         command: command.to_owned(),
         executed_command: executed_command.map(ToOwned::to_owned),
-        filter_name: Some(filter_name.to_owned()),
+        filter_name: filter_name.map(ToOwned::to_owned),
         raw_output: raw_output.to_owned(),
         filtered_output: filtered_output.to_owned(),
         exit_code,

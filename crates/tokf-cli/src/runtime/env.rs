@@ -40,6 +40,10 @@ pub(super) struct Flags {
     pub(super) no_filter: bool,
     /// `TOKF_SHOW_INDICATOR` — overrides `[output] show_indicator` when parseable.
     pub(super) show_indicator: Option<bool>,
+    /// `TOKF_PIPE_CAPTURE` — overrides `[pipe] capture` when parseable. The
+    /// kill switch: capture changes how commands execute, so `=0` must be able
+    /// to turn it off without editing config.
+    pub(super) pipe_capture: Option<bool>,
 }
 
 /// Network configuration sourced from the environment.
@@ -145,6 +149,7 @@ impl Flags {
             verbose: non_empty(get, "TOKF_VERBOSE").is_some_and(|v| flag_truthy(&v)),
             no_filter: non_empty(get, "TOKF_NO_FILTER").is_some_and(|v| flag_truthy(&v)),
             show_indicator: get("TOKF_SHOW_INDICATOR").and_then(|v| v.parse::<bool>().ok()),
+            pipe_capture: non_empty(get, "TOKF_PIPE_CAPTURE").map(|v| flag_truthy(&v)),
         }
     }
 }

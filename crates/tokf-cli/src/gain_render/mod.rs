@@ -76,7 +76,9 @@ pub fn from_remote(resp: &gain_client::GainResponse) -> (GainSummary, Vec<Filter
         total_output_tokens: resp.total_output_tokens,
         tokens_saved,
         savings_pct,
+        // Neither is synced to the server — both are local-only signals.
         pipe_override_count: 0,
+        exit_mismatch_count: 0,
         total_filter_time_ms: 0,
         avg_filter_time_ms: 0.0,
         total_raw_tokens: total_raw,
@@ -429,6 +431,17 @@ pub fn render_summary_plain(summary: &GainSummary, filters: &[FilterGain], top: 
             out,
             "  pipe preferred: {} runs (pipe output was smaller than filter)",
             summary.pipe_override_count
+        );
+    }
+
+    // Reported next to pipe_override because both answer "what did the caller's
+    // own pipe do?" — but this one says a past result may have been believed
+    // wrongly, so it is printed whenever it is non-zero.
+    if summary.exit_mismatch_count > 0 {
+        let _ = writeln!(
+            out,
+            "  exit codes hidden: {} runs (a pipeline reported a different verdict than the command)",
+            summary.exit_mismatch_count
         );
     }
 

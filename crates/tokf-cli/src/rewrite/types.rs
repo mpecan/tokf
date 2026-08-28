@@ -1,6 +1,6 @@
 pub use tokf_hook_types::{
-    LocalWrapperConfig, LocalWrapperRule, PermissionEngineType, PermissionsConfig, PipeConfig,
-    RewriteConfig, RewriteRule, SkipConfig, TransparentConfig,
+    CaptureExit, LocalWrapperConfig, LocalWrapperRule, PermissionEngineType, PermissionsConfig,
+    PipeConfig, RewriteConfig, RewriteRule, SkipConfig, TransparentConfig,
 };
 
 /// Options that control how the rewrite system generates `tokf run` commands.
