@@ -15,7 +15,7 @@ enum Source {
 }
 
 /// Extract an exit code from a process status, mapping signals to 128+N on Unix.
-fn exit_code_from_status(status: std::process::ExitStatus) -> i32 {
+pub(crate) fn exit_code_from_status(status: std::process::ExitStatus) -> i32 {
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt;
