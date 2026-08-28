@@ -174,7 +174,7 @@ Decimal is never worse and sometimes better, so the ID is printed as-is.
 
 ## Pipeline capture is recorded, not credited
 
-When [pipeline capture](rewrites-config.md#pipeline-capture) is on, a captured run is recorded like any other — but with **no savings attributed to tokf**. The reduction came from your own `| tail`, not from a filter, so claiming it would inflate the numbers.
+When [pipeline capture](#pipeline-capture) is on, a captured run is recorded like any other — but with **no savings attributed to tokf**. The reduction came from your own `| tail`, not from a filter, so claiming it would inflate the numbers.
 
 This falls out of how savings are computed rather than being a special case: they are derived at query time as `input_tokens_est - output_tokens_est`, and a capture row sets both to the size of what the pipeline printed. The difference is exactly zero.
 
@@ -192,10 +192,21 @@ Those last two make the swallowed-status problem measurable rather than anecdota
 
 ```
 tokf gain summary
-  total runs:        42
-  tokens saved:      9,300 est. (74.4%)
-  pipe preferred:    5 runs (pipe output was smaller than filter)
-  exit codes hidden: 12 runs (a pipeline reported a different verdict than the command)
+  total runs:     42
+  input tokens:   12,500 est.
+  output tokens:  3,200 est.
+  tokens saved:   9,300 est. (74.4%)
+  pipe preferred: 5 runs (pipe output was smaller than filter)
+  exit mismatch:  12 runs (a pipeline reported a different verdict than the command)
+```
+
+`tokf gain --by-filter` lists captured runs under their own bucket, so they are never confused with commands tokf simply had no filter for:
+
+```
+tokf gain by filter
+  cargo/test                      runs:   38  saved: 41,200 est. (78.1%)
+  pipeline-capture                runs:   12  saved: 0 est. (0.0%)
+  passthrough                     runs:    4  saved: 0 est. (0.0%)
 ```
 
 That names a habit rather than an individual incident.

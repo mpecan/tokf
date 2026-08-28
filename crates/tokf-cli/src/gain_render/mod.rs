@@ -244,6 +244,7 @@ pub fn render_summary_tty(
         dim,
         green,
         cyan,
+        yellow,
         ..
     } = colors;
     let mut out = String::new();
@@ -269,6 +270,13 @@ pub fn render_summary_tty(
             out,
             "  ({} runs used pipe output instead)",
             summary.pipe_override_count
+        );
+    }
+    if summary.exit_mismatch_count > 0 {
+        let _ = writeln!(
+            out,
+            "  {yellow}{} runs had their exit code hidden by a pipeline{reset}",
+            summary.exit_mismatch_count,
         );
     }
 
@@ -440,7 +448,7 @@ pub fn render_summary_plain(summary: &GainSummary, filters: &[FilterGain], top: 
     if summary.exit_mismatch_count > 0 {
         let _ = writeln!(
             out,
-            "  exit codes hidden: {} runs (a pipeline reported a different verdict than the command)",
+            "  exit mismatch:  {} runs (a pipeline reported a different verdict than the command)",
             summary.exit_mismatch_count
         );
     }

@@ -184,6 +184,8 @@ tokf gain summary
   pipe preferred: 5 runs (pipe output was smaller than filter)
 ```
 
+(With [pipeline capture](#pipeline-capture) on, an `exit mismatch:` line joins these — see [token tracking](#pipeline-capture-is-recorded-not-credited).)
+
 Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_less` has no effect.
 
 ### Pipeline capture
