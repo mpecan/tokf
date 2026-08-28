@@ -579,7 +579,7 @@ fn summary_reports_hidden_exit_codes() {
     summary.exit_mismatch_count = 12;
     let out = render_summary_plain(&summary, &[], 10);
     assert!(
-        out.contains("exit codes hidden: 12 runs"),
+        out.contains("exit mismatch:  12 runs"),
         "a pipeline that hid a failure must be surfaced: {out}"
     );
 }
@@ -587,5 +587,16 @@ fn summary_reports_hidden_exit_codes() {
 #[test]
 fn summary_stays_quiet_when_no_exit_code_was_hidden() {
     let out = render_summary_plain(&make_summary(10, 100, 50, 5), &[], 10);
-    assert!(!out.contains("exit codes hidden"), "{out}");
+    assert!(!out.contains("exit mismatch"), "{out}");
+}
+
+#[test]
+fn tty_summary_also_reports_hidden_exit_codes() {
+    // The plain and coloured renderers must not disagree about whether a
+    // pipeline hid a failure — it is the one signal that says a past result
+    // may have been believed wrongly.
+    let mut summary = make_summary(10, 100, 50, 5);
+    summary.exit_mismatch_count = 7;
+    let out = render_summary_tty(&summary, &[], 10, &ColorMode::new(false));
+    assert!(out.contains("7 runs had their exit code hidden"), "{out}");
 }

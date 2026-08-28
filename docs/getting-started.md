@@ -37,6 +37,8 @@ tokf run git push origin main
 
 tokf looks up a filter for `git push`, runs the command, and applies the filter. The filter logic lives in plain TOML files — no recompilation required. Anyone can author, share, or override a filter.
 
+Compressing output is not the only thing being in the middle is good for. A pipeline reports its *last* stage's exit code, so `just check 2>&1 | tail -8` reports `tail`'s success even when the tests failed — and the shortcuts an agent reaches for to keep output small are exactly the ones that discard the failure signal. Opt into [pipeline capture](#pipeline-capture) and tokf runs the first stage itself, so it can tell you when a pipeline hid a command's verdict.
+
 ---
 
 ## Set up automatic filtering

@@ -70,6 +70,20 @@ tokf rewrite --verbose "cargo test"          # shows filter rule
 tokf rewrite --verbose "cargo test | tail"   # shows pipe stripping
 ```
 
+With [pipeline capture](#pipeline-capture) enabled, the same flag explains what tokf decided about a pipeline — and, just as usefully, why it declined one:
+
+```sh
+$ tokf rewrite --verbose "cargo test | tail -10 | grep ERROR"
+[tokf] pipeline capture: running `cargo test` under tokf, then `tail -10 | grep ERROR`
+tokf run --pipe-through 'tail -10 | grep ERROR' cargo test
+
+$ tokf rewrite --verbose "cargo test | less"
+[tokf] skipping rewrite: command contains a pipe
+cargo test | less
+```
+
+Capture fails open, so a decline always leaves the command exactly as written. If a pipeline you expected to be captured is passing through untouched, check it against the [left alone](#what-capture-does-not-touch) table.
+
 For shell mode (task runner recipe lines), set `TOKF_VERBOSE=1` to see filter resolution for each recipe line:
 
 ```sh

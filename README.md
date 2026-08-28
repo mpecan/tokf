@@ -136,6 +136,8 @@ tokf run git push origin main
 
 tokf looks up a filter for `git push`, runs the command, and applies the filter. The filter logic lives in plain TOML files — no recompilation required. Anyone can author, share, or override a filter.
 
+Compressing output is not the only thing being in the middle is good for. A pipeline reports its *last* stage's exit code, so `just check 2>&1 | tail -8` reports `tail`'s success even when the tests failed — and the shortcuts an agent reaches for to keep output small are exactly the ones that discard the failure signal. Opt into [pipeline capture](#pipeline-capture) and tokf runs the first stage itself, so it can tell you when a pipeline hid a command's verdict.
+
 ---
 
 ## Set up automatic filtering
@@ -1504,7 +1506,7 @@ Decimal is never worse and sometimes better, so the ID is printed as-is.
 
 ## Pipeline capture is recorded, not credited
 
-When [pipeline capture](rewrites-config.md#pipeline-capture) is on, a captured run is recorded like any other — but with **no savings attributed to tokf**. The reduction came from your own `| tail`, not from a filter, so claiming it would inflate the numbers.
+When [pipeline capture](#pipeline-capture) is on, a captured run is recorded like any other — but with **no savings attributed to tokf**. The reduction came from your own `| tail`, not from a filter, so claiming it would inflate the numbers.
 
 This falls out of how savings are computed rather than being a special case: they are derived at query time as `input_tokens_est - output_tokens_est`, and a capture row sets both to the size of what the pipeline printed. The difference is exactly zero.
 
@@ -1522,10 +1524,21 @@ Those last two make the swallowed-status problem measurable rather than anecdota
 
 ```
 tokf gain summary
-  total runs:        42
-  tokens saved:      9,300 est. (74.4%)
-  pipe preferred:    5 runs (pipe output was smaller than filter)
-  exit codes hidden: 12 runs (a pipeline reported a different verdict than the command)
+  total runs:     42
+  input tokens:   12,500 est.
+  output tokens:  3,200 est.
+  tokens saved:   9,300 est. (74.4%)
+  pipe preferred: 5 runs (pipe output was smaller than filter)
+  exit mismatch:  12 runs (a pipeline reported a different verdict than the command)
+```
+
+`tokf gain --by-filter` lists captured runs under their own bucket, so they are never confused with commands tokf simply had no filter for:
+
+```
+tokf gain by filter
+  cargo/test                      runs:   38  saved: 41,200 est. (78.1%)
+  pipeline-capture                runs:   12  saved: 0 est. (0.0%)
+  passthrough                     runs:    4  saved: 0 est. (0.0%)
 ```
 
 That names a habit rather than an individual incident.
@@ -1964,6 +1977,8 @@ tokf gain summary
   tokens saved:   9,300 est. (74.4%)
   pipe preferred: 5 runs (pipe output was smaller than filter)
 ```
+
+(With [pipeline capture](#pipeline-capture) on, an `exit mismatch:` line joins these — see [token tracking](#pipeline-capture-is-recorded-not-credited).)
 
 Note: `strip = false` takes priority — if pipe stripping is disabled, `prefer_less` has no effect.
 
@@ -2447,6 +2462,20 @@ tokf rewrite --verbose "make check"         # shows wrapper rule
 tokf rewrite --verbose "cargo test"          # shows filter rule
 tokf rewrite --verbose "cargo test | tail"   # shows pipe stripping
 ```
+
+With [pipeline capture](#pipeline-capture) enabled, the same flag explains what tokf decided about a pipeline — and, just as usefully, why it declined one:
+
+```sh
+$ tokf rewrite --verbose "cargo test | tail -10 | grep ERROR"
+[tokf] pipeline capture: running `cargo test` under tokf, then `tail -10 | grep ERROR`
+tokf run --pipe-through 'tail -10 | grep ERROR' cargo test
+
+$ tokf rewrite --verbose "cargo test | less"
+[tokf] skipping rewrite: command contains a pipe
+cargo test | less
+```
+
+Capture fails open, so a decline always leaves the command exactly as written. If a pipeline you expected to be captured is passing through untouched, check it against the [left alone](#what-capture-does-not-touch) table.
 
 For shell mode (task runner recipe lines), set `TOKF_VERBOSE=1` to see filter resolution for each recipe line:
 
