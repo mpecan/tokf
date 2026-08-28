@@ -84,7 +84,7 @@ fn find_expressions(template: &str) -> Vec<(usize, usize)> {
 }
 
 /// Find the matching `}` for an opening `{` at `start`, respecting nesting and quotes.
-fn find_matching_close(bytes: &[u8], start: usize) -> Option<usize> {
+const fn find_matching_close(bytes: &[u8], start: usize) -> Option<usize> {
     let mut depth = 0;
     let mut in_quote = false;
     let mut i = start;

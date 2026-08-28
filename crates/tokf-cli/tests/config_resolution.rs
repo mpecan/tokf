@@ -255,7 +255,10 @@ fn test_pattern_matches_prefix_basic() {
 #[test]
 fn test_pattern_specificity_ordering() {
     assert!(config::pattern_specificity("git push") > config::pattern_specificity("git *"));
-    assert!(config::pattern_specificity("git *") == config::pattern_specificity("* push"));
+    assert_eq!(
+        config::pattern_specificity("git *"),
+        config::pattern_specificity("* push")
+    );
     assert_eq!(config::pattern_specificity("git push"), 2);
     assert_eq!(config::pattern_specificity("git *"), 1);
 }

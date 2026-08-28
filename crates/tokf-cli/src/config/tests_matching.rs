@@ -29,7 +29,7 @@ fn specificity_all_wildcards() {
 fn specificity_ordering() {
     // "git push" more specific than "git *" more specific than "* push"
     assert!(pattern_specificity("git push") > pattern_specificity("git *"));
-    assert!(pattern_specificity("git *") == pattern_specificity("* push"));
+    assert_eq!(pattern_specificity("git *"), pattern_specificity("* push"));
 }
 
 // --- pattern_matches_prefix ---
