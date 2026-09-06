@@ -38,6 +38,35 @@ pub struct RewriteConfig {
     /// are local, so the whole command is wrapped with `tokf run` and its
     /// output filtered. See issue #403.
     pub local_wrapper: Option<LocalWrapperConfig>,
+
+    /// Behaviour inside linked git worktrees (`git worktree add`).
+    pub worktree: Option<WorktreeConfig>,
+}
+
+/// Behaviour inside a **linked** git worktree.
+///
+/// A linked worktree is one created by `git worktree add`, whose `.git` is a
+/// file pointing into the main repository's `.git/worktrees/<id>` directory.
+///
+/// Agent harnesses that isolate an agent to its own worktree verify that git
+/// operations stay inside it, and they do that by parsing the command string.
+/// Once tokf rewrites `git status` to `tokf run git status`, the leading word
+/// is an opaque wrapper and the check can no longer see the git invocation it
+/// was meant to inspect, so it refuses to run the command. Leaving `git`
+/// alone inside a linked worktree keeps those commands legible; every other
+/// command is still filtered normally.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WorktreeConfig {
+    /// Leave `git` commands unrewritten while inside a linked worktree.
+    /// Default: true.
+    #[serde(default = "default_true")]
+    pub skip_git: bool,
+}
+
+impl Default for WorktreeConfig {
+    fn default() -> Self {
+        Self { skip_git: true }
+    }
 }
 
 /// "Transparent-arg" commands: their last argument is opaque shell code.

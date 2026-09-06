@@ -1887,6 +1887,57 @@ match = "^(?:[^\\s]*/)?mise run(\\s.*)?$"
 replace = "SHELL=tokf mise run{1}"
 ```
 
+## Git commands inside worktrees
+
+When the working directory is inside a **linked** git worktree — one created by
+`git worktree add` — tokf leaves `git` commands unrewritten:
+
+```sh
+# In the main checkout:
+git status          →  tokf run git status
+
+# In a linked worktree:
+git status          →  git status          (unchanged)
+cargo test          →  tokf run cargo test (still filtered)
+```
+
+This exists because of agent harnesses that isolate an agent to its own
+worktree. They verify that git operations stay inside that worktree by reading
+the command string, and once tokf rewrites `git status` to
+`tokf run git status` the leading word is an opaque wrapper — the check can no
+longer see the git invocation it was meant to inspect, so it refuses to run the
+command at all. Leaving `git` alone keeps those commands legible. Every other
+command in the worktree is still filtered normally.
+
+Detection reads git's own on-disk layout, not a path convention: a linked
+worktree's `.git` is a *file* containing `gitdir: <common-dir>/worktrees/<id>`,
+where the main worktree's `.git` is a directory. So it holds for any worktree
+wherever it lives, and submodules — whose `.git` file points at
+`<common-dir>/modules/<name>` — are correctly left out.
+
+The guard applies per segment, so a compound command keeps the filters it can:
+
+```sh
+git add . && cargo test   →  git add . && tokf run cargo test
+```
+
+It applies only where something re-reads the rewritten command: the hook, and
+`tokf rewrite`, which exists to show what the hook would emit. Shell mode
+(`tokf -c`, used by the `make` and `just` wrappers) and the PATH shims hand
+their result straight to `sh`, so a `just` recipe running `git log` inside a
+worktree keeps its filter.
+
+To turn it off and filter git inside worktrees as well:
+
+```toml
+# .tokf/rewrites.toml
+[worktree]
+skip_git = false
+```
+
+Run `tokf rewrite --verbose "git status"` from inside a worktree to see whether
+the guard is active.
+
 ## Routing to generic commands
 
 For commands that don't have a dedicated filter, you can route them through [generic commands](generic-commands.md) (`tokf err`, `tokf test`, `tokf summary`) via rewrite rules:

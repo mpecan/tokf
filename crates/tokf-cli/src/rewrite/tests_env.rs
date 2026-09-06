@@ -226,12 +226,8 @@ fn rewrite_user_skip_pattern_matches_env_stripped_command() {
         skip: Some(types::SkipConfig {
             patterns: vec!["^git".to_string()],
         }),
-        pipe: None,
         rewrite: vec![],
-        permissions: None,
-        debug: None,
-        transparent: None,
-        local_wrapper: None,
+        ..Default::default()
     };
     // "FOO=bar git status" does NOT start with "git", so skip does not fire
     // and the command IS rewritten.

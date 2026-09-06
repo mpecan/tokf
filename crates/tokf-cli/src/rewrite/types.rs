@@ -1,6 +1,6 @@
 pub use tokf_hook_types::{
     CaptureExit, LocalWrapperConfig, LocalWrapperRule, PermissionEngineType, PermissionsConfig,
-    PipeConfig, RewriteConfig, RewriteRule, SkipConfig, TransparentConfig,
+    PipeConfig, RewriteConfig, RewriteRule, SkipConfig, TransparentConfig, WorktreeConfig,
 };
 
 /// Options that control how the rewrite system generates `tokf run` commands.
@@ -9,6 +9,16 @@ pub struct RewriteOptions {
     /// When true, inject `--no-mask-exit-code` into generated `tokf run` commands.
     /// Used by shell/shim mode where the real exit code must propagate.
     pub no_mask_exit_code: bool,
+
+    /// When true, leave `git` commands unrewritten inside a linked git
+    /// worktree so they stay legible to a harness that re-reads them.
+    ///
+    /// Only callers whose output is statically re-parsed need this: the hook
+    /// path, and `tokf rewrite`, which exists to show what the hook would
+    /// emit. Shell mode (`tokf -c`, invoked by `make`/`just`) and the PATH
+    /// shims hand their result straight to `sh`, so nothing re-reads it and
+    /// there is no reason for them to give up the filter.
+    pub guard_worktree_git: bool,
 }
 
 #[cfg(test)]
@@ -41,6 +51,28 @@ replace = "tokf run {0}"
         assert_eq!(config.rewrite[0].match_pattern, "^docker compose");
         assert_eq!(config.rewrite[0].replace, "tokf run {0}");
         assert_eq!(config.rewrite[1].match_pattern, "^kubectl (get|describe)");
+    }
+
+    #[test]
+    fn deserialize_worktree_section_defaults() {
+        let config: RewriteConfig = toml::from_str("[worktree]\n").unwrap();
+        let wt = config.worktree.unwrap();
+        assert!(wt.skip_git, "skip_git should default to true");
+    }
+
+    #[test]
+    fn deserialize_worktree_opt_out() {
+        let config: RewriteConfig = toml::from_str("[worktree]\nskip_git = false\n").unwrap();
+        assert!(!config.worktree.unwrap().skip_git);
+    }
+
+    #[test]
+    fn worktree_section_absent_means_guard_on() {
+        // No section at all is the common case, and it must behave the same as
+        // an empty `[worktree]` section: the guard is on.
+        let config: RewriteConfig = toml::from_str("").unwrap();
+        assert!(config.worktree.is_none());
+        assert!(WorktreeConfig::default().skip_git);
     }
 
     #[test]

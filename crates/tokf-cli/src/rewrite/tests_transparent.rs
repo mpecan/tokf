@@ -22,16 +22,11 @@ use crate::rewrite::transparent::{
 /// applied to transparent commands.
 fn config_with_mangling_rule() -> RewriteConfig {
     RewriteConfig {
-        skip: None,
-        pipe: None,
         rewrite: vec![RewriteRule {
             match_pattern: "^(.*)$".to_string(),
             replace: "mangled {0}".to_string(),
         }],
-        permissions: None,
-        debug: None,
-        transparent: None,
-        local_wrapper: None,
+        ..Default::default()
     }
 }
 
@@ -120,18 +115,14 @@ fn user_can_extend_transparent_list() {
     // A user with `kubectl exec` workflows can add `kubectl` to the list.
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig {
-        skip: None,
-        pipe: None,
         rewrite: vec![RewriteRule {
             match_pattern: "^(.*)$".to_string(),
             replace: "mangled {0}".to_string(),
         }],
-        permissions: None,
-        debug: None,
         transparent: Some(types::TransparentConfig {
             commands: vec!["kubectl".to_string()],
         }),
-        local_wrapper: None,
+        ..Default::default()
     };
     let result = rewrite_isolated(
         "kubectl exec POD -- cmd",
@@ -147,18 +138,14 @@ fn user_extra_does_not_disable_built_ins() {
     // Adding kubectl to the user list must not silently turn off ssh.
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig {
-        skip: None,
-        pipe: None,
         rewrite: vec![RewriteRule {
             match_pattern: "^(.*)$".to_string(),
             replace: "mangled {0}".to_string(),
         }],
-        permissions: None,
-        debug: None,
         transparent: Some(types::TransparentConfig {
             commands: vec!["kubectl".to_string()],
         }),
-        local_wrapper: None,
+        ..Default::default()
     };
     let result = rewrite_isolated("ssh HOST cmd", &config, &[dir.path().to_path_buf()], false);
     assert_eq!(result, "ssh HOST cmd");
@@ -257,12 +244,8 @@ fn user_skip_pattern_takes_precedence_over_transparent_gate() {
         skip: Some(types::SkipConfig {
             patterns: vec!["^ssh ".to_string()],
         }),
-        pipe: None,
         rewrite: vec![],
-        permissions: None,
-        debug: None,
-        transparent: None,
-        local_wrapper: None,
+        ..Default::default()
     };
     let result = rewrite_isolated(
         "ssh HOST 'cmd'",

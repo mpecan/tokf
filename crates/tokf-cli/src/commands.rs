@@ -540,7 +540,13 @@ pub fn cmd_ls(rt: &Runtime, verbose: bool) -> i32 {
 }
 
 pub fn cmd_rewrite(rt: &Runtime, command: &str, verbose: bool) -> i32 {
-    let result = rewrite::rewrite(rt, command, verbose);
+    // `tokf rewrite` exists to show what the hook would emit, so it mirrors
+    // the hook's options rather than the defaults.
+    let options = rewrite::types::RewriteOptions {
+        no_mask_exit_code: false,
+        guard_worktree_git: true,
+    };
+    let result = rewrite::rewrite_with_options(rt, command, verbose, &options);
     println!("{result}");
     0
 }
