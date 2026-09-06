@@ -236,16 +236,11 @@ fn rewrite_user_rule_wraps_piped_command() {
     // Using {0}{rest} captures both the matched portion and the remainder (including the pipe).
     let dir = TempDir::new().unwrap();
     let config = RewriteConfig {
-        skip: None,
-        pipe: None,
         rewrite: vec![RewriteRule {
             match_pattern: "^cargo test".to_string(),
             replace: "my-wrapper {0}{rest}".to_string(),
         }],
-        permissions: None,
-        debug: None,
-        transparent: None,
-        local_wrapper: None,
+        ..Default::default()
     };
     let r = rewrite_isolated(
         "cargo test | grep FAILED",
@@ -265,12 +260,8 @@ fn rewrite_skip_pattern_wins_over_pipe_guard() {
         skip: Some(types::SkipConfig {
             patterns: vec!["^git".to_string()],
         }),
-        pipe: None,
         rewrite: vec![],
-        permissions: None,
-        debug: None,
-        transparent: None,
-        local_wrapper: None,
+        ..Default::default()
     };
     let r = rewrite_isolated(
         "git status | grep M",

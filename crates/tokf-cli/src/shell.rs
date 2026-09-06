@@ -52,6 +52,9 @@ fn rewrite_and_delegate(rt: &Runtime, flags: &str, command: &str, verbose: bool)
 
     let options = tokf::rewrite::types::RewriteOptions {
         no_mask_exit_code: true,
+        // Shell mode's output goes straight to `sh`, never back to a harness
+        // that re-parses it, so git keeps its filter even inside a worktree.
+        guard_worktree_git: false,
     };
     let rewritten = tokf::rewrite::rewrite_with_options(rt, command, verbose, &options);
 
@@ -119,6 +122,9 @@ pub fn cmd_shell_argv(rt: &Runtime, flags: &str, args: &[String]) -> i32 {
     let unquoted = args.join(" ");
     let options = tokf::rewrite::types::RewriteOptions {
         no_mask_exit_code: true,
+        // Shell mode's output goes straight to `sh`, never back to a harness
+        // that re-parses it, so git keeps its filter even inside a worktree.
+        guard_worktree_git: false,
     };
     let rewritten = tokf::rewrite::rewrite_with_options(rt, &unquoted, verbose, &options);
 

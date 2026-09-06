@@ -5,6 +5,7 @@ pub mod capture;
 pub(crate) mod rules;
 pub(crate) mod transparent;
 pub(crate) mod user_config;
+pub(crate) mod worktree;
 
 use std::path::PathBuf;
 
@@ -170,6 +171,9 @@ pub(super) struct SegmentRules<'a> {
     pub(super) pipefail_handled: bool,
     /// When true, log to stderr when the bash parser fails to parse a command.
     pub(super) log_parse_failures: bool,
+    /// Leaves `git` segments unrewritten inside a linked worktree. Sits here
+    /// beside the other whole-command facts consulted per segment.
+    pub(super) git_guard: &'a worktree::GitGuard<'a>,
 }
 
 /// Rewrite a single command segment, handling pipe stripping and env var
@@ -353,6 +357,15 @@ pub(crate) fn rewrite_with_config_and_options(
         return command.to_string();
     }
 
+    let git_guard = worktree::GitGuard::new(ctx.rt, user_config, options, verbose);
+    let segments = split_compound(command);
+
+    // A single-segment command is its own segment, so the guard settles it
+    // here — ahead of the user `[[rewrite]]` rules below.
+    if segments.len() == 1 && git_guard.claims(command) {
+        return command.to_string();
+    }
+
     let transparent_extras: &[String] = user_config
         .transparent
         .as_ref()
@@ -363,7 +376,11 @@ pub(crate) fn rewrite_with_config_and_options(
     // (#338): regex rewrites operate on the full command string, so even an
     // ssh segment buried behind a `cd … &&` could have text spliced into its
     // opaque payload. Argv-preserving wraps below still apply per-segment.
+    // A guarded segment gates them for the same reason (`git add . && cargo
+    // test`): the rule matches the whole string, so it would splice a wrapper
+    // back in front of the git half that must stay legible.
     if !transparent::any_segment_is_transparent(command, transparent_extras)
+        && !git_guard.claims_any_segment(&segments)
         && let Some(user_result) = apply_rules(&user_config.rewrite, command)
     {
         return user_result;
@@ -392,24 +409,37 @@ pub(crate) fn rewrite_with_config_and_options(
         // in the default configuration.
         pipefail_handled: pipe_cfg.capture && handles_pipe_status(command),
         log_parse_failures,
+        git_guard: &git_guard,
     };
-    let segments = split_compound(command);
-
     if segments.len() == 1 {
         return rewrite_segment(command, "", &rules, verbose);
     }
+    rewrite_compound(command, &segments, &rules, user_skip_patterns, verbose)
+}
 
-    // Compound command: rewrite each segment independently so every sub-command
-    // that has a matching filter is wrapped, not just the first one.
+/// Rewrite each segment of a compound command independently, so every
+/// sub-command with a matching filter is wrapped — not just the first one.
+///
+/// Returns the original command untouched when no segment changed, so a
+/// command tokf has no opinion about is handed back byte-for-byte.
+fn rewrite_compound(
+    command: &str,
+    segments: &[(String, String)],
+    rules: &SegmentRules<'_>,
+    user_skip_patterns: &[String],
+    verbose: bool,
+) -> String {
     let mut changed = false;
     let mut out = String::with_capacity(command.len() + segments.len() * 9);
-    for (seg, sep) in &segments {
+    for (seg, sep) in segments {
         let trimmed = seg.trim();
-        let rewritten = if trimmed.is_empty() || should_skip_effective(trimmed, user_skip_patterns)
+        let rewritten = if trimmed.is_empty()
+            || rules.git_guard.claims(trimmed)
+            || should_skip_effective(trimmed, user_skip_patterns)
         {
             trimmed.to_string()
         } else {
-            let r = rewrite_segment(trimmed, sep, &rules, verbose);
+            let r = rewrite_segment(trimmed, sep, rules, verbose);
             if r != trimmed {
                 changed = true;
             }
@@ -427,55 +457,15 @@ mod bash_ast_multibyte_tests;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod bash_ast_tests;
-/// Test helpers: run a rewrite with explicit config against a freshly isolated
-/// runtime, so every test gets its own directories with no setup and no shared
-/// state to collide over.
-#[cfg(test)]
-pub(crate) fn rewrite_isolated(
-    command: &str,
-    user_config: &RewriteConfig,
-    search_dirs: &[PathBuf],
-    verbose: bool,
-) -> String {
-    rewrite_isolated_with_options(
-        command,
-        user_config,
-        search_dirs,
-        verbose,
-        &RewriteOptions::default(),
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn rewrite_isolated_with_options(
-    command: &str,
-    user_config: &RewriteConfig,
-    search_dirs: &[PathBuf],
-    verbose: bool,
-    options: &RewriteOptions,
-) -> String {
-    let rt = Runtime::isolated();
-    rewrite_with_config_and_options(
-        RewriteCtx {
-            rt: &rt,
-            user_config,
-            search_dirs,
-            no_cache: false,
-        },
-        command,
-        verbose,
-        options,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn collect_filter_patterns_isolated(search_dirs: &[PathBuf]) -> Vec<String> {
-    let rt = Runtime::isolated();
-    collect_filter_patterns(&rt, search_dirs, false)
-}
-
 #[cfg(test)]
 mod proptest_rewrite;
+#[cfg(test)]
+pub(crate) mod test_helpers;
+#[cfg(test)]
+pub(crate) use test_helpers::{
+    collect_filter_patterns_isolated, rewrite_in_cwd, rewrite_isolated,
+    rewrite_isolated_with_options,
+};
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -490,3 +480,5 @@ mod tests_local_wrapper;
 mod tests_pipe;
 #[cfg(test)]
 mod tests_transparent;
+#[cfg(test)]
+mod tests_worktree;

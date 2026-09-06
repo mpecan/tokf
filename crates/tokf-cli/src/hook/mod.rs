@@ -574,7 +574,12 @@ fn decide<R: serde::Serialize>(
     // Propagate `tokf hook --no-mask-exit-code handle` into every generated
     // `tokf run` invocation (including each member of a compound command) —
     // otherwise the flag is silently dropped and exit codes stay masked (#414).
-    let options = rewrite::types::RewriteOptions { no_mask_exit_code };
+    // `guard_worktree_git`: the hook's output is exactly what a harness
+    // re-reads and statically verifies, so this is the path that needs it.
+    let options = rewrite::types::RewriteOptions {
+        no_mask_exit_code,
+        guard_worktree_git: true,
+    };
     // `verbose` is `false`: hook rewrites must not emit diagnostics to the
     // agent's stderr, and `no_cache` rides in `RewriteCtx`, not the old
     // positional bool that used to be mistaken for it (#431).

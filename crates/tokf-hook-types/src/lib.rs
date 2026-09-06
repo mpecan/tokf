@@ -5,7 +5,7 @@ pub mod verdict;
 
 pub use config::{
     CaptureExit, LocalWrapperConfig, LocalWrapperRule, PermissionEngineType, PermissionsConfig,
-    PipeConfig, RewriteConfig, RewriteRule, SkipConfig, TransparentConfig,
+    PipeConfig, RewriteConfig, RewriteRule, SkipConfig, TransparentConfig, WorktreeConfig,
 };
 pub use engine::{ErrorFallback, ExternalEngineConfig};
 pub use format::HookFormat;
