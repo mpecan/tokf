@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.54](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.53...tokf-hook-types-v0.2.54) (2026-09-06)
+
+
+### Features
+
+* **rewrite:** leave git unrewritten inside linked worktrees ([#469](https://github.com/mpecan/tokf/issues/469)) ([32cb237](https://github.com/mpecan/tokf/commit/32cb2377ec0bf9cfa9893b7931ee4059683fb0e1))
+
 ## [0.2.53](https://github.com/mpecan/tokf/compare/tokf-hook-types-v0.2.52...tokf-hook-types-v0.2.53) (2026-08-28)
 
 
