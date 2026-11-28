@@ -13,7 +13,7 @@ tokf = { path = "../tokf-cli", features = ["test-support"] }
 tokf-server = { path = "../tokf-server", features = ["test-helpers"] }
 tokf-common = { path = "../tokf-common" }
 crdb-test-macro = { path = "../crdb-test-macro" }
-sqlx = { version = "=0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring"] }
+sqlx = { version = "=0.9.1", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring"] }
 tokio = { version = "1", features = ["full", "test-util"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "blocking"] }
 tempfile = "3"
